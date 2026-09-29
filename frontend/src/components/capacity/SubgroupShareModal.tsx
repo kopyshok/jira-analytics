@@ -12,13 +12,19 @@ interface Props {
   subgroups: { id: string; name: string }[];
   /** transfer — одна группа 100 %, split — проценты по группам. */
   mode: 'transfer' | 'split';
+  /** Записи «с начала участия» ещё нет — дату можно оставить пустой. */
+  fromStartAllowed: boolean;
+  /** Истории нет совсем — по умолчанию предлагаем «с начала участия». */
+  firstRecord: boolean;
   onClose: () => void;
 }
 
-export default function SubgroupShareModal({ employeeId, team, subgroups, mode, onClose }: Props) {
+export default function SubgroupShareModal({
+  employeeId, team, subgroups, mode, fromStartAllowed, firstRecord, onClose,
+}: Props) {
   const { message } = App.useApp();
   const put = usePutSubgroupShare();
-  const [on, setOn] = useState<Dayjs | null>(dayjs());
+  const [on, setOn] = useState<Dayjs | null>(firstRecord ? null : dayjs());
   const [group, setGroup] = useState<string | null>(null);
   const [pct, setPct] = useState<Record<string, number | null>>({});
 
@@ -28,13 +34,13 @@ export default function SubgroupShareModal({ employeeId, team, subgroups, mode, 
         .filter(([, v]) => (v ?? 0) > 0)
         .map(([subgroup_id, v]) => ({ subgroup_id, percent: v as number }));
   const total = shares.reduce((s, x) => s + x.percent, 0);
-  const valid = !!on && shares.length > 0 && total === 100
+  const valid = (!!on || fromStartAllowed) && shares.length > 0 && total === 100
     && (mode === 'transfer' || shares.length >= 2);
 
   const handleOk = async () => {
     try {
       await put.mutateAsync({
-        employeeId, team, valid_from: on!.format('YYYY-MM-DD'), shares,
+        employeeId, team, valid_from: on ? on.format('YYYY-MM-DD') : null, shares,
       });
       message.success(mode === 'transfer' ? 'Сотрудник переведён' : 'Распределение сохранено');
       onClose();
@@ -57,7 +63,13 @@ export default function SubgroupShareModal({ employeeId, team, subgroups, mode, 
     >
       <Space orientation="vertical" style={{ width: '100%' }}>
         <Text type="secondary">С даты</Text>
-        <DatePicker value={on} onChange={setOn} format="DD.MM.YYYY" style={{ width: '100%' }} />
+        <DatePicker
+          value={on}
+          onChange={setOn}
+          format="DD.MM.YYYY"
+          placeholder={fromStartAllowed ? 'С начала участия в команде' : 'Выберите дату'}
+          style={{ width: '100%' }}
+        />
         {mode === 'transfer' ? (
           <>
             <Text type="secondary">Новая группа</Text>

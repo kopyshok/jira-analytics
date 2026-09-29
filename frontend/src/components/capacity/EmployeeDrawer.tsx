@@ -67,7 +67,10 @@ function MembershipGroups({ employeeId, team, subgroups }: {
         <SubgroupShareModal
           key={mode}
           employeeId={employeeId} team={team} subgroups={subgroups}
-          mode={mode} onClose={() => setMode(null)}
+          mode={mode}
+          fromStartAllowed={!history.some((r) => r.valid_from === null)}
+          firstRecord={history.length === 0}
+          onClose={() => setMode(null)}
         />
       )}
     </div>
