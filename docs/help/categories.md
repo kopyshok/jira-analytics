@@ -14,7 +14,11 @@ Jira присылает в систему сотни задач каждый к�
 
 ## Видео
 
-[Как отнести задачу к категории](video:categorize-issue)
+[Как разобрать новые задачи](video:categorize-issue)
+
+[Как инициатива попадает в сценарий](video:category-to-scenario)
+
+[Как разобрать часы без категории прямо из отчёта](video:analytics-categorize)
 
 ---
 

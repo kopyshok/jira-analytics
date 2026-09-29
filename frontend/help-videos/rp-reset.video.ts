@@ -8,8 +8,7 @@ import { sortAssignmentsByScenarioAssignee } from '../src/utils/sortAssignments.
 import { Director } from './director.ts';
 import { phaseBar, prepareQuarterPlan } from './rp-setup.ts';
 
-// Придержан: в кадре ошибки раздела (см. справку «Ресурсное планирование»); снять после исправления.
-test.skip('rp-reset', async ({ page }) => {
+test('rp-reset', async ({ page }) => {
   const d = new Director(page);
   await d.install();
 
@@ -54,33 +53,48 @@ test.skip('rp-reset', async ({ page }) => {
   const movedBar = phaseBar(page, moved);
   // Строка разработки второй задачи: слева — имя исполнителя.
   const swappedRow = phaseBar(page, swapped).locator('xpath=ancestor::*[@data-gantt-row="true"][1]');
-  const resetButton = page.locator('button:has(.anticon-reload)');
+  const resetButton = page.locator('[data-testid="rp-reset-trigger"]');
+  const drawer = page.locator('.ant-drawer-open .ant-drawer-section');
 
   await d.open(`/resource-planning?plan_id=${plan.id}`, 'Как сбросить ручные правки');
   await expect(page.locator('.ant-tag', { hasText: /^Готово$/ })).toBeVisible();
   await expect(movedBar).toBeVisible();
   await expect(swappedRow.getByText(peer.employee_name ?? '', { exact: true })).toBeVisible();
-  await d.pause(800);
+  await d.pause(1200);
   await d.poster();
-  await d.pause(1500);
+  await d.pause(4000);
 
   await d.caption('Эту фазу перенесли вручную');
   await d.show(movedBar);
-  await d.pause(1200);
+  await d.pause(3800);
   await d.caption('А здесь вручную сменили исполнителя');
   await d.show(swappedRow.getByText(peer.employee_name ?? '', { exact: true }));
-  await d.pause(1200);
+  await d.pause(3800);
 
-  await d.click(resetButton, 'Чтобы вернуть расчёт сервиса, нажмите «Сбросить»');
+  await d.click(movedBar, 'У каждой фазы такая правка видна и в её карточке');
+  await expect(drawer).toBeVisible();
+  const cardReset = drawer.getByRole('button', { name: 'Снять фиксацию даты' });
+  await expect(cardReset).toBeVisible();
+  await d.caption('«Снять фиксацию даты» снимет правку только здесь');
+  await d.show(cardReset);
+  await d.pause(4000);
+  await d.click(drawer.locator('.ant-drawer-close'), 'Закройте карточку');
+  await expect(drawer).toBeHidden();
+  await page.mouse.move(900, 120);
+
+  await d.click(resetButton, 'А для всего плана сразу — нажмите «Сбросить»');
   const menu = page.locator('.ant-dropdown:visible .ant-dropdown-menu');
-  await expect(menu).toContainText('Сбросить закреплённые даты (1)');
-  await expect(menu).toContainText('Сбросить закреплённых исполнителей (1)');
+  await expect(menu.locator('[data-testid="rp-reset-item-dates"]')).toContainText('Сбросить закреплённые даты (1)');
+  await expect(menu.locator('[data-testid="rp-reset-item-employees"]')).toContainText('Сбросить закреплённых исполнителей (1)');
   await d.caption('В скобках — сколько правок каждого вида');
   await d.show(menu);
-  await d.pause(2000);
+  await d.pause(4200);
+  await d.caption('Связи между задачами (оранжевые стрелки) сброс не трогает');
+  await d.show(menu.locator('[data-testid="rp-reset-item-predecessors"]'));
+  await d.pause(4200);
 
   await d.click(
-    menu.locator('.ant-dropdown-menu-item', { hasText: 'Сбросить всё к первоначальному виду' }),
+    menu.locator('[data-testid="rp-reset-item-all"]'),
     'Можно сбросить всё сразу',
   );
   const confirm = page.locator('.ant-modal-confirm');
@@ -99,14 +113,11 @@ test.skip('rp-reset', async ({ page }) => {
 
   await d.caption('План пересчитан: фаза вернулась на своё место');
   await d.show(movedBar);
-  await d.pause(1500);
+  await d.pause(4200);
   await d.caption('И исполнитель — прежний');
   await d.show(swappedRow.getByText(originalName, { exact: true }));
-  await d.pause(1500);
-  await d.caption('Правки одной фазы снимаются в её карточке');
-  await d.show(movedBar);
-  await d.pause(1800);
+  await d.pause(4200);
 
-  await d.caption('Готово', 2200);
+  await d.caption('Готово', 2600);
   await d.save('rp-reset');
 });

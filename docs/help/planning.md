@@ -24,9 +24,15 @@
 
 [Как собрать сценарий квартала](video:scenario-create)
 
-[Как поправить нормированные работы](video:scenario-rules)
+[Как задать нормированные работы и вовлечённость](video:scenario-rules)
 
-[Как утвердить сценарий](video:scenario-approve)
+[Как утвердить сценарий и что дальше](video:scenario-approve)
+
+[Как назначить разработчика в сценарии](video:scenario-developer)
+
+[Как пересмотреть сценарий в середине квартала](video:scenario-review)
+
+[Как вести сценарий команды с группами](video:scenario-groups)
 
 ---
 

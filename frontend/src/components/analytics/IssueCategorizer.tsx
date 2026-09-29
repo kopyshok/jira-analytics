@@ -79,6 +79,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
 
   return (
     <div
+      data-tour="analytics-categorize"
       style={{
         background: CARD_BG,
         border: CARD_BORDER,

@@ -1,160 +1,165 @@
-// Ролик «Как разобрать зависшие задачи»: Стол тимлида → лента «Требует
-// внимания» → отметить замечание «просмотрено» → задача ушла из списка.
-// Если в демо-данных нет ни одного замечания — запасной сценарий: отбор
-// по спринту и разбор очереди разработчика.
+// Ролик «Как разобрать зависшие задачи»: Стол тимлида → «Светофор» → лента
+// «Требует внимания» → «Зависла» → отметка «Просмотрено» с комментарием →
+// задача уходит из списка; «показывать просмотренные» возвращает её на экран
+// приглушённым значком, «Вернуть в проблемные» снимает отметку обратно.
 import { expect, test } from '@playwright/test';
 import { Director } from './director.ts';
 
-type FlagCode =
-  | 'over' | 'under' | 'decomp' | 'childgap' | 'orphan' | 'alien'
-  | 'noest' | 'nospent' | 'idlespent' | 'stale';
-
-const FLAG_LABELS: Record<FlagCode, string> = {
-  over: 'Перерасход',
-  under: 'Недорасход',
-  decomp: 'Без декомпозиции',
-  childgap: 'Подзадачи недооценены',
-  orphan: 'Подзадача без родителя',
-  alien: 'Часы другого разработчика',
-  noest: 'Нет оценки',
-  nospent: 'Нет списаний',
-  idlespent: 'Часы в неначатой',
-  stale: 'Зависла',
-};
-
-const FLAG_ICON: Record<FlagCode, string> = {
-  over: '↑', under: '↓', decomp: '⊞', childgap: '⊟', orphan: '⚠', alien: '⇄',
-  noest: '∅', nospent: '◔', idlespent: '⏱', stale: '⏳',
-};
-
-// «Зависла» — по названию ролика; остальные признаки — запасной вариант,
-// если именно зависших задач в демо-данных не окажется.
-const FLAG_PRIORITY: FlagCode[] = [
-  'stale', 'over', 'noest', 'nospent', 'decomp', 'idlespent', 'under', 'childgap', 'orphan', 'alien',
-];
-
 const TEAM = 'Команда Альфа';
+const FLAG = 'stale';
+const FLAG_LABEL = 'Зависла';
+const FLAG_ICON = '⏳';
 
-interface Overview {
-  flag_counts: Partial<Record<FlagCode, number>>;
-  developers: { developer_id: string; display_name: string | null; total_issues: number }[];
-  issues: { sprint: string | null }[];
+interface DeskIssue {
+  id: string;
+  key: string;
+  status_group: string;
+  is_subtask: boolean;
+  flags: string[];
+  signatures: Record<string, string>;
 }
+interface Overview {
+  issues: DeskIssue[];
+  flag_counts: Partial<Record<string, number>>;
+}
+
+let issueId = '';
+
+test.beforeAll(async ({ playwright }, testInfo) => {
+  const api = `${String(testInfo.config.metadata.backendUrl)}/api/v1`;
+  const request = await playwright.request.newContext({
+    storageState: testInfo.project.use.storageState as string,
+  });
+
+  // Шапка и рабочее место раздела — заранее: ролик не должен начинаться с
+  // пустого экрана «Выберите команды» или с чужих настроек прошлого ролика.
+  expect((await request.put(`${api}/auth/me/teams`, { data: { teams: [TEAM], subgroups: [] } })).ok()).toBeTruthy();
+  expect((await request.put(`${api}/users/me/team-desk-filter`, {
+    data: {
+      teams: [TEAM], mode: 'open', show_reviewed: false, show_done_subtasks: true,
+      group_by_developer: true, hidden_columns: ['sprint', 'release', 'daily_rate', 'scale', 'days'],
+    },
+  })).ok()).toBeTruthy();
+
+  const overviewRes = await request.get(`${api}/team-desk/overview`, {
+    params: { teams: TEAM, only_open: 'true', show_reviewed: 'false', show_done_subtasks: 'true' },
+  });
+  expect(overviewRes.ok()).toBeTruthy();
+  const overview = (await overviewRes.json()) as Overview;
+  expect(overview.flag_counts[FLAG] ?? 0, `нет задач с замечанием «${FLAG_LABEL}»`).toBeGreaterThan(0);
+
+  // Самостоятельная задача «в работе» — статус читается на экране без
+  // служебных пояснений; сортировка по ключу — один и тот же выбор при
+  // повторном прогоне на той же копии базы.
+  const candidates = overview.issues
+    .filter((i) => i.flags.includes(FLAG) && !i.is_subtask)
+    .sort((a, b) => a.key.localeCompare(b.key));
+  const target = candidates.find((i) => i.status_group === 'dev') ?? candidates[0];
+  expect(target, `нет подходящей задачи с замечанием «${FLAG_LABEL}»`).toBeTruthy();
+  issueId = target!.id;
+
+  // На случай, если прошлый прогон на этой же копии базы оставил отметку —
+  // ролик должен проходить дважды подряд без ручной чистки.
+  await request.delete(`${api}/team-desk/issues/${issueId}/mark`, { params: { flag: FLAG } }).catch(() => undefined);
+  await request.dispose();
+});
+
+test.afterAll(async ({ playwright }, testInfo) => {
+  const api = `${String(testInfo.config.metadata.backendUrl)}/api/v1`;
+  const request = await playwright.request.newContext({
+    storageState: testInfo.project.use.storageState as string,
+  });
+  if (issueId) {
+    await request.delete(`${api}/team-desk/issues/${issueId}/mark`, { params: { flag: FLAG } }).catch(() => undefined);
+  }
+  await request.dispose();
+});
 
 test('team-desk-stuck', async ({ page }) => {
   const d = new Director(page);
   await d.install();
+  await d.open('/team-desk', 'Как разобрать зависшие задачи');
 
-  const api = String(test.info().config.metadata.backendUrl);
-
-  // Шапка раздела — свой профиль, отдельный от глобального фильтра команды.
-  // Лишние колонки скрыты: список из 13 столбцов не помещается по ширине,
-  // и наведение на значок замечания в правом крае уводит таблицу вбок —
-  // ключ и название задачи слева пропадают из кадра.
-  const filterRes = await page.request.put(`${api}/api/v1/users/me/team-desk-filter`, {
-    data: {
-      teams: [TEAM], mode: 'open', show_reviewed: false,
-      show_done_subtasks: true, group_by_developer: true,
-      hidden_columns: ['sprint', 'release', 'daily_rate', 'scale', 'days'],
-    },
-  });
-  expect(filterRes.ok()).toBeTruthy();
-
-  const overviewRes = await page.request.get(
-    `${api}/api/v1/team-desk/overview`
-    + `?teams=${encodeURIComponent(TEAM)}&only_open=true&show_reviewed=false&show_done_subtasks=true`,
-  );
-  expect(overviewRes.ok()).toBeTruthy();
-  const overview = (await overviewRes.json()) as Overview;
-  const flagCode = FLAG_PRIORITY.find((f) => (overview.flag_counts[f] ?? 0) > 0) ?? null;
-
+  const filters = page.locator('[data-tour="desk-filters"]');
   const issuesBlock = page.locator('[data-tour="desk-issues"]');
-
-  if (flagCode) {
-    const label = FLAG_LABELS[flagCode];
-    const icon = FLAG_ICON[flagCode];
-    const countBefore = overview.flag_counts[flagCode]!;
-
-    await d.open('/team-desk', 'Как разобрать зависшие задачи');
-    await expect(issuesBlock).toBeVisible({ timeout: 20_000 });
-    // Лента «Требует внимания» показывает счётчик через « · N» — у чипа
-    // «Отобрано» (ActiveFilters) той же подписи счётчика нет, различаем по нему.
-    const flagBar = page.locator('[data-tour="desk-flags"] .ant-tag', { hasText: new RegExp(`${label} ·`) });
-    await expect(flagBar).toBeVisible();
-    await d.pause(800);
-    await d.poster();
-    await d.pause(1500);
-
-    await d.caption(`Лента «Требует внимания» — тут задачи с замечанием «${label}»`);
-    await d.show(flagBar);
-    await d.pause(1000);
-
-    await d.click(flagBar, `Отфильтруйте по замечанию «${label}»`);
-    // Список задач перестраивается под фильтр — даём вёрстке улечься перед
-    // тем, как наводить курсор на конкретную строку.
-    await d.pause(500);
-
-    const flagTag = issuesBlock.getByText(icon, { exact: true }).first();
-    await expect(flagTag).toBeVisible();
-    await d.click(flagTag, 'Нажмите на значок замечания у задачи');
-
-    const menuItem = page.locator('.ant-dropdown-menu-item', { hasText: 'Просмотрено' });
-    await d.click(menuItem, 'Выберите «Просмотрено»');
-
-    const modal = page.locator('.ant-modal', { hasText: 'Просмотрено' });
-    await expect(modal).toBeVisible();
-    await d.pause(400);
-    await d.click(modal.getByRole('button', { name: 'Отметить' }), 'Подтвердите');
-    await expect(modal).toBeHidden();
-    // Настоящая мышь осталась над лентой — уводим, чтобы не всплывали подсказки.
-    await page.mouse.move(1100, 180);
-
-    if (countBefore - 1 > 0) {
-      await expect(flagBar).toContainText(`· ${countBefore - 1}`);
-    } else {
-      await expect(flagBar).toHaveCount(0);
-    }
-
-    await d.caption('Замечание снято — задача ушла из списка проблемных');
-    await d.show(countBefore - 1 > 0 ? flagBar : page.locator('[data-tour="desk-flags"]'));
-    await d.pause(1400);
-
-    await d.caption('Готово', 2200);
-    await d.save('team-desk-stuck');
-    return;
-  }
-
-  // Запасной сценарий: замечаний в демо-данных нет — показываем отбор по
-  // спринту и разбор очереди конкретного разработчика.
-  const sprint = overview.issues.map((i) => i.sprint).find((s): s is string => Boolean(s));
-  const developer = overview.developers.find((dv) => dv.total_issues > 0 && dv.display_name);
-
-  await d.open('/team-desk', 'Как посмотреть задачи разработчика по спринту');
   await expect(issuesBlock).toBeVisible({ timeout: 20_000 });
-  await d.pause(800);
+  await d.pause(1100);
   await d.poster();
-  await d.pause(1500);
+  await d.pause(1700);
 
-  if (sprint) {
-    const sprintSelect = page.locator('[data-tour="desk-filters"] .ant-select').filter({
-      has: page.locator('.ant-select-selection-placeholder', { hasText: 'Все спринты' }),
-    });
-    await d.click(sprintSelect, 'Отберите задачи по спринту');
-    const option = page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: sprint });
-    await d.click(option);
-    await page.keyboard.press('Escape');
-  }
-
-  if (developer) {
-    const card = page.locator('.ant-card', { hasText: developer.display_name! }).first();
-    await d.click(card, `Откройте очередь разработчика «${developer.display_name}»`);
-  }
-
-  await expect(issuesBlock).toBeVisible();
-  await d.caption('Видно, какие задачи у него в работе');
-  await d.show(issuesBlock);
+  await d.caption('Команда уже выбрана в шапке — «Команда Альфа»');
+  await d.show(filters.locator('.ant-select').first());
   await d.pause(1400);
 
-  await d.caption('Готово', 2200);
+  await d.caption('Раскладка «Светофор» — плитка на каждого разработчика');
+  await d.show(page.locator('[data-tour="desk-tabs"]'));
+  await d.pause(1400);
+
+  const flagBar = page.locator('[data-tour="desk-flags"] .ant-tag', { hasText: new RegExp(`${FLAG_LABEL} ·`) });
+  await expect(flagBar).toBeVisible();
+  const countBefore = Number((await flagBar.innerText()).replace(/\D+/g, ''));
+
+  await d.caption('Полоса «Требует внимания» — тут задачи с замечанием');
+  await d.show(flagBar);
+  await d.pause(1300);
+
+  await d.click(flagBar, `Отфильтруйте по замечанию «${FLAG_LABEL}»`);
+  await d.pause(1200);
+
+  const row = issuesBlock.locator(`tr[data-row-key="${issueId}"]`);
+  await expect(row).toBeVisible();
+  await d.show(row);
+  await d.pause(1400);
+
+  // Значок замечания — по иконке: в строке есть и другой тэг (статус), а
+  // иконка признака встречается только в колонке «Замечания».
+  const flagChip = row.locator('.ant-tag', { hasText: FLAG_ICON });
+  await d.click(flagChip, 'Нажмите на значок замечания у задачи');
+  await d.click(page.locator('.ant-dropdown-menu-item', { hasText: 'Просмотрено' }), 'Выберите «Просмотрено»');
+
+  const modal = page.locator('.ant-modal', { hasText: 'Просмотрено' });
+  await expect(modal).toBeVisible();
+  await d.pause(400);
+  await d.type(modal.locator('textarea'), 'Уточнили у автора, ждём ответ', 'Можно оставить комментарий');
+  await d.click(modal.getByRole('button', { name: 'Отметить' }), 'Подтвердите');
+  await expect(modal).toBeHidden();
+  // Настоящая мышь осталась над модальным окном — уводим её.
+  await page.mouse.move(1100, 180);
+
+  await expect(flagBar).toContainText(`· ${countBefore - 1}`);
+  await d.caption('Замечание снято — задача ушла из списка проблемных');
+  await d.show(flagBar);
+  await d.pause(1700);
+
+  const showReviewed = filters.locator('.ant-switch').first();
+  await d.click(showReviewed, '«показывать просмотренные» вернёт отметку приглушённым значком');
+  await expect(row).toBeVisible();
+  await d.show(flagChip);
+  await d.pause(1700);
+
+  await d.click(flagChip, 'Значок приглушён — нажмите на него');
+  await d.click(
+    page.locator('.ant-dropdown-menu-item', { hasText: 'Вернуть в проблемные' }),
+    'Если отметили по ошибке — снимите её',
+  );
+  await page.mouse.move(1100, 180);
+  await d.pause(900);
+
+  await d.click(showReviewed, 'Выключите переключатель — вернётесь к обычному виду');
+  await expect(flagBar).toContainText(`· ${countBefore}`);
+  await d.pause(1600);
+
+  await d.click(flagChip, 'Разобрались по задаче — отметьте её снова');
+  await d.click(page.locator('.ant-dropdown-menu-item', { hasText: 'Просмотрено' }), 'Выберите «Просмотрено»');
+  await expect(modal).toBeVisible();
+  await d.pause(300);
+  await d.click(modal.getByRole('button', { name: 'Отметить' }), 'Подтвердите');
+  await expect(modal).toBeHidden();
+  await page.mouse.move(1100, 180);
+  await expect(flagBar).toContainText(`· ${countBefore - 1}`);
+
+  await d.caption('Готово', 3000);
+  await d.show(flagBar);
+  await d.pause(700);
   await d.save('team-desk-stuck');
 });

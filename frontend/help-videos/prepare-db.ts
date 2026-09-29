@@ -36,6 +36,12 @@ copyFileSync(source, target);
 // Расписания синхронизации в копии выключены: съёмка не должна ходить в Jira.
 const db = new DatabaseSync(target);
 db.exec('UPDATE sync_schedule SET enabled = 0');
+// Утверждение квартала KPI включено: ролик kpi-review показывает кнопку «Утвердить квартал».
+db.exec("DELETE FROM app_settings WHERE key = 'kpi_approval_enabled'");
+db.exec(
+  "INSERT INTO app_settings (id, key, value, created_at, updated_at) " +
+    "VALUES (lower(hex(randomblob(16))), 'kpi_approval_enabled', 'true', datetime('now'), datetime('now'))",
+);
 db.close();
 
 console.log(`help-videos: ${target} готова`);

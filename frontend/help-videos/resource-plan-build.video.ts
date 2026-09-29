@@ -1,99 +1,201 @@
-// Ролик «Как построить ресурсный план»: Ресурсное планирование → утверждённый
-// сценарий квартала → «Распределить» → фазы на диаграмме и загрузка по дням.
+// Ролик «Как построить ресурсный план и прочитать его»: утверждённый сценарий →
+// «Распределить» → статус «Готово» и метки качества → виды «Задачи»/«Исполнители»,
+// фильтр «Исполнители», масштаб, окно «Вид» (рабочие дни, эстафета, свернуть все,
+// цвета) → карточка фазы (разбор расчёта) → «Загрузка сотрудников по дням».
+// Данные готовятся в beforeAll — запись идёт с момента открытия окна.
 import { expect, test } from '@playwright/test';
 import { Director } from './director.ts';
-
-const TEAM = 'Команда Альфа';
+import { TEAM } from './rp-setup.ts';
 
 type Scenario = { id: string; name: string; quarter: string | null; year: number | null };
 type Plan = { id: string; scenario_id: string | null };
 
-test('resource-plan-build', async ({ page }) => {
-  const d = new Director(page);
-  await d.install();
+let scenarioLabel = '';
 
-  // Подготовка до первого кадра. План последнего утверждённого сценария команды
-  // удаляется: в ролике он строится с нуля — пустой план, «Распределить», результат.
-  const api = `${String(test.info().config.metadata.backendUrl)}/api/v1`;
-  expect((await page.request.put(`${api}/auth/me/teams`, { data: { teams: [TEAM], subgroups: [] } })).ok()).toBeTruthy();
-  const prefs = await page.request.patch(`${api}/resource-planning/preferences`, {
-    data: { view_mode: 'tasks', hide_weekends: false, collapsed_initiative_ids: [] },
+test.beforeAll(async ({ playwright }, testInfo) => {
+  const api = `${String(testInfo.config.metadata.backendUrl)}/api/v1`;
+  const rp = `${api}/resource-planning`;
+  const request = await playwright.request.newContext({
+    storageState: testInfo.project.use.storageState as string,
   });
-  expect(prefs.ok()).toBeTruthy();
+  const ok = (res: { ok(): boolean }) => expect(res.ok()).toBeTruthy();
+
+  ok(await request.put(`${api}/auth/me/teams`, { data: { teams: [TEAM], subgroups: [] } }));
+  // Секции разбора карточки фазы скрыты заранее — в ролике их включает шестерёнка.
+  ok(await request.patch(`${rp}/preferences`, {
+    data: {
+      view_mode: 'tasks',
+      hide_weekends: false,
+      collapsed_initiative_ids: [],
+      detail_sections_visible: {
+        algorithm: false, day_table: false, absences: false, sources: false, duration: false, critical_path: false,
+      },
+      detail_sections_collapsed: {},
+    },
+  }));
+
   const scenarios: Scenario[] = await (
-    await page.request.get(`${api}/planning/scenarios`, { params: { status: 'approved', teams: TEAM } })
+    await request.get(`${api}/planning/scenarios`, { params: { status: 'approved', teams: TEAM } })
   ).json();
   const scenario = scenarios
     .filter((s) => s.quarter && s.year)
     .sort((a, b) => `${a.year} ${a.quarter}`.localeCompare(`${b.year} ${b.quarter}`))
     .at(-1);
   if (!scenario) throw new Error(`Нет утверждённых сценариев команды ${TEAM}`);
-  // Копии плана без родителя тоже попадают в список — удаляем, пока план сценария есть.
+  scenarioLabel = `${scenario.quarter} ${scenario.year} — ${scenario.name}`;
+
+  // Существующий план сценария удаляем — ролик строит план заново, с нуля.
   for (let i = 0; i < 20; i++) {
-    const plans: Plan[] = await (
-      await page.request.get(`${api}/resource-planning/resource-plans`, { params: { team: TEAM } })
-    ).json();
+    const plans: Plan[] = await (await request.get(`${rp}/resource-plans`, { params: { team: TEAM } })).json();
     const plan = plans.find((p) => p.scenario_id === scenario.id);
     if (!plan) break;
-    expect((await page.request.delete(`${api}/resource-planning/resource-plans/${plan.id}`)).ok()).toBeTruthy();
+    ok(await request.delete(`${rp}/resource-plans/${plan.id}`));
   }
 
-  await d.open('/resource-planning', 'Как построить ресурсный план');
+  await request.dispose();
+});
+
+test.afterAll(async ({ playwright }, testInfo) => {
+  // Секции разбора карточки фазы возвращаем к настройке по умолчанию (все видны) —
+  // другие ролики раздела открывают карточку, ожидая её обычный вид.
+  const api = `${String(testInfo.config.metadata.backendUrl)}/api/v1`;
+  const request = await playwright.request.newContext({
+    storageState: testInfo.project.use.storageState as string,
+  });
+  await request.patch(`${api}/resource-planning/preferences`, {
+    data: {
+      detail_sections_visible: {
+        algorithm: true, day_table: true, absences: true, sources: true, duration: true, critical_path: true,
+      },
+      detail_sections_collapsed: {},
+      hide_weekends: false,
+    },
+  });
+  await request.dispose();
+});
+
+test('resource-plan-build', async ({ page }) => {
+  const d = new Director(page);
+  await d.install();
+
+  await d.open('/resource-planning', 'Как построить ресурсный план и прочитать его');
   const select = page.locator('[data-tour="rp-scenario-select"]');
   await expect(select).toBeVisible();
   await expect(page.getByText('Выберите план или создайте его из утверждённого сценария')).toBeVisible();
-  await d.pause(800);
+  await d.pause(600);
   await d.poster();
-  await d.pause(1500);
+  await d.pause(900);
 
-  await d.click(page.locator('.side-item', { hasText: 'Ресурс. планир.' }), 'Откройте раздел «Ресурсное планирование»');
-  await d.click(select, 'Выберите утверждённый сценарий квартала');
+  await d.caption('План строится из утверждённого сценария — выберите его в списке');
+  await d.click(select);
   await d.click(
-    page.locator('.ant-select-dropdown:visible .ant-select-item-option', {
-      hasText: `${scenario.quarter} ${scenario.year} — ${scenario.name}`,
-    }),
+    page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: scenarioLabel }),
   );
 
   const status = (text: string) => page.locator('.ant-tag', { hasText: new RegExp(`^${text}$`) });
   const gantt = page.locator('[data-tour="rp-gantt"]');
   await expect(status('Черновик')).toBeVisible();
   await expect(gantt).toBeVisible();
-  await expect(page.locator('[data-testid^="rp-bar-"]')).toHaveCount(0);
   await page.mouse.move(900, 120);
-  await d.caption('План создан, но фазы ещё не разложены');
-  await d.show(status('Черновик'));
-  await d.pause(1200);
+  await d.pause(500);
 
   await d.click(page.locator('[data-tour="rp-distribute"]'), 'Нажмите «Распределить»');
-  await d.caption('Сервис разложил фазы по исполнителям и дням');
   await expect(status('Готово')).toBeVisible({ timeout: 60_000 });
   const bars = page.locator('[data-testid^="rp-bar-"]');
   await expect(bars.first()).toBeVisible();
   await page.mouse.move(900, 120);
-  await d.pause(1600);
+  await d.caption('Сервис разложил фазы по исполнителям и дням');
+  await d.pause(700);
 
-  // Первая задача на диаграмме: полосы её фаз от первой до последней.
-  const firstId = (await bars.first().getAttribute('data-testid')) ?? '';
-  const item = /^rp-bar-(.+)-(analyst|dev|qa|opo)-\d+$/.exec(firstId)?.[1];
-  if (!item) throw new Error(`Неожиданная метка полосы: ${firstId}`);
-  const itemBars = page.locator(`[data-testid^="rp-bar-${item}-"]`);
-  await d.caption('Каждая полоса — фаза задачи в календаре квартала');
-  await d.show(itemBars.first(), itemBars.last());
-  await d.pause(1800);
+  await d.caption('Метки качества — перегрузки, просрочки, средняя загрузка');
+  await d.show(
+    page.locator('.ant-tag', { hasText: /^Перегрузки:/ }),
+    page.locator('.ant-tag', { hasText: /^Утилизация:/ }),
+  );
+  await d.pause(700);
 
-  // Блок загрузки — последний на странице: запас снизу, чтобы подпись ролика
-  // не закрывала его нижние строки. Рамку убираем до прокрутки, иначе она
-  // висит на месте, пока страница едет.
+  // Виды «Задачи» / «Исполнители».
+  const layoutSwitch = page.locator('[data-tour="rp-layout-switch"]');
+  await d.click(layoutSwitch.locator('.ant-segmented-item', { hasText: 'Исполнители' }), 'Вид «Исполнители» — план по людям, а не по задачам');
+  await expect(page.getByText('Все работы').first()).toBeVisible();
+  await page.mouse.move(900, 120);
+  await d.pause(600);
+  await d.click(layoutSwitch.locator('.ant-segmented-item', { hasText: 'Задачи' }), 'Вид «Задачи» — обратно к задачам и фазам');
+  await expect(bars.first()).toBeVisible();
+  await page.mouse.move(900, 120);
+
+  // Фильтр «Исполнители».
+  const filter = page.locator('[data-tour="rp-people-filter"]');
+  await d.click(filter, 'Фильтр «Исполнители» оставляет на диаграмме только выбранных людей');
+  const firstOption = page.locator('.ant-select-dropdown:visible .ant-select-item-option').first();
+  await d.click(firstOption);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(900, 120);
+  await d.pause(600);
+  await d.click(filter.locator('.ant-select-clear'));
+  await page.mouse.move(900, 120);
+
+  // Масштаб.
+  const scaleSwitch = page.locator('[data-tour="rp-scale"]');
+  await d.click(scaleSwitch.locator('.ant-segmented-item', { hasText: 'Месяц' }), 'Масштаб — от общей картины по месяцам до дневных подробностей');
+  await d.pause(500);
+  await d.click(scaleSwitch.locator('.ant-segmented-item', { hasText: 'Неделя' }));
+
+  // Кнопка «Вид»: рабочие дни, эстафета, свернуть все, цвета.
+  const viewBtn = page.locator('[data-tour="rp-view"]');
+  await d.click(viewBtn, 'В окне «Вид» — ещё настройки: рабочие дни, эстафета, свёрнутый список, цвета');
+  const popover = page.locator('.ant-popover:visible');
+  await d.show(popover);
+  await d.pause(700);
+  await d.click(popover.locator('label', { hasText: 'Только рабочие дни' }), '«Только рабочие дни» убирает выходные со шкалы');
+  await page.mouse.move(900, 120);
+  await d.pause(500);
+
+  await d.click(popover.locator('button', { hasText: 'Цвета' }), '«Цвета» — своя палитра диаграммы для вашей учётной записи');
+  const colorsModal = page.locator('.ant-modal', { hasText: 'Цвета планировщика' });
+  await expect(colorsModal).toBeVisible();
+  await d.show(colorsModal);
+  await d.pause(600);
+  await d.click(colorsModal.getByRole('button', { name: 'Отмена' }), 'Закройте окно, если менять ничего не нужно');
+  await expect(colorsModal).toBeHidden();
+  // Открытие модального окна «Цвета» само закрывает всплывающую панель «Вид».
+  if (await popover.isVisible()) {
+    await d.click(viewBtn);
+  }
+  await page.mouse.move(900, 120);
+
+  // Карточка фазы: разбор расчёта.
+  await d.click(bars.first(), 'Щёлкните по полосе фазы — откроется карточка');
+  const drawer = page.locator('.ant-drawer-open .ant-drawer-section');
+  await expect(drawer).toBeVisible();
+  const gear = drawer.getByRole('button', { name: 'setting' });
+  await d.click(gear, 'Шестерёнка открывает секции разбора: откуда дата, дни × часы и другие');
+  const secPopover = page.locator('.ant-popover:visible', { hasText: 'Показывать секции' });
+  await d.click(secPopover.locator('label', { hasText: 'Дни × часы' }), 'Включите «Дни × часы»');
+  await d.click(gear);
+  await expect(secPopover).toBeHidden();
+
+  const dayTable = drawer.getByText('Дни × часы').last();
+  await dayTable.scrollIntoViewIfNeeded();
+  await page.mouse.move(900, 120);
+  await d.caption('По каким дням и с какими часами разложена работа фазы');
+  await d.show(dayTable);
+  await d.pause(1000);
+
+  await d.click(drawer.locator('.ant-drawer-close'), 'Закройте карточку');
+  await expect(drawer).toBeHidden();
+  await page.mouse.move(900, 120);
+
+  // Загрузка сотрудников по дням.
   const load = page.locator('[data-tour="rp-load"]');
   await load.evaluate((el) => {
-    el.style.marginBottom = '160px';
+    (el as HTMLElement).style.marginBottom = '160px';
   });
-  await page.evaluate(() => window.__director?.ring(null));
   await d.caption('Внизу — загрузка каждого сотрудника по дням');
   await load.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-  await d.pause(1000);
+  await d.pause(600);
   await d.show(load);
-  await d.pause(2200);
+  await d.pause(1300);
 
   await d.caption('Готово', 2200);
   await d.save('resource-plan-build');

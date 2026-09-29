@@ -12,7 +12,7 @@ export default function ScenarioDeficitBadge({ deficit }: Props) {
   const entries = Object.entries(deficit);
   if (entries.length === 0) return null;
   return (
-    <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+    <div data-testid="scenario-deficit-badge" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
       {entries.map(([role, hours]) => {
         const color = getRoleColor(roles, role);
         const label = getRoleLabel(roles, role);

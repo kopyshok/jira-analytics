@@ -10,7 +10,7 @@ const DOT_COLOR: Record<string, string> = {
 export const PortfolioSignals: React.FC<{ signals: PortfolioSignal[] }> = ({ signals }) => {
   if (signals.length === 0) return null;
   return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+    <div data-testid="portfolio-signals" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       {signals.map((s) => (
         <span
           key={s.kind}

@@ -410,6 +410,7 @@ function ResourcePlanningPageInner() {
         <Space size={6} style={{ marginLeft: 'auto' }}>
           {viewMode === 'two-level' && gantt && (
             <Segmented
+              data-tour="rp-layout-switch"
               size="small"
               value={layout}
               onChange={v => patchPrefs({ view_mode: v as RpLayout })}
@@ -421,6 +422,7 @@ function ResourcePlanningPageInner() {
           )}
           {viewMode === 'two-level' && gantt && (
             <Select
+              data-tour="rp-people-filter"
               mode="multiple"
               size="small"
               allowClear
@@ -436,6 +438,7 @@ function ResourcePlanningPageInner() {
           )}
           {viewMode === 'two-level' && (
             <Segmented
+              data-tour="rp-scale"
               size="small"
               value={prefs.hide_weekends ? 'day' : scale}
               disabled={prefs.hide_weekends}

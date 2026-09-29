@@ -487,6 +487,7 @@ export default function InvolvementDefaultsDrawer({
                   loading={editingRow ? update.isPending : create.isPending}
                   disabled={valuePct == null || !!valueError}
                   onClick={handleSave}
+                  data-testid="involvement-team-save"
                 >
                   {editingRow ? 'Сохранить' : 'Добавить'}
                 </Button>
@@ -511,7 +512,7 @@ export default function InvolvementDefaultsDrawer({
               Личная настройка действует в планах и сценариях любой команды сотрудника
             </Typography.Text>
             <Space orientation="vertical" size={16} style={{ width: '100%' }}>
-              <Button icon={<PlusOutlined />} onClick={() => setModalRow('new')}>
+              <Button icon={<PlusOutlined />} onClick={() => setModalRow('new')} data-testid="involvement-employee-add">
                 Добавить
               </Button>
               <Table

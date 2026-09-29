@@ -134,6 +134,7 @@ export default function GlobalTeamFilterButton() {
             return (
               <div
                 key={team}
+                data-testid="team-filter-option"
                 onClick={() => toggle(team)}
                 style={{
                   display: 'flex',
@@ -164,7 +165,7 @@ export default function GlobalTeamFilterButton() {
       </div>
 
       {splitTeams.length > 0 && (
-        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <div data-testid="team-filter-subgroups" style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <Text type="secondary" style={{ fontSize: 12 }}>Группы</Text>
           <div style={{ maxHeight: 180, overflowY: 'auto', margin: '4px -4px 0' }}>
             {splitTeams.map((team) => (

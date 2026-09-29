@@ -18,7 +18,7 @@ export default function DashboardPage() {
     month: globalPeriod.month,
   };
   const { queryParams: teamParams } = useGlobalTeamFilter();
-  useRegisterHelp('Главная (Dashboard)', dashboardHelp);
+  useRegisterHelp('Дашборд', dashboardHelp);
 
   const { data: projects, isLoading: projLoading } = useDashboardProjects(period, teamParams);
   const { data: normWork, isLoading: normLoading } = useDashboardNormWork(period, teamParams);

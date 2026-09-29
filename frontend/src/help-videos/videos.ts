@@ -6,111 +6,48 @@ export interface VideoInfo {
 
 const BASE = `${import.meta.env.BASE_URL}help-videos/`;
 
+const video = (id: string, title: string): [string, VideoInfo] => [
+  id,
+  { title, src: `${BASE}${id}.webm`, poster: `${BASE}${id}.jpg` },
+];
+
 /** Реестр роликов-инструкций: id → название, файл, обложка. */
-export const VIDEOS: Record<string, VideoInfo> = {
-  'absence-add': {
-    title: 'Как внести отпуск',
-    src: `${BASE}absence-add.webm`,
-    poster: `${BASE}absence-add.jpg`,
-  },
-  'categorize-issue': {
-    title: 'Как отнести задачу к категории',
-    src: `${BASE}categorize-issue.webm`,
-    poster: `${BASE}categorize-issue.jpg`,
-  },
-  'team-member-add': {
-    title: 'Как добавить сотрудника в команду',
-    src: `${BASE}team-member-add.webm`,
-    poster: `${BASE}team-member-add.jpg`,
-  },
-  'backlog-idea-add': {
-    title: 'Как завести идею и оценить её по ролям',
-    src: `${BASE}backlog-idea-add.webm`,
-    poster: `${BASE}backlog-idea-add.jpg`,
-  },
-  'backlog-planning-params': {
-    title: 'Как задать параметры планирования',
-    src: `${BASE}backlog-planning-params.webm`,
-    poster: `${BASE}backlog-planning-params.jpg`,
-  },
-  'scenario-create': {
-    title: 'Как собрать сценарий квартала',
-    src: `${BASE}scenario-create.webm`,
-    poster: `${BASE}scenario-create.jpg`,
-  },
-  'scenario-rules': {
-    title: 'Как поправить нормированные работы',
-    src: `${BASE}scenario-rules.webm`,
-    poster: `${BASE}scenario-rules.jpg`,
-  },
-  'scenario-approve': {
-    title: 'Как утвердить сценарий',
-    src: `${BASE}scenario-approve.webm`,
-    poster: `${BASE}scenario-approve.jpg`,
-  },
-  'resource-plan-build': {
-    title: 'Как построить ресурсный план',
-    src: `${BASE}resource-plan-build.webm`,
-    poster: `${BASE}resource-plan-build.jpg`,
-  },
-  'resource-plan-phase': {
-    title: 'Как перенести фазу вручную',
-    src: `${BASE}resource-plan-phase.webm`,
-    poster: `${BASE}resource-plan-phase.jpg`,
-  },
-  'analytics-employee-hours': {
-    title: 'Как посмотреть, куда ушли часы сотрудника',
-    src: `${BASE}analytics-employee-hours.webm`,
-    poster: `${BASE}analytics-employee-hours.jpg`,
-  },
-  'team-desk-stuck': {
-    title: 'Как разобрать зависшие задачи',
-    src: `${BASE}team-desk-stuck.webm`,
-    poster: `${BASE}team-desk-stuck.jpg`,
-  },
-  'rp-views': {
-    title: 'Как смотреть план: задачи, исполнители, масштаб',
-    src: `${BASE}rp-views.webm`,
-    poster: `${BASE}rp-views.jpg`,
-  },
-  'rp-phase-card': {
-    title: 'Что показывает карточка фазы',
-    src: `${BASE}rp-phase-card.webm`,
-    poster: `${BASE}rp-phase-card.jpg`,
-  },
-  'rp-phase-drag': {
-    title: 'Как перенести фазу мышкой',
-    src: `${BASE}rp-phase-drag.webm`,
-    poster: `${BASE}rp-phase-drag.jpg`,
-  },
-  'rp-executor': {
-    title: 'Как сменить исполнителя фазы',
-    src: `${BASE}rp-executor.webm`,
-    poster: `${BASE}rp-executor.jpg`,
-  },
-  'rp-involvement': {
-    title: 'Как изменить вовлечённость на фазе',
-    src: `${BASE}rp-involvement.webm`,
-    poster: `${BASE}rp-involvement.jpg`,
-  },
-  'rp-split': {
-    title: 'Как разбить фазу на части',
-    src: `${BASE}rp-split.webm`,
-    poster: `${BASE}rp-split.jpg`,
-  },
-  'rp-predecessors': {
-    title: 'Как связать и отвязать фазы',
-    src: `${BASE}rp-predecessors.webm`,
-    poster: `${BASE}rp-predecessors.jpg`,
-  },
-  'rp-conflicts': {
-    title: 'Как разобрать конфликты плана',
-    src: `${BASE}rp-conflicts.webm`,
-    poster: `${BASE}rp-conflicts.jpg`,
-  },
-  'rp-blocked-periods': {
-    title: 'Как заблокировать период',
-    src: `${BASE}rp-blocked-periods.webm`,
-    poster: `${BASE}rp-blocked-periods.jpg`,
-  },
-};
+export const VIDEOS: Record<string, VideoInfo> = Object.fromEntries([
+  // Общее, Дашборд, Проекты
+  video('start-header', 'Как начать: команда, период, справка'),
+  video('dashboard-overview', 'Как провести утренний обзор команды'),
+  video('projects-portfolio', 'Как посмотреть портфель квартала и план проекта'),
+  // Категории задач, Аналитика
+  video('categorize-issue', 'Как разобрать новые задачи'),
+  video('category-to-scenario', 'Как инициатива попадает в сценарий'),
+  video('analytics-employee-hours', 'Как посмотреть, куда ушли часы сотрудника'),
+  video('analytics-categorize', 'Как разобрать часы без категории прямо из отчёта'),
+  // Ресурсы
+  video('team-member-add', 'Как добавить сотрудника в команду'),
+  video('absence-add', 'Как внести отпуск и увидеть сдвиг плана'),
+  video('employee-transfer', 'Как перевести сотрудника в другую группу'),
+  video('capacity-roles-desks', 'Как настроить роли и рабочий стол аналитика'),
+  // Целевые задачи
+  video('backlog-idea-add', 'Как завести идею и связать её с Jira'),
+  video('backlog-planning-params', 'Как задать параметры планирования'),
+  video('backlog-quarter-selection', 'Как отобрать задачи к кварталу'),
+  // Сценарии
+  video('scenario-create', 'Как собрать сценарий квартала'),
+  video('scenario-rules', 'Как задать нормированные работы и вовлечённость'),
+  video('scenario-approve', 'Как утвердить сценарий и что дальше'),
+  video('scenario-developer', 'Как назначить разработчика в сценарии'),
+  video('scenario-review', 'Как пересмотреть сценарий в середине квартала'),
+  video('scenario-groups', 'Как вести сценарий команды с группами'),
+  // Ресурсное планирование
+  video('resource-plan-build', 'Как построить ресурсный план и прочитать его'),
+  video('rp-conflicts', 'Как разобрать перегрузки в плане'),
+  video('rp-executor', 'Как сменить исполнителя, дату и вовлечённость фазы'),
+  video('rp-split', 'Как разбить фазу на двоих'),
+  video('rp-blocked-periods', 'Как заблокировать период'),
+  video('rp-groups-cross-team', 'Как видеть группы и людей из других команд'),
+  video('rp-reset', 'Как сбросить ручные правки'),
+  // Стол тимлида, KPI
+  video('team-desk-stuck', 'Как разобрать зависшие задачи'),
+  video('team-desk-queue', 'Как оценить очередь разработчика'),
+  video('kpi-review', 'Как разобрать KPI сотрудника и утвердить квартал'),
+]);

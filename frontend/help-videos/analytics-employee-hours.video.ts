@@ -1,6 +1,7 @@
-// Ролик «Как посмотреть, куда ушли часы сотрудника»: Аналитика → фильтр по
-// сотруднику → раскрыть дерево до вида работ/категории → часы в строке →
-// переключатель «Иерархия».
+// Ролик «Как посмотреть, куда ушли часы сотрудника»: Аналитика → команда и квартал
+// в шапке, плитки итогов, список команд → «Настройка отчёта» → раскрыть роль →
+// сотрудник → вид работ → категория → задача → карточка задачи, «Ворклоги за
+// период» → переключатель «Иерархия» → «Экспорт XLSX».
 import { expect, test } from '@playwright/test';
 import { Director } from './director.ts';
 
@@ -16,62 +17,100 @@ test('analytics-employee-hours', async ({ page }) => {
 
   // Тот же квартал и та же команда при любом запуске — иначе на «сегодня»
   // могло попасть пустое полугодие без ворклогов.
-  const teamsRes = await page.request.put(`${api}/api/v1/auth/me/teams`, {
+  expect((await page.request.put(`${api}/api/v1/auth/me/teams`, {
     data: { teams: [TEAM], subgroups: [] },
-  });
-  expect(teamsRes.ok()).toBeTruthy();
-  const periodRes = await page.request.put(`${api}/api/v1/users/me/period`, {
+  })).ok()).toBeTruthy();
+  expect((await page.request.put(`${api}/api/v1/users/me/period`, {
     data: { year: YEAR, quarter: QUARTER },
-  });
-  expect(periodRes.ok()).toBeTruthy();
-
-  // Список сотрудников в фильтре не ограничен командой — берём того, у кого
-  // реально есть часы в этой команде и квартале, иначе фильтр даст «Нет данных».
-  const reportRes = await page.request.get(
-    `${api}/api/v1/analytics/report?year=${YEAR}&quarter=${QUARTER}&teams=${encodeURIComponent(TEAM)}`,
-  );
-  expect(reportRes.ok()).toBeTruthy();
-  const report = (await reportRes.json()) as {
-    teams: { roles: { employees: { name: string; totals: { fact_hours: number } }[] }[] }[];
-  };
-  const employeeName = report.teams
-    .flatMap((t) => t.roles)
-    .flatMap((r) => r.employees)
-    .sort((a, b) => b.totals.fact_hours - a.totals.fact_hours)[0]?.name;
-  expect(employeeName, 'В демо-команде нет сотрудника с часами за квартал').toBeTruthy();
+  })).ok()).toBeTruthy();
+  // Раскладка отчёта — стандартная, независимо от того, что настраивали в других
+  // роликах: депту 0..4 строк дальше по сценарию соответствуют роль/сотрудник/
+  // вид работ/категория/задача только при этом порядке уровней.
+  expect((await page.request.put(`${api}/api/v1/users/me/analytics-layout`, {
+    data: {
+      layout: {
+        group_order: ['team', 'subgroup', 'role', 'employee', 'work_type', 'category', 'issue'],
+        hidden_levels: ['subgroup'],
+        active_preset: 'default',
+        show_fact_bar: true,
+      },
+    },
+  })).ok()).toBeTruthy();
 
   await d.open('/analytics', 'Как посмотреть, куда ушли часы сотрудника');
   const table = page.locator('[data-tour="analytics-table"]');
   await expect(table.locator('tbody tr.ant-table-row').first()).toBeVisible({ timeout: 20_000 });
-  await d.pause(800);
+  await d.pause(1000);
   await d.poster();
-  await d.pause(1500);
+  await d.pause(2200);
 
-  // Первый Select в блоке фильтров — «Сотрудник» (поиск по имени).
-  const employeeSelect = page.locator('[data-tour="analytics-filters"] .ant-select').first();
-  await d.click(employeeSelect, 'Найдите сотрудника через фильтр');
-  await employeeSelect.locator('input').pressSequentially(employeeName, { delay: 60 });
-  const employeeOption = page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: employeeName });
-  await expect(employeeOption).toBeVisible();
-  await d.click(employeeOption);
-  await expect(page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
+  await d.caption('Команда и квартал берутся из шапки приложения');
+  await d.show(page.locator('[data-tour="header-team"]'), page.locator('[data-tour="header-period"]'));
+  await d.pause(2000);
 
-  // Дерево свёрнуто по умолчанию: раскрываем команду → роль → сотрудника → вид работ.
-  await d.caption('Раскройте строку до вида работ и категории');
+  await d.caption('Плитки — итоги по факту, плану и выполнению');
+  await d.show(page.locator('[data-tour="analytics-kpi"]'));
+  await d.pause(2200);
+
+  await d.caption('Слева — список команд, отчёт можно смотреть по каждой отдельно');
+  await d.show(page.locator('.ant-card', { hasText: 'Команды' }));
+  await d.pause(2000);
+
+  await d.click(page.locator('[data-tour="analytics-settings"]'), 'В «Настройке отчёта» — группировка, столбцы и визуализация');
+  const settingsModal = page.locator('.ant-modal', { hasText: 'Настройка отчёта' });
+  await expect(settingsModal).toBeVisible();
+  await d.show(settingsModal.locator('.ant-btn', { hasText: 'Стандарт' }));
+  await d.pause(2000);
+  await page.keyboard.press('Escape');
+  await expect(settingsModal).toBeHidden();
+
+  await d.caption('Клик по задаче откроет карточку справа — так решает переключатель «Ворклоги»');
+  await d.show(page.getByText('Ворклоги:', { exact: true }));
+  await d.pause(2000);
+
+  // Дерево свёрнуто по умолчанию: раскрываем роль → сотрудника → вид работ → категорию.
+  await d.caption('Раскройте роль, сотрудника, вид работ и категорию');
   await d.click(table.locator('tr.tree-row-depth-0.tree-row-has-children').first());
   await d.click(table.locator('tr.tree-row-depth-1.tree-row-has-children').first());
   await d.click(table.locator('tr.tree-row-depth-2.tree-row-has-children').first());
   await d.click(table.locator('tr.tree-row-depth-3.tree-row-has-children').first());
 
-  const categoryRow = table.locator('tr.tree-row-depth-4').first();
-  await expect(categoryRow).toBeVisible();
-  await d.caption('Вот сколько часов ушло в эту категорию');
-  await d.show(categoryRow);
-  await d.pause(1400);
+  const issueRow = table.locator('tr.tree-row-depth-4').first();
+  await expect(issueRow).toBeVisible();
+  await d.caption('Категория — и сразу видно конкретную задачу');
+  await d.show(issueRow);
+  await d.pause(1800);
 
-  await d.caption('Есть переключатель «Иерархия» — задачи можно смотреть деревом до родителя');
+  await d.click(issueRow, 'Откройте задачу — справа карточка с контекстом');
+  const drawer = page.locator('.ant-drawer-open');
+  await expect(drawer).toBeVisible({ timeout: 10_000 });
+  const contextBlock = drawer.getByText('Контекст', { exact: true });
+  await d.caption('«Контекст» — цепочка родителей задачи');
+  await d.show(contextBlock);
+  await d.pause(1800);
+
+  const worklogsBlock = drawer.getByText('Ворклоги за период', { exact: true });
+  await d.caption('«Ворклоги за период» — все списания по задаче');
+  await d.show(worklogsBlock);
+  await d.pause(2200);
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+
+  await d.caption('Переключатель «Иерархия» показывает задачи деревом до родителя');
   await d.click(page.locator('[data-tour="analytics-hierarchy"] .ant-switch'));
-  await d.pause(1200);
+  await d.pause(2200);
+
+  await d.caption('«Экспорт XLSX» выгружает этот же срез в файл');
+  await d.show(page.getByRole('button', { name: 'Экспорт XLSX' }));
+  await d.pause(2400);
+
+  await d.caption('Цвет цифры в «Часы факт» — по проценту выполнения плана');
+  await d.show(table.locator('tr.tree-row-depth-4').first());
+  await d.pause(2600);
+
+  await d.caption('Любая смена фильтра сразу пересчитывает и плитки, и таблицу');
+  await d.show(page.locator('[data-tour="analytics-kpi"]'));
+  await d.pause(2800);
 
   await d.caption('Готово', 2200);
   await d.save('analytics-employee-hours');

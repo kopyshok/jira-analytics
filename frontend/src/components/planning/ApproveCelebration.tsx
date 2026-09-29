@@ -9,6 +9,7 @@ export default function ApproveCelebration({ visible }: Props) {
   return (
     <div
       aria-hidden
+      data-testid="approve-celebration"
       style={{
         position: 'fixed',
         inset: 0,

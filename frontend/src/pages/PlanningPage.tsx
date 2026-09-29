@@ -757,6 +757,7 @@ export default function PlanningPage() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span data-tour="planning-scenario-name">
                 <Typography.Text
                   editable={{
                     onChange: handleRename,
@@ -767,6 +768,7 @@ export default function PlanningPage() {
                 >
                   {scenario.name}
                 </Typography.Text>
+                </span>
                 <span style={{ color: DARK_THEME.textMuted, fontFamily: FONTS.mono, fontSize: 13 }}>
                   {scenario.quarter} {scenario.year}
                 </span>
@@ -816,6 +818,7 @@ export default function PlanningPage() {
                     size="small"
                     onClick={handleRevert}
                     loading={revert.isPending}
+                    data-tour="planning-revert"
                   >
                     В черновик
                   </Button>
@@ -825,6 +828,7 @@ export default function PlanningPage() {
                     size="small"
                     icon={<BarChartOutlined />}
                     onClick={() => navigate(`/resource-planning?scenario_id=${scenario.id}&quarter=${scenario.quarter}&year=${scenario.year}`)}
+                    data-tour="planning-diagram"
                   >
                     Диаграмма
                   </Button>
@@ -850,7 +854,7 @@ export default function PlanningPage() {
                   </Button>
                 </Tooltip>
                 <Tooltip title="При включении задача поднимается в начало списка">
-                  <Space size={6}>
+                  <Space size={6} data-tour="planning-lift-toggle">
                     <Switch
                       size="small"
                       checked={liftIncluded}

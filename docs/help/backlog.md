@@ -14,9 +14,13 @@
 
 ## Видео
 
-[Как завести идею и оценить её по ролям](video:backlog-idea-add)
+[Как инициатива попадает в сценарий](video:category-to-scenario)
+
+[Как завести идею и связать её с Jira](video:backlog-idea-add)
 
 [Как задать параметры планирования](video:backlog-planning-params)
+
+[Как отобрать задачи к кварталу](video:backlog-quarter-selection)
 
 ---
 

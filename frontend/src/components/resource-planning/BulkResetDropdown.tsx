@@ -61,26 +61,26 @@ export default function BulkResetDropdown({ planId, counts }: Props) {
   const items: MenuProps['items'] = [
     {
       key: 'dates',
-      label: `${MODE_LABELS.dates} (${counts.pinned_dates})`,
+      label: <span data-testid="rp-reset-item-dates">{`${MODE_LABELS.dates} (${counts.pinned_dates})`}</span>,
       disabled: counts.pinned_dates === 0,
       onClick: () => handleClick('dates'),
     },
     {
       key: 'employees',
-      label: `${MODE_LABELS.employees} (${counts.pinned_employees})`,
+      label: <span data-testid="rp-reset-item-employees">{`${MODE_LABELS.employees} (${counts.pinned_employees})`}</span>,
       disabled: counts.pinned_employees === 0,
       onClick: () => handleClick('employees'),
     },
     {
       key: 'predecessors',
-      label: `${MODE_LABELS.predecessors} (${counts.edited_predecessors})`,
+      label: <span data-testid="rp-reset-item-predecessors">{`${MODE_LABELS.predecessors} (${counts.edited_predecessors})`}</span>,
       disabled: counts.edited_predecessors === 0,
       onClick: () => handleClick('predecessors'),
     },
     { type: 'divider' },
     {
       key: 'all',
-      label: MODE_LABELS.all,
+      label: <span data-testid="rp-reset-item-all">{MODE_LABELS.all}</span>,
       danger: true,
       onClick: () => handleClick('all'),
     },
@@ -88,7 +88,7 @@ export default function BulkResetDropdown({ planId, counts }: Props) {
 
   return (
     <Dropdown menu={{ items }} trigger={['click']} disabled={!planId}>
-      <Button size="small" icon={<ReloadOutlined />} loading={bulkClear.isPending}>
+      <Button size="small" data-testid="rp-reset-trigger" icon={<ReloadOutlined />} loading={bulkClear.isPending}>
         Сбросить <DownOutlined />
       </Button>
     </Dropdown>

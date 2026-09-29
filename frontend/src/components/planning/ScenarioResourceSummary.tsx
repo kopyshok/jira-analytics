@@ -752,7 +752,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
         );
       })()}
       {summary.subgroups.length > 0 && (
-        <div style={{ borderTop: `1px solid ${DARK_THEME.border}`, padding: '10px 14px' }}>
+        <div data-tour="planning-resource-subgroups" style={{ borderTop: `1px solid ${DARK_THEME.border}`, padding: '10px 14px' }}>
           <div style={{ fontSize: 12, color: DARK_THEME.textMuted, marginBottom: 6 }}>
             Ресурс по группам · часы на бэклог
           </div>
@@ -804,7 +804,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             );
           })}
           {summary.flow_by_subgroup.length > 0 && (
-            <div style={{ marginTop: 8 }}>
+            <div data-tour="planning-subgroup-flow" style={{ marginTop: 8 }}>
               <SubgroupFlowLine items={summary.flow_by_subgroup} />
             </div>
           )}

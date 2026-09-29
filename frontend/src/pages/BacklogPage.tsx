@@ -138,7 +138,7 @@ export default function BacklogPage() {
   const [linkTarget, setLinkTarget] = useState<BacklogItemResponse | null>(null);
   const [paramsOpen, setParamsOpen] = useState(false);
   const [paramsTarget, setParamsTarget] = useState<BacklogItemResponse | null>(null);
-  useRegisterHelp('Бэклог инициатив', backlogHelp);
+  useRegisterHelp('Целевые задачи', backlogHelp);
 
   const [groupByQuarter, setGroupByQuarter] = useState<boolean>(() => {
     return localStorage.getItem('backlog-archive-group') === 'true';
@@ -774,7 +774,7 @@ export default function BacklogPage() {
       ) : (
         <>
           <Tooltip title="Связать с Jira">
-            <Button icon={<LinkOutlined />} size="small" onClick={() => openLink(r)} />
+            <Button icon={<LinkOutlined />} size="small" onClick={() => openLink(r)} data-tour="backlog-link-jira" />
           </Tooltip>
           <Tooltip title="Редактировать">
             <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
@@ -793,7 +793,7 @@ export default function BacklogPage() {
         })}
       >
         <Tooltip title="Архивировать">
-          <Button icon={<InboxOutlined />} size="small" />
+          <Button icon={<InboxOutlined />} size="small" data-tour="backlog-archive" />
         </Tooltip>
       </Popconfirm>
       <Popconfirm
@@ -833,7 +833,7 @@ export default function BacklogPage() {
         })}
       >
         <Tooltip title="Восстановить">
-          <Button icon={<UndoOutlined />} size="small" />
+          <Button icon={<UndoOutlined />} size="small" data-tour="backlog-restore" />
         </Tooltip>
       </Popconfirm>
       )}

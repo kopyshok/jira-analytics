@@ -135,6 +135,7 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
           return (
             <div
               key={emp.employee_id}
+              data-testid="dash-worklog-card"
               role="button"
               tabIndex={0}
               title={tooltip}
@@ -247,6 +248,7 @@ function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
         return (
           <div
             key={item.key}
+            data-testid="dash-cat-tile"
             role="button"
             tabIndex={0}
             title={`${item.label}: ${Math.round(item.hours)} ч (${item.pct.toFixed(1)}%)`}

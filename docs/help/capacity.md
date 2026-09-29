@@ -23,7 +23,11 @@
 
 [Как добавить сотрудника в команду](video:team-member-add)
 
-[Как внести отпуск](video:absence-add)
+[Как внести отпуск и увидеть сдвиг плана](video:absence-add)
+
+[Как перевести сотрудника в другую группу](video:employee-transfer)
+
+[Как настроить роли и рабочий стол аналитика](video:capacity-roles-desks)
 
 ---
 
