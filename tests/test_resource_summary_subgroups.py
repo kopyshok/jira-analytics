@@ -248,3 +248,30 @@ def test_ungrouped_employees_listed(db_session, two_groups):
 
     summary = ResourceBaseService(db_session).compute_summary(scenario)
     assert [e["employee_id"] for e in summary.ungrouped_employees] == ["e2"]
+
+
+def test_role_outside_planning_left_out_of_every_total(db_session, two_groups):
+    """Роль с выключенным «В планировании» не попадает ни в итоги по ролям,
+    ни в разрез по группам — как и в карточке «Ресурс команды», иначе суммы
+    расходятся (5534 против 5023)."""
+    from app.models import Role
+
+    db_session.add_all(
+        [
+            Role(code="dev", label="Программист", counts_in_planning=True),
+            Role(code="other", label="Другое", counts_in_planning=False),
+        ]
+    )
+    _dev(db_session, "e1", "sg-1")
+    _dev(db_session, "e2", "sg-2", role="other")
+    _dev(db_session, "e3", None, role="other")
+    scenario = _scenario(db_session)
+    db_session.flush()
+
+    summary = ResourceBaseService(db_session).compute_summary(scenario)
+
+    assert "other" not in summary.roles
+    assert "other" not in summary.gross_by_role
+    assert summary.gross_total == pytest.approx(summary.gross_by_role["dev"])
+    assert summary.available_total == pytest.approx(summary.available_by_role["dev"])
+    assert all("other" not in b for b in summary.gross_by_subgroup_role.values())

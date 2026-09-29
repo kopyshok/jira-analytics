@@ -133,3 +133,30 @@ def test_list_labels_in_constant_queries(client, db_session, engine):
     assert three == one
     assert [r["employee_names"] for r in rows] == [["Сотрудник 0"], ["Сотрудник 1"], ["Сотрудник 2"]]
     assert [r["role_labels"] for r in rows] == [["Роль 0"], ["Роль 1"], ["Роль 2"]]
+
+
+def test_list_shows_whom_team_block_does_not_apply(client, db_session):
+    """Список периодов называет, на кого период команды не действует: у них в
+    этом месяце свой период того же вида по роли."""
+    from tests.services.xteam_factory import make_employee
+
+    wt = MandatoryWorkType(code="support_x", label="Сопровождение", subtracts_from_pool=True)
+    role = Role(code="analyst", label="Аналитик")
+    db_session.add_all([wt, role])
+    db_session.flush()
+    make_employee(db_session, "Фокеева", "ERP", role="analyst")
+    make_employee(db_session, "Шутов", "ERP", role="dev")
+    db_session.commit()
+    base = {"team": "ERP", "reason": "Закрытие месяца", "work_type_id": wt.id}
+    assert client.post(BASE, json={**base, "start_date": "2026-10-05", "end_date": "2026-10-07",
+                                   "role_ids": [role.id]}).status_code == 201
+    r = client.post(BASE, json={**base, "reason": "Весь октябрь",
+                                "start_date": "2026-10-01", "end_date": "2026-10-31"})
+    assert r.status_code == 201, r.text
+
+    by_reason = {b["reason"]: b for b in client.get(BASE, params={"team": "ERP"}).json()}
+    assert by_reason["Весь октябрь"]["not_applied"] == [
+        {"employee_id": by_reason["Весь октябрь"]["not_applied"][0]["employee_id"],
+         "employee_name": "Фокеева", "month": "2026-10-01", "by": "role"},
+    ]
+    assert by_reason["Закрытие месяца"]["not_applied"] == []

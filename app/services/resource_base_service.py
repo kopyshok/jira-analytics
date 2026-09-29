@@ -23,9 +23,11 @@ from app.models import (
     MandatoryWorkType,
     PlanningScenario,
     ProductionCalendarDay,
+    Role,
     ScenarioRule,
 )
 from app.services import cross_team_occupancy as cto
+from app.services import normed_reserve as nr
 from app.services import subgroup_shares as ss
 from app.services import team_membership as tm
 from app.services.personal_settings import personal_for
@@ -80,6 +82,11 @@ class ResourceSummary:
     # день участия в квартале: [{employee_id, display_name}]. Блокируют
     # утверждение сценария.
     ungrouped_employees: list[dict] = field(default_factory=list)
+    # Нормированные работы основной команды у гостей сценария (команда у них
+    # не основная), кроме «Технических задач»: роль → часы. Вычтены из «На бэклог».
+    primary_normed_by_role: dict[str, float] = field(default_factory=dict)
+    # [{employee_id, display_name, hours}] — кому и сколько, для подсказки.
+    primary_normed_people: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -163,19 +170,23 @@ class ResourceBaseService:
         # Часы, забронированные на этих людей опорными планами других команд,
         # по правилу «сначала домашняя команда» (см. `cto.subtractable`):
         # брони команд, которые подстраиваются под эту, базу не уменьшают.
-        booked = cto.daily_totals(
-            cto.subtractable(
-                cto.external_bookings(
-                    self.db,
-                    team=team,
-                    year=year,
-                    quarter=q,
-                    employee_ids=[e.id for e in employees],
-                    start=period_start,
-                    end=last_day,
-                ),
-                set(),
-            )
+        subtracted = cto.subtractable(
+            cto.external_bookings(
+                self.db,
+                team=team,
+                year=year,
+                quarter=q,
+                employee_ids=[e.id for e in employees],
+                start=period_start,
+                end=last_day,
+            ),
+            set(),
+        )
+        booked = cto.daily_totals(subtracted)
+        # Гость (команда у него не основная): правила сценария день не режут,
+        # его нормированные работы — основной команды, по дням как брони.
+        guests, guest_normed = self._guest_normed(
+            team, employees, subtracted, year, q, period_start, last_day
         )
 
         # --- карта аномалий производственного календаря ---
@@ -204,9 +215,9 @@ class ResourceBaseService:
             return DEFAULT_HOURS_PER_DAY if d.weekday() < 5 else 0.0
 
         # --- доля нормы после обязательных работ (subtracts_from_pool=True) ---
-        pool_share = self._pool_share(
-            scenario, self._personal_normed([e.id for e in employees], year, q)
-        )
+        personal = self._personal_normed([e.id for e in employees], year, q)
+        personal.update({g: {} for g in guests})
+        pool_share = self._pool_share(scenario, personal)
 
         # --- итерация по сотрудникам ---
         # Кто из состава ещё числится в других командах этого же квартала.
@@ -262,6 +273,7 @@ class ResourceBaseService:
                 # Обязательные работы — от полной нормы, брони других команд —
                 # поверх, не ниже нуля.
                 taken = booked.get(e.id, {}).get(cur, 0.0)
+                taken += guest_normed.get(e.id, {}).get(cur, 0.0)
                 hours = round(max(0.0, norm * pct - taken), 2)
                 days_out.append(EmployeeDayHours(date=cur, hours=hours))
                 if has_groups:
@@ -354,6 +366,31 @@ class ResourceBaseService:
             if ps.normed is not None
         }
 
+    def _guest_normed(
+        self,
+        team: Optional[str],
+        employees: list[Employee],
+        subtracted: list,
+        year: Optional[int],
+        quarter: int,
+        start: date,
+        end: date,
+    ) -> tuple[set[str], dict[str, dict[date, float]]]:
+        """Гости сценария (команда у них не основная) и нормированные работы
+        их основной команды по дням — одна раскладка для базы и сводки."""
+        guests = cto.guest_ids(self.db, team, start, end, [e.id for e in employees])
+        if not guests or not year:
+            return guests, {}
+        return guests, nr.guest_normed_by_day(
+            self.db,
+            [e for e in employees if e.id in guests],
+            [b for b in subtracted if b.employee_id in guests],
+            year,
+            quarter,
+            start,
+            end,
+        )
+
     def _pool_share(
         self, scenario: PlanningScenario, personal_normed: dict[str, dict[str, float]]
     ) -> Callable[[Employee], float]:
@@ -416,11 +453,19 @@ class ResourceBaseService:
         # --- сотрудники команды (все, кто пересёкся с кварталом) ---
         last_day = period_end - timedelta(days=1)
         intervals = tm.member_intervals(self.db, [team], period_start, last_day)
-        employees = (
-            self.db.query(Employee)
+        # Роли с выключенным «В планировании» не входят ни в один итог — как в
+        # карточке «Ресурс команды»; иначе таблица и разрез по группам больше неё.
+        outside_planning = {
+            code for (code,) in self.db.query(Role.code).filter(
+                Role.counts_in_planning == False  # noqa: E712
+            )
+        }
+        employees = [
+            e for e in self.db.query(Employee)
             .filter(Employee.id.in_(list(intervals.keys())), Employee.is_active == True)  # noqa: E712
             .all()
-        )
+            if e.role not in outside_planning
+        ]
 
         # --- производственный календарь ---
         cal_overrides: dict[date, float] = {
@@ -499,12 +544,19 @@ class ResourceBaseService:
         )
         subtracted = cto.subtractable(bookings, set())
         booked = cto.daily_totals(subtracted)
+        guests, guest_normed = self._guest_normed(
+            team, employees, subtracted, year, q, period_start, last_day
+        )
         kept = {id(b) for b in subtracted}
         lent = cto.daily_totals(b for b in bookings if id(b) not in kept)
         booked_by_emp: dict[str, float] = {}
         lent_by_emp: dict[str, float] = {}
         personal_normed = self._personal_normed([e.id for e in employees], year, q)
+        # Гостю правила сценария и свои проценты день не режут: его нормированные
+        # работы — основной команды, они вычитаются как брони (см. _guest_normed).
+        personal_normed.update({g: {} for g in guests})
         pool_share = self._pool_share(scenario, personal_normed)
+        primary_normed_by_emp: dict[str, float] = {}
 
         # --- валовые часы по сотрудникам (без вычета обязательных) ---
         gross_by_emp: dict[str, float] = {}
@@ -531,8 +583,10 @@ class ResourceBaseService:
             )
             total = 0.0
             taken = 0.0
+            normed_taken = 0.0
             lent_hours = 0.0
             emp_booked = booked.get(e.id, {})
+            emp_gnormed = guest_normed.get(e.id, {})
             emp_lent = lent.get(e.id, {})
             emp_intervals = intervals.get(e.id, [])
             # Как в посуточной базе: бронь снимает не больше, чем осталось от
@@ -546,8 +600,11 @@ class ResourceBaseService:
                     on_absence = any(a.start_date <= cur <= a.end_date for a in abs_ranges)
                     if not on_absence:
                         total += norm
-                        day_taken = min(emp_booked.get(cur, 0.0), norm * share)
-                        taken += day_taken
+                        day_booked = min(emp_booked.get(cur, 0.0), norm * share)
+                        day_normed = min(emp_gnormed.get(cur, 0.0), norm * share - day_booked)
+                        day_taken = day_booked + day_normed
+                        taken += day_booked
+                        normed_taken += day_normed
                         lent_hours += min(emp_lent.get(cur, 0.0), norm * share)
                         if groups:
                             eg = gross_by_emp_group.setdefault(e.id, {})
@@ -561,6 +618,7 @@ class ResourceBaseService:
 
             gross_by_emp[e.id] = round(total, 2)
             booked_by_emp[e.id] = round(taken, 2)
+            primary_normed_by_emp[e.id] = round(normed_taken, 2)
             lent_by_emp[e.id] = round(lent_hours, 2)
             emp_role[e.id] = e.role
             emp_name[e.id] = e.display_name
@@ -706,6 +764,7 @@ class ResourceBaseService:
 
         booked_by_role = _by_role(booked_by_emp)
         lent_by_role = _by_role(lent_by_emp)
+        primary_normed_by_role = _by_role(primary_normed_by_emp)
 
         # --- доступные часы = валовые − обязательные (только subtracts_from_pool=True)
         #     − брони других команд ---
@@ -728,7 +787,12 @@ class ResourceBaseService:
             )
             net_by_role[role] = round(max(0.0, gross - mandatory_total), 2)
             available_by_role[role] = round(
-                max(0.0, gross - mandatory_total - booked_by_role.get(role, 0.0)), 2
+                max(
+                    0.0,
+                    gross - mandatory_total - booked_by_role.get(role, 0.0)
+                    - primary_normed_by_role.get(role, 0.0),
+                ),
+                2,
             )
 
         gross_total = round(sum(gross_by_role.values()), 2)
@@ -821,4 +885,13 @@ class ResourceBaseService:
             booked_by_other_teams_by_role=booked_by_role,
             borrowed_by_other_teams_by_role=lent_by_role,
             ungrouped_employees=ungrouped_employees,
+            primary_normed_by_role=primary_normed_by_role,
+            primary_normed_people=sorted(
+                (
+                    {"employee_id": eid, "display_name": emp_name[eid], "hours": h}
+                    for eid, h in primary_normed_by_emp.items()
+                    if h > 0
+                ),
+                key=lambda x: x["display_name"],
+            ),
         )
