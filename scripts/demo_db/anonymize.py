@@ -4,10 +4,15 @@
 поэтому покрывает и колонки, которых нет в моделях текущей ветки.
 
 Порядок:
-1. Удалить таблицы целиком (кэши ИИ, обратная связь, статистика, история синхронизаций, столы).
+0. Сверка схемы с COLUMN_POLICY: каждая текстовая колонка каждой таблицы обязана быть
+   объявлена (оставить / правило / очистить / только финальный проход). Неизвестная колонка
+   (например, добавленная новой миграцией) — сборка падает, а не пропускает её молча.
+1. Удалить таблицы целиком (кэши ИИ, обратная связь, статистика, история синхронизаций, столы),
+   больничные (отсутствия и их снимки в сценариях); выключить расписания синхронизации.
 2. Собрать исходные значения из структурных источников: люди, команды, группы, проекты,
-   заказчики, направления, спринты, релизы, адрес Jira.
+   заказчики, направления, спринты, релизы, адрес Jira; хэши исходного свободного текста.
 3. Словарь «настоящее → вымышленное» (детерминированный, вымышленное не содержит настоящих строк).
+   Проекты получают буквы в перемешанном порядке, номера задач сдвигаются на число проекта.
 4. Колоночные правила: заменить целиком / очистить свободный текст / секреты.
 5. Финальный проход по всем текстовым колонкам всех таблиц: замена исходных строк словаря
    (самые длинные первыми, включая \\uXXXX-формы внутри JSON), фамилий отдельным словом
@@ -27,7 +32,7 @@ from typing import Any, Callable, Iterable, Optional
 from urllib.parse import urlsplit
 
 from . import fake_data
-from .leak_check import norm, trie_pattern, word_pattern
+from .leak_check import MIN_EXACT_LEN, exact_key, norm, trie_pattern, word_pattern
 
 # Удаляются целиком: тексты ИИ, обратная связь, статистика использования, история
 # синхронизаций с текстами ошибок, публичные рабочие столы (токены).
@@ -37,15 +42,165 @@ DELETE_TABLES = (
     "sync_run", "work_desks",
 )
 
+# Настройки: значение остаётся только у ключей из белого списка (номера полей Jira, настройки
+# интерфейса и планирования, выбранная модель ИИ, даты перезагрузок). Остальное — пустая строка:
+# учётные данные, адреса серверов, промпты и любые новые ключи.
+SETTING_ALLOW_EXACT = frozenset({
+    "ai_enabled", "llm_provider", "team_desk_config", "backfill_issue_author_done",
+    "issues_reload_since_date", "worklog_reload_since_date",
+})
+SETTING_ALLOW_RE = re.compile(
+    r"^(?:jira_[a-z0-9_]+_field_id|ui_[a-z0-9_]+|planning_[a-z0-9_]+|worklog_deadline_[a-z0-9_]+"
+    r"|llm_[a-z0-9]+_model|llm_[a-z0-9]+_fallback_models)$"
+)
+# Второй замок: даже ключ из белого списка не сохраняется, если похож на секрет.
 SECRET_SETTING_RE = re.compile(
-    r"token|password|secret|api_key|apikey|credential|jira_email|confluence|prompt|login|username|sync_lock",
+    r"token|password|secret|api_key|apikey|credential|jira_email|confluence|prompt|login|username|sync_lock"
+    r"|base_url|_url$|host",
     re.IGNORECASE,
 )
 JIRA_URL_SETTING = "jira_base_url"
 DEMO_JIRA_URL = "https://jira.example.com"
 DEMO_JIRA_HOST = "jira.example.com"
 
+# Окружение задачи: остаются только стандартные названия стендов.
+ENVIRONMENTS = frozenset({"dev", "test", "rc", "prod", "stage", "preprod"})
+# Больничные удаляются целиком: причина отсутствия — сведения о здоровье.
+SICK_REASON_CODES = frozenset({"sick", "sick_leave", "sickleave"})
+SICK_LABEL_PREFIX = "больничн"
+
+# Исходный свободный текст: его хэши — вход точной сверки в проверке утечек
+# (значение не должно дословно оказаться ни в одной колонке демо-базы).
+ORIGINAL_TEXT_COLUMNS = (
+    ("issues", "summary"), ("issues", "description"), ("issues", "goal_text"),
+    ("issues", "current_behavior"), ("issues", "impact"), ("issues", "risk"),
+    ("comments", "body"), ("worklogs", "comment_text"),
+    ("backlog_items", "title"), ("backlog_items", "impact"), ("backlog_items", "risk"),
+    ("scenario_allocation_snapshots", "title"), ("scenario_allocation_snapshots", "impact"),
+    ("scenario_allocation_snapshots", "risk"), ("scenario_revision_items", "backlog_item_name"),
+    ("scenario_revisions", "note"), ("plan_audit", "comment"), ("plan_conflicts", "message"),
+    ("team_desk_marks", "comment"), ("category_overrides", "comment"), ("projects", "description"),
+    ("themes", "description"), ("scheduled_blocks", "reason"),
+)
+
 TEXT_TYPE_MARKERS = ("CHAR", "TEXT", "CLOB", "JSON")
+# Колонки этих типов обязаны быть в COLUMN_POLICY (двоичные тоже: в них может лежать текст).
+POLICY_TYPE_MARKERS = TEXT_TYPE_MARKERS + ("BLOB",)
+
+KEEP, RULE, CLEAR, FINAL = "keep", "rule", "clear", "final"
+
+
+def _parse_policy(spec: dict[str, str]) -> dict[str, dict[str, str]]:
+    """«keep: a b; rule: c; clear: d» → {колонка: вид} для каждой таблицы."""
+    out: dict[str, dict[str, str]] = {}
+    for table, text in spec.items():
+        cols = out.setdefault(table, {})
+        for part in text.split(";"):
+            kind, _, names = part.partition(":")
+            kind = kind.strip()
+            if kind not in (KEEP, RULE, CLEAR, FINAL):
+                raise ValueError(f"COLUMN_POLICY[{table}]: неизвестный вид {kind!r}")
+            for name in names.split():
+                if name in cols:
+                    raise ValueError(f"COLUMN_POLICY[{table}]: колонка {name} объявлена дважды")
+                cols[name] = kind
+    return out
+
+
+# Политика по каждой текстовой колонке. keep — не чувствительно (идентификаторы, коды, справочники,
+# настройки вида); rule — колоночное правило из _rules(); clear — очищается; final — свободный текст
+# приложения, остаётся после финального прохода (замены словаря). Финальный проход и проверка утечек
+# идут по всем колонкам независимо от вида. Таблицы из DELETE_TABLES очищаются целиком.
+COLUMN_POLICY = _parse_policy({
+    "alembic_version": "keep: version_num",
+    "absence_reasons": "keep: id code label color",
+    "absences": "keep: id employee_id reason_id",
+    "app_settings": "keep: id key; rule: value",
+    "backlog_items": "keep: id project_id issue_id planning_mode assignee_employee_id cost_type "
+                     "developer_employee_id; rule: title customer assignee_jira_account_at_choice team; "
+                     "clear: impact risk",
+    "categories": "keep: id code label color work_type_id",
+    "category_mappings": "keep: id entity_type entity_id category subcategory source_rule",
+    "category_overrides": "keep: id category_code; rule: jira_issue_key; clear: comment",
+    "comments": "keep: id jira_comment_id issue_id author_id; clear: body",
+    "employee_capacity_overrides": "keep: id employee_id work_type_id",
+    "employee_personal_normed": "keep: id setting_id work_type_id",
+    "employee_personal_settings": "keep: id employee_id",
+    "employee_teams": "keep: id employee_id subgroup_id; rule: team",
+    "employees": "keep: id role; rule: jira_account_id display_name email team; clear: avatar_url department",
+    "hierarchy_rule": "keep: id issue_type; rule: project_key description",
+    "involvement_defaults": "keep: id role; rule: team",
+    "issue_links": "keep: id source_issue_id target_issue_id link_type",
+    "issues": "keep: id jira_issue_id issue_type status status_category priority resolution subtype cost_type "
+              "project_id parent_id category planned_hours_sources planned_hours_choice assigned_subgroup_id "
+              "effective_subgroup_id assigned_category; "
+              "rule: key summary environment direction sprint sprints release team participating_teams goals "
+              "category_context category_context_key assignee_display_name assignee_account_id "
+              "reporter_account_id reporter_display_name developer_account_id developer_display_name; "
+              "clear: description goal_text current_behavior impact risk",
+    "kpi_approvals": "keep: id; rule: team approved_by payload_json",
+    "kpi_cycle_time_norms": "keep: id; rule: team",
+    "kpi_metrics": "keep: id code name calc_kind fact_field score_fields empty_policy; "
+                   "rule: numerator_json denominator_json; final: description",
+    "kpi_profile_metrics": "keep: id profile_id metric_id",
+    "kpi_profile_roles": "keep: id profile_id role_code",
+    "kpi_profiles": "keep: id code name",
+    "mandatory_work_types": "keep: id code label",
+    "phase_predecessor": "keep: id successor_assignment_id predecessor_assignment_id",
+    "plan_audit": "keep: id issue_id role source user_id; clear: comment",
+    "plan_conflicts": "keep: id plan_id type severity status backlog_item_id employee_id assignment_id "
+                      "detection_key; clear: message",
+    "plan_item_dependencies": "keep: id plan_id from_item_id to_item_id dep_type source",
+    "planning_scenarios": "keep: id quarter status; rule: name team",
+    "production_calendar_day": "keep: kind note source",
+    "projects": "keep: id jira_project_id project_type; rule: key name; clear: description",
+    "release_notes": "keep: id version note_type section help_link created_by; final: title description",
+    "resource_plan_assignments": "keep: id plan_id backlog_item_id phase employee_id daily_hours_json opo_part",
+    "resource_plans": "keep: id scenario_id quarter status parent_plan_id; rule: team external_fingerprint; "
+                      "final: label",
+    "role_capacity_rules": "keep: id role work_type_id",
+    "roles": "keep: id code label color",
+    "scenario_absence_snapshots": "keep: id revision_id employee_id original_absence_id reason_id reason_label; "
+                                  "rule: employee_name",
+    "scenario_allocation_breakdown_snapshots": "keep: id revision_id allocation_id role employee_id",
+    "scenario_allocation_snapshots": "keep: id revision_id allocation_id backlog_item_id issue_id project_id "
+                                     "cost_type assignee_employee_id assignee_role_at_approval "
+                                     "developer_employee_id; rule: title customer; clear: impact risk",
+    "scenario_allocations": "keep: id scenario_id backlog_item_id",
+    "scenario_calendar_snapshots": "keep: id revision_id kind",
+    "scenario_capacity_snapshots": "keep: id revision_id employee_id; rule: employee_name",
+    "scenario_dictionary_snapshots": "keep: id revision_id kind original_id code label extra_json",
+    "scenario_norm_snapshots": "keep: id revision_id employee_id role work_type_id work_type_label; "
+                               "rule: employee_name",
+    "scenario_revision_items": "keep: id revision_id backlog_item_id action; rule: backlog_item_name",
+    "scenario_revisions": "keep: id scenario_id parent_revision_id approved_by_user_id algo_version; clear: note",
+    "scenario_rules": "keep: id scenario_id role work_type_id",
+    "scenario_rules_snapshots": "keep: id revision_id role work_type_id work_type_label",
+    "scenario_team_snapshots": "keep: id revision_id employee_id role; rule: display_name subgroup_name",
+    "scheduled_block_employee": "keep: id block_id employee_id",
+    "scheduled_block_role": "keep: id block_id role_id",
+    "scheduled_blocks": "keep: id work_type_id; rule: team reason",
+    "scope_projects": "keep: id jira_project_id; rule: jira_project_key",
+    "scope_roots": "keep: id category_code jira_issue_id; rule: jira_issue_key project_key",
+    "sync_schedule": "keep: id name cron_expr mode last_run_id; rule: team",
+    "sync_state": "keep: id entity_name; rule: scope cursor_value; clear: last_error",
+    "team_desk_daily_rates": "keep: id issue_id created_by_user_id",
+    "team_desk_marks": "keep: id issue_id flag signature created_by_user_id; clear: comment",
+    "team_onboarding_marks": "keep: id step state source marked_by_user_id; rule: team",
+    "team_subgroups": "keep: id team_id; rule: name",
+    "team_work_type_overrides": "keep: id backlog_item_id work_type_id; rule: team",
+    "teams": "keep: id; rule: name",
+    "themes": "keep: id work_type_id color created_by; rule: name; "
+              "clear: description aliases_json embedding embedding_model_version embedding_updated_at",
+    "user_rp_preferences": "keep: user_id collapsed_initiative_ids view_mode detail_sections_visible "
+                           "detail_sections_collapsed",
+    "users": "keep: id role selected_subgroups selected_period analytics_columns analytics_layout selected_theme "
+             "appearance_settings last_seen_release_version onboarding; "
+             "rule: email password_hash display_name default_team selected_teams team_desk_filter",
+    "work_type_report_layouts": "keep: id user_id work_type_id grouping_dims_json visible_columns_json; rule: name",
+    "worklog_quality_rules": "keep: id rule_code; final: description",
+    "worklogs": "keep: id jira_worklog_id issue_id employee_id; clear: comment_text",
+})
 PUBLIC_EMAIL_DOMAINS = frozenset({
     "example.com", "gmail.com", "mail.ru", "yandex.ru", "ya.ru", "bk.ru", "list.ru", "inbox.ru",
     "rambler.ru", "outlook.com", "hotmail.com", "icloud.com",
@@ -74,7 +229,6 @@ TEAM_JSON_COLUMNS = (
 _ISSUE_KEY_RE = re.compile(r"^([A-Z][A-Z0-9_]*)-\d+$")
 _NAME_SPLIT_RE = re.compile(r"[\s\-‐–—,.;()«»\"']+")
 _PATRONYMIC_RE = re.compile(r"(вич|вна|чна|ьич)$")
-_CODE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_\-]{0,15}$")
 _QUARTER_TAG_RE = re.compile(r"^\s*\d\s*кв\s*\d{2,4}\s*$", re.IGNORECASE)
 
 Rule = Callable[[Any, dict], Any]
@@ -87,6 +241,7 @@ class Sensitive:
     strings: frozenset[str]  # нормализованные (norm), ищутся подстрокой: ФИО, e-mail, команды, …
     project_keys: frozenset[str]  # настоящие ключи проектов: ищутся как KEY-123
     words: frozenset[str] = frozenset()  # падежные формы фамилий: ищутся отдельным словом
+    originals: frozenset[bytes] = frozenset()  # хэши исходного свободного текста (leak_check.exact_key)
     primary_team: str = ""  # вымышленное имя основной команды
     stats: dict[str, int] = field(default_factory=dict)
 
@@ -164,6 +319,15 @@ def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+def _is_sick(code: Any, label: Any) -> bool:
+    return (_str(code) or "").lower() in SICK_REASON_CODES or norm(_str(label) or "").startswith(SICK_LABEL_PREFIX)
+
+
+def _setting_allowed(key: str) -> bool:
+    allowed = key in SETTING_ALLOW_EXACT or SETTING_ALLOW_RE.match(key) is not None
+    return allowed and not SECRET_SETTING_RE.search(key)
+
+
 class _Anonymizer:
     def __init__(self, conn: sqlite3.Connection, primary_team: str, password_hash: str) -> None:
         self.conn = conn
@@ -193,8 +357,11 @@ class _Anonymizer:
         self.jira_host = ""
         self.category_codes: set[str] = set()
         self.backlog_issue: dict[str, Optional[str]] = {}
+        self.originals: set[bytes] = set()
+        self.dictionary_texts = 0  # исходных текстов, совпавших со справочниками (не сверяются)
         # Заполняются в build_fakes().
         self.maps: dict[str, dict[str, str]] = {}
+        self.key_offset: dict[str, int] = {}
         self.titles: list[str] = []
         self.sensitive: set[str] = set()
         self.surname_words: set[str] = set()
@@ -223,6 +390,26 @@ class _Anonymizer:
     def _values(self, table: str, col: str) -> list[str]:
         return [v for (v,) in self._rows(table, col) if _str(v)]
 
+    # --- 0. сверка схемы с политикой ------------------------------------------------------
+
+    def check_policy(self) -> None:
+        """Каждая текстовая (и двоичная) колонка каждой таблицы объявлена в COLUMN_POLICY."""
+        missing = [
+            f"{table}.{col}"
+            for table, cols in self.cols.items() if table not in DELETE_TABLES
+            for col, (typ, _) in cols.items()
+            if (not typ or any(m in typ for m in POLICY_TYPE_MARKERS)) and col not in COLUMN_POLICY.get(table, {})
+        ]
+        if missing:
+            raise RuntimeError(
+                "Колонки без политики обезличивания — объявите их в COLUMN_POLICY (scripts/demo_db/anonymize.py): "
+                + ", ".join(missing)
+            )
+
+    def check_primary_team(self) -> None:
+        if not self._has("teams", "name") or self.primary_team not in self._values("teams", "name"):
+            raise ValueError(f"Команды «{self.primary_team}» нет в справочнике команд (--primary-team)")
+
     # --- 1. удаление --------------------------------------------------------------------
 
     def delete_tables(self) -> None:
@@ -232,6 +419,20 @@ class _Anonymizer:
                 print(f"  удалено {table}: {n}", flush=True)
         if self._has("sync_schedule", "last_run_id"):
             self.conn.execute("UPDATE sync_schedule SET last_run_id = NULL")
+        if self._has("sync_schedule", "enabled"):
+            self.conn.execute("UPDATE sync_schedule SET enabled = 0")
+        sick = {rid for rid, code, label in self._rows("absence_reasons", "id code label") if _is_sick(code, label)}
+        if self._has("absences", "reason_id"):
+            n = sum(self.conn.execute("DELETE FROM absences WHERE reason_id = ?", (rid,)).rowcount for rid in sick)
+            print(f"  удалено больничных: {n}", flush=True)
+        if self._has("scenario_absence_snapshots", "reason_id", "reason_label"):
+            rows = [
+                (rowid,) for rowid, rid, label in self.conn.execute(
+                    "SELECT rowid, reason_id, reason_label FROM scenario_absence_snapshots")
+                if rid in sick or _is_sick(None, label)
+            ]
+            self.conn.executemany("DELETE FROM scenario_absence_snapshots WHERE rowid = ?", rows)
+            print(f"  удалено больничных в снимках сценариев: {len(rows)}", flush=True)
         self.conn.commit()
 
     # --- 2. сбор исходных значений ------------------------------------------------------
@@ -393,6 +594,31 @@ class _Anonymizer:
         self.category_codes = set(self._values("categories", "code"))
         self.backlog_issue = dict(self._rows("backlog_items", "id issue_id"))
 
+        for table, col in ORIGINAL_TEXT_COLUMNS:
+            if not self._has(table, col):
+                continue
+            for (value,) in self.conn.execute(
+                f"SELECT {_q(col)} FROM {_q(table)} WHERE length({_q(col)}) >= ?", (MIN_EXACT_LEN,)
+            ):
+                key = exact_key(value) if isinstance(value, str) else None
+                if key is not None:
+                    self.originals.add(key)
+        # Текст, дословно совпадающий со значением справочной колонки (статус «Проработка требований»,
+        # вид работ «Технические задачи»), не секрет: он и так остаётся в демо-базе в этой колонке.
+        dictionary: set[bytes] = set()
+        for table, policy in COLUMN_POLICY.items():
+            for col, kind in policy.items():
+                if kind != KEEP or col == "id" or col.endswith("_id") or not self._has(table, col):
+                    continue
+                for (value,) in self.conn.execute(
+                    f"SELECT DISTINCT {_q(col)} FROM {_q(table)} WHERE length({_q(col)}) >= ?", (MIN_EXACT_LEN,)
+                ):
+                    key = exact_key(value) if isinstance(value, str) else None
+                    if key in self.originals:
+                        dictionary.add(key)
+        self.originals -= dictionary
+        self.dictionary_texts = len(dictionary)
+
     # --- 3. словарь «настоящее → вымышленное» -------------------------------------------
 
     def _sensitive_tokens(self) -> tuple[set[str], set[str]]:
@@ -422,7 +648,7 @@ class _Anonymizer:
         sens_re = re.compile(trie_pattern(self.sensitive | self.surname_words) or r"(?!)")
 
         def is_safe(text: str) -> bool:
-            return not sens_re.search(norm(text))
+            return not sens_re.search(norm(text)) and exact_key(text) not in self.originals
 
         names = fake_data.person_names(is_safe)
         self.fake_person = [next(names) for _ in self.person_surfaces]
@@ -434,13 +660,15 @@ class _Anonymizer:
         self.maps["sprint"] = dict(zip(self.sprints, fake_data.numbered("Спринт", is_safe)))
         self.maps["release"] = dict(zip(self.releases, fake_data.numbered("Релиз", is_safe)))
         self.maps["theme"] = dict(zip(self.themes, fake_data.numbered("Тема", is_safe)))
+        # Буквы проектам — в перемешанном порядке (не по алфавиту настоящих ключей),
+        # номера задач — со сдвигом на число проекта.
+        order = fake_data.shuffled(self.project_keys)
         labels = (f"PR{fake_data.latin_label(i)}" for i in count())
         real = set(self.project_keys)
         free = (k for k in labels if k not in real and is_safe(k))
-        self.maps["key"] = {k: next(free) for k in self.project_keys}
-        self.maps["project_name"] = {
-            k: f"Проект {fake_data.ru_label(i)}" for i, k in enumerate(self.project_keys)
-        }
+        self.maps["key"] = {k: next(free) for k in order}
+        self.maps["project_name"] = {k: f"Проект {fake_data.ru_label(i)}" for i, k in enumerate(order)}
+        self.key_offset = {k: fake_data.key_offset(fake) for k, fake in self.maps["key"].items()}
         self.titles = fake_data.issue_titles(is_safe)
 
         for label, fakes in [
@@ -512,22 +740,28 @@ class _Anonymizer:
     def title_for(self, key: Any) -> str:
         return self.titles[zlib.crc32(str(key).encode()) % len(self.titles)]
 
+    def fake_issue_key(self, project: str, number: str) -> str:
+        """ROS-123 → PRC-(123 + сдвиг проекта)."""
+        return f"{self.maps['key'][project]}-{int(number) + self.key_offset[project]}"
+
+    def _clear(self, table: str, col: str) -> Rule:
+        notnull = self.cols.get(table, {}).get(col, ("", False))[1]
+
+        def rule(v: Any, _r: dict) -> Any:
+            if v is None or not notnull:
+                return None
+            return "[]" if str(v).startswith("[") else "{}" if str(v).startswith("{") else ""
+        return rule
+
     def _rules(self) -> dict[str, dict[str, Rule]]:
+        """Правила колонок вида RULE. Колонки вида CLEAR очищаются по COLUMN_POLICY (apply_rules)."""
         maps = self.maps
         keys = self.maps["key"]
         key_alt = "|".join(sorted(map(re.escape, keys), key=len, reverse=True))
         issue_key_re = re.compile(rf"\b({key_alt})-(\d+)\b") if keys else None
         bare_key_re = re.compile(rf"\b({key_alt})\b") if keys else None
         quoted_key_re = re.compile(rf'"({key_alt})"') if keys else None
-
-        def clear(table: str, col: str) -> Rule:
-            notnull = self.cols.get(table, {}).get(col, ("", False))[1]
-
-            def rule(v: Any, _r: dict) -> Any:
-                if v is None or not notnull:
-                    return None
-                return "[]" if str(v).startswith("[") else "{}" if str(v).startswith("{") else ""
-            return rule
+        clear = self._clear
 
         def mapped(kind: str) -> Rule:
             return lambda v, _r: maps[kind].get(v, v) if isinstance(v, str) else v
@@ -556,7 +790,7 @@ class _Anonymizer:
         def issue_key(v: Any, _r: dict) -> Any:
             if not isinstance(v, str) or issue_key_re is None:
                 return v
-            return issue_key_re.sub(lambda m: f"{keys[m.group(1)]}-{m.group(2)}", v)
+            return issue_key_re.sub(lambda m: self.fake_issue_key(m.group(1), m.group(2)), v)
 
         def bare_keys(v: Any, _r: dict) -> Any:
             if not isinstance(v, str) or bare_key_re is None:
@@ -614,9 +848,9 @@ class _Anonymizer:
             issue_id = r.get("issue_id") or self.backlog_issue.get(r.get("backlog_item_id"))
             return self.title_for(issue_id or r.get("backlog_item_id") or r["id"]) if _str(v) else v
 
-        def code_or_clear(table: str, col: str) -> Rule:
+        def environment_or_clear(table: str, col: str) -> Rule:
             wipe = clear(table, col)
-            return lambda v, r: v if not _str(v) or _CODE_RE.match(v.strip()) else wipe(v, r)
+            return lambda v, r: v if not _str(v) or v.strip().casefold() in ENVIRONMENTS else wipe(v, r)
 
         def quarter_tags_or_clear(table: str, col: str) -> Rule:
             wipe = clear(table, col)
@@ -638,31 +872,23 @@ class _Anonymizer:
         def theme_name(v: Any, r: dict) -> Any:
             return maps["theme"].get(r["id"], v)
 
-        wipe_setting = clear("app_settings", "value")
-
         def setting(v: Any, r: dict) -> Any:
             key = r.get("key") or ""
             if key == JIRA_URL_SETTING:
                 return DEMO_JIRA_URL if _str(v) else v
-            if SECRET_SETTING_RE.search(key):
-                return wipe_setting(v, r)
-            return v
+            if _setting_allowed(key):
+                return v
+            return None if v is None else ""
 
         rules: dict[str, dict[str, Rule]] = {
-            "employees": {
-                "jira_account_id": acc, "display_name": person("jira_account_id"), "email": email,
-                "avatar_url": clear("employees", "avatar_url"), "department": clear("employees", "department"),
-            },
+            "employees": {"jira_account_id": acc, "display_name": person("jira_account_id"), "email": email},
             "users": {
                 "email": email, "display_name": user_name, "password_hash": const(self.password_hash),
                 "selected_teams": team_json, "team_desk_filter": team_json,
             },
             "issues": {
                 "key": issue_key, "category_context_key": issue_key, "summary": issue_title,
-                "description": clear("issues", "description"), "goal_text": clear("issues", "goal_text"),
-                "current_behavior": clear("issues", "current_behavior"),
-                "impact": clear("issues", "impact"), "risk": clear("issues", "risk"),
-                "environment": code_or_clear("issues", "environment"),
+                "environment": environment_or_clear("issues", "environment"),
                 "goals": quarter_tags_or_clear("issues", "goals"),
                 "category_context": category_or_clear("issues", "category_context"),
                 "direction": mapped("direction"), "sprint": mapped("sprint"), "sprints": sprint_json,
@@ -670,31 +896,17 @@ class _Anonymizer:
                 **{f"{role}_account_id": acc for role in ISSUE_PEOPLE},
                 **{f"{role}_display_name": person(f"{role}_account_id") for role in ISSUE_PEOPLE},
             },
-            "worklogs": {"comment_text": clear("worklogs", "comment_text")},
-            "comments": {"body": clear("comments", "body")},
-            "category_overrides": {
-                "jira_issue_key": issue_key, "comment": clear("category_overrides", "comment"),
-            },
+            "category_overrides": {"jira_issue_key": issue_key},
             "scope_roots": {"jira_issue_key": issue_key, "project_key": project_key},
             "scope_projects": {"jira_project_key": project_key},
             "hierarchy_rule": {"project_key": project_key, "description": bare_keys},
-            "projects": {"key": project_key, "name": project_name, "description": clear("projects", "description")},
+            "projects": {"key": project_key, "name": project_name},
             "backlog_items": {
-                "title": linked_title, "customer": mapped("customer"),
-                "impact": clear("backlog_items", "impact"), "risk": clear("backlog_items", "risk"),
-                "assignee_jira_account_at_choice": acc,
+                "title": linked_title, "customer": mapped("customer"), "assignee_jira_account_at_choice": acc,
             },
-            "scenario_allocation_snapshots": {
-                "title": linked_title, "customer": mapped("customer"),
-                "impact": clear("scenario_allocation_snapshots", "impact"),
-                "risk": clear("scenario_allocation_snapshots", "risk"),
-            },
+            "scenario_allocation_snapshots": {"title": linked_title, "customer": mapped("customer")},
             "scenario_revision_items": {"backlog_item_name": linked_title},
-            "scenario_revisions": {"note": clear("scenario_revisions", "note")},
             **{table: {col: snapshot_person} for table, col in SNAPSHOT_NAME_COLUMNS},
-            "plan_conflicts": {"message": clear("plan_conflicts", "message")},
-            "plan_audit": {"comment": clear("plan_audit", "comment")},
-            "team_desk_marks": {"comment": clear("team_desk_marks", "comment")},
             "planning_scenarios": {"name": scenario_name},
             "resource_plans": {"external_fingerprint": team_keys_json},
             "scheduled_blocks": {"reason": const("Плановая блокировка")},
@@ -702,15 +914,8 @@ class _Anonymizer:
             "kpi_metrics": {"numerator_json": quoted_keys, "denominator_json": quoted_keys},
             "teams": {"name": mapped("team")},
             "team_subgroups": {"name": mapped("subgroup")},
-            "themes": {
-                "name": theme_name, "description": clear("themes", "description"),
-                "aliases_json": clear("themes", "aliases_json"), "embedding": clear("themes", "embedding"),
-                "embedding_model_version": clear("themes", "embedding_model_version"),
-                "embedding_updated_at": clear("themes", "embedding_updated_at"),
-            },
-            "sync_state": {
-                "last_error": clear("sync_state", "last_error"), "scope": bare_keys, "cursor_value": bare_keys,
-            },
+            "themes": {"name": theme_name},
+            "sync_state": {"scope": bare_keys, "cursor_value": bare_keys},
             "app_settings": {"value": setting},
             "work_type_report_layouts": {"name": const("Раскладка")},
             **{table: {"team_set_json": team_json} for table in ("executive_dashboard_snapshots",
@@ -724,9 +929,29 @@ class _Anonymizer:
                     rules.setdefault(table, {})[col] = mapped("team")
         return rules
 
+    def _check_rules(self, rules: dict[str, dict[str, Rule]]) -> None:
+        """Правила и COLUMN_POLICY согласованы: у каждой колонки вида RULE есть правило и наоборот."""
+        bad = []
+        for table, cols in self.cols.items():
+            if table in DELETE_TABLES:
+                continue
+            policy = COLUMN_POLICY.get(table, {})
+            for col in cols:
+                has_rule = col in rules.get(table, {})
+                if has_rule != (policy.get(col) == RULE):
+                    bad.append(f"{table}.{col} ({policy.get(col) or 'не объявлена'}, правило: {has_rule})")
+        if bad:
+            raise RuntimeError("COLUMN_POLICY расходится с правилами: " + ", ".join(bad))
+
     def apply_rules(self) -> None:
-        for table, rules in self._rules().items():
-            cols = [c for c in rules if self._has(table, c)]
+        rules = self._rules()
+        self._check_rules(rules)
+        for table, policy in COLUMN_POLICY.items():
+            for col, kind in policy.items():
+                if kind == CLEAR:
+                    rules.setdefault(table, {})[col] = self._clear(table, col)
+        for table, table_rules in rules.items():
+            cols = [c for c in table_rules if self._has(table, c)]
             if not cols:
                 continue
             started = time.monotonic()
@@ -734,7 +959,7 @@ class _Anonymizer:
             updates = []
             for row in self.conn.execute(f"SELECT rowid, * FROM {_q(table)}"):
                 r = dict(zip(names, row[1:]))
-                new = [rules[c](r[c], r) for c in cols]
+                new = [table_rules[c](r[c], r) for c in cols]
                 if any(n != r[c] for n, c in zip(new, cols)):
                     updates.append((*new, row[0]))
             sets = ", ".join(f"{_q(c)} = ?" for c in cols)
@@ -754,7 +979,7 @@ class _Anonymizer:
         def scrub(text: str) -> str:
             text = pattern.sub(lambda m: repl.get(norm(m.group(0)), m.group(0)), text)
             text = words.sub(lambda m: word_repl.get(norm(m.group(0)), m.group(0)), text)
-            return key_re.sub(lambda m: f"{keys[m.group(1)]}-{m.group(2)}", text)
+            return key_re.sub(lambda m: self.fake_issue_key(m.group(1), m.group(2)), text)
 
         changed: dict[str, int] = {}
         for table, cols in self.cols.items():
@@ -790,6 +1015,8 @@ def anonymize(conn: sqlite3.Connection, *, primary_team: str, password_hash: str
     """
     conn.execute("PRAGMA foreign_keys = OFF")
     a = _Anonymizer(conn, primary_team, password_hash)
+    a.check_policy()
+    a.check_primary_team()
     print("Удаление таблиц…", flush=True)
     a.delete_tables()
     a.cols = a._reflect()
@@ -798,7 +1025,8 @@ def anonymize(conn: sqlite3.Connection, *, primary_team: str, password_hash: str
     repl, word_repl = a.build_fakes()
     print(f"Словарь: {len(a.person_surfaces)} людей, {len(a.teams)} команд, {len(a.project_keys)} проектов, "
           f"{len(repl)} строк и {len(word_repl)} форм фамилий для замены, "
-          f"{len(a.titles)} вариантов названий задач", flush=True)
+          f"{len(a.titles)} вариантов названий задач, {len(a.originals)} исходных текстов для сверки "
+          f"(ещё {a.dictionary_texts} совпали со справочниками)", flush=True)
     print("Колоночные правила…", flush=True)
     a.apply_rules()
     print("Финальный проход по всем текстовым колонкам…", flush=True)
@@ -810,6 +1038,7 @@ def anonymize(conn: sqlite3.Connection, *, primary_team: str, password_hash: str
         strings=frozenset(a.sensitive),
         project_keys=frozenset(a.project_keys),
         words=frozenset(a.surname_words),
+        originals=frozenset(a.originals),
         primary_team=a.maps["team"].get(primary_team, ""),
         stats={
             "people": len(a.person_surfaces), "accounts": len(a.acc_map), "emails": len(a.email_map),
