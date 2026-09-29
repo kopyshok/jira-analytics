@@ -20,6 +20,7 @@ from app.models.mandatory_work_type import MandatoryWorkType
 from app.models.role_capacity_rule import RoleCapacityRule
 from app.models.employee_capacity_override import EmployeeCapacityOverride
 from app.models.involvement_default import InvolvementDefault
+from app.models.employee_personal_setting import EmployeePersonalNormed, EmployeePersonalSetting
 from app.models.backlog_item import BacklogItem
 from app.models.planning_scenario import PlanningScenario
 from app.models.project_ai_summary import ProjectAISummary
@@ -96,6 +97,8 @@ __all__ = [
     "RoleCapacityRule",
     "EmployeeCapacityOverride",
     "InvolvementDefault",
+    "EmployeePersonalSetting",
+    "EmployeePersonalNormed",
     "BacklogItem",
     "PlanningScenario",
     "ProjectAISummary",
