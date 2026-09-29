@@ -503,11 +503,13 @@ export interface DailyBreakdownItem {
   date: string;
   available_hours: number;
   used_hours: number;
-  status: 'work' | 'absence' | 'holiday' | 'weekend' | 'blocked_by_other' | 'pre_start_idle';
+  status: 'work' | 'absence' | 'holiday' | 'weekend' | 'blocked_by_other' | 'blocked' | 'pre_start_idle';
   blocker_assignment_id?: string | null;
   blocker_item_key?: string | null;
   blocker_phase_label?: string | null;
   absence_reason?: string | null;
+  /** Причина заблокированного периода (status === 'blocked'). */
+  block_reason?: string | null;
   is_pre_start?: boolean;
   co_occupants?: DayCoOccupant[];
 }
