@@ -514,7 +514,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
           onClick();
         }
       }}
-      title={`${PHASE_LABELS[assignment.phase]} — ${assignment.hours_allocated?.toFixed(0)}ч${assignment.other_subgroup ? ' · работа на соседнюю группу' : ''}`}
+      title={`${PHASE_LABELS[assignment.phase]} — ${assignment.hours_allocated?.toFixed(0)}ч${otherSubgroupHint(assignment)}`}
       className={barClassName || undefined}
       style={{
         position: 'absolute',
@@ -592,6 +592,14 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
               ? unavailableDays.filter(d => d.type !== 'weekend' && d.type !== 'holiday')
               : unavailableDays
           }
+        />
+      )}
+      {!assignment.other_subgroup && !!assignment.other_subgroup_ranges?.length && (
+        <OtherSubgroupOverlay
+          barStart={assignment.start_date}
+          barEnd={assignment.end_date}
+          ranges={assignment.other_subgroup_ranges}
+          timeline={timeline}
         />
       )}
       {busyDays && busyDays.length > 0 && (
@@ -699,6 +707,54 @@ function BusyOverlay({ barStart, barEnd, days, timeline }: {
             bottom: 0,
             background: BUSY_CUTOUT,
             zIndex: 3,
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+
+// Подсказка полосы: работа на соседнюю группу целиком или только в часть дат
+// (перевод сотрудника посреди назначения — «с ДД.ММ»).
+function otherSubgroupHint(a: AssignmentOut): string {
+  if (a.other_subgroup) return ' · работа на соседнюю группу';
+  const ranges = a.other_subgroup_ranges ?? [];
+  if (ranges.length === 0) return '';
+  const when = ranges
+    .map((r) => (r.end === a.end_date ? `с ${ddmm(r.start)}` : `${ddmm(r.start)}–${ddmm(r.end)}`))
+    .join(', ');
+  return ` · работа на соседнюю группу ${when}`;
+}
+
+// Пунктирная фиолетовая рамка только на даты работы на соседнюю группу —
+// как у полосы целиком вне групп, но на её части.
+function OtherSubgroupOverlay({ barStart, barEnd, ranges, timeline }: {
+  barStart: string;
+  barEnd: string;
+  ranges: { start: string; end: string }[];
+  timeline: GanttTimeline;
+}) {
+  const barLeft = dateToLeft(barStart, timeline);
+  const barWidth = datesToWidth(barStart, barEnd, timeline);
+  if (barWidth <= 0) return null;
+  return (
+    <>
+      {ranges.map((r) => (
+        <div
+          key={r.start}
+          data-testid="rp-other-subgroup-range"
+          style={{
+            position: 'absolute',
+            left: `${((dateToLeft(r.start, timeline) - barLeft) / barWidth) * 100}%`,
+            width: `${(datesToWidth(r.start, r.end, timeline) / barWidth) * 100}%`,
+            top: 0,
+            bottom: 0,
+            border: '1px dashed #a78bfa',
+            borderRadius: 3,
+            pointerEvents: 'none',
+            zIndex: 4,
           }}
         />
       ))}
@@ -1440,7 +1496,7 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
                     if (el) rowRefs.current.set(refKey, el);
                     else rowRefs.current.delete(refKey);
                   }}
-                  title={`${a.backlog_item_title} — ${PHASE_LABELS[a.phase]} (${a.hours_allocated?.toFixed(0)}ч)${a.other_subgroup ? ' · работа на соседнюю группу' : ''}`}
+                  title={`${a.backlog_item_title} — ${PHASE_LABELS[a.phase]} (${a.hours_allocated?.toFixed(0)}ч)${otherSubgroupHint(a)}`}
                   onClick={(e) => {
                     if (a.phase === 'qa') return;
                     e.stopPropagation();

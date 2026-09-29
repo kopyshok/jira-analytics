@@ -309,6 +309,7 @@ def _assignment_to_out(
     chunks_total: Optional[int] = None,
     worklog_hours_actual: float = 0.0,
     other_subgroup: bool = False,
+    other_subgroup_ranges: Optional[List["DateSpan"]] = None,
     subgroup_id: Optional[str] = None,
 ) -> "AssignmentOut":
     """Конвертировать ORM-объект ResourcePlanAssignment в AssignmentOut.
@@ -355,6 +356,7 @@ def _assignment_to_out(
         subgroup_id=subgroup_id
         or (getattr(issue, "effective_subgroup_id", None) if issue else None),
         other_subgroup=other_subgroup,
+        other_subgroup_ranges=other_subgroup_ranges or [],
     )
 
 
@@ -403,36 +405,53 @@ def _plan_subgroups(
     return work, by_employee
 
 
-def _other_subgroup_ids(
+def _other_subgroup_marks(
     db: Session,
     plan: ResourcePlan,
     assignments: Sequence[ResourcePlanAssignment],
     work_groups: Optional[Dict[str, str]] = None,
-) -> set[str]:
-    """Назначения, где группа работы не входит в группы исполнителя за даты назначения.
+) -> tuple[set[str], Dict[str, List[tuple[date, date]]]]:
+    """Где исполнитель работает на группу, в которой у него нет доли.
+
+    Возвращает (назначения целиком вне групп исполнителя,
+    {назначение: отрезки дат вне его групп}). Даты режутся по записям
+    распределения: перевод посреди назначения даёт отрезок только с даты
+    перевода. День деления, когда группа работы — одна из групп человека,
+    соседним не считается. «Целиком» — вне групп каждый день, где есть запись.
 
     Группа работы — по правилу диаграммы (``_plan_subgroups``); ``work_groups``
     передаёт уже посчитанную. Нет ни одной записи распределения на даты
     назначения — метки нет: сравнивать не с чем (например, исполнитель ещё не
     заведён в команду).
     """
+    whole: set[str] = set()
+    spans: Dict[str, List[tuple[date, date]]] = {}
     if not plan.team or not ss.team_subgroups(db, plan.team):
-        return set()
+        return whole, spans
     if work_groups is None:
         work_groups = _plan_subgroups(db, plan, assignments)[0]
     records = ss.load_team(
         db, plan.team, {a.employee_id for a in assignments if a.employee_id}
     )
-    out: set[str] = set()
     for a in assignments:
         group = work_groups.get(a.id)
         recs = records.get(a.employee_id) if a.employee_id else None
         if not group or not recs or not a.start_date or not a.end_date:
             continue
-        groups = ss.groups_between(recs, a.start_date, a.end_date)
-        if groups and group not in groups:
-            out.add(a.id)
-    return out
+        segs = ss.segments(recs, a.start_date, a.end_date)
+        out: List[tuple[date, date]] = []
+        for lo, hi, rec in segs:
+            if group in rec.groups:
+                continue
+            if out and out[-1][1] + _timedelta(days=1) == lo:
+                out[-1] = (out[-1][0], hi)
+            else:
+                out.append((lo, hi))
+        if out:
+            spans[a.id] = out
+            if all(group not in rec.groups for _, _, rec in segs):
+                whole.add(a.id)
+    return whole, spans
 
 
 def _compute_worklog_hours_actual(
@@ -539,6 +558,13 @@ class UnavailableDay(BaseModel):
     type: str  # weekend | holiday | absence | block
 
 
+class DateSpan(BaseModel):
+    """Отрезок дат, границы включительно."""
+
+    start: date
+    end: date
+
+
 class AssignmentOut(BaseModel):
     id: str
     backlog_item_id: str
@@ -582,10 +608,14 @@ class AssignmentOut(BaseModel):
     # в выдаче диаграммы без неё — группа главного исполнителя из сценария на
     # опорный день (правило планировщика). Фронт режет график на секции групп.
     subgroup_id: Optional[str] = None
-    # Исполнитель работает на группу, где у него нет доли в дни назначения
+    # Исполнитель работает на группу, где у него нет доли, во все дни назначения
     # (задача старой группы после перевода или сосед, взятый на подмогу).
     # Заполняется только в выдаче диаграммы; в ответе правки и разборе — всегда false.
     other_subgroup: bool = False
+    # Отрезки дат, когда работа идёт на группу вне групп исполнителя: перевод
+    # посреди назначения даёт отрезок с даты перевода. При ``other_subgroup``
+    # покрывают всё назначение. Только в выдаче диаграммы.
+    other_subgroup_ranges: List["DateSpan"] = []
 
     model_config = {"from_attributes": True}
 
@@ -1779,7 +1809,9 @@ def get_gantt(
 
     worklog_map = _compute_worklog_hours_actual(db, assignments_raw)
     work_groups, employee_subgroups = _plan_subgroups(db, plan, assignments_raw)
-    other_subgroup_ids = _other_subgroup_ids(db, plan, assignments_raw, work_groups)
+    other_whole, other_spans = _other_subgroup_marks(
+        db, plan, assignments_raw, work_groups
+    )
 
     assignments = [
         _assignment_to_out(
@@ -1789,7 +1821,10 @@ def get_gantt(
             chunk_index=(a.part_number - 1) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
             chunks_total=phase_counts.get((a.backlog_item_id, a.phase)) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
             worklog_hours_actual=worklog_map.get(a.id, 0.0),
-            other_subgroup=a.id in other_subgroup_ids,
+            other_subgroup=a.id in other_whole,
+            other_subgroup_ranges=[
+                DateSpan(start=lo, end=hi) for lo, hi in other_spans.get(a.id, [])
+            ],
             subgroup_id=work_groups.get(a.id),
         )
         for a in assignments_raw

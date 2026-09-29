@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.endpoints.resource_planning import _other_subgroup_ids
+from app.api.endpoints.resource_planning import _other_subgroup_marks
 from app.database import get_db
 from app.main import app
 from app.models import BacklogItem, Employee, Issue, Project, ResourcePlan, ResourcePlanAssignment
@@ -347,7 +347,7 @@ def test_other_subgroup_marker(db_session):
     )
     db_session.commit()
 
-    marked = _other_subgroup_ids(db_session, plan, [a_own, a_other])
+    marked, _ = _other_subgroup_marks(db_session, plan, [a_own, a_other])
     assert marked == {a_other.id}
 
 
@@ -376,7 +376,7 @@ def test_other_subgroup_marker_no_division_team(db_session):
     a = _plan_assignment(db_session, plan, item, emp, date(2026, 1, 1), date(2026, 1, 2))
     db_session.commit()
 
-    assert _other_subgroup_ids(db_session, plan, [a]) == set()
+    assert _other_subgroup_marks(db_session, plan, [a]) == (set(), {})
 
 
 def test_other_subgroup_marker_no_records_covering_dates(db_session):
@@ -405,7 +405,81 @@ def test_other_subgroup_marker_no_records_covering_dates(db_session):
     a = _plan_assignment(db_session, plan, item, emp, date(2025, 1, 1), date(2025, 1, 2))
     db_session.commit()
 
-    assert _other_subgroup_ids(db_session, plan, [a]) == set()
+    assert _other_subgroup_marks(db_session, plan, [a]) == (set(), {})
+
+
+def _transfer_case(db_session, team: str, key: str, records):
+    """Сотрудник с записями распределения ``records`` [(группа, %, с даты)] и
+    задача группы «A», назначенная ему на 05.01–16.01.2026."""
+    ga = _subgroup(db_session, "A", team)
+    gb = _subgroup(db_session, "B", team)
+    groups = {"A": ga, "B": gb}
+    emp = Employee(
+        jira_account_id=f"acc-{uuid.uuid4().hex[:12]}",
+        display_name="Демидов",
+        role="developer",
+        team=team,
+        is_active=True,
+    )
+    db_session.add(emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=emp.id, team=team, is_primary=True))
+    for g, pct, valid_from in records:
+        db_session.add(share(emp.id, team, groups[g], pct, valid_from))
+    plan = ResourcePlan(team=team, quarter="Q1", year=2026, status="ready")
+    item = BacklogItem(title="i", estimate_dev_hours=1.0)
+    db_session.add_all([plan, item])
+    db_session.flush()
+    item.issue = _issue_with_group(db_session, key, team, ga)
+    db_session.flush()
+    a = _plan_assignment(db_session, plan, item, emp, date(2026, 1, 5), date(2026, 1, 16))
+    db_session.commit()
+    return plan, a
+
+
+def test_other_subgroup_transfer_inside_assignment_marks_only_after(db_session):
+    """Перевод в другую группу посреди назначения: работа на прежнюю группу —
+    «соседняя» только с даты перевода; назначение целиком не помечается."""
+    plan, a = _transfer_case(
+        db_session, "T20", "RPT-20", [("A", 100, None), ("B", 100, date(2026, 1, 12))]
+    )
+    whole, spans = _other_subgroup_marks(db_session, plan, [a])
+    assert whole == set()
+    assert spans == {a.id: [(date(2026, 1, 12), date(2026, 1, 16))]}
+
+
+def test_other_subgroup_transfer_before_assignment_marks_whole(db_session):
+    """Перевод до начала назначения — всё назначение на соседнюю группу."""
+    plan, a = _transfer_case(
+        db_session, "T21", "RPT-21", [("A", 100, None), ("B", 100, date(2026, 1, 1))]
+    )
+    whole, spans = _other_subgroup_marks(db_session, plan, [a])
+    assert whole == {a.id}
+    assert spans == {a.id: [(date(2026, 1, 5), date(2026, 1, 16))]}
+
+
+def test_other_subgroup_split_keeps_own_group(db_session):
+    """Деление 60/40 посреди назначения: группа работы остаётся одной из групп
+    человека — соседней работы нет ни в один день."""
+    plan, a = _transfer_case(
+        db_session,
+        "T22",
+        "RPT-22",
+        [("A", 100, None), ("B", 60, date(2026, 1, 12)), ("A", 40, date(2026, 1, 12))],
+    )
+    assert _other_subgroup_marks(db_session, plan, [a]) == (set(), {})
+
+
+def test_gantt_other_subgroup_ranges_after_transfer(client, db_session):
+    """Диаграмма отдаёт даты соседней работы; признак на всё назначение — false."""
+    plan, a = _transfer_case(
+        db_session, "T23", "RPT-23", [("A", 100, None), ("B", 100, date(2026, 1, 12))]
+    )
+    r = client.get(f"/api/v1/resource-planning/resource-plans/{plan.id}/gantt")
+    assert r.status_code == 200, r.text
+    out = {x["id"]: x for x in r.json()["assignments"]}[a.id]
+    assert out["other_subgroup"] is False
+    assert out["other_subgroup_ranges"] == [{"start": "2026-01-12", "end": "2026-01-16"}]
 
 
 def test_gantt_marks_assignments_outside_employee_subgroup(client, db_session):
