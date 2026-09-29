@@ -59,6 +59,12 @@ def test_group_labels():
     assert ss.group_label(whole, A, Q_START, Q_END) == ""
 
 
+def test_group_label_shows_percent_on_full_span_when_group_had_partial_span():
+    """Была на 40%, потом получила остаток — 100% пишем явно, а не молчим."""
+    records = [rec(None, (A, 40), (B, 60)), rec(date(2026, 11, 16), (A, 100))]
+    assert ss.group_label(records, A, Q_START, Q_END) == "40% до 16.11, 100% с 16.11"
+
+
 def test_distribution_label_keeps_plain_name_for_whole_quarter():
     names = {A: "Ломбард", B: "РФМ"}
     assert ss.distribution_label([rec(None, (A, 100))], Q_START, Q_END, names) == "Ломбард"

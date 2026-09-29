@@ -26,6 +26,7 @@ from app.models import (
     ScenarioRule,
 )
 from app.services import cross_team_occupancy as cto
+from app.services import subgroup_shares as ss
 from app.services import team_membership as tm
 from app.services.personal_settings import personal_for
 
@@ -75,6 +76,10 @@ class ResourceSummary:
     # Часы сотрудников команды в опорных планах команд, которые взяли их к
     # себе (там они не состоят): роль → часы. Не вычтены — справочно.
     borrowed_by_other_teams_by_role: dict[str, float] = field(default_factory=dict)
+    # Активные сотрудники команды с делением, у кого нет группы хоть в один
+    # день участия в квартале: [{employee_id, display_name}]. Блокируют
+    # утверждение сценария.
+    ungrouped_employees: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -97,7 +102,13 @@ class EmployeeBase:
     shared_with: list[str]                 # чужие команды за этот квартал
     committed_hours_all_teams: float       # часы, заложенные всеми командами
     is_overcommitted: bool                 # заложено больше календарной нормы
-    subgroup_id: Optional[str] = None      # группа внутри команды, None — нет деления
+    # Группа внутри команды, если человек весь квартал целиком в одной группе;
+    # None — деления нет, человек поделён, переведён или без группы.
+    subgroup_id: Optional[str] = None
+    # Часы по группам (ключ "" — дни без группы) и подписи участия в группе
+    # за квартал («60%», «с 15.11»). Пусто — у команды нет деления.
+    subgroup_hours: dict[str, float] = field(default_factory=dict)
+    subgroup_labels: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -200,8 +211,11 @@ class ResourceBaseService:
         # --- итерация по сотрудникам ---
         # Кто из состава ещё числится в других командах этого же квартала.
         shared_map = tm.shared_members(self.db, [team], period_start, last_day)
-        # Приписка сотрудников к группам команды. Пусто, если деления нет.
-        _, emp_subgroup = self._team_subgroups(team)
+        # Распределение по группам. Пусто, если деления нет.
+        has_groups = bool(ss.team_subgroups(self.db, team))
+        share_records = (
+            ss.load_team(self.db, team, [e.id for e in employees]) if has_groups else {}
+        )
         result_emps: list[EmployeeBase] = []
         role_totals: dict[str, float] = {}
 
@@ -218,6 +232,9 @@ class ResourceBaseService:
             )
 
             emp_intervals = intervals.get(e.id, [])
+            records = share_records.get(e.id, [])
+            # Часы по группам: день делится по доле человека в этот день.
+            by_group: dict[str, float] = {}
 
             days_out: list[EmployeeDayHours] = []
             cur = period_start
@@ -245,9 +262,11 @@ class ResourceBaseService:
                 # Обязательные работы — от полной нормы, брони других команд —
                 # поверх, не ниже нуля.
                 taken = booked.get(e.id, {}).get(cur, 0.0)
-                days_out.append(
-                    EmployeeDayHours(date=cur, hours=round(max(0.0, norm * pct - taken), 2))
-                )
+                hours = round(max(0.0, norm * pct - taken), 2)
+                days_out.append(EmployeeDayHours(date=cur, hours=hours))
+                if has_groups:
+                    for key, part in ss.split_hours(records, cur, hours).items():
+                        by_group[key] = by_group.get(key, 0.0) + part
                 cur += timedelta(days=1)
 
             total = round(sum(d.hours for d in days_out), 2)
@@ -262,6 +281,27 @@ class ResourceBaseService:
                 if tm.day_in_intervals(cur_n, emp_intervals):
                     calendar_norm += day_hours(cur_n)
                 cur_n += timedelta(days=1)
+            # Группы и подписи — по дням участия внутри квартала: у пришедшего
+            # или ушедшего посреди квартала нет дней вне команды.
+            groups: set[str] = set()
+            labels: dict[str, str] = {}
+            if has_groups:
+                lo, hi = ss.membership_bounds(emp_intervals)
+                groups = ss.groups_between(records, lo, hi)
+                labels = {g: ss.group_label(records, g, lo, hi) for g in groups}
+                # ``ss.ungrouped_members`` считает человека «без группы», если
+                # запись не покрывает первый день его участия в квартале —
+                # даже когда этот день нерабочий (например, январские
+                # праздники) и цикл по дням ниже ни разу не дойдёт до
+                # ``split_hours`` с пустой долей, поэтому ключ "" в ``by_group``
+                # сам не появится. Дублируем то же правило здесь: иначе
+                # сводка ресурса покажет человека «целиком в одной группе»
+                # (subgroup_id) там, где утверждение сценария уже блокирует
+                # его как «без группы».
+                if ss.record_on(records, lo) is None:
+                    by_group.setdefault("", 0.0)
+            for g in groups:
+                by_group.setdefault(g, 0.0)
             result_emps.append(
                 EmployeeBase(
                     employee_id=e.id,
@@ -272,7 +312,13 @@ class ResourceBaseService:
                     shared_with=others,
                     committed_hours_all_teams=committed,
                     is_overcommitted=committed > round(calendar_norm, 2) + 0.01,
-                    subgroup_id=emp_subgroup.get(e.id),
+                    subgroup_id=(
+                        next(iter(groups))
+                        if len(groups) == 1 and "" not in by_group
+                        else None
+                    ),
+                    subgroup_hours={k: round(v, 2) for k, v in by_group.items()},
+                    subgroup_labels=labels,
                 )
             )
             if e.role:
@@ -465,6 +511,14 @@ class ResourceBaseService:
         emp_role: dict[str, Optional[str]] = {}
         emp_name: dict[str, str] = {}
 
+        groups = ss.team_subgroups(self.db, team)
+        share_records = (
+            ss.load_team(self.db, team, [e.id for e in employees]) if groups else {}
+        )
+        # Часы и брони по группам: день делится по доле человека в этот день.
+        gross_by_emp_group: dict[str, dict[str, float]] = {}
+        booked_by_emp_group: dict[str, dict[str, float]] = {}
+
         for e in employees:
             abs_ranges = (
                 self.db.query(Absence)
@@ -492,8 +546,17 @@ class ResourceBaseService:
                     on_absence = any(a.start_date <= cur <= a.end_date for a in abs_ranges)
                     if not on_absence:
                         total += norm
-                        taken += min(emp_booked.get(cur, 0.0), norm * share)
+                        day_taken = min(emp_booked.get(cur, 0.0), norm * share)
+                        taken += day_taken
                         lent_hours += min(emp_lent.get(cur, 0.0), norm * share)
+                        if groups:
+                            eg = gross_by_emp_group.setdefault(e.id, {})
+                            eb = booked_by_emp_group.setdefault(e.id, {})
+                            for sg_key, part in ss.split_hours(
+                                share_records.get(e.id, []), cur, 1.0
+                            ).items():
+                                eg[sg_key] = eg.get(sg_key, 0.0) + norm * part
+                                eb[sg_key] = eb.get(sg_key, 0.0) + day_taken * part
                 cur += timedelta(days=1)
 
             gross_by_emp[e.id] = round(total, 2)
@@ -672,13 +735,14 @@ class ResourceBaseService:
         available_total = round(sum(available_by_role.values()), 2)
 
         # --- разрез по группам внутри команды ---
-        # Считаем из тех же gross_by_emp, поэтому сумма по группам сходится
-        # с итогом по команде по построению. Часы после обязательных работ
-        # роли делятся между группами по тем же часам людей (у кого свои
-        # проценты — по ним): доля группы — её часы после обязательных работ
-        # к таким же часам роли. Брони других команд — не процент: они
-        # снимаются с группы того, кого забронировали, а не делятся по доле.
-        subgroups, emp_subgroup = self._team_subgroups(team)
+        # Часы человека делятся по дням: каждый день — по его доле в группах
+        # в этот день (ключ "" — день без группы), поэтому сумма по группам
+        # сходится с итогом по команде по построению. Часы после обязательных
+        # работ роли делятся между группами по тем же часам людей (у кого
+        # свои проценты — по ним): доля группы — её часы после обязательных
+        # работ к таким же часам роли. Брони других команд — не процент: они
+        # снимаются с групп того, кого забронировали, по его доле в дни брони.
+        subgroups = [{"id": g, "name": n} for g, n in groups]
         gross_by_subgroup_role: dict[str, dict[str, float]] = {}
         available_by_subgroup_role: dict[str, dict[str, float]] = {}
         if subgroups:
@@ -698,22 +762,25 @@ class ResourceBaseService:
             booked_by_subgroup_role: dict[str, dict[str, float]] = {}
             net_by_subgroup_role: dict[str, dict[str, float]] = {}
             net_people_by_role: dict[str, float] = {}
-            for emp_id, gross in gross_by_emp.items():
+            for emp_id, per_group in gross_by_emp_group.items():
                 role = emp_role[emp_id]
                 if not role:
                     continue
                 # Внешний QA задан вручную на всю команду и группе не принадлежит.
                 if role == "qa" and scenario.external_qa_hours is not None:
                     continue
-                sg_key = emp_subgroup.get(emp_id) or ""
-                bucket = gross_by_subgroup_role.setdefault(sg_key, {})
-                bucket[role] = round(bucket.get(role, 0.0) + gross, 2)
-                taken_bucket = booked_by_subgroup_role.setdefault(sg_key, {})
-                taken_bucket[role] = taken_bucket.get(role, 0.0) + booked_by_emp[emp_id]
-                net = emp_net(emp_id)
-                net_bucket = net_by_subgroup_role.setdefault(sg_key, {})
-                net_bucket[role] = net_bucket.get(role, 0.0) + net
-                net_people_by_role[role] = net_people_by_role.get(role, 0.0) + net
+                emp_gross = gross_by_emp[emp_id]
+                emp_taken = booked_by_emp_group[emp_id]
+                net_total = emp_net(emp_id)
+                for sg_key, hours in per_group.items():
+                    bucket = gross_by_subgroup_role.setdefault(sg_key, {})
+                    bucket[role] = round(bucket.get(role, 0.0) + hours, 2)
+                    taken_bucket = booked_by_subgroup_role.setdefault(sg_key, {})
+                    taken_bucket[role] = taken_bucket.get(role, 0.0) + emp_taken.get(sg_key, 0.0)
+                    net = net_total * (hours / emp_gross) if emp_gross else 0.0
+                    net_bucket = net_by_subgroup_role.setdefault(sg_key, {})
+                    net_bucket[role] = net_bucket.get(role, 0.0) + net
+                    net_people_by_role[role] = net_people_by_role.get(role, 0.0) + net
 
             for sg_key, roles in gross_by_subgroup_role.items():
                 out: dict[str, float] = {}
@@ -725,6 +792,14 @@ class ResourceBaseService:
                         max(0.0, net_by_role.get(role, 0.0) * share - taken), 2
                     )
                 available_by_subgroup_role[sg_key] = out
+
+        ungrouped_employees = sorted(
+            (
+                {"employee_id": emp_id, "display_name": emp_name.get(emp_id, emp_id)}
+                for emp_id in ss.ungrouped_members(self.db, team, period_start, last_day)
+            ),
+            key=lambda e: (e["display_name"], e["employee_id"]),
+        )
 
         return ResourceSummary(
             year=year,
@@ -745,26 +820,5 @@ class ResourceBaseService:
             available_by_subgroup_role=available_by_subgroup_role,
             booked_by_other_teams_by_role=booked_by_role,
             borrowed_by_other_teams_by_role=lent_by_role,
+            ungrouped_employees=ungrouped_employees,
         )
-
-    def _team_subgroups(self, team: str) -> tuple[list[dict], dict[str, str]]:
-        """Группы команды и приписка сотрудников к ним.
-
-        Пустой список групп — у команды выключен признак деления.
-        """
-        from app.models import EmployeeTeam, Team
-
-        registry = self.db.query(Team).filter(Team.name == team).first()
-        if registry is None or not registry.has_subgroups:
-            return [], {}
-        subgroups = [{"id": g.id, "name": g.name} for g in registry.subgroups]
-        known = {g["id"] for g in subgroups}
-        rows = (
-            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id)
-            .filter(EmployeeTeam.team == team, EmployeeTeam.subgroup_id.isnot(None))
-            .all()
-        )
-        emp_subgroup = {
-            emp_id: sg_id for emp_id, sg_id in rows if sg_id in known
-        }
-        return subgroups, emp_subgroup
