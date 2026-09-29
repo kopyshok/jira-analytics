@@ -68,4 +68,49 @@ export const VIDEOS: Record<string, VideoInfo> = {
     src: `${BASE}team-desk-stuck.webm`,
     poster: `${BASE}team-desk-stuck.jpg`,
   },
+  'rp-views': {
+    title: 'Как смотреть план: задачи, исполнители, масштаб',
+    src: `${BASE}rp-views.webm`,
+    poster: `${BASE}rp-views.jpg`,
+  },
+  'rp-phase-card': {
+    title: 'Что показывает карточка фазы',
+    src: `${BASE}rp-phase-card.webm`,
+    poster: `${BASE}rp-phase-card.jpg`,
+  },
+  'rp-phase-drag': {
+    title: 'Как перенести фазу мышкой',
+    src: `${BASE}rp-phase-drag.webm`,
+    poster: `${BASE}rp-phase-drag.jpg`,
+  },
+  'rp-executor': {
+    title: 'Как сменить исполнителя фазы',
+    src: `${BASE}rp-executor.webm`,
+    poster: `${BASE}rp-executor.jpg`,
+  },
+  'rp-involvement': {
+    title: 'Как изменить вовлечённость на фазе',
+    src: `${BASE}rp-involvement.webm`,
+    poster: `${BASE}rp-involvement.jpg`,
+  },
+  'rp-split': {
+    title: 'Как разбить фазу на части',
+    src: `${BASE}rp-split.webm`,
+    poster: `${BASE}rp-split.jpg`,
+  },
+  'rp-predecessors': {
+    title: 'Как связать и отвязать фазы',
+    src: `${BASE}rp-predecessors.webm`,
+    poster: `${BASE}rp-predecessors.jpg`,
+  },
+  'rp-conflicts': {
+    title: 'Как разобрать конфликты плана',
+    src: `${BASE}rp-conflicts.webm`,
+    poster: `${BASE}rp-conflicts.jpg`,
+  },
+  'rp-blocked-periods': {
+    title: 'Как заблокировать период',
+    src: `${BASE}rp-blocked-periods.webm`,
+    poster: `${BASE}rp-blocked-periods.jpg`,
+  },
 };

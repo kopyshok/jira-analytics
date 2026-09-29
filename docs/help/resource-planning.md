@@ -22,7 +22,25 @@
 
 [Как построить ресурсный план](video:resource-plan-build)
 
+[Как смотреть план: задачи, исполнители, масштаб](video:rp-views)
+
+[Что показывает карточка фазы](video:rp-phase-card)
+
+[Как перенести фазу мышкой](video:rp-phase-drag)
+
 [Как перенести фазу вручную](video:resource-plan-phase)
+
+[Как сменить исполнителя фазы](video:rp-executor)
+
+[Как изменить вовлечённость на фазе](video:rp-involvement)
+
+[Как разбить фазу на части](video:rp-split)
+
+[Как связать и отвязать фазы](video:rp-predecessors)
+
+[Как разобрать конфликты плана](video:rp-conflicts)
+
+[Как заблокировать период](video:rp-blocked-periods)
 
 ---
 
