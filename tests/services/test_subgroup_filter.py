@@ -24,8 +24,8 @@ def groups(db_session):
     db_session.add_all([emp, other])
     db_session.flush()
     db_session.add_all([
-        EmployeeTeam(employee_id=emp.id, team=TEAM, is_primary=True, subgroup_id=calc.id),
-        EmployeeTeam(employee_id=other.id, team=TEAM, is_primary=True, subgroup_id=integ.id),
+        EmployeeTeam(employee_id=emp.id, team=TEAM, is_primary=True),
+        EmployeeTeam(employee_id=other.id, team=TEAM, is_primary=True),
     ])
     db_session.add_all([
         share(emp.id, TEAM, calc.id),

@@ -78,12 +78,7 @@ def _seed(db, *, has_subgroups: bool) -> str:
             role="dev", is_active=True,
         )
     )
-    db.add(
-        EmployeeTeam(
-            employee_id="e-1", team=TEAM, is_primary=True,
-            subgroup_id="sg-1" if has_subgroups else None,
-        )
-    )
+    db.add(EmployeeTeam(employee_id="e-1", team=TEAM, is_primary=True))
     if has_subgroups:
         db.add(share("e-1", TEAM, "sg-1"))
     db.add(Project(id="p-1", jira_project_id="1", key="RFA", name="RFA"))

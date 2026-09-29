@@ -28,7 +28,7 @@ def client(db_session):
 
 
 def _subgroup(db_session, key: str, team_name: str = "T1") -> str:
-    """Реальная строка группы: на Postgres внешний ключ employee_teams проверяется."""
+    """Реальная строка группы: на Postgres внешний ключ распределения проверяется."""
     row = db_session.query(Team).filter(Team.name == team_name).first()
     if row is None:
         row = Team(name=team_name, has_subgroups=True)
@@ -60,14 +60,7 @@ def _emp(db_session, name: str, subgroup: str | None, team: str = "T1") -> Emplo
     db_session.commit()
     db_session.refresh(e)
     subgroup_id = _subgroup(db_session, subgroup, team) if subgroup else None
-    db_session.add(
-        EmployeeTeam(
-            employee_id=e.id,
-            team=team,
-            is_primary=True,
-            subgroup_id=subgroup_id,
-        )
-    )
+    db_session.add(EmployeeTeam(employee_id=e.id, team=team, is_primary=True))
     if subgroup_id:
         db_session.add(share(e.id, team, subgroup_id))
     db_session.commit()

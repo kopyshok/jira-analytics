@@ -36,7 +36,6 @@ def people(db_session):
         db_session.add(
             EmployeeTeam(
                 employee_id=emp.id, team=TEAM, is_primary=True,
-                subgroup_id=group.id if group else None,
                 joined_at=date(2020, 1, 1),
             )
         )

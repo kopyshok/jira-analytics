@@ -45,7 +45,6 @@ def _dev(db, eid, subgroup_id=None, role="dev", joined_at=None):
             employee_id=eid,
             team=TEAM,
             is_primary=True,
-            subgroup_id=subgroup_id,
             joined_at=joined_at,
         )
     )

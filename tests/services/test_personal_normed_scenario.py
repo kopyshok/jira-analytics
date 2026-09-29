@@ -4,7 +4,7 @@ from datetime import date
 
 from sqlalchemy import select
 
-from app.models import EmployeeTeam, MandatoryWorkType, PlanningScenario, ScenarioRule, Team, TeamSubgroup
+from app.models import MandatoryWorkType, PlanningScenario, ScenarioRule, Team, TeamSubgroup
 from app.services.resource_base_service import ResourceBaseService
 from tests.services.normed_factory import _erp, _personal
 from tests.services.xteam_factory import add_item, book, join_team, make_employee, make_plan
@@ -24,7 +24,6 @@ def _groups(db, people):
     for i, (emp, sg) in enumerate(people):
         db.add(TeamSubgroup(id=sg, team_id="t-erp", name=sg, sort_order=i))
         db.flush()
-        db.query(EmployeeTeam).filter_by(employee_id=emp.id, team="ERP").one().subgroup_id = sg
         db.add(share(emp.id, "ERP", sg))
 
 

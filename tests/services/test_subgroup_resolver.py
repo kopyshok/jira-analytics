@@ -23,11 +23,7 @@ def setup(db_session):
     emp = Employee(jira_account_id="acc-1", display_name="Иванов")
     db_session.add(emp)
     db_session.flush()
-    db_session.add(
-        EmployeeTeam(
-            employee_id=emp.id, team=TEAM, is_primary=True, subgroup_id=integ.id
-        )
-    )
+    db_session.add(EmployeeTeam(employee_id=emp.id, team=TEAM, is_primary=True))
     db_session.add(share(emp.id, TEAM, integ.id))
     db_session.commit()
     return {"team": team, "calc": calc, "integ": integ, "emp": emp}

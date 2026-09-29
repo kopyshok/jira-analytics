@@ -76,14 +76,8 @@ def ctx(db_session: Session):
     )
     db_session.add_all(
         [
-            EmployeeTeam(
-                id="et-1", employee_id="e-1", team="T1", is_primary=True,
-                subgroup_id="sg-1",
-            ),
-            EmployeeTeam(
-                id="et-2", employee_id="e-2", team="T1", is_primary=True,
-                subgroup_id="sg-2",
-            ),
+            EmployeeTeam(id="et-1", employee_id="e-1", team="T1", is_primary=True),
+            EmployeeTeam(id="et-2", employee_id="e-2", team="T1", is_primary=True),
         ]
     )
     db_session.add_all([
@@ -114,8 +108,6 @@ def test_snapshot_freezes_subgroup(db_session: Session, ctx):
 
 
 def test_snapshot_survives_employee_move(db_session: Session, ctx):
-    row = db_session.query(EmployeeTeam).filter_by(employee_id="e-1").one()
-    row.subgroup_id = "sg-2"
     # Перевод оформлен датированной записью (как сделал бы SubgroupShareService),
     # а не переписыванием базовой строки распределения.
     db_session.add(share("e-1", "T1", "sg-2", valid_from=date(2026, 5, 15)))
