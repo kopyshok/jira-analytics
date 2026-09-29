@@ -3,7 +3,8 @@
 // Слой не перехватывает клики (pointer-events: none) и лежит выше модальных
 // окон, выпадающих списков и панелей (максимальный z-index).
 import type { Locator, Page } from '@playwright/test';
-import { writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /** Куда кладутся готовые ролики и обложки (попадают в сборку как статика). */
@@ -46,7 +47,9 @@ function overlayScript() {
     observer.observe(document, { childList: true });
   }
 
+  // Номер версии в логотипе прячем: ролик переживает несколько выпусков.
   const css = `
+    span[title^="Версия "] { visibility: hidden !important; }
     #__director { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; }
     #__director * { pointer-events: none; box-sizing: border-box; }
     #__director .d-scrim { position: fixed; inset: 0; background: rgba(6, 8, 14, 0.7);
@@ -222,13 +225,24 @@ export class Director {
   /**
    * Закрыть страницу и сохранить public/help-videos/<id>.webm и <id>.jpg.
    * Вызывается в конце сценария: упавшая съёмка не затирает готовые файлы.
+   * Запись пережимается (VP9): в 3–4 раза меньше, текст читается. Нужен ffmpeg в PATH.
    */
   async save(id: string): Promise<void> {
     const video = this.page.video();
     if (!video) throw new Error('Запись видео не включена в конфигурации');
     if (!this.posterJpeg) throw new Error('Не снята обложка: вызовите poster()');
     await this.page.close();
-    await video.saveAs(`${OUT_DIR}${id}.webm`);
+    const raw = `${OUT_DIR}${id}.raw.webm`;
+    await video.saveAs(raw);
+    try {
+      execFileSync('ffmpeg', [
+        '-y', '-loglevel', 'error', '-i', raw,
+        '-c:v', 'libvpx-vp9', '-crf', '48', '-b:v', '0', '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1', '-an',
+        `${OUT_DIR}${id}.webm`,
+      ]);
+    } finally {
+      rmSync(raw, { force: true });
+    }
     writeFileSync(`${OUT_DIR}${id}.jpg`, this.posterJpeg);
   }
 

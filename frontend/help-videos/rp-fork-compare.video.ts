@@ -10,7 +10,8 @@ import { phaseBar, prepareQuarterPlan } from './rp-setup.ts';
 
 const LABEL = 'Вариант Б';
 
-test('rp-fork-compare', async ({ page }) => {
+// Придержан: в кадре ошибки раздела (см. справку «Ресурсное планирование»); снять после исправления.
+test.skip('rp-fork-compare', async ({ page }) => {
   const d = new Director(page);
   await d.install();
 
