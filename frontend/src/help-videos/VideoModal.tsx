@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Modal } from 'antd';
 import { VIDEOS } from './videos';
 
@@ -6,14 +7,22 @@ interface Props {
   onClose: () => void;
 }
 
-/** Окно с роликом-инструкцией почти на весь экран. Неизвестный id — ничего не показывает. */
+/**
+ * Окно с роликом-инструкцией почти на весь экран. Неизвестный id — ничего не показывает.
+ * После закрытия заголовок и ролик остаются до конца анимации исчезновения (afterClose),
+ * иначе окно пустеет прямо во время затухания. При «уменьшить движение» ролик не стартует сам.
+ */
 export default function VideoModal({ id, onClose }: Props) {
-  const video = id ? VIDEOS[id] : undefined;
+  const [shownId, setShownId] = useState(id);
+  if (id !== null && id !== shownId) setShownId(id);
+  const video = shownId ? VIDEOS[shownId] : undefined;
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
   return (
     <Modal
-      open={!!video}
+      open={id !== null && !!VIDEOS[id]}
       onCancel={onClose}
+      afterClose={() => setShownId(null)}
       footer={null}
       title={video?.title}
       width="min(1400px, 94vw)"
@@ -21,10 +30,10 @@ export default function VideoModal({ id, onClose }: Props) {
     >
       {video && (
         <video
-          key={id}
+          key={shownId}
           src={video.src}
           poster={video.poster}
-          autoPlay
+          autoPlay={!reduceMotion}
           loop
           muted
           controls
