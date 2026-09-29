@@ -401,10 +401,13 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             </div>
           </div>
 
-          {/* Нормированные работы */}
+          {/* Рабочее время: календарь за вычетом отсутствий, до нормированных работ */}
           <div style={rowStyle({ borderTop: 'none' })}>
-            <div style={{ ...CELL_LABEL, background: DARK_THEME.cardBg, fontWeight: 600, color: DARK_THEME.textPrimary, whiteSpace: 'nowrap' as const }}>
-              Нормированные работы
+            <div
+              title="Часы по производственному календарю за вычетом отпусков и отсутствий. Нормированные работы — строками ниже."
+              style={{ ...CELL_LABEL, background: DARK_THEME.cardBg, fontWeight: 600, color: DARK_THEME.textPrimary, whiteSpace: 'nowrap' as const }}
+            >
+              Рабочее время
             </div>
             {summary.roles.map((role) => (
               <div key={role} style={{ ...CELL, ...roleCellStyle(role), fontWeight: 600 }}>
@@ -732,7 +735,11 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             .join(', ');
         const booked = byRole(summary.booked_by_other_teams_by_role);
         const borrowed = byRole(summary.borrowed_by_other_teams_by_role);
-        if (!booked && !borrowed) return null;
+        const normed = byRole(summary.primary_normed_by_role);
+        const normedWho = (summary.primary_normed_people ?? [])
+          .map((p) => `${p.display_name} — ${Math.round(p.hours).toLocaleString('ru')} ч`)
+          .join('\n');
+        if (!booked && !borrowed && !normed) return null;
         return (
           <div
             style={{
@@ -745,6 +752,12 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             {booked && (
               <div>
                 Занято в планах других команд этого квартала: {booked}. Эти часы уже вычтены из «На бэклог».
+              </div>
+            )}
+            {normed && (
+              <div title={normedWho}>
+                Нормированные работы основной команды у общих сотрудников: {normed}. Эти часы уже
+                вычтены из «На бэклог».
               </div>
             )}
             {borrowed && <div>Привлечены другими командами: {borrowed} (не вычтено).</div>}

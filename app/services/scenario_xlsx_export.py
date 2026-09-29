@@ -4,7 +4,7 @@ See docs/superpowers/specs/2026-04-25-scenario-xlsx-export-redesign.md
 for layout, colours and contents of each sheet.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Optional
@@ -19,6 +19,7 @@ from app.models import (
     ScenarioAllocation, ScenarioRule,
 )
 from app.services import opo_policy
+from app.services import subgroup_shares as ss
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.continuation_service import ContinuationService
 from app.services.planning_service import should_skip_in_plan
@@ -121,6 +122,11 @@ class ScenarioExportContext:
     # {allocation_id: {is_continuation, spent_total, ...}} — для skip-логики
     # «continuation без override» в total-расчётах.
     continuation_info: dict[str, dict]
+    # {allocation_id: название группы} — только у команды с группами; правило
+    # то же, что у секций на экране. Пусто — колонки «Группа» нет.
+    group_by_alloc: dict[str, str] = field(default_factory=dict)
+    # Названия групп в порядке реестра + «Без группы» — порядок строк.
+    group_order: list[str] = field(default_factory=list)
 
 
 INCLUDED_HEADERS = [
@@ -136,6 +142,7 @@ EXCLUDED_HEADERS = [
     "Итого, ч", "Цели", "Аналитик", "Разработчик",
 ]
 EXCLUDED_WIDTHS = [14, 50, 8, 18, 11, 11, 11, 11, 12, 28, 22, 22]
+NO_GROUP = "Без группы"
 
 
 def _demand_by_role(alloc: ScenarioAllocation) -> tuple[float, float, float, float]:
@@ -175,8 +182,12 @@ def _analyst_name(item: BacklogItem) -> str:
 
 def _initiative_row_mid(
     alloc: ScenarioAllocation, *, included: bool, opo_off: bool = False,
+    group: Optional[str] = None,
 ) -> list:
-    """Row values for Mid-11 (included) or Mid-10 (excluded) sheets."""
+    """Row values for Mid-11 (included) or Mid-10 (excluded) sheets.
+
+    ``group`` — название группы идеи; задано только у команды с группами.
+    """
     item = alloc.backlog_item
     issue = getattr(item, "issue", None)
     key = issue.key if issue else ""
@@ -203,6 +214,8 @@ def _initiative_row_mid(
     developer = getattr(item, "developer", None)
     base.append(_analyst_name(item))
     base.append(developer.display_name if developer else "")
+    if group is not None:
+        base.append(group)
     return base
 
 
@@ -513,6 +526,24 @@ class ScenarioXlsxExporter:
             self.scenario_id
         )
 
+        # Группа идеи — как у секций сценария: своя группа задачи, иначе группа
+        # главного исполнителя на опорный день квартала.
+        group_by_alloc: dict[str, str] = {}
+        group_order: list[str] = []
+        if scenario.team and resource_summary.subgroups:
+            names = {g["id"]: g["name"] for g in resource_summary.subgroups}
+            records = ss.load_team(self.db, scenario.team)
+            for a in allocations:
+                item = a.backlog_item
+                gid = ss.work_group(
+                    item.issue.effective_subgroup_id if item.issue else None,
+                    records.get(item.assignee_employee_id or "", []),
+                    period_start,
+                    period_end - timedelta(days=1),
+                )
+                group_by_alloc[a.id] = names.get(gid or "", NO_GROUP)
+            group_order = [g["name"] for g in resource_summary.subgroups] + [NO_GROUP]
+
         return ScenarioExportContext(
             scenario=scenario,
             allocations=allocations,
@@ -530,6 +561,8 @@ class ScenarioXlsxExporter:
             period_end=period_end,
             role_by_display_name=role_by_display_name,
             continuation_info=continuation_info,
+            group_by_alloc=group_by_alloc,
+            group_order=group_order,
         )
 
     # === Sheets ===
@@ -857,6 +890,24 @@ class ScenarioXlsxExporter:
 
         ws.freeze_panes = "A4"
 
+    # === Группы (только у команды с делением) ===
+
+    @staticmethod
+    def _group_header(ctx: ScenarioExportContext) -> list[str]:
+        return ["Группа"] if ctx.group_by_alloc else []
+
+    @classmethod
+    def _text_tail(cls, ctx: ScenarioExportContext) -> int:
+        """Текстовые колонки в конце строки: «Цели», «Аналитик», «Разработчик»
+        и, у команды с группами, «Группа» — в итог не суммируются."""
+        return 3 + len(cls._group_header(ctx))
+
+    @staticmethod
+    def _group_rank(ctx: ScenarioExportContext, a: ScenarioAllocation) -> int:
+        """Порядок строк по группам, как секции на экране; без групп — 0."""
+        group = ctx.group_by_alloc.get(a.id)
+        return ctx.group_order.index(group) if group in ctx.group_order else 0
+
     def _sheet_included(self, ws, ctx: ScenarioExportContext) -> None:
         from openpyxl.formatting.rule import ColorScaleRule  # type: ignore[import-untyped]
 
@@ -865,6 +916,7 @@ class ScenarioXlsxExporter:
         rows = sorted(
             [a for a in ctx.allocations if a.included_flag],
             key=lambda a: (
+                self._group_rank(ctx, a),
                 a.backlog_item.priority is None,
                 a.backlog_item.priority if a.backlog_item.priority is not None else 0,
                 a.backlog_item.title,
@@ -877,7 +929,7 @@ class ScenarioXlsxExporter:
             f"Сценарий: {ctx.scenario.name} — {status} · "
             f"Включено ({len(rows)} задач)"
         )
-        headers = _drop_opo(INCLUDED_HEADERS, self._opo_off)
+        headers = _drop_opo(INCLUDED_HEADERS, self._opo_off) + self._group_header(ctx)
         _write_title_strip(ws, title, columns=len(headers))
 
         # Header row at row 2
@@ -890,7 +942,9 @@ class ScenarioXlsxExporter:
 
         # Data rows
         for r_idx, alloc in enumerate(rows, start=3):
-            values = _initiative_row_mid(alloc, included=True, opo_off=self._opo_off)
+            values = _initiative_row_mid(
+                alloc, included=True, opo_off=self._opo_off, group=ctx.group_by_alloc.get(alloc.id),
+            )
             for c_idx, val in enumerate(values, start=1):
                 c = ws.cell(row=r_idx, column=c_idx, value=val)
                 if c_idx in (5, 6, 7, 8):
@@ -928,7 +982,8 @@ class ScenarioXlsxExporter:
             start_row=total_row_idx, start_column=1,
             end_row=total_row_idx, end_column=4,
         )
-        sum_cols = list(range(5, len(headers) - 2))
+        first_text = len(headers) - self._text_tail(ctx) + 1
+        sum_cols = list(range(5, first_text))
         for c_idx in sum_cols:
             if rows:
                 total = sum(
@@ -942,8 +997,8 @@ class ScenarioXlsxExporter:
             c.fill = _Style.HEADER_FILL
             c.number_format = "#,##0.#"
             c.alignment = _Style.RIGHT
-        # Пустые ячейки «Цели»/«Аналитик»/«Разработчик» — заливка для целостности полосы
-        for c_idx in range(len(headers) - 2, len(headers) + 1):
+        # Пустые ячейки текстового хвоста — заливка для целостности полосы
+        for c_idx in range(first_text, len(headers) + 1):
             c = ws.cell(row=total_row_idx, column=c_idx, value="")
             c.fill = _Style.HEADER_FILL
 
@@ -964,7 +1019,8 @@ class ScenarioXlsxExporter:
                 )
 
         # Column widths
-        for c_idx, w in enumerate(_drop_opo(INCLUDED_WIDTHS, self._opo_off), start=1):
+        widths = _drop_opo(INCLUDED_WIDTHS, self._opo_off) + [22] * len(self._group_header(ctx))
+        for c_idx, w in enumerate(widths, start=1):
             ws.column_dimensions[get_column_letter(c_idx)].width = w
 
         ws.freeze_panes = "A3"
@@ -981,6 +1037,7 @@ class ScenarioXlsxExporter:
         rows = sorted(
             [a for a in ctx.allocations if not a.included_flag],
             key=lambda a: (
+                self._group_rank(ctx, a),
                 a.backlog_item.priority is None,
                 a.backlog_item.priority if a.backlog_item.priority is not None else 0,
                 a.backlog_item.title,
@@ -988,7 +1045,7 @@ class ScenarioXlsxExporter:
         )
 
         title = f"Сценарий: {ctx.scenario.name} · Не вошло ({len(rows)} задач)"
-        headers = _drop_opo(EXCLUDED_HEADERS, self._opo_off)
+        headers = _drop_opo(EXCLUDED_HEADERS, self._opo_off) + self._group_header(ctx)
         _write_title_strip(ws, title, columns=len(headers))
 
         for c_idx, h in enumerate(headers, start=1):
@@ -999,7 +1056,9 @@ class ScenarioXlsxExporter:
         ws.row_dimensions[2].height = 22
 
         for r_idx, alloc in enumerate(rows, start=3):
-            values = _initiative_row_mid(alloc, included=False, opo_off=self._opo_off)
+            values = _initiative_row_mid(
+                alloc, included=False, opo_off=self._opo_off, group=ctx.group_by_alloc.get(alloc.id),
+            )
             for c_idx, val in enumerate(values, start=1):
                 c = ws.cell(row=r_idx, column=c_idx, value=val)
                 c.fill = _Style.GREY_BG
@@ -1033,7 +1092,8 @@ class ScenarioXlsxExporter:
             start_row=total_row_idx, start_column=1,
             end_row=total_row_idx, end_column=4,
         )
-        sum_cols = list(range(5, len(headers) - 2))
+        first_text = len(headers) - self._text_tail(ctx) + 1
+        sum_cols = list(range(5, first_text))
         for c_idx in sum_cols:
             if rows:
                 total = sum(
@@ -1047,8 +1107,8 @@ class ScenarioXlsxExporter:
             c.fill = _Style.HEADER_FILL
             c.number_format = "#,##0.#"
             c.alignment = _Style.RIGHT
-        # Пустые ячейки «Цели»/«Аналитик»/«Разработчик» — заливка для целостности полосы
-        for c_idx in range(len(headers) - 2, len(headers) + 1):
+        # Пустые ячейки текстового хвоста — заливка для целостности полосы
+        for c_idx in range(first_text, len(headers) + 1):
             c = ws.cell(row=total_row_idx, column=c_idx, value="")
             c.fill = _Style.HEADER_FILL
 

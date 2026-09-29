@@ -15,12 +15,14 @@ export interface ScheduledBlock {
   role_labels?: string[];
   /** Имена сотрудников периода. */
   employee_names?: string[];
+  /** Кого период не закрывает: в этом месяце у них период того же вида по роли или лично. */
+  not_applied?: { employee_id: string; employee_name: string; month: string; by: 'role' | 'employee' }[];
   created_at: string;
 }
 
 export type ScheduledBlockInput = Omit<
   ScheduledBlock,
-  'id' | 'created_at' | 'work_type_label' | 'role_labels' | 'employee_names'
+  'id' | 'created_at' | 'work_type_label' | 'role_labels' | 'employee_names' | 'not_applied'
 > & { work_type_id: string };
 
 export interface ResourcePlan {
