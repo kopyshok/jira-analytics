@@ -307,7 +307,9 @@ export default function BacklogPage() {
     refreshFromJiraMut.mutate(
       { onProgress: (e) => setRefreshProgress(e), signal: ctl.signal, keys },
       {
-        onSuccess: () => notification.success({ title: 'Данные обновлены из Jira' }),
+        onSuccess: (res) => (res.jira_unavailable
+          ? notification.warning({ title: 'Jira не подключена — обновлены только данные сервиса' })
+          : notification.success({ title: 'Данные обновлены из Jira' })),
         onError: (e) => {
           if ((e as Error).name === 'AbortError') return;
           notification.error({ title: 'Ошибка', description: (e as Error).message });
@@ -346,7 +348,7 @@ export default function BacklogPage() {
         ),
     },
     {
-      title: 'Идея', dataIndex: 'title',
+      title: 'Идея', dataIndex: 'title', width: 320,
       render: (v: string, r: BacklogItemResponse) => (
         <Space orientation="vertical" size={0}>
           <Typography.Text strong>
@@ -958,6 +960,13 @@ export default function BacklogPage() {
     fixed: 'left' as const,
   };
 
+  // Ширина прокрутки = сумма ширин видимых колонок + колонка раскрытия дерева.
+  // Если задать меньше суммы, таблица отнимает место у колонок и «Идея»
+  // схлопывается до нуля — названия идут по букве в столбик.
+  const scrollX = (cols: { width?: number | string; hidden?: boolean }[]) => ({
+    x: cols.reduce((sum, c) => sum + (!c.hidden && typeof c.width === 'number' ? c.width : 0), nestedExpandable.columnWidth),
+  });
+
   const quarterlyTable = (
     <div>
       <Button
@@ -981,7 +990,7 @@ export default function BacklogPage() {
                 loading={quarterly.isLoading}
                 size="small"
                 pagination={false}
-                scroll={{ x: true }}
+                scroll={scrollX(quarterlyColumns)}
               />
             );
           }
@@ -1008,7 +1017,7 @@ export default function BacklogPage() {
                     loading={quarterly.isLoading}
                     size="small"
                     pagination={false}
-                    scroll={{ x: true }}
+                    scroll={scrollX(quarterlyColumns)}
                     expandable={nestedExpandable}
                   />
                 ),
@@ -1023,7 +1032,7 @@ export default function BacklogPage() {
           loading={quarterly.isLoading}
           pagination={false}
           size="small"
-          scroll={{ x: 1400 }}
+          scroll={scrollX(quarterlyColumns)}
           rowClassName={offPlanRowClass}
           columns={quarterlyColumns}
           expandable={nestedExpandable}
@@ -1032,6 +1041,12 @@ export default function BacklogPage() {
     </div>
   );
 
+  const activeColumns = [
+    ...baseColumns(true),
+    inPlanColumn,
+    { title: 'Действия', width: 210, fixed: 'right' as const, render: (_: unknown, r: BacklogItemResponse) => actionsActive(r) },
+  ];
+
   const activeTable = (
     <Table<BacklogItemResponse>
       dataSource={activeShown}
@@ -1039,13 +1054,9 @@ export default function BacklogPage() {
       loading={active.isLoading}
       pagination={false}
       size="small"
-      scroll={{ x: 1400 }}
+      scroll={scrollX(activeColumns)}
       rowClassName={offPlanRowClass}
-      columns={[
-        ...baseColumns(true),
-        inPlanColumn,
-        { title: 'Действия', width: 210, fixed: 'right' as const, render: (_, r) => actionsActive(r) },
-      ]}
+      columns={activeColumns}
       expandable={nestedExpandable}
     />
   );
@@ -1101,7 +1112,7 @@ export default function BacklogPage() {
               loading={archived.isLoading}
               size="small"
               pagination={false}
-              scroll={{ x: true }}
+              scroll={scrollX(archiveColumns)}
               expandable={nestedExpandable}
             />
           </div>
@@ -1113,7 +1124,7 @@ export default function BacklogPage() {
           loading={archived.isLoading}
           pagination={{ pageSize: 50 }}
           size="small"
-          scroll={{ x: 1400 }}
+          scroll={scrollX(archiveColumns)}
           columns={archiveColumns}
           expandable={nestedExpandable}
         />

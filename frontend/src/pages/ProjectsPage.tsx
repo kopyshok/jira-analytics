@@ -4,6 +4,8 @@ import { ProjectsList } from '../components/projects/ProjectsList';
 import { ProjectDetailPanel } from '../components/projects/ProjectDetailPanel';
 import { PortfolioView } from '../components/projects/PortfolioView';
 import type { ProjectListFiltersState } from '../types/projects';
+import { useRegisterHelp } from '../contexts/HelpContext';
+import projectsHelp from '../../../docs/help/projects.md?raw';
 import { DARK_THEME } from '../utils/constants';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -12,6 +14,7 @@ const CURRENT_QUARTER = (Math.floor(new Date().getMonth() / 3) + 1) as 1 | 2 | 3
 export default function ProjectsPage() {
   const navigate = useNavigate();
   const { key } = useParams<{ key?: string }>();
+  useRegisterHelp('Проекты', projectsHelp);
   const [filters, setFilters] = useState<ProjectListFiltersState>({
     search: '',
     statusCategory: '',

@@ -10,8 +10,6 @@ import type { ProjectDetail, ProjectSummary } from '../../types/projects';
 import { useRegenerateSummary } from '../../hooks/useProjectSummary';
 import { AiGate } from '../shared/AiGate';
 import { trackAction } from '../../lib/usage/track';
-import projectsHelp from '../../../../docs/help/projects.md?raw';
-import { useRegisterHelp } from '../../contexts/HelpContext';
 
 type ViewMode = 'analysis' | 'presentation' | 'plan';
 
@@ -51,7 +49,6 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
   const regen = useRegenerateSummary();
   const { message } = App.useApp();
   const [exporting, setExporting] = React.useState(false);
-  useRegisterHelp('Проекты', projectsHelp);
 
   const handleRegen = () => {
     if (!detail) return;
