@@ -120,7 +120,11 @@ function PersonalSettingModal({
     percent_of_norm: percents[wt.id] ?? 0,
   }));
   const total = sumPercent(rows);
-  const canSubmit = !!employeeId && !!year && !!quarter;
+  // Без min/max у поля: иначе оно молча подтягивает ввод к границе (0 → 1%).
+  const involvementError = involvementPct != null && (involvementPct < 1 || involvementPct > 100)
+    ? 'Вовлечённость — от 1 до 100%'
+    : null;
+  const canSubmit = !!employeeId && !!year && !!quarter && !involvementError;
 
   const handleOk = () => {
     if (!employeeId) return;
@@ -199,10 +203,14 @@ function PersonalSettingModal({
               style={{ width: 140 }}
               value={involvementPct}
               onChange={setInvolvementPct}
-              min={1}
-              max={100}
+              status={involvementError ? 'error' : undefined}
               placeholder="как обычно"
             />
+            {involvementError && (
+              <Typography.Text type="danger" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                {involvementError}
+              </Typography.Text>
+            )}
           </div>
         </Space>
         <Space align="center">
@@ -289,8 +297,13 @@ export default function InvolvementDefaultsDrawer({
     setValuePct(Math.round(row.involvement * 100));
   };
 
+  // Без min/max у поля — та же причина, что в личной записи: не подменять ввод молча.
+  const valueError = valuePct != null && (valuePct < 0 || valuePct > 100)
+    ? 'Вовлечённость — от 0 до 100%'
+    : null;
+
   const handleSave = () => {
-    if (!team || valuePct == null) return;
+    if (!team || valuePct == null || valueError) return;
     if (editingRow) {
       const body: Partial<{
         role: string; effective_year: number; effective_quarter: number; involvement: number;
@@ -463,8 +476,7 @@ export default function InvolvementDefaultsDrawer({
                   style={{ width: 110 }}
                   value={valuePct}
                   onChange={setValuePct}
-                  min={0}
-                  max={100}
+                  status={valueError ? 'error' : undefined}
                   step={5}
                   suffix="%"
                   placeholder="0–100"
@@ -473,12 +485,14 @@ export default function InvolvementDefaultsDrawer({
                   type="primary"
                   icon={editingRow ? undefined : <PlusOutlined />}
                   loading={editingRow ? update.isPending : create.isPending}
+                  disabled={valuePct == null || !!valueError}
                   onClick={handleSave}
                 >
                   {editingRow ? 'Сохранить' : 'Добавить'}
                 </Button>
                 {editingRow && <Button onClick={resetTeamRuleForm}>Отмена</Button>}
               </Space>
+              {valueError && <Typography.Text type="danger" style={{ fontSize: 12 }}>{valueError}</Typography.Text>}
               <Table
                 rowKey="id"
                 size="small"

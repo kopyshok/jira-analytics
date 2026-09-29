@@ -84,9 +84,35 @@ def test_refresh_goes_to_jira_when_token_only_in_server_config(db_session, monke
         r = TestClient(app).post("/api/v1/backlog/refresh-from-jira")
         assert r.status_code == 200, r.text
         assert r.json()["jira_refreshed"] == 1
+        assert r.json()["jira_unavailable"] is False
     finally:
         app.dependency_overrides.clear()
     assert refresh.await_args.args[0] == ["RFA-1"]
+
+
+def test_refresh_without_jira_credentials_reports_jira_unavailable(db_session):
+    """Данных доступа к Jira нет — обновляются только данные сервиса, и ответ
+    говорит об этом, чтобы интерфейс не писал «Данные обновлены из Jira»."""
+    import json
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post("/api/v1/backlog/refresh-from-jira")
+        assert r.status_code == 200, r.text
+        assert r.json()["jira_unavailable"] is True
+
+        r = client.post("/api/v1/backlog/refresh-from-jira/stream", json={"keys": []})
+        assert r.status_code == 200, r.text
+        events = [
+            json.loads(line[len("data: "):])
+            for line in r.text.splitlines()
+            if line.startswith("data: ")
+        ]
+        done = [e for e in events if e["type"] == "done"]
+        assert done and done[0]["jira_unavailable"] is True
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_link_jira_pulls_estimates_from_issue(db_session):

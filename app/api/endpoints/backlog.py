@@ -269,6 +269,8 @@ class RefreshResponse(BaseModel):
     archived: int = 0
     restored: int = 0
     jira_refreshed: int = 0
+    # Jira не подключена (нет данных доступа): обновлены только данные сервиса.
+    jira_unavailable: bool = False
 
 
 # === Helpers ===
@@ -956,7 +958,8 @@ async def _perform_refresh(
     «Обновить видимые»). Остальные строки не трогаем вовсе: ни в Jira за
     ними не ходим, ни в архив по ним не переводим.
 
-    Возвращает счётчики created / updated / archived / restored / jira_refreshed.
+    Возвращает счётчики created / updated / archived / restored / jira_refreshed
+    и признак ``jira_unavailable`` — Jira не настроена, шаг 2 пропущен.
     Исключения (``CancelledError`` / ``JiraClientError``) пробрасываются —
     их разбирает вызывающий эндпоинт.
     """
@@ -1109,6 +1112,7 @@ async def _perform_refresh(
         archived=archived,
         restored=restored,
         jira_refreshed=jira_refreshed,
+        jira_unavailable=jira_client is None,
     )
 
 
@@ -1168,6 +1172,7 @@ async def refresh_from_jira_stream(
                     "archived": result.archived,
                     "restored": result.restored,
                     "jira_refreshed": result.jira_refreshed,
+                    "jira_unavailable": result.jira_unavailable,
                 })
             except asyncio.CancelledError:
                 await queue.put({"type": "cancelled"})
