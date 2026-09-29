@@ -1,5 +1,6 @@
 """Схемы реестра команд и групп внутри команды."""
 
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -30,3 +31,19 @@ class SubgroupIn(BaseModel):
 class EmployeeSubgroupIn(BaseModel):
     team: str
     subgroup_id: Optional[str] = None
+
+
+class SubgroupShareItem(BaseModel):
+    subgroup_id: str
+    percent: int
+
+
+class SubgroupShareRecordIn(BaseModel):
+    team: str
+    valid_from: Optional[date] = None
+    shares: List[SubgroupShareItem]
+
+
+class SubgroupShareRecordOut(BaseModel):
+    valid_from: Optional[date] = None
+    shares: List[SubgroupShareItem]

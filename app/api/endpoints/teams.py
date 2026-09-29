@@ -8,9 +8,10 @@
 задачах, участии сотрудников, сценариях и планах не меняются.
 """
 
-from typing import List
+from datetime import date
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth_deps import require_admin
@@ -20,9 +21,14 @@ from app.schemas.team import (
     EmployeeSubgroupIn,
     SubgroupIn,
     SubgroupOut,
+    SubgroupShareItem,
+    SubgroupShareRecordIn,
+    SubgroupShareRecordOut,
     TeamOut,
     TeamPatch,
 )
+from app.services import subgroup_shares as ss
+from app.services.subgroup_share_service import SubgroupShareService
 from app.services.team_registry_service import TeamRegistryService
 
 
@@ -106,4 +112,68 @@ def set_employee_subgroup(
     employee_id: str, data: EmployeeSubgroupIn, db: Session = Depends(get_db)
 ) -> None:
     """Приписать сотрудника к группе внутри команды."""
-    TeamRegistryService(db).assign_employee(employee_id, data.team, data.subgroup_id)
+    try:
+        TeamRegistryService(db).assign_employee(employee_id, data.team, data.subgroup_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+def _records_out(records: ss.Records) -> List[SubgroupShareRecordOut]:
+    return [
+        SubgroupShareRecordOut(
+            valid_from=r.valid_from,
+            shares=[SubgroupShareItem(subgroup_id=g, percent=p) for g, p in r.shares],
+        )
+        for r in records
+    ]
+
+
+@router.get(
+    "/employees/{employee_id}/subgroup-shares",
+    response_model=List[SubgroupShareRecordOut],
+)
+def get_subgroup_shares(
+    employee_id: str, team: str = Query(...), db: Session = Depends(get_db)
+) -> List[SubgroupShareRecordOut]:
+    """История распределения сотрудника по группам команды."""
+    return _records_out(SubgroupShareService(db).history(employee_id, team))
+
+
+@router.put(
+    "/employees/{employee_id}/subgroup-shares",
+    response_model=List[SubgroupShareRecordOut],
+)
+def put_subgroup_shares(
+    employee_id: str, data: SubgroupShareRecordIn, db: Session = Depends(get_db)
+) -> List[SubgroupShareRecordOut]:
+    """Перевод или деление с даты. Запись с той же датой заменяется."""
+    if len({s.subgroup_id for s in data.shares}) != len(data.shares):
+        raise HTTPException(status_code=422, detail="Группа указана дважды")
+    try:
+        records = SubgroupShareService(db).set_record(
+            employee_id,
+            data.team,
+            data.valid_from,
+            {s.subgroup_id: s.percent for s in data.shares},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return _records_out(records)
+
+
+@router.delete(
+    "/employees/{employee_id}/subgroup-shares",
+    response_model=List[SubgroupShareRecordOut],
+)
+def delete_subgroup_share(
+    employee_id: str,
+    team: str = Query(...),
+    valid_from: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+) -> List[SubgroupShareRecordOut]:
+    """Удалить ошибочную запись. Без даты — базовую «с начала участия»."""
+    try:
+        records = SubgroupShareService(db).delete_record(employee_id, team, valid_from)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return _records_out(records)

@@ -4,8 +4,9 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import EmployeeTeam, Issue, Team, TeamSubgroup
+from app.models import EmployeeSubgroupShare, EmployeeTeam, Issue, Team, TeamSubgroup
 from app.services.subgroup_resolver import SubgroupResolver
+from app.services.subgroup_share_service import SubgroupShareService
 
 
 class TeamRegistryService:
@@ -81,6 +82,29 @@ class TeamRegistryService:
         self.db.query(Issue).filter(
             Issue.assigned_subgroup_id == subgroup_id
         ).update({Issue.assigned_subgroup_id: None}, synchronize_session=False)
+        # Запись без этой группы не даёт 100% — удалить целиком, человек
+        # возвращается к предыдущей записи или попадает в «без группы».
+        affected = (
+            self.db.query(
+                EmployeeSubgroupShare.employee_id,
+                EmployeeSubgroupShare.team,
+                EmployeeSubgroupShare.valid_from,
+            )
+            .filter(EmployeeSubgroupShare.subgroup_id == subgroup_id)
+            .distinct()
+            .all()
+        )
+        for emp_id, team, valid_from in affected:
+            q = self.db.query(EmployeeSubgroupShare).filter(
+                EmployeeSubgroupShare.employee_id == emp_id,
+                EmployeeSubgroupShare.team == team,
+            )
+            q = (
+                q.filter(EmployeeSubgroupShare.valid_from.is_(None))
+                if valid_from is None
+                else q.filter(EmployeeSubgroupShare.valid_from == valid_from)
+            )
+            q.delete(synchronize_session=False)
         team_name = group.team.name
         self.db.delete(group)
         self.db.commit()
@@ -89,15 +113,16 @@ class TeamRegistryService:
     def assign_employee(
         self, employee_id: str, team: str, subgroup_id: Optional[str]
     ) -> None:
-        """Приписать сотрудника к группе во всех его строках участия в команде."""
-        rows = (
-            self.db.query(EmployeeTeam)
-            .filter(EmployeeTeam.employee_id == employee_id, EmployeeTeam.team == team)
-            .all()
-        )
-        for row in rows:
-            row.subgroup_id = subgroup_id
-        self.db.commit()
-        # Приписка сотрудника — третья ступень лесенки, поэтому её правка
-        # меняет действующую группу у задач, где она угадана по исполнителю.
-        SubgroupResolver(self.db).recompute_effective(team=team)
+        """Первая группа сотрудника: запись «100 % с начала участия».
+
+        Переводы и деление задаются датированными записями через
+        ``SubgroupShareService``; здесь меняется только базовая запись.
+        """
+        svc = SubgroupShareService(self.db)
+        if subgroup_id:
+            svc.set_record(employee_id, team, None, {subgroup_id: 100})
+            return
+        try:
+            svc.delete_record(employee_id, team, None)
+        except LookupError:
+            pass
