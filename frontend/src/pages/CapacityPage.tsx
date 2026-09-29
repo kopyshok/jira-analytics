@@ -305,6 +305,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
               primary: next.includes(primary ?? '') ? primary : next[0],
             })}
             onOpenChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
+            data-tour="capacity-teams-select"
             loading={jiraTeams.isFetching}
             tagRender={(props) => {
               const isPrimary = props.value === primary;
