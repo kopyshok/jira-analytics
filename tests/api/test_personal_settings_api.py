@@ -156,12 +156,14 @@ def test_duplicate_employee_quarter_409(client, bus, data):
     bus.publish.assert_not_called()
 
 
-@pytest.mark.parametrize("involvement", [-0.1, 1.5])
+@pytest.mark.parametrize("involvement", [-0.1, 0.0, 1.5])
 def test_involvement_out_of_range_422(client, bus, data, involvement):
+    """0% не задать: планировщик отдал бы фазы человеку с потолком дня 0 ч.
+    Пусто — «как обычно» — можно (см. test_custom_empty_and_by_role)."""
     r = client.post(URL, json=_body(data["p"], involvement=involvement))
 
     assert r.status_code == 422
-    assert r.json()["detail"] == "Вовлечённость — от 0 до 100%"
+    assert r.json()["detail"] == "Вовлечённость — от 1 до 100%"
     bus.publish.assert_not_called()
 
 

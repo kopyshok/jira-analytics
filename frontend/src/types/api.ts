@@ -1302,3 +1302,30 @@ export interface InvolvementDefault {
   effective_quarter: number;
   involvement: number;
 }
+
+export interface PersonalNormedItem {
+  work_type_id: string;
+  label: string;
+  percent_of_norm: number;
+}
+
+export interface PersonalSetting {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  employee_role: string | null;
+  effective_year: number;
+  effective_quarter: number;
+  involvement: number | null;
+  normed_custom: boolean;
+  normed: PersonalNormedItem[];
+}
+
+export interface PersonalSettingInput {
+  employee_id: string;
+  effective_year: number;
+  effective_quarter: number;
+  involvement: number | null;
+  normed_custom: boolean;
+  normed: { work_type_id: string; percent_of_norm: number }[];
+}

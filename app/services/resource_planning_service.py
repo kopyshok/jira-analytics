@@ -31,6 +31,7 @@ from app.services import scheduled_blocks as sb
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.jira_developer import jira_developers_for_items
 from app.services.involvement_default_service import effective_for_phase, team_defaults
+from app.services.personal_settings import personal_for
 from app.services.plan_common import PHASE_LABEL
 from app.services.rcpsp_leveler import RcpspLeveler
 
@@ -247,6 +248,9 @@ class ResourcePlanningService:
         # Вовлечённость по ролям из справочника команды: подставляется там,
         # где у задачи своё значение не задано.
         self._involvement_defaults: Dict[str, float] = {}
+        # Личная вовлечённость людей плана на квартал плана: сотрудник → значение.
+        # Главнее задачи и справочника (см. app/services/personal_settings.py).
+        self._personal_involvement: Dict[str, float] = {}
 
     @staticmethod
     def _daily_role_capacity(
@@ -265,9 +269,18 @@ class ResourcePlanningService:
         inv = 1.0 if involvement is None else max(0.0, min(1.0, involvement))
         return avail_hours * inv * max(1, parallel_count)
 
-    def _involvement_for_phase(self, item: BacklogItem, phase: str) -> Optional[float]:
-        """Коэф вовлечённости фазы: своё значение задачи, иначе справочник команды."""
-        return effective_for_phase(item, phase, self._involvement_defaults)
+    def _involvement_for_phase(
+        self, item: BacklogItem, phase: str, employee_id: Optional[str] = None,
+    ) -> Optional[float]:
+        """Коэф вовлечённости фазы: личная вовлечённость исполнителя
+        ``employee_id`` на квартал плана, иначе своё значение задачи, иначе
+        справочник команды. Фаза без исполнителя (тестирование) — без личной."""
+        return effective_for_phase(
+            item,
+            phase,
+            self._involvement_defaults,
+            self._personal_involvement.get(employee_id) if employee_id else None,
+        )
 
     def build_availability(
         self,
@@ -657,6 +670,16 @@ class ResourcePlanningService:
         )
         borrowed = {e.id for e in borrowed_rows}
         employees = team_employees + borrowed_rows
+        # Личная вовлечённость людей плана на квартал плана — одним чтением.
+        plan_quarter = cto.quarter_num(plan.quarter)
+        if plan.year and plan_quarter:
+            self._personal_involvement = {
+                eid: s.involvement
+                for eid, s in personal_for(
+                    self.db, [e.id for e in employees], plan.year, plan_quarter
+                ).items()
+                if s.involvement is not None
+            }
         if not employees:
             # Фазы положить не на кого: план остаётся пустым, а причину
             # называют командные «Нет аналитика» / «Нет разработчика» вместо
@@ -796,7 +819,7 @@ class ResourcePlanningService:
             if not a.start_date or not a.hours_allocated or a.hours_allocated <= 0:
                 continue
             bi = self.db.get(BacklogItem, a.backlog_item_id)
-            inv = self._involvement_for_phase(bi, a.phase) if bi else None
+            inv = self._involvement_for_phase(bi, a.phase, a.employee_id) if bi else None
             if a.employee_id is None:
                 # Тестирование — без сотрудника: часы по рабочим дням календаря.
                 new_end, daily_json = self._extend_window_for_hours(
@@ -937,7 +960,7 @@ class ResourcePlanningService:
                                     + [_earliest_after(p, a) for p in done_parts]
                                 )
                             )
-                            inv = self._involvement_for_phase(item, phase)
+                            inv = self._involvement_for_phase(item, phase, a.employee_id)
                             if a.employee_id is None:
                                 # Тестирование — без сотрудника: по календарю.
                                 new_end, daily_json = self._extend_window_for_hours(
@@ -1116,18 +1139,18 @@ class ResourcePlanningService:
                     last_end: Optional[date] = (
                         opo_pinned.end_date if opo_pinned is not None else None
                     )
-                    opo_involvement = self._involvement_for_phase(item, "opo")
-                    opo_daily_cap = self._daily_role_capacity(
-                        avail_hours=8.0,
-                        involvement=opo_involvement,
-                        parallel_count=1,
-                    )
                     for role, (emp_id, p_hours) in zip(("analyst", "dev"), parts):
                         if p_hours <= 0 or role == pinned_part:
                             continue
                         if not emp_id:
                             unstaffed[(item.id, "opo")][role] = p_hours
                             continue
+                        # Потолок дня — по вовлечённости исполнителя своей части.
+                        opo_daily_cap = self._daily_role_capacity(
+                            avail_hours=8.0,
+                            involvement=self._involvement_for_phase(item, "opo", emp_id),
+                            parallel_count=1,
+                        )
                         segments, daily = self._allocate_hours_with_breakdown(
                             emp_id, p_hours, earliest_start, q_end_extended, remaining,
                             daily_capacity=opo_daily_cap,
@@ -1188,7 +1211,7 @@ class ResourcePlanningService:
                 cal_days = max(1.0, cal_days / max(1, parallel_n))
 
                 # Дневная ёмкость фазы для сотрудника (involvement × parallel).
-                phase_involvement = self._involvement_for_phase(item, phase)
+                phase_involvement = self._involvement_for_phase(item, phase, employee_id)
                 phase_daily_cap = self._daily_role_capacity(
                     avail_hours=8.0,
                     involvement=phase_involvement,
@@ -1357,7 +1380,7 @@ class ResourcePlanningService:
                 else None
             )
             split_inv = (
-                self._involvement_for_phase(split_item, a.phase)
+                self._involvement_for_phase(split_item, a.phase, a.employee_id)
                 if split_item
                 else None
             )
@@ -1797,6 +1820,8 @@ class ResourcePlanningService:
         self._involvement_defaults = team_defaults(
             self.db, plan.team, plan.year, quarter or None,
         )
+        # Личная вовлечённость — после загрузки людей плана (compute_schedule).
+        self._personal_involvement = {}
 
     def _load_employees(self, plan: ResourcePlan) -> List[Employee]:
         """Загрузить активных сотрудников, состоявших в команде в окне плана.
@@ -2693,7 +2718,11 @@ class ResourcePlanningService:
                     emp_days[d_old] = min(orig_days[d_old], current + float(h_used))
 
                 item_obj = self.db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
-                inv = self._involvement_for_phase(item_obj, a.phase) if item_obj else None
+                inv = (
+                    self._involvement_for_phase(item_obj, a.phase, a.employee_id)
+                    if item_obj
+                    else None
+                )
                 parallel_n = _resolve_parallel_count_legacy(item_obj, a.phase) if item_obj else 1
                 phase_cap = self._daily_role_capacity(
                     avail_hours=8.0,

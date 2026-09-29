@@ -92,6 +92,7 @@ export function invalidateForEntity(entity: string, qc: ReturnType<typeof useQue
       qc.invalidateQueries({ queryKey: ['planning'] });
       qc.invalidateQueries({ queryKey: ['backlog'] });
       qc.invalidateQueries({ queryKey: ['dashboard-projects'] });
+      qc.invalidateQueries({ queryKey: ['personal-settings'] });
       break;
     case 'worklogs':
       qc.invalidateQueries({ queryKey: ['employees'] });

@@ -4,10 +4,30 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.models import MandatoryWorkType, ScenarioRule
+from app.models import (
+    EmployeePersonalNormed,
+    EmployeePersonalSetting,
+    MandatoryWorkType,
+    ScenarioRule,
+)
 from tests.services.xteam_factory import add_item, book, join_team, make_employee, make_plan
 
 D = date.fromisoformat
+
+
+def _personal(db, employee, normed=None, involvement=None, year=2026, quarter=1):
+    """Личная настройка сотрудника с квартала: ``normed`` — вид работ → процент
+    нормы; None — по правилам роли, {} — нормированных работ нет."""
+    s = EmployeePersonalSetting(
+        employee_id=employee.id, effective_year=year, effective_quarter=quarter,
+        involvement=involvement, normed_custom=normed is not None,
+    )
+    db.add(s)
+    db.flush()
+    for wt_id, pct in (normed or {}).items():
+        db.add(EmployeePersonalNormed(setting_id=s.id, work_type_id=wt_id, percent_of_norm=pct))
+    db.flush()
+    return s
 
 
 def _types(db):

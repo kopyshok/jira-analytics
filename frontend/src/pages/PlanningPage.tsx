@@ -672,7 +672,7 @@ export default function PlanningPage() {
                 Сравнить
               </Button>
             </Tooltip>
-            <Tooltip title="Справочник вовлечённости по ролям">
+            <Tooltip title="Вовлечённость и нормированные работы">
               <Button onClick={() => setInvolvementOpen(true)}>
                 Вовлечённость
               </Button>
@@ -1084,6 +1084,7 @@ export default function PlanningPage() {
         open={involvementOpen}
         onClose={() => setInvolvementOpen(false)}
         team={scenario?.team ?? null}
+        scenarioId={scenarioId}
       />
       <ApproveCelebration visible={celebrate} />
       <HoursBreakdownDrawer

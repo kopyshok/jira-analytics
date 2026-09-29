@@ -30,6 +30,7 @@ from app.models import (
 )
 from app.services import team_membership as tm
 from app.services.involvement_default_service import effective_for_phase, teams_defaults
+from app.services.personal_settings import personal_for
 from app.services.plan_common import _plan_sort_key, _quarter_variants, quarter_bounds
 
 
@@ -125,8 +126,9 @@ class ExternalBooking:
     # План, для которого собраны брони, уступает человека всем командам: он
     # в команде плана состоит, но она у него не основная.
     yields_here: bool = False
-    # Вовлечённость фазы — как её считал планировщик команды брони: своё
-    # значение задачи, иначе справочник команды на квартал плана. None — не задана.
+    # Вовлечённость фазы — как её считал планировщик команды брони: личная
+    # вовлечённость человека, иначе своё значение задачи, иначе справочник
+    # команды — на квартал плана брони. None — не задана.
     involvement: Optional[float] = None
     # Задача брони: по ней основная команда человека выбирает вид работ.
     backlog_item_id: Optional[str] = None
@@ -232,9 +234,9 @@ def external_bookings(
     У каждой брони — ``is_borrowing``: команда брони человеку не домашняя в
     квартале её плана; ``yields_here``: команда ``team`` у него не основная;
     ``involvement`` — вовлечённость фазы.
-    Шесть запросов на любой объём: опорные планы двух кварталов, задачи
-    планов квартала, назначения, периоды участия их людей и справочник
-    вовлечённости их команд.
+    Константа запросов на любой объём: опорные планы двух кварталов, задачи
+    планов квартала, назначения, периоды участия их людей, справочник
+    вовлечённости их команд и личные настройки людей (чтение на квартал).
     """
     ids = [i for i in dict.fromkeys(employee_ids) if i]
     if not ids or not year or not quarter:
@@ -297,6 +299,13 @@ def external_bookings(
     defaults = teams_defaults(
         db, {(r.team, *period_of[r.plan_id]) for r in by_plan.values()}
     )
+    # Личная вовлечённость человека — тоже на квартал опорного плана брони:
+    # одно чтение на квартал, не на человека.
+    booked_ids = list({a.employee_id for a in rows if a.employee_id})
+    personal = {
+        period: personal_for(db, booked_ids, *period)
+        for period in {period_of[a.plan_id] for a in rows}
+    }
     out: List[ExternalBooking] = []
     for a in rows:
         if not a.employee_id or a.start_date is None or a.end_date is None:
@@ -310,6 +319,7 @@ def external_bookings(
         lo, hi = prev_bounds if a.plan_id in prev_ids else cur_bounds
         periods = membership.get(a.employee_id, ())
         bi = a.backlog_item
+        own = personal[period_of[a.plan_id]].get(a.employee_id)
         out.append(
             ExternalBooking(
                 assignment_id=a.id,
@@ -327,7 +337,10 @@ def external_bookings(
                 and _member_of(periods, team, *cur_bounds)
                 and team not in _home_teams(periods, *cur_bounds),
                 involvement=effective_for_phase(
-                    bi, a.phase, defaults[(ref.team, *period_of[a.plan_id])]
+                    bi,
+                    a.phase,
+                    defaults[(ref.team, *period_of[a.plan_id])],
+                    own.involvement if own is not None else None,
                 )
                 if bi is not None
                 else None,
@@ -384,28 +397,36 @@ def base_other_share(
     по справочнику вовлечённости его домашней команды (основной, а без неё —
     всех его команд; берётся наименьшая вовлечённость) для его роли:
     разработчик — «Разработка», аналитик, РП и консультант — «Анализ».
-    Нет значения — доли нет. Три запроса на любой объём.
+    Личная вовлечённость человека на квартал главнее справочника — при любой
+    роли. Нет значения — доли нет. Константа запросов на любой объём.
     """
     # Сервис планировщика сам импортирует этот модуль — отсюда только лениво.
     from app.services.resource_planning_service import ANALYST_ROLES, DEV_ROLES
 
     if not year or not quarter:
         return {}
+    employees = list(employees)
+    out: Dict[str, float] = {
+        eid: 1.0 - max(0.0, min(1.0, s.involvement))
+        for eid, s in personal_for(db, [e.id for e in employees], year, quarter).items()
+        if s.involvement is not None
+    }
     phase_of = {}
     for e in employees:
+        if e.id in out:
+            continue
         role = (e.role or "").lower()
         phase = "dev" if role in DEV_ROLES else "analyst" if role in ANALYST_ROLES else None
         if phase:
             phase_of[e.id] = phase
     if not phase_of:
-        return {}
+        return out
     lo, hi = quarter_bounds(year, quarter)
     membership = tm.membership_rows(db, list(phase_of))
     homes = {eid: _home_teams(membership.get(eid, ()), lo, hi) for eid in phase_of}
     defaults = teams_defaults(
         db, {(t, year, quarter) for teams in homes.values() for t in teams}
     )
-    out: Dict[str, float] = {}
     for eid, phase in phase_of.items():
         invs = [
             defaults[(t, year, quarter)][phase]

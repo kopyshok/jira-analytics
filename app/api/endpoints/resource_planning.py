@@ -32,7 +32,12 @@ from app.services import normed_reserve as nr
 from app.services import scheduled_blocks as sb
 from app.services.assignee_candidates import candidate_groups
 from app.services.event_bus import EventBroadcaster, get_event_bus
-from app.services.involvement_default_service import effective_for_phase, team_defaults
+from app.services.involvement_default_service import (
+    PHASE_FIELD,
+    effective_for_phase,
+    team_defaults,
+)
+from app.services.personal_settings import personal_for
 from app.services.plan_quality_service import PlanQualityService
 from app.services.resource_planning_service import (
     ResourcePlanningService,
@@ -534,12 +539,17 @@ class AbsenceWindowItem(BaseModel):
     is_holiday: bool = False
 
 
+# Откуда взята вовлечённость фазы — см. PhaseCalcDetails.involvement_source.
+InvolvementSource = Literal["employee", "task", "team"]
+
+
 class PhaseCalcDetails(BaseModel):
     duration_days_jira: Optional[int] = None
     involvement_pct: Optional[int] = None
-    # Откуда взята вовлечённость: "task" — задана у задачи, "team" — из
+    # Откуда взята вовлечённость: "employee" — личная вовлечённость
+    # исполнителя на квартал плана, "task" — задана у задачи, "team" — из
     # справочника команды, None — не задана нигде (считаем как 100%).
-    involvement_source: Optional[str] = None
+    involvement_source: Optional[InvolvementSource] = None
     parallel_count: int = 1
     role_pct: Optional[int] = None
     daily_capacity_hours: float
@@ -1750,11 +1760,28 @@ def get_gantt(
             used = _daily_used(assignments_raw, avail)
             # Доля дня вне задачи по вовлечённости фаз дня — этого плана и
             # броней: остаток дня с задачей, который берут нормированные работы.
+            # Вовлечённость — как у планировщика: личная исполнителя главнее.
             inv_defaults = _plan_involvement_defaults(db, plan.id)
+            quarter = cto.quarter_num(plan.quarter)
+            personal_inv = (
+                {
+                    eid: s.involvement
+                    for eid, s in personal_for(
+                        db, [e.id for e in plan_employees], plan.year, quarter
+                    ).items()
+                }
+                if plan.year and quarter
+                else {}
+            )
             own_phases = [
                 (
                     a.employee_id,
-                    effective_for_phase(a.backlog_item, a.phase, inv_defaults),
+                    effective_for_phase(
+                        a.backlog_item,
+                        a.phase,
+                        inv_defaults,
+                        personal_inv.get(a.employee_id),
+                    ),
                     _assignment_days(a, avail[a.employee_id]),
                 )
                 for a in assignments_raw
@@ -1767,7 +1794,6 @@ def get_gantt(
                 own_phases
                 + [(b.employee_id, b.involvement, b.daily_hours) for b in bookings]
             )
-            quarter = cto.quarter_num(plan.quarter)
             # Прочие работы есть каждый рабочий день: в день без задач (и у
             # задач без вовлечённости) — доля человека по справочнику его
             # домашней команды. Нужна отметкам и конфликтам пересечений.
@@ -3796,18 +3822,44 @@ def _plan_involvement_defaults(db: Session, plan_id: Optional[str]) -> Dict[str,
     return team_defaults(db, plan.team, plan.year, quarter or None)
 
 
+def _personal_involvement(
+    db: Session, plan_id: Optional[str], employee_id: Optional[str],
+) -> Optional[float]:
+    """Личная вовлечённость исполнителя на квартал плана; None — не задана."""
+    if not plan_id or not employee_id:
+        return None
+    plan = db.get(ResourcePlan, plan_id)
+    quarter = cto.quarter_num(plan.quarter) if plan is not None else None
+    if plan is None or not plan.year or not quarter:
+        return None
+    s = personal_for(db, [employee_id], plan.year, quarter).get(employee_id)
+    return s.involvement if s is not None else None
+
+
 def _effective_involvement(
     db: Session, a: "ResourcePlanAssignment", bi: "BacklogItem",
-) -> Optional[float]:
-    """Вовлечённость фазы так же, как её считает планировщик."""
-    return effective_for_phase(bi, a.phase, _plan_involvement_defaults(db, a.plan_id))
+) -> tuple[Optional[float], Optional[InvolvementSource]]:
+    """Вовлечённость фазы так же, как её считает планировщик, и её источник:
+    "employee" — личная исполнителя, "task" — своё значение задачи, "team" —
+    справочник команды; (None, None) — не задана нигде."""
+    personal = _personal_involvement(db, a.plan_id, a.employee_id)
+    inv = effective_for_phase(
+        bi, a.phase, _plan_involvement_defaults(db, a.plan_id), personal
+    )
+    if inv is None:
+        return None, None
+    if personal is not None:
+        return inv, "employee"
+    return inv, "task" if getattr(bi, PHASE_FIELD[a.phase]) is not None else "team"
 
 
 def _build_phase_calc(
     a: "ResourcePlanAssignment",
-    db: Session,
+    bi: Optional["BacklogItem"],
+    inv: Optional[float],
+    inv_source: Optional[InvolvementSource],
 ) -> Optional[PhaseCalcDetails]:
-    bi = db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
+    """Расчёт фазы; ``inv``/``inv_source`` — из `_effective_involvement`."""
     if not bi:
         return None
     phase = a.phase
@@ -3832,17 +3884,14 @@ def _build_phase_calc(
     if dur_field is None or inv_field is None:
         return None
     duration = getattr(bi, dur_field, None)
-    own_inv = getattr(bi, inv_field, None)
-    inv = _effective_involvement(db, a, bi)
     parallel = getattr(bi, par_field, None) if par_field else None
-    inv_pct = int(inv * 100) if inv else None
-    daily_cap = 8.0 * (inv or 1.0) * (parallel or 1)
+    # 0% — это 0%, а не «не задана»: планировщик даёт такой фазе 0 ч в день.
+    inv_pct = int(inv * 100) if inv is not None else None
+    daily_cap = 8.0 * (1.0 if inv is None else inv) * (parallel or 1)
     return PhaseCalcDetails(
         duration_days_jira=int(duration) if duration else None,
         involvement_pct=inv_pct,
-        involvement_source=(
-            "task" if own_inv is not None else ("team" if inv is not None else None)
-        ),
+        involvement_source=inv_source,
         parallel_count=int(parallel or 1),
         role_pct=None,
         daily_capacity_hours=round(daily_cap, 2),
@@ -4092,8 +4141,11 @@ def explain_assignment(
     # «Доступно» в детализации = календарь × involvement, чтобы единообразно
     # для всех фаз (Анализ/Разработка/Тестирование/ОПЭ) показывать сколько
     # часов реально может уйти на этот проект, а не голый календарь.
+    # Считается один раз: та же вовлечённость — в блоке расчёта фазы ниже.
     _bi_for_inv = db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
-    _inv_raw = _effective_involvement(db, a, _bi_for_inv) if _bi_for_inv else None
+    _inv_raw, _inv_source = (
+        _effective_involvement(db, a, _bi_for_inv) if _bi_for_inv else (None, None)
+    )
     _inv_value = float(_inv_raw) if _inv_raw is not None else 1.0
 
     # QA — внешний ресурс без сотрудника. Доступность по дням = 8ч × involvement_qa
@@ -4224,7 +4276,7 @@ def explain_assignment(
             "is_live": True,
         })
 
-    _phase_calc = _build_phase_calc(a, db)
+    _phase_calc = _build_phase_calc(a, _bi_for_inv, _inv_raw, _inv_source)
     _hours_summary = _build_hours_summary(a, full_avail)
 
     return {

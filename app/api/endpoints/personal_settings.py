@@ -93,8 +93,10 @@ def _serialize(db: Session, settings: List[EmployeePersonalSetting]) -> List[dic
 def _validate(db: Session, req: PersonalSettingIn, exclude_id: Optional[str] = None) -> None:
     if db.get(Employee, req.employee_id) is None:
         raise HTTPException(status_code=422, detail="Сотрудник не найден")
-    if req.involvement is not None and not 0 <= req.involvement <= 1:
-        raise HTTPException(status_code=422, detail="Вовлечённость — от 0 до 100%")
+    # 0% не бывает: планировщик отдал бы фазы человеку с потолком дня 0 ч.
+    # Пусто — «как обычно».
+    if req.involvement is not None and not 0 < req.involvement <= 1:
+        raise HTTPException(status_code=422, detail="Вовлечённость — от 1 до 100%")
     if req.normed_custom:
         ids = [n.work_type_id for n in req.normed]
         if len(ids) != len(set(ids)):

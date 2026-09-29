@@ -14,7 +14,7 @@ from app.models import (
 )
 from app.services import normed_reserve as nr
 from app.services.scheduled_blocks import BlockHit
-from tests.services.normed_factory import D, _erp, _rules, _types, _weekdays
+from tests.services.normed_factory import D, _erp, _personal, _rules, _types, _weekdays
 from tests.services.xteam_factory import book, join_team, make_employee, make_plan
 
 Q = (2026, 1)  # 2026-01-01 … 2026-03-31; календарь без аномалий — 8 ч в будни
@@ -350,3 +350,111 @@ def test_other_team_work_is_listed_per_role(db_session):
         )
     # Роль строки — тот же ключ, что у роли в сводке запаса.
     assert round(next(x for x in r.roles["analyst"] if x.work_type_id == support).other_teams, 1) == 20.0
+
+
+def test_personal_zero_normed_leaves_reserve_to_the_other(db_session):
+    """Пример спеки 5: у Шутова «свои» нормированные 0% — запас роли и
+    остатки видов только у Пряничникова."""
+    types, p, s, _item = _erp(db_session)
+    _personal(db_session, s, normed={}, involvement=1.0)
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    norm = r.people[p.id].norm
+    rows = {x.work_type_id: x for x in r.roles["dev"]}
+    assert round(rows[types["technical_tasks"].id].planned, 2) == round(0.10 * norm, 2)
+    assert round(rows[types["organizational"].id].planned, 2) == round(0.10 * norm, 2)
+    assert r.people[s.id].share == {}
+    assert r.people[s.id].norm == norm  # норма та же, нормированных работ нет
+    # Остаток «Орг. вопросов» — весь Пряничникову, не пополам.
+    assert round(r.people[p.id].share[types["organizational"].id], 2) == round(0.10 * norm, 2)
+    assert round(r.people[p.id].undated, 1) == round(0.45 * norm, 1)
+
+
+def test_personal_percent_adds_to_role_reserve_and_splits_remainder(db_session):
+    """У Шутова своё — только сопровождение 5%: запас сопровождения —
+    15% нормы Пряничникова + 5% своей, остаток делится 15 : 5."""
+    types, p, s, _item = _erp(db_session)
+    support = types["support_consult"].id
+    _personal(db_session, s, normed={support: 5})
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    norm = r.people[p.id].norm
+    rows = {x.work_type_id: x for x in r.roles["dev"]}
+    assert round(rows[support].planned, 2) == round(0.20 * norm, 2)
+    assert {wt: round(h, 2) for wt, h in r.people[s.id].share.items()} == {
+        support: round(0.05 * norm, 2)
+    }
+    assert round(r.people[p.id].share[support], 2) == round(0.15 * norm, 2)
+    assert round(r.people[p.id].share[types["minor_change"].id], 2) == round(0.20 * norm, 2)
+
+
+def test_personal_type_missing_in_role_rules_becomes_role_row(db_session):
+    types = _types(db_session)
+    p = make_employee(db_session, "Пряничников", "ERP", role="dev")
+    s = make_employee(db_session, "Шутов", "ERP", role="dev")
+    sc, _plan = make_plan(db_session, "ERP")
+    org, minor = types["organizational"].id, types["minor_change"].id
+    db_session.add(ScenarioRule(scenario_id=sc.id, role="dev", work_type_id=org, percent_of_norm=10))
+    _personal(db_session, s, normed={minor: 20})
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    rows = {x.work_type_id: x for x in r.roles["dev"]}
+    assert set(rows) == {org, minor}
+    assert round(rows[minor].planned, 2) == round(0.20 * 512, 2)
+    assert {wt: round(h, 2) for wt, h in r.people[s.id].share.items()} == {minor: 102.4}
+    assert {wt: round(h, 2) for wt, h in r.people[p.id].share.items()} == {org: 51.2}
+
+
+def test_team_without_rules_reserve_from_personal_percents(db_session):
+    """Правил у команды нет, но у разработчика свои 20% «Сопровождения» — запас
+    есть: 20% его нормы, как вычитает база сценария."""
+    types = _types(db_session)
+    p = make_employee(db_session, "Пряничников", "ERP", role="dev")
+    make_employee(db_session, "Шутов", "ERP", role="dev")
+    make_plan(db_session, "ERP")
+    support = types["support_consult"].id
+    _personal(db_session, p, normed={support: 20})
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    assert r is not None
+    [row] = r.roles["dev"]
+    assert row.work_type_id == support
+    assert round(row.planned, 2) == round(0.20 * 512, 2)
+    assert {wt: round(h, 2) for wt, h in r.people[p.id].share.items()} == {support: 102.4}
+
+
+def test_team_without_rules_and_zero_personal_percents_has_no_reserve(db_session):
+    """Без правил и с личными «нет нормированных работ» или 0% — запаса нет."""
+    types = _types(db_session)
+    p = make_employee(db_session, "Пряничников", "ERP", role="dev")
+    s = make_employee(db_session, "Шутов", "ERP", role="dev")
+    make_plan(db_session, "ERP")
+    _personal(db_session, p, normed={})
+    _personal(db_session, s, normed={types["support_consult"].id: 0})
+    db_session.commit()
+
+    assert nr.team_reserve(db_session, "ERP", *Q) is None
+
+
+def test_query_count_with_personal_settings_does_not_grow(db_session):
+    types, _p, s, _item = _erp(db_session)
+    support = types["support_consult"].id
+    _personal(db_session, s, normed={support: 5})
+    db_session.commit()
+    small = _count_queries(db_session, lambda: nr.team_reserve(db_session, "ERP", *Q))
+
+    for i in range(5):
+        e = make_employee(db_session, f"Ещё {i}", "ERP", role="dev")
+        _personal(db_session, e, normed={support: i})
+    db_session.commit()
+    big = _count_queries(db_session, lambda: nr.team_reserve(db_session, "ERP", *Q))
+
+    assert big == small
