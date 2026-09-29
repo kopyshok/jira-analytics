@@ -5,6 +5,7 @@ import {
   deleteSubgroupShare,
   getSubgroupShares,
   getTeamRegistry,
+  getUngroupedEmployees,
   putSubgroupShare,
   renameSubgroup,
   setEmployeeSubgroup,
@@ -85,6 +86,7 @@ export const useSetEmployeeSubgroup = () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
       qc.invalidateQueries({ queryKey: ['planning'] });
+      qc.invalidateQueries({ queryKey: ['teams', 'ungrouped'] });
     },
   });
 };
@@ -94,6 +96,13 @@ export const useSubgroupShares = (employeeId: string | null, team: string | null
     queryKey: ['subgroup-shares', employeeId, team],
     queryFn: () => getSubgroupShares(employeeId!, team!),
     enabled: !!employeeId && !!team,
+  });
+
+/** Сотрудники без группы в квартале — плашка в «Ресурсах» и «Сценариях». */
+export const useUngroupedEmployees = (teams: string[], year: number, quarter: number) =>
+  useQuery({
+    queryKey: ['teams', 'ungrouped', teams, year, quarter],
+    queryFn: () => getUngroupedEmployees(teams, year, quarter),
   });
 
 // Распределение меняет группу задач, ресурс сценария и витрины.
@@ -106,6 +115,7 @@ const invalidateShares = (qc: ReturnType<typeof useQueryClient>) => {
   qc.invalidateQueries({ queryKey: ['gantt'] });
   qc.invalidateQueries({ queryKey: ['resource-plans'] });
   qc.invalidateQueries({ queryKey: ['dashboard', 'hours-balance'] });
+  qc.invalidateQueries({ queryKey: ['teams', 'ungrouped'] });
 };
 
 export const usePutSubgroupShare = () => {

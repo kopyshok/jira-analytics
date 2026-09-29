@@ -51,8 +51,8 @@ interface Props {
   onEmployeeRowClick?: (employeeId: string | null) => void;
   /** Секции групп команды: {id инициативы: название группы}. */
   sectionByItem?: Record<string, string>;
-  /** Группа сотрудника внутри команды: для метки «из другой группы». */
-  subgroupByEmployee?: Record<string, string>;
+  /** Группы сотрудника внутри команды: для метки «из другой группы». */
+  subgroupByEmployee?: Record<string, string[]>;
   collapsedSections?: string[];
   onToggleSection?: (name: string, collapsed: boolean) => void;
   /** Брони людей плана в опорных планах других команд (свои и привлечённые). */

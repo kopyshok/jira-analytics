@@ -8,13 +8,15 @@ import { fmtHours } from '../../utils/normedReserve';
 interface Props {
   rows: EmployeeLoadOut[];
   /**
-   * Сотрудник -> имя группы внутри команды. Пусто — команда не делится,
-   * строки идут сплошным списком, как раньше.
+   * Сотрудник -> его группы внутри команды (первая — главная). Пусто —
+   * команда не делится, строки идут сплошным списком, как раньше.
    *
    * План остаётся общекомандным сознательно: занятость человека считается
-   * сквозь все группы, иначе перегруз в соседней группе не виден.
+   * сквозь все группы, иначе перегруз в соседней группе не виден. Строка
+   * человека — одна, под его главной группой; при делении между группами
+   * рядом с именем показывается пометка «общий».
    */
-  subgroupByEmployee?: Record<string, string>;
+  subgroupByEmployee?: Record<string, string[]>;
   /** Порядок групп; «Без группы» всегда последняя. */
   subgroupOrder?: string[];
   /** Фазы плана — подсказка дня: часы и задачи этого плана. */
@@ -205,8 +207,9 @@ export default function EmployeeLoadHeatmap({
   );
   const hasSubgroups = Object.keys(subgroupByEmployee ?? {}).length > 0;
   const grouped = hasSubgroups || borrowedIds.size > 0;
+  // Главная группа — первая в списке (сервер отдаёт по убыванию доли).
   const groupOf = (employeeId: string) =>
-    borrowedIds.has(employeeId) ? BORROWED : (subgroupByEmployee?.[employeeId] ?? '');
+    borrowedIds.has(employeeId) ? BORROWED : (subgroupByEmployee?.[employeeId]?.[0] ?? '');
   const sectionTitle = (group: string) => group || (hasSubgroups ? 'Без группы' : 'Команда');
 
   // Порядок групп из реестра; «Без группы» — после них, «Привлечённые» — в самом конце.
@@ -329,6 +332,8 @@ export default function EmployeeLoadHeatmap({
             const avgColor = avg > 100 ? { bg: 'hsl(4 78% 52%)' } : loadColor(avg);
             // У привлечённого вместо «пришёл / выбыл» — из какой он команды.
             const note = row.is_borrowed ? borrowedNote(row) : moveNote(row);
+            // Больше одной группы — пометка «общий», строка всё равно одна.
+            const employeeGroups = subgroupByEmployee?.[row.employee_id] ?? [];
             const group = groupOf(row.employee_id);
             const prev = ri === 0 ? null : groupOf(orderedRows[ri - 1].row.employee_id);
             const header = grouped && group !== prev ? (
@@ -376,34 +381,53 @@ export default function EmployeeLoadHeatmap({
                   }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                    <span
-                      role={onEmployeeClick ? 'button' : undefined}
-                      tabIndex={onEmployeeClick ? 0 : undefined}
-                      aria-pressed={onEmployeeClick ? selectedIds.includes(row.employee_id) : undefined}
-                      onClick={onEmployeeClick ? () => onEmployeeClick(row.employee_id) : undefined}
-                      onKeyDown={onEmployeeClick ? (e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          onEmployeeClick(row.employee_id);
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                      <span
+                        role={onEmployeeClick ? 'button' : undefined}
+                        tabIndex={onEmployeeClick ? 0 : undefined}
+                        aria-pressed={onEmployeeClick ? selectedIds.includes(row.employee_id) : undefined}
+                        onClick={onEmployeeClick ? () => onEmployeeClick(row.employee_id) : undefined}
+                        onKeyDown={onEmployeeClick ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onEmployeeClick(row.employee_id);
+                          }
+                        } : undefined}
+                        title={
+                          onEmployeeClick
+                            ? 'Щёлкните, чтобы добавить человека в фильтр «Исполнители» или убрать'
+                            : undefined
                         }
-                      } : undefined}
-                      title={
-                        onEmployeeClick
-                          ? 'Щёлкните, чтобы добавить человека в фильтр «Исполнители» или убрать'
-                          : undefined
-                      }
-                      style={{
-                        fontSize: 12,
-                        color: selectedIds.includes(row.employee_id) ? '#00c9c8' : '#fff',
-                        fontWeight: selectedIds.includes(row.employee_id) ? 700 : undefined,
-                        cursor: onEmployeeClick ? 'pointer' : undefined,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {row.employee_name ?? row.employee_id}
-                    </span>
+                        style={{
+                          fontSize: 12,
+                          color: selectedIds.includes(row.employee_id) ? '#00c9c8' : '#fff',
+                          fontWeight: selectedIds.includes(row.employee_id) ? 700 : undefined,
+                          cursor: onEmployeeClick ? 'pointer' : undefined,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {row.employee_name ?? row.employee_id}
+                      </span>
+                      {employeeGroups.length > 1 && (
+                        <span
+                          title={`Работает в группах: ${employeeGroups.join(', ')}`}
+                          style={{
+                            flexShrink: 0,
+                            fontSize: 9,
+                            lineHeight: '13px',
+                            padding: '0 4px',
+                            borderRadius: 3,
+                            color: '#b39ddb',
+                            background: 'rgba(179,157,219,0.16)',
+                            border: '1px solid rgba(179,157,219,0.4)',
+                          }}
+                        >
+                          общий
+                        </span>
+                      )}
+                    </div>
                     {note && (
                       <span
                         title={note}

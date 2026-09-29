@@ -1,20 +1,16 @@
 import type { AssignmentOut } from '../api/resourcePlanning';
 
-/** Группа инициативы: своя группа работы, иначе группа её главного
- *  исполнителя из сценария (та же логика, что в Сценариях). */
+/** Группа инициативы: своя группа работы, иначе группа главного исполнителя
+ *  из сценария — сервер уже кладёт её в subgroup_id назначения (та же
+ *  логика, что в Сценариях), фронту достаточно взять имя по id. */
 export function buildSectionByItem(
   assignments: AssignmentOut[],
   subgroupNameById: Map<string, string>,
-  subgroupByEmployee: Record<string, string>,
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const a of assignments) {
     if (a.backlog_item_id in out) continue;
-    const own = a.subgroup_id ? subgroupNameById.get(a.subgroup_id) : undefined;
-    const byAssignee = a.scenario_assignee_employee_id
-      ? subgroupByEmployee[a.scenario_assignee_employee_id]
-      : undefined;
-    out[a.backlog_item_id] = own ?? byAssignee ?? '';
+    out[a.backlog_item_id] = (a.subgroup_id && subgroupNameById.get(a.subgroup_id)) || '';
   }
   return out;
 }

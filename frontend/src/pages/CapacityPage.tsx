@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useTeamRegistry, useSetEmployeeSubgroup } from '../hooks/useTeamRegistry';
+import { useTeamRegistry, useSetEmployeeSubgroup, useUngroupedEmployees } from '../hooks/useTeamRegistry';
 import { Tabs, Table, Button, Space, App, Checkbox, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag, InputNumber, Alert } from 'antd';
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons';
 import capacityHelp from '../../../docs/help/capacity.md?raw';
@@ -55,28 +55,15 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
     return m;
   }, [employeesFull.data]);
 
-  // Команды с делением в области видимости фильтра шапки (без фильтра — все).
-  const dividedTeams = useMemo(
-    () => teamRegistry.filter(t => t.has_subgroups).map(t => t.name),
-    [teamRegistry],
+  // Сотрудники без группы хоть в один день участия в выбранном квартале
+  // (без фильтра команды в шапке — по всем командам с делением).
+  const { data: ungroupedRaw = [] } = useUngroupedEmployees(
+    selectedTeams, Number(year), Number(quarter),
   );
-  const targetDividedTeams = selectedTeams.length
-    ? dividedTeams.filter(t => selectedTeams.includes(t))
-    : dividedTeams;
-  const ungrouped = useMemo(() => {
-    const seen = new Set<string>();
-    const out: { id: string; name: string }[] = [];
-    (employeesFull.data ?? []).forEach(e => {
-      if (!e.is_active || seen.has(e.id)) return;
-      const hit = (e.teams ?? []).some(t =>
-        !t.left_at && targetDividedTeams.includes(t.team) && !t.subgroup_label);
-      if (hit) {
-        seen.add(e.id);
-        out.push({ id: e.id, name: e.display_name });
-      }
-    });
-    return out;
-  }, [employeesFull.data, targetDividedTeams]);
+  const ungrouped = useMemo(
+    () => ungroupedRaw.map(u => ({ id: u.employee_id, name: u.display_name })),
+    [ungroupedRaw],
+  );
 
   const { data: roles = [] } = useRoles();
   const roleOptions = roles.filter(r => r.is_active).map(r => ({ value: r.code, label: r.label }));

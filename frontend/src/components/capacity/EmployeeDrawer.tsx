@@ -21,10 +21,12 @@ import SubgroupShareModal from './SubgroupShareModal';
 
 const { Text } = Typography;
 
-function MembershipGroups({ employeeId, team, subgroups }: {
+function MembershipGroups({ employeeId, team, subgroups, joinedAt }: {
   employeeId: string;
   team: string;
   subgroups: { id: string; name: string }[];
+  /** Дата вступления в команду — для проверки, что история покрывает её начало. */
+  joinedAt: string | null;
 }) {
   const { message } = App.useApp();
   const { data: history = [] } = useSubgroupShares(employeeId, team);
@@ -32,11 +34,20 @@ function MembershipGroups({ employeeId, team, subgroups }: {
   const [mode, setMode] = useState<'transfer' | 'split' | null>(null);
   const name = (id: string) => subgroups.find((g) => g.id === id)?.name ?? '—';
 
+  // История начинается позже вступления в команду — первые дни без группы.
+  const firstFrom = history[0]?.valid_from ?? null;
+  const gapBeforeFirst = firstFrom && (!joinedAt || joinedAt < firstFrom);
+
   return (
     <div style={{ marginTop: 10 }}>
       <Text style={{ color: DARK_THEME.textSecondary, fontSize: 12 }}>Группы</Text>
       {history.length === 0 && (
         <div><Tag color="red">без группы — поправьте карточку</Tag></div>
+      )}
+      {gapBeforeFirst && (
+        <div>
+          <Tag color="red">без группы до {dayjs(firstFrom).format('DD.MM.YYYY')} — поправьте карточку</Tag>
+        </div>
       )}
       {history.map((r) => (
         <div key={r.valid_from ?? 'base'} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
@@ -293,11 +304,12 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
                           }
                         />
                       </Space>
-                      {!departed && teamRegistry.find((t) => t.name === m.team)?.has_subgroups && (
+                      {teamRegistry.find((t) => t.name === m.team)?.has_subgroups && (
                         <MembershipGroups
                           employeeId={employeeId!}
                           team={m.team}
                           subgroups={teamRegistry.find((t) => t.name === m.team)!.subgroups}
+                          joinedAt={m.joined_at ?? null}
                         />
                       )}
                     </div>
