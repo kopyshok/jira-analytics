@@ -9,8 +9,9 @@
 
 Расход с датой: заблокированный период команды с видом работ (весь день) и
 работа в опорных планах других команд (вид — выбранный командой для задачи,
-иначе «Технические задачи»). Остаток вида делится между людьми роли
-пропорционально их норме.
+иначе «Технические задачи»). У сотрудника со своими процентами (личная
+настройка на квартал) заложено по ним, а не по правилам роли. Остаток вида
+делится между людьми роли пропорционально заложенному у каждого по этому виду.
 
 Чистое чтение, без commit.
 """
@@ -37,6 +38,7 @@ from app.models import (
 from app.services import cross_team_occupancy as cto
 from app.services import scheduled_blocks as sb
 from app.services import team_membership as tm
+from app.services.personal_settings import personal_for
 from app.services.plan_common import _quarter_variants, quarter_bounds
 
 DEFAULT_HOURS_PER_DAY = 8.0
@@ -190,12 +192,13 @@ class TeamReserve:
 def team_reserve(
     db: Session, team: str, year: int, quarter: int | str
 ) -> Optional[TeamReserve]:
-    """Запас нормированных работ команды на квартал; None — у команды нет правил.
+    """Запас нормированных работ команды на квартал; None — у команды нет ни
+    правил, ни своих ненулевых процентов у её людей.
 
     Квартал — число или текст («Q4», «4»), как в планах и сценариях.
     Запросов — константа на команду: сценарий, виды, правила, календарь,
-    состав, периоды участия, отсутствия, сотрудники, периоды (резолвер),
-    выбор видов, брони других команд.
+    состав, периоды участия, отсутствия, сотрудники, личные настройки,
+    периоды (резолвер), выбор видов, брони других команд.
     """
     q = cto.quarter_num(quarter)
     if q is None:
@@ -220,8 +223,6 @@ def team_reserve(
             by_type[rule.work_type_id] = (
                 by_type.get(rule.work_type_id, 0.0) + float(rule.percent_of_norm)
             )
-    if not any(percents.values()):
-        return None
 
     def pct_of(role: Optional[str]) -> Dict[str, float]:
         return percents[role] if role and role in percents else percents.get(None, {})
@@ -255,6 +256,18 @@ def team_reserve(
             rows[(role, wt)] = WorkTypeReserve(wt, types[wt].label)
         return rows[(role, wt)]
 
+    # Свои проценты сотрудника на квартал заменяют правила его роли целиком.
+    personal = personal_for(db, list(employees), year, q)
+    # Запаса нет, только если нет ни правил, ни своих ненулевых процентов у
+    # людей запаса — база сценария вычитает и те и другие.
+    if not any(percents.values()) and not any(
+        pct and wt in types
+        for ps in personal.values()
+        for wt, pct in (ps.normed or {}).items()
+    ):
+        return None
+    # (роль, вид) → {сотрудник: заложено} — по нему делится остаток вида.
+    planned_by: Dict[tuple, Dict[str, float]] = defaultdict(dict)
     people: Dict[str, PersonReserve] = {}
     for eid, days in norm_day.items():
         e = employees.get(eid)
@@ -262,8 +275,18 @@ def team_reserve(
             continue
         norm = sum(days.values())
         people[eid] = PersonReserve(eid, e.role, norm)
-        for wt, pct in pct_of(e.role).items():
-            row(e.role or "", wt).planned += norm * pct / 100.0
+        ps = personal.get(eid)
+        pcts = (
+            {wt: p for wt, p in ps.normed.items() if wt in types}
+            if ps is not None and ps.normed is not None
+            else pct_of(e.role)
+        )
+        for wt, pct in pcts.items():
+            if not pct:
+                continue
+            h = norm * pct / 100.0
+            row(e.role or "", wt).planned += h
+            planned_by[(e.role or "", wt)][eid] = h
 
     # Заблокированные периоды команды — весь день, в дни, когда она основная.
     # Период вида, который не уменьшает запас на проекты, запас не тратит.
@@ -306,16 +329,15 @@ def team_reserve(
             )
         work[key].hours += hours
 
-    # Остаток вида — людям роли пропорционально норме.
-    norm_by_role: Dict[str, float] = defaultdict(float)
-    for p in people.values():
-        norm_by_role[p.role or ""] += p.norm
-    for (role, wt), r in rows.items():
-        if r.remaining <= 0 or norm_by_role[role] <= 0:
+    # Остаток вида — людям роли пропорционально заложенному у них по виду
+    # (при одинаковых правилах — пропорционально норме); у кого 0% — ничего.
+    for key, r in rows.items():
+        by_person = planned_by.get(key, {})
+        total = sum(by_person.values())
+        if r.remaining <= 0 or total <= 0:
             continue
-        for p in people.values():
-            if (p.role or "") == role:
-                p.share[wt] = r.remaining * p.norm / norm_by_role[role]
+        for eid, h in by_person.items():
+            people[eid].share[key[1]] = r.remaining * h / total
 
     def order(r: WorkTypeReserve) -> tuple:
         w = types.get(r.work_type_id)

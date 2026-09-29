@@ -111,11 +111,17 @@ PHASE_FIELD = {
 
 
 def effective_for_phase(
-    item: BacklogItem, phase: str, defaults: dict[str, float],
+    item: BacklogItem,
+    phase: str,
+    defaults: dict[str, float],
+    personal: Optional[float] = None,
 ) -> Optional[float]:
-    """Вовлечённость фазы: своё значение задачи, иначе значение справочника."""
+    """Вовлечённость фазы: личная вовлечённость исполнителя на квартал
+    (``personal``), иначе своё значение задачи, иначе значение справочника."""
     field = PHASE_FIELD.get(phase)
     if not field:
         return None
+    if personal is not None:
+        return personal
     own = getattr(item, field, None)
     return own if own is not None else defaults.get(phase)

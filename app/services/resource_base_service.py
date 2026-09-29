@@ -3,7 +3,8 @@
 Для каждого сотрудника команды вычисляет количество «проектных» часов на
 каждый рабочий день квартала: вычитает дни отсутствия и процент нормы,
 занятый обязательными работами (только те виды работ, у которых
-``subtracts_from_pool=True``).
+``subtracts_from_pool=True``). У сотрудника со своими процентами (личная
+настройка на квартал) — его проценты вместо правил роли.
 
 Используется в Этапе B планирования (Task 11): фронтенд опирается на
 посуточные итоги для пересчёта ролевых ёмкостей при выборе инициатив.
@@ -26,6 +27,7 @@ from app.models import (
 )
 from app.services import cross_team_occupancy as cto
 from app.services import team_membership as tm
+from app.services.personal_settings import personal_for
 
 DEFAULT_HOURS_PER_DAY = 8.0
 
@@ -191,7 +193,9 @@ class ResourceBaseService:
             return DEFAULT_HOURS_PER_DAY if d.weekday() < 5 else 0.0
 
         # --- доля нормы после обязательных работ (subtracts_from_pool=True) ---
-        pool_share = self._pool_share(scenario)
+        pool_share = self._pool_share(
+            scenario, self._personal_normed([e.id for e in employees], year, q)
+        )
 
         # --- итерация по сотрудникам ---
         # Кто из состава ещё числится в других командах этого же квартала.
@@ -236,7 +240,7 @@ class ResourceBaseService:
                     cur += timedelta(days=1)
                     continue
 
-                pct = pool_share(e.role)
+                pct = pool_share(e)
 
                 # Обязательные работы — от полной нормы, брони других команд —
                 # поверх, не ниже нуля.
@@ -287,12 +291,32 @@ class ResourceBaseService:
             external_qa_hours=scenario.external_qa_hours,
         )
 
-    def _pool_share(self, scenario: PlanningScenario) -> Callable[[Optional[str]], float]:
-        """Доля нормы дня, остающаяся на проекты после обязательных работ.
+    def _personal_normed(
+        self, employee_ids: list[str], year: Optional[int], quarter: int
+    ) -> dict[str, dict[str, float]]:
+        """Свои проценты нормированных работ на квартал: сотрудник → вид → %.
+
+        Только у кого «свои» (пусто — нормированных работ нет); у остальных —
+        правила роли, их в ответе нет. Без года — пусто, как у броней других
+        команд (`cto.external_bookings`).
+        """
+        if not year:
+            return {}
+        return {
+            eid: ps.normed
+            for eid, ps in personal_for(self.db, employee_ids, year, quarter).items()
+            if ps.normed is not None
+        }
+
+    def _pool_share(
+        self, scenario: PlanningScenario, personal_normed: dict[str, dict[str, float]]
+    ) -> Callable[[Employee], float]:
+        """Доля нормы дня сотрудника, остающаяся на проекты после обязательных работ.
 
         Считаются только виды работ с ``subtracts_from_pool=True``; правила на
-        роль заменяют общие (role=None). Та же доля режет посуточную базу и
-        ограничивает вычет броней других команд в сводке.
+        роль заменяют общие (role=None), свои проценты сотрудника
+        (``personal_normed``) — правила роли. Та же доля режет посуточную базу
+        и ограничивает вычет броней других команд в сводке.
         """
         sub_wt_ids = {
             w.id
@@ -319,8 +343,13 @@ class ResourceBaseService:
             if r.role:
                 by_role_pct[r.role] = by_role_pct.get(r.role, 0.0) + r.percent_of_norm
 
-        def share(role: Optional[str]) -> float:
-            pct = by_role_pct[role] if role and role in by_role_pct else fallback_pct
+        def share(e: Employee) -> float:
+            role = e.role
+            own = personal_normed.get(e.id)
+            if own is not None:
+                pct = sum(p for wt, p in own.items() if wt in sub_wt_ids)
+            else:
+                pct = by_role_pct[role] if role and role in by_role_pct else fallback_pct
             # Зажимаем в [0.0, 1.0] для защиты от некорректных данных правил
             return min(1.0, max(0.0, 1.0 - pct / 100.0))
 
@@ -428,7 +457,8 @@ class ResourceBaseService:
         lent = cto.daily_totals(b for b in bookings if id(b) not in kept)
         booked_by_emp: dict[str, float] = {}
         lent_by_emp: dict[str, float] = {}
-        pool_share = self._pool_share(scenario)
+        personal_normed = self._personal_normed([e.id for e in employees], year, q)
+        pool_share = self._pool_share(scenario, personal_normed)
 
         # --- валовые часы по сотрудникам (без вычета обязательных) ---
         gross_by_emp: dict[str, float] = {}
@@ -454,7 +484,7 @@ class ResourceBaseService:
             # Как в посуточной базе: бронь снимает не больше, чем осталось от
             # дня после обязательных работ, — иначе «На бэклог» расходится с
             # суммой базы по дням.
-            share = pool_share(e.role)
+            share = pool_share(e)
             cur = period_start
             while cur < period_end:
                 norm = day_hours(cur)
@@ -552,6 +582,20 @@ class ResourceBaseService:
         )
 
         # --- строки по видам работ ---
+        # Вид, уменьшающий запас, — сумма по людям роли: у кого свои проценты —
+        # по ним, у остальных — по правилу роли (``pct_by_role`` — правило роли).
+        # Внешний QA и виды, не уменьшающие запас, — по правилу роли для всех.
+        rule_gross_by_role: dict[str, float] = {}
+        own_by_role: dict[str, list[str]] = {}
+        for emp_id, gross in gross_by_emp.items():
+            role = emp_role[emp_id]
+            if not role:
+                continue
+            if emp_id in personal_normed:
+                own_by_role.setdefault(role, []).append(emp_id)
+            else:
+                rule_gross_by_role[role] = rule_gross_by_role.get(role, 0.0) + gross
+
         wt_rows: list[WorkTypeSummaryRow] = []
         for wt in work_types:
             hours_by_role: dict[str, float] = {}
@@ -560,7 +604,16 @@ class ResourceBaseService:
             for role in roles_ordered:
                 pct = wt_pct_for_role(wt.id, role)
                 pct_by_role[role] = pct
-                h = round(gross_by_role.get(role, 0.0) * (pct or 0.0) / 100.0, 2)
+                if wt.subtracts_from_pool and not (
+                    role == "qa" and scenario.external_qa_hours is not None
+                ):
+                    raw = rule_gross_by_role.get(role, 0.0) * (pct or 0.0) / 100.0 + sum(
+                        gross_by_emp[emp_id] * personal_normed[emp_id].get(wt.id, 0.0) / 100.0
+                        for emp_id in own_by_role.get(role, [])
+                    )
+                else:
+                    raw = gross_by_role.get(role, 0.0) * (pct or 0.0) / 100.0
+                h = round(raw, 2)
                 hours_by_role[role] = h
                 total_wt += h
             if total_wt > 0 or any(v is not None for v in pct_by_role.values()):
@@ -620,15 +673,31 @@ class ResourceBaseService:
 
         # --- разрез по группам внутри команды ---
         # Считаем из тех же gross_by_emp, поэтому сумма по группам сходится
-        # с итогом по команде по построению. Обязательные работы вычитаются
-        # процентом от роли, значит доля группы в роли переносится напрямую.
-        # Брони других команд — не процент: они снимаются с группы того, кого
-        # забронировали, а не делятся по доле.
+        # с итогом по команде по построению. Часы после обязательных работ
+        # роли делятся между группами по тем же часам людей (у кого свои
+        # проценты — по ним): доля группы — её часы после обязательных работ
+        # к таким же часам роли. Брони других команд — не процент: они
+        # снимаются с группы того, кого забронировали, а не делятся по доле.
         subgroups, emp_subgroup = self._team_subgroups(team)
         gross_by_subgroup_role: dict[str, dict[str, float]] = {}
         available_by_subgroup_role: dict[str, dict[str, float]] = {}
         if subgroups:
+            sub_wts = [wt for wt in work_types if wt.subtracts_from_pool]
+
+            def emp_net(emp_id: str) -> float:
+                """Часы сотрудника после обязательных работ (до броней)."""
+                own = personal_normed.get(emp_id)
+                pct = sum(
+                    own.get(wt.id, 0.0)
+                    if own is not None
+                    else (wt_pct_for_role(wt.id, emp_role[emp_id]) or 0.0)
+                    for wt in sub_wts
+                )
+                return max(0.0, gross_by_emp[emp_id] * (1.0 - pct / 100.0))
+
             booked_by_subgroup_role: dict[str, dict[str, float]] = {}
+            net_by_subgroup_role: dict[str, dict[str, float]] = {}
+            net_people_by_role: dict[str, float] = {}
             for emp_id, gross in gross_by_emp.items():
                 role = emp_role[emp_id]
                 if not role:
@@ -641,12 +710,16 @@ class ResourceBaseService:
                 bucket[role] = round(bucket.get(role, 0.0) + gross, 2)
                 taken_bucket = booked_by_subgroup_role.setdefault(sg_key, {})
                 taken_bucket[role] = taken_bucket.get(role, 0.0) + booked_by_emp[emp_id]
+                net = emp_net(emp_id)
+                net_bucket = net_by_subgroup_role.setdefault(sg_key, {})
+                net_bucket[role] = net_bucket.get(role, 0.0) + net
+                net_people_by_role[role] = net_people_by_role.get(role, 0.0) + net
 
             for sg_key, roles in gross_by_subgroup_role.items():
                 out: dict[str, float] = {}
-                for role, g in roles.items():
-                    team_gross = gross_by_role.get(role, 0.0)
-                    share = g / team_gross if team_gross else 0.0
+                for role in roles:
+                    team_net = net_people_by_role.get(role, 0.0)
+                    share = net_by_subgroup_role[sg_key][role] / team_net if team_net else 0.0
                     taken = booked_by_subgroup_role.get(sg_key, {}).get(role, 0.0)
                     out[role] = round(
                         max(0.0, net_by_role.get(role, 0.0) * share - taken), 2

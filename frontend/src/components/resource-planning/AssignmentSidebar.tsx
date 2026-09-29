@@ -498,6 +498,7 @@ function InvolvementEditor({
   const qc = useQueryClient();
   const { data } = useExplainAssignment(planId, assignment.id, true);
   const serverPct = data?.phase_calc?.involvement_pct ?? null;
+  const isPersonal = data?.phase_calc?.involvement_source === 'employee';
   const [pct, setPct] = useState<number | null>(serverPct);
   const [saving, setSaving] = useState(false);
 
@@ -528,6 +529,24 @@ function InvolvementEditor({
       setSaving(false);
     }
   };
+
+  if (isPersonal) {
+    return (
+      <Space orientation="vertical" size={2}>
+        <InputNumber
+          min={0}
+          max={100}
+          value={pct ?? undefined}
+          suffix="%"
+          style={{ width: 110 }}
+          disabled
+        />
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Задана личной настройкой сотрудника — меняется в Сценариях, панель «Вовлечённость и нормированные работы»
+        </Typography.Text>
+      </Space>
+    );
+  }
 
   return (
     <Space>
