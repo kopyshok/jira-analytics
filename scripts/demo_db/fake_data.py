@@ -131,6 +131,18 @@ def ru_label(i: int) -> str:
     return _RU_LETTERS[i] if i < len(_RU_LETTERS) else str(i + 1)
 
 
+def shuffled(items: list[str]) -> list[str]:
+    """Детерминированно перемешанная копия: какой проект получит какую букву."""
+    out = sorted(items)
+    random.Random(_SEED).shuffle(out)
+    return out
+
+
+def key_offset(fake_key: str) -> int:
+    """Сдвиг номеров задач проекта (10000–40000): номер в ролике не равен настоящему."""
+    return random.Random(f"{_SEED}:{fake_key}").randint(10_000, 40_000)
+
+
 def person_names(is_safe: IsSafe) -> Iterator[str]:
     """Бесконечный поток уникальных «Фамилия Имя», мужские и женские вперемешку."""
     rng = random.Random(_SEED)

@@ -17,6 +17,17 @@ if (!existsSync(source)) {
   process.exit(1);
 }
 
+// Рядом с демо-базой лежит журнал — её кто-то открывал на запись или сборка оборвалась.
+// Копия одного файла без журнала может оказаться неполной: лучше пересобрать базу.
+const journals = ['-wal', '-journal'].map((suffix) => `${source}${suffix}`).filter((path) => existsSync(path));
+if (journals.length) {
+  console.error(
+    `Рядом с демо-базой есть журнал (${journals.join(', ')}). Пересоберите её: ` +
+      'py -3.10 scripts/demo_db/build_demo_db.py --source <база> --out data/demo.db --force',
+  );
+  process.exit(1);
+}
+
 for (const suffix of ['', '-wal', '-shm', '-journal']) {
   rmSync(`${target}${suffix}`, { force: true });
 }
