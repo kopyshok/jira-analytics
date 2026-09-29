@@ -201,6 +201,25 @@ def test_multi_team_parent_is_not_candidate(client, db_session):
     assert "bi-epic" in ids, "дочерний Эпик остаётся кандидатом"
 
 
+def test_multi_team_without_epics_is_not_candidate(client, db_session):
+    """Мультикомандная RFA без эпиков в сценарий не идёт: сначала команды
+    заводят свои эпики. Выключили блокировку — снова обычная задача."""
+    from app.models import AppSetting
+    _seed_rfa_with_child(db_session)
+    db_session.query(BacklogItem).filter_by(id="bi-epic").delete()
+    db_session.query(Issue).filter_by(id="i-epic").delete()
+    db_session.commit()
+    _make_multi_team(db_session, ["Команда А", "Команда Б"])
+
+    assert "bi-rfa" not in _alloc_item_ids(client, _create_scenario(client))
+    r = client.patch("/api/v1/backlog/bi-rfa/included", json={"included": True})
+    assert r.status_code == 409, r.text
+
+    db_session.add(AppSetting(key="planning_multi_team_by_epics", value="false"))
+    db_session.commit()
+    assert "bi-rfa" in _alloc_item_ids(client, _create_scenario(client))
+
+
 def test_single_participant_other_than_product_team_is_multi(client, db_session):
     """Работает одна команда, но не та, что владеет продуктом — тоже группа."""
     _seed_rfa_with_child(db_session)

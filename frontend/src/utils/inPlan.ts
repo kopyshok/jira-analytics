@@ -21,7 +21,7 @@ export function inPlanRole(r: RoleSource, mode = r.planning_mode): InPlanRole {
 
 export function inPlanHint(role: InPlanRole, included: boolean): string {
   if (role === 'inert') return 'Инициатива планируется целиком — часы эпиков уже в ней';
-  if (role === 'by_epics_locked') return 'Инициатива нескольких команд планируется только по эпикам';
+  if (role === 'by_epics_locked') return 'Инициатива нескольких команд планируется только по эпикам — без эпиков в сценарий не попадает';
   if (role === 'by_epics' && !included) {
     return 'Планируется по эпикам: в сценарий идут её эпики. Включите, чтобы добавить и саму инициативу';
   }

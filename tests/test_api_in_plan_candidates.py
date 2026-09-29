@@ -154,10 +154,9 @@ def test_turning_off_removes_from_draft_immediately(client, testclient_db_sessio
     )
 
 
-def test_multi_team_single_task_can_be_switched_back_on(client, testclient_db_session):
-    """Запрет «мультикомандную RFA целиком» касается только родителя группы.
-
-    Одиночную мультикомандную задачу галочкой «В план» можно вернуть в план.
+def test_multi_team_single_task_cannot_be_switched_on(client, testclient_db_session):
+    """Мультикомандную задачу без эпиков в план не вернуть: сначала команды
+    заводят свои эпики. Выключить галочку можно.
     """
     db = testclient_db_session
     db.add(Project(id="p1", key="PRJ", jira_project_id="jp1", name="Project"))
@@ -169,5 +168,4 @@ def test_multi_team_single_task_can_be_switched_back_on(client, testclient_db_se
     db.commit()
     assert client.patch("/api/v1/backlog/bi-mt/included", json={"included": False}).status_code == 200
     r = client.patch("/api/v1/backlog/bi-mt/included", json={"included": True})
-    assert r.status_code == 200, r.text
-    assert r.json()["included_in_planning"] is True
+    assert r.status_code == 409, r.text
