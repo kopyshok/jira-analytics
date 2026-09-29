@@ -126,6 +126,7 @@ COLUMN_POLICY = _parse_policy({
     "employee_capacity_overrides": "keep: id employee_id work_type_id",
     "employee_personal_normed": "keep: id setting_id work_type_id",
     "employee_personal_settings": "keep: id employee_id",
+    "employee_subgroup_shares": "keep: id employee_id subgroup_id; rule: team",
     "employee_teams": "keep: id employee_id subgroup_id; rule: team",
     "employees": "keep: id role; rule: jira_account_id display_name email team; clear: avatar_url department",
     "hierarchy_rule": "keep: id issue_type; rule: project_key description",
