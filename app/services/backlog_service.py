@@ -348,14 +348,26 @@ def mode_excluded_backlog_ids(db: Session) -> set[str]:
 
     Обе проверки работают только для родителей, у которых реально есть
     ребёнок в активном бэклоге — одиночная задача из планирования не пропадает.
+    Кроме мультикомандной при включённой блокировке: она не кандидат и без
+    эпиков — сначала команды заводят свои эпики.
     """
     lock_enabled = multi_team_lock_enabled(db)
     by_epics, excluded = _mode_groups(db, lock_enabled)
-    for item, issue in by_epics:
-        forced = lock_enabled and issue_is_multi_team(issue)
-        if forced or not item.included_in_planning:
-            excluded.add(item.id)
+    excluded |= {item.id for item, _ in by_epics if not item.included_in_planning}
+    if lock_enabled:
+        excluded |= multi_team_backlog_ids(db)
     return excluded
+
+
+def multi_team_backlog_ids(db: Session) -> set[str]:
+    """BacklogItem.id мультикомандных задач активного бэклога."""
+    rows = (
+        db.query(BacklogItem.id, Issue)
+        .join(Issue, BacklogItem.issue_id == Issue.id)
+        .filter(BacklogItem.archived_at.is_(None), Issue.participating_teams.isnot(None))
+        .all()
+    )
+    return {bid for bid, issue in rows if issue_is_multi_team(issue)}
 
 
 def has_included_ancestor(db: Session, issue: Issue) -> bool:

@@ -370,31 +370,19 @@ def _estimate_disputes(
     }
 
 
-def _include_locked_ids(
-    db: Session, items: list[BacklogItem], lock_enabled: bool
-) -> set[str]:
+def _include_locked_ids(items: list[BacklogItem], lock_enabled: bool) -> set[str]:
     """Элементы, которые нельзя включить «В план».
 
-    Мультикомандная RFA, у которой в бэклоге есть не архивный ребёнок любой
-    команды, планируется только по Эпикам — пока блокировка включена в
-    настройках (``lock_enabled``). Одно правило для признака в строке и для
-    отказа при включении. Детей ищем одним запросом на весь набор, а не по строке.
+    Мультикомандная RFA планируется только по Эпикам — пока блокировка
+    включена в настройках (``lock_enabled``). Без эпиков она в сценарий не
+    идёт вовсе: сначала команды заводят свои. Одно правило для признака
+    в строке и для отказа при включении.
     """
-    by_issue = {
-        it.issue_id: it.id
-        for it in items
-        if it.issue_id is not None and issue_is_multi_team(it.issue)
-    }
-    if not by_issue or not lock_enabled:
+    if not lock_enabled:
         return set()
-    parent_rows = (
-        db.query(Issue.parent_id)
-        .join(BacklogItem, BacklogItem.issue_id == Issue.id)
-        .filter(Issue.parent_id.in_(list(by_issue)), BacklogItem.archived_at.is_(None))
-        .distinct()
-        .all()
-    )
-    return {by_issue[pid] for (pid,) in parent_rows}
+    return {
+        it.id for it in items if it.issue_id is not None and issue_is_multi_team(it.issue)
+    }
 
 
 def _in_plan_roles(
@@ -432,7 +420,7 @@ def _in_plan_roles(
 def _item_response(db: Session, item: BacklogItem) -> BacklogItemResponse:
     """Ответ по одному элементу: утверждённые сценарии, блокировка и роль «В план»."""
     lock_enabled = multi_team_lock_enabled(db)
-    locked_ids = _include_locked_ids(db, [item], lock_enabled)
+    locked_ids = _include_locked_ids([item], lock_enabled)
     return _to_response(
         item,
         _approved_scenarios_for(db, item.id),
@@ -796,7 +784,7 @@ async def list_backlog_items(
     # Блокировку и роль «В план» решает весь бэклог, а не этот список:
     # фильтр команды прячет дочек чужой команды, вкладка — родителя.
     lock_enabled = multi_team_lock_enabled(db)
-    locked_ids = _include_locked_ids(db, items, lock_enabled)
+    locked_ids = _include_locked_ids(items, lock_enabled)
     roles = _in_plan_roles(db, items, locked_ids, lock_enabled)
 
     # Строим Map: parent_issue_id → List[BacklogChildSchema].
@@ -1622,7 +1610,7 @@ async def set_included(
         bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
         if bi is None:
             raise HTTPException(404, "BacklogItem not found")
-        if payload.included and bi.id in _include_locked_ids(db, [bi], multi_team_lock_enabled(db)):
+        if payload.included and bi.id in _include_locked_ids([bi], multi_team_lock_enabled(db)):
             raise HTTPException(
                 409,
                 "Мультикомандную RFA нельзя включить в сценарий — планируйте по Эпикам",

@@ -1,8 +1,8 @@
 """Блокировку «В план» считает сервер — по всему бэклогу, а не по списку.
 
 Список с фильтром команды не видит дочерних Эпиков чужой команды, а включить
-мультикомандную RFA нельзя, пока у неё есть хоть один не архивный ребёнок где
-угодно в бэклоге. Признак строки и отказ при включении — одно правило.
+мультикомандную RFA нельзя вовсе: в план идут только эпики команд, и без эпиков
+она в сценарий не попадает. Признак строки и отказ при включении — одно правило.
 """
 import json
 from datetime import datetime
@@ -87,8 +87,8 @@ def test_lock_visible_when_team_filter_hides_children(client, testclient_db_sess
     ("participating", "child", "lock_off", "locked"),
     [
         ([TEAM_A, TEAM_B], "active", False, True),
-        ([TEAM_A, TEAM_B], None, False, False),
-        ([TEAM_A, TEAM_B], "archived", False, False),
+        ([TEAM_A, TEAM_B], None, False, True),
+        ([TEAM_A, TEAM_B], "archived", False, True),
         (None, "active", False, False),
         ([TEAM_A, TEAM_B], "active", True, False),
     ],
