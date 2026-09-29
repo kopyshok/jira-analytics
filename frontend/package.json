@@ -10,6 +10,7 @@
     "lint:design": "impeccable detect src/",
     "e2e": "playwright test",
     "e2e:install": "playwright install chromium",
+    "videos": "playwright test -c playwright.videos.config.ts",
     "preview": "vite preview"
   },
   "dependencies": {
