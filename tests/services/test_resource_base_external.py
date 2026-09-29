@@ -295,3 +295,26 @@ def test_home_team_scenario_unchanged(db_session):
 
     assert s.primary_normed_by_role == {}
     assert round(s.available_by_role["dev"], 1) == round(2 * 0.45 * QUARTER_NORM, 1)
+
+
+def test_resource_summary_endpoint_returns_primary_normed(db_session):
+    from fastapi.testclient import TestClient
+
+    from app.database import get_db
+    from app.main import app
+
+    _p, _ivanov, _erp, blk = _guest_scenario(db_session)
+
+    def _get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _get_db
+    try:
+        r = TestClient(app).get(f"/api/v1/planning/scenarios/{blk.id}/resource-summary")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert round(body["primary_normed_by_role"]["dev"], 1) == round(0.45 * QUARTER_NORM, 1)
+    assert [x["display_name"] for x in body["primary_normed_people"]] == ["Пряничников"]

@@ -446,6 +446,10 @@ class ResourceSummaryOut(BaseModel):
     booked_by_other_teams_by_role: Dict[str, float] = {}
     # Часы команды в планах команд, взявших её людей к себе (не вычтены).
     borrowed_by_other_teams_by_role: Dict[str, float] = {}
+    # Нормированные работы основной команды у общих сотрудников, для которых
+    # команда сценария не основная (вычтены из «На бэклог»), и кому сколько.
+    primary_normed_by_role: Dict[str, float] = {}
+    primary_normed_people: List[Dict] = []
     # Активные сотрудники без группы хоть в один день участия в квартале:
     # [{employee_id, display_name}]. Пока список не пуст, утвердить нельзя.
     ungrouped_employees: List[Dict] = []
@@ -2049,6 +2053,8 @@ def scenario_resource_summary(
         ] if summary.subgroups else [],
         booked_by_other_teams_by_role=summary.booked_by_other_teams_by_role,
         borrowed_by_other_teams_by_role=summary.borrowed_by_other_teams_by_role,
+        primary_normed_by_role=summary.primary_normed_by_role,
+        primary_normed_people=summary.primary_normed_people,
         ungrouped_employees=summary.ungrouped_employees,
     )
 
