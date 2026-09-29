@@ -33,6 +33,7 @@ from app.services.backlog_service import (
     BacklogService,
     apply_jira_assignee,
     choose_assignee,
+    descendant_backlog_ids_of_included_ancestors,
     is_cancel_like,
     issue_is_multi_team,
     mode_excluded_backlog_ids,
@@ -717,6 +718,12 @@ async def list_backlog_items(
         )
 
     items = query.all()
+
+    if view == "active":
+        # Дети утверждённой инициативы уже в плане через неё — как и в
+        # кандидатах сценария, отдельной строкой в Бэклоге их не держим.
+        descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
+        items = [i for i in items if i.id not in descendant_ids]
 
     # Группа внутри команды: инициатива живёт на всю команду, поэтому решают
     # работы под ней. Инициатива без единой проставленной группы и ручная идея
