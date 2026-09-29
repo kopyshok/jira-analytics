@@ -21,14 +21,17 @@ export function StatusTag({ status, group }: { status: string; group: StatusGrou
 }
 
 /** Ключ задачи — ссылка в Jira, если известен адрес сервиса. */
-export function IssueKey({ issueKey, jiraBaseUrl }: { issueKey: string; jiraBaseUrl?: string }) {
-  if (!jiraBaseUrl) return <Typography.Text strong>{issueKey}</Typography.Text>;
+export function IssueKey({
+  issueKey, jiraBaseUrl, style,
+}: { issueKey: string; jiraBaseUrl?: string; style?: React.CSSProperties }) {
+  if (!jiraBaseUrl) return <Typography.Text strong style={style}>{issueKey}</Typography.Text>;
   return (
     <Typography.Link
       href={`${jiraBaseUrl}/browse/${issueKey}`}
       target="_blank"
       rel="noreferrer"
       onClick={(e) => e.stopPropagation()}
+      style={style}
     >
       {issueKey}
     </Typography.Link>
