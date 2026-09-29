@@ -90,6 +90,15 @@ class ScheduledBlockUpdate(BaseModel):
     work_type_id: Optional[str] = None
 
 
+class BlockNotAppliedOut(BaseModel):
+    """Кого период не закрывает в месяце и почему."""
+
+    employee_id: str
+    employee_name: str
+    month: date  # первое число месяца
+    by: str  # "role" | "employee" — чей период того же вида главнее
+
+
 class ScheduledBlockOut(BaseModel):
     id: str
     team: Optional[str]
@@ -103,6 +112,9 @@ class ScheduledBlockOut(BaseModel):
     work_type_label: Optional[str] = None
     role_labels: List[str] = []
     employee_names: List[str] = []
+    # В этих месяцах у этих людей есть период того же вида по роли или лично —
+    # он главнее, и этот период их не закрывает (правило приоритета).
+    not_applied: List[BlockNotAppliedOut] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -142,6 +154,11 @@ def _blocks_out(db: Session, blocks: Sequence[ScheduledBlock]) -> List[Scheduled
         MandatoryWorkType.label,
         {b.work_type_id for b in blocks if b.work_type_id},
     )
+    skipped = sb.not_applied(db, blocks)
+    skipped_name = labels(
+        Employee.id, Employee.display_name,
+        {x.employee_id for xs in skipped.values() for x in xs},
+    )
     return [
         ScheduledBlockOut(
             id=b.id,
@@ -158,6 +175,18 @@ def _blocks_out(db: Session, blocks: Sequence[ScheduledBlock]) -> List[Scheduled
             ),
             employee_names=sorted(
                 emp_name[e.employee_id] for e in b.employees if e.employee_id in emp_name
+            ),
+            not_applied=sorted(
+                (
+                    BlockNotAppliedOut(
+                        employee_id=x.employee_id,
+                        employee_name=skipped_name.get(x.employee_id, x.employee_id),
+                        month=x.month,
+                        by="employee" if x.by_level == sb.EMPLOYEE_LEVEL else "role",
+                    )
+                    for x in skipped.get(b.id, [])
+                ),
+                key=lambda x: (x.month, x.employee_name),
             ),
             created_at=b.created_at,
         )

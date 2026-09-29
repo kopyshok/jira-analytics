@@ -8,7 +8,7 @@ import {
 } from '../../hooks/useResourcePlanning';
 import { useRoles } from '../../hooks/useRoles';
 import { useMandatoryWorkTypes } from '../../hooks/useCapacity';
-import { blockAudience } from '../../utils/scheduledBlocks';
+import { blockAudience, notAppliedText } from '../../utils/scheduledBlocks';
 
 interface Props {
   open: boolean;
@@ -112,7 +112,16 @@ export default function ScheduledBlocksModal({ open, onClose, team, members = []
     },
     {
       title: 'Кому',
-      render: (_: unknown, r: ScheduledBlock) => blockAudience(r),
+      render: (_: unknown, r: ScheduledBlock) => (
+        <>
+          {blockAudience(r)}
+          {notAppliedText(r) && (
+            <Typography.Text type="warning" style={{ display: 'block', fontSize: 12 }}>
+              {notAppliedText(r)}
+            </Typography.Text>
+          )}
+        </>
+      ),
     },
     {
       title: 'Вид работ',
@@ -186,8 +195,9 @@ export default function ScheduledBlocksModal({ open, onClose, team, members = []
         )}
       </Form>
       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
-        Не выбраны роли и сотрудники — период для всей команды. Период сотрудника главнее периода роли
-        в том же месяце и виде работ.
+        Не выбраны роли и сотрудники — период для всей команды. В одном месяце и виде работ действует
+        самый точный период: сотрудника главнее роли, роль главнее команды — даже если даты не совпадают.
+        Для разового события (обучение, весь месяц) выберите другой вид работ.
       </Typography.Text>
       <Table dataSource={blocks} columns={columns} rowKey="id" size="small" pagination={false} />
     </Modal>
