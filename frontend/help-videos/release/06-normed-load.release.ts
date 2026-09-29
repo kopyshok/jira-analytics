@@ -5,7 +5,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { Director } from '../director.ts';
 import { CHAPTERS } from './chapters.ts';
-import { chapterTitle, hideVersion, releaseFrame, saveClip } from './common.ts';
+import { chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 const TEAM = 'Команда Альфа';
 /** Низ закреплённых шапок (страница + шкала графика) в кадре 1920×1080, с запасом. */
@@ -138,7 +138,6 @@ async function showNativeTip(page: Page, target: Locator, text: string): Promise
 test('06-normed-load', async ({ page }) => {
   const d = new Director(page);
   await d.install();
-  await hideVersion(page);
   await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle(6, CHAPTERS[5]));
 
   await expect(page.locator('.ant-tag', { hasText: /^Готово$/ })).toBeVisible({ timeout: 60_000 });

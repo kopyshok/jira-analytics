@@ -7,7 +7,7 @@
 import { expect, test } from '@playwright/test';
 import { Director } from '../director.ts';
 import { CHAPTERS } from './chapters.ts';
-import { chapterTitle, hideVersion, releaseFrame, saveClip } from './common.ts';
+import { chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 /** Сотрудник, которого глава 1 делит между группами (демо-база). */
 const PERSON = 'Ольховская Раиса';
@@ -93,7 +93,6 @@ test.beforeAll(async ({ playwright }, testInfo) => {
 test('03-groups-scenario', async ({ page }) => {
   const d = new Director(page);
   await d.install();
-  await hideVersion(page);
   await d.open(`/planning?scenario=${scenarioId}`, chapterTitle(3, CHAPTERS[2]));
 
   const card = page.locator('.ant-card', { has: page.locator('.ant-card-head', { hasText: 'По сотрудникам' }) });

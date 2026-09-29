@@ -5,7 +5,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { Director } from '../director.ts';
 import { CHAPTERS } from './chapters.ts';
-import { apiUrl, chapterTitle, hideVersion, releaseFrame, saveClip } from './common.ts';
+import { apiUrl, chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 const TEAM = 'Команда Альфа';
 /** Своя вовлечённость сотрудника в ролике. */
@@ -105,7 +105,6 @@ test('04-personal-involvement', async ({ page }) => {
 
   const d = new Director(page);
   await d.install();
-  await hideVersion(page);
   await d.open(`/planning?scenario=${scenarioId}`, chapterTitle(4, CHAPTERS[3]));
 
   const openBtn = page.locator('[data-tour="planning-involvement"]');

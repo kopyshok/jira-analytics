@@ -23,24 +23,6 @@ export function apiUrl(): string {
   return `${String(test.info().config.metadata.backendUrl)}/api/v1`;
 }
 
-/**
- * Спрятать номер версии у логотипа: ролик снимается до смены номера, и в кадре
- * иначе была бы прошлая версия. Вызывать до первого перехода на страницу.
- */
-export async function hideVersion(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const style = document.createElement('style');
-    style.textContent = '[title^="Версия "] { visibility: hidden !important; }';
-    const attach = () => !!document.documentElement?.appendChild(style);
-    if (!attach()) {
-      const observer = new MutationObserver(() => {
-        if (attach()) observer.disconnect();
-      });
-      observer.observe(document, { childList: true });
-    }
-  });
-}
-
 /** Заголовок главы: «3 / 8 · Название». */
 export function chapterTitle(n: number, title: string, total = 8): string {
   return `${n} / ${total} · ${title}`;

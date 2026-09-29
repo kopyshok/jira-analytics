@@ -3,7 +3,7 @@
 // разработки, и он не может быть аналитиком той же задачи.
 import { expect, test } from '@playwright/test';
 import { Director } from '../director.ts';
-import { chapterTitle, hideVersion, saveClip, releaseFrame } from './common.ts';
+import { chapterTitle, saveClip, releaseFrame } from './common.ts';
 
 const TEAM = 'Команда Альфа';
 
@@ -102,7 +102,6 @@ test('02-scenario-developer', async ({ page }) => {
 
   const d = new Director(page);
   await d.install();
-  await hideVersion(page);
   await d.open(`/planning?scenario=${scenarioId}`, chapterTitle(2, 'Разработчик задачи в сценарии'));
 
   const backlog = page.locator('.ant-card', { has: page.locator('.ant-card-head', { hasText: 'Элементы бэклога' }) });

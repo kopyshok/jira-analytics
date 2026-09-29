@@ -2,9 +2,16 @@
 // с настройкой команды и экскурсиями, ролик у шага, экскурсия по шапке и блок
 // «Видео» в справке раздела. Всё на одной странице — ресурсном плане демо-команды.
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { Director } from '../director.ts';
 import { CHAPTERS } from './chapters.ts';
-import { chapterTitle, hideVersion, releaseFrame, saveClip } from './common.ts';
+import { chapterTitle, releaseFrame, saveClip } from './common.ts';
+import { plural } from './slides.ts';
+
+// Сколько роликов в справке — по реестру приложения (сам реестр в Node не импортируется).
+const VIDEO_COUNT = (
+  readFileSync(new URL('../../src/help-videos/videos.ts', import.meta.url), 'utf-8').match(/\bvideo\('/g) ?? []
+).length;
 
 const TEAM = 'Команда Альфа';
 
@@ -55,7 +62,6 @@ test.beforeAll(async ({ playwright }, testInfo) => {
 test('08-learning', async ({ page }) => {
   const d = new Director(page);
   await d.install();
-  await hideVersion(page);
   await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle(8, CHAPTERS[7]));
 
   const button = page.getByTestId('onboarding-button');
@@ -107,7 +113,8 @@ test('08-learning', async ({ page }) => {
   await videosTitle.evaluate((el) => el.scrollIntoView({ block: 'start', behavior: 'smooth' }));
   await d.pause(900);
   const cards = help.getByRole('button', { name: /^Смотреть видео:/ });
-  await d.caption('21 короткий ролик — в справке разделов и «Первых шагах»');
+  const videos = `${VIDEO_COUNT} ${plural(VIDEO_COUNT, 'короткий ролик', 'коротких ролика', 'коротких роликов')}`;
+  await d.caption(`${videos} — в справке разделов и «Первых шагах»`);
   await d.show(cards.nth(0), cards.nth(2));
   await d.pause(2500);
   await saveClip(page, '08-learning');
