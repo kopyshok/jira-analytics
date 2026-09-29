@@ -306,7 +306,8 @@ def test_external_bookings_tie_broken_by_assignment(db_session):
     ]
 
 
-def _ext(employee_id, team="B", is_borrowing=False, daily=None, assignment_id=None):
+def _ext(employee_id, team="B", is_borrowing=False, daily=None, assignment_id=None,
+         yields_here=False, involvement=None):
     """Бронь без базы — для чистых функций."""
     daily = daily or {D("2026-01-05"): 6.0}
     return cto.ExternalBooking(
@@ -321,7 +322,99 @@ def _ext(employee_id, team="B", is_borrowing=False, daily=None, assignment_id=No
         daily_hours=daily,
         provisional=False,
         is_borrowing=is_borrowing,
+        yields_here=yields_here,
+        involvement=involvement,
     )
+
+
+def test_booking_carries_phase_involvement(db_session):
+    """Вовлечённость брони: своё значение задачи, иначе справочник её команды
+    на квартал её плана. Ни того, ни другого — не задана."""
+    from app.models import InvolvementDefault
+
+    e = make_employee(db_session, "Пряничников", "A")
+    db_session.add(InvolvementDefault(
+        team="A", role="dev", effective_year=2025, effective_quarter=4, involvement=0.9,
+    ))
+    sc, plan = make_plan(db_session, "A")
+    by_default = add_item(db_session, sc, "По справочнику", dev=5.4)
+    own = add_item(db_session, sc, "Своя", dev=3)
+    own.involvement_dev = 0.5
+    book(db_session, plan, by_default, e, {"2026-01-05": 5.4})
+    book(db_session, plan, own, e, {"2026-01-06": 3.0})
+    book(db_session, plan, own, e, {"2026-01-07": 2.0}, phase="analyst")
+    db_session.commit()
+
+    bookings = _bookings_for_a(db_session, e, team="B")
+
+    assert {(min(b.daily_hours).isoformat(), b.involvement) for b in bookings} == {
+        ("2026-01-05", 0.9), ("2026-01-06", 0.5), ("2026-01-07", None),
+    }
+
+
+def test_occupied_hours_adds_other_work_share():
+    """Вовлечённость 90% — это 10% дня на прочие работы: день с бронью занят
+    на её часы и на эту долю дня. Несколько броней в день — берётся наименьшая
+    вовлечённость. Вовлечённость не задана — только часы."""
+    d1, d2, d3, d4 = D("2026-01-05"), D("2026-01-06"), D("2026-01-07"), D("2026-01-08")
+    bookings = [
+        _ext("e", daily={d1: 7.2, d2: 4.0, d4: 2.0}, involvement=0.9),
+        _ext("e", team="C", daily={d3: 3.0}),
+        _ext("e", team="D", daily={d4: 2.0}, involvement=0.5),
+    ]
+    capacity = {"e": {d1: 8.0, d2: 8.0, d3: 8.0, d4: 8.0}}
+
+    occupied = cto.occupied_hours(bookings, capacity)
+
+    assert {d: round(h, 2) for d, h in occupied["e"].items()} == {
+        d1: 8.0, d2: 4.8, d3: 3.0, d4: 8.0,
+    }
+    share = cto.other_work_share(
+        (b.employee_id, b.involvement, b.daily_hours) for b in bookings
+    )["e"]
+    assert {d: round(v, 2) for d, v in share.items()} == {d1: 0.1, d2: 0.1, d4: 0.5}
+
+
+def test_other_work_every_day_by_person_share():
+    """Прочие работы у человека каждый рабочий день: в дни без броней и у
+    броней без вовлечённости — по его доле; явные 100% у брони — без них."""
+    d1, d2, d3, d4 = D("2026-01-05"), D("2026-01-06"), D("2026-01-07"), D("2026-01-08")
+    bookings = [
+        _ext("e", daily={d1: 7.2}, involvement=0.9),
+        _ext("e", team="C", daily={d2: 3.0}),
+        _ext("e", team="D", daily={d4: 5.0}, involvement=1.0),
+    ]
+    capacity = {"e": {d1: 8.0, d2: 8.0, d3: 8.0, d4: 8.0}, "x": {d1: 8.0}}
+    base = {"e": 0.3}
+
+    busy = cto.busy_hours(bookings, capacity, base)
+
+    assert {d: round(h, 2) for d, h in busy["e"].items()} == {
+        d1: 8.0, d2: 5.4, d3: 2.4, d4: 5.0,
+    }
+    assert busy["x"] == {d1: 0.0}
+    assert set(cto.occupied_hours(bookings, capacity, base)["e"]) == {d1, d2, d4}
+
+
+def test_base_other_share_from_home_team_directory(db_session):
+    """Доля прочих работ человека — по справочнику вовлечённости его основной
+    команды для его роли; РП и консультант — как аналитик."""
+    from app.models import InvolvementDefault
+
+    for role, value in (("dev", 0.9), ("analyst", 0.7)):
+        db_session.add(InvolvementDefault(
+            team="A", role=role, effective_year=2026, effective_quarter=1, involvement=value,
+        ))
+    dev = make_employee(db_session, "Пряничников", "A", role="dev")
+    join_team(db_session, dev, "B")
+    rp = make_employee(db_session, "Копышков", "A", role="rp")
+    in_b = make_employee(db_session, "Свой B", "B", role="dev")
+    other = make_employee(db_session, "Прочий", "A", role="other")
+    db_session.commit()
+
+    share = cto.base_other_share(db_session, [dev, rp, in_b, other], 2026, 1)
+
+    assert {k: round(v, 2) for k, v in share.items()} == {dev.id: 0.1, rp.id: 0.3}
 
 
 def _booking_of(db_session, employee, team="B", year=2026, quarter="Q1", day="2026-01-05"):
@@ -331,9 +424,9 @@ def _booking_of(db_session, employee, team="B", year=2026, quarter="Q1", day="20
     return plan, row
 
 
-def _bookings_for_a(db_session, employee, end="2026-03-31"):
+def _bookings_for_a(db_session, employee, end="2026-03-31", team="A"):
     return cto.external_bookings(
-        db_session, team="A", year=2026, quarter=1, employee_ids=[employee.id],
+        db_session, team=team, year=2026, quarter=1, employee_ids=[employee.id],
         start=D("2026-01-01"), end=D(end),
     )
 
@@ -349,8 +442,9 @@ def test_booking_of_team_without_the_employee_is_borrowing(db_session):
     assert b.is_borrowing is True
 
 
-def test_booking_of_shared_member_is_not_borrowing(db_session):
-    """E состоит и в A, и в B — бронь B на E не привлечение."""
+def test_booking_of_secondary_team_is_borrowing(db_session):
+    """E в A (основная) и в B: основная команда главнее — бронь B для A
+    такое же привлечение, как у команды без E в составе."""
     e = make_employee(db_session, "Шутов", "A")
     join_team(db_session, e, "B")
     _booking_of(db_session, e)
@@ -358,14 +452,40 @@ def test_booking_of_shared_member_is_not_borrowing(db_session):
 
     [b] = _bookings_for_a(db_session, e)
 
-    assert b.is_borrowing is False
+    assert (b.is_borrowing, b.yields_here) == (True, False)
+
+
+def test_booking_of_primary_team_is_home_for_secondary_plan(db_session):
+    """Для плана B, где E не в основной команде, бронь основной A — домашняя,
+    а сам план B уступает E всем командам."""
+    e = make_employee(db_session, "Шутов", "A")
+    join_team(db_session, e, "B")
+    _booking_of(db_session, e, team="A")
+    db_session.commit()
+
+    [b] = _bookings_for_a(db_session, e, team="B")
+
+    assert (b.is_borrowing, b.yields_here) == (False, True)
+
+
+def test_member_teams_without_primary_are_equal(db_session):
+    e = make_employee(db_session, "Шутов", "A", member=False)
+    join_team(db_session, e, "A")
+    join_team(db_session, e, "B")
+    _booking_of(db_session, e)
+    db_session.commit()
+
+    [b] = _bookings_for_a(db_session, e)
+
+    assert (b.is_borrowing, b.yields_here) == (False, False)
 
 
 def test_tail_booking_checks_membership_in_its_own_quarter(db_session):
-    """Хвост плана B прошлого квартала: тогда E в B состоял — не привлечение,
-    хотя в этом квартале он в B уже не состоит."""
-    e = make_employee(db_session, "Шутов", "A")
-    join_team(db_session, e, "B", left_at=D("2026-01-01"))
+    """Хвост плана B прошлого квартала: тогда B была основной — не привлечение,
+    хотя в этом квартале E уже основной в A, а в B не состоит."""
+    e = make_employee(db_session, "Шутов", "A", member=False)
+    join_team(db_session, e, "A", joined_at=D("2026-01-01"), primary=True)
+    join_team(db_session, e, "B", left_at=D("2026-01-01"), primary=True)
     _booking_of(db_session, e, year=2025, quarter="Q4")
     db_session.commit()
 
@@ -380,6 +500,13 @@ def test_subtractable_keeps_borrowing_bookings_only_for_borrowed():
     ext_lent = _ext("ext", is_borrowing=True)
 
     assert cto.subtractable([own_lent, own_shared, ext_lent], {"ext"}) == [own_shared, ext_lent]
+
+
+def test_subtractable_takes_every_booking_where_plan_yields():
+    """План не в основной команде человека уступает его всем командам."""
+    guest_lent = _ext("guest", is_borrowing=True, yields_here=True)
+
+    assert cto.subtractable([guest_lent], set()) == [guest_lent]
 
 
 def test_fingerprint_depends_only_on_hours_by_day():

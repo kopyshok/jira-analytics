@@ -1,7 +1,9 @@
 """Реестр команд, группы внутри команды и приписка сотрудников."""
 
 from app.models import Employee, EmployeeTeam, Issue, Project, Team, TeamSubgroup
+from app.services import subgroup_shares as ss
 from app.services.team_registry_service import TeamRegistryService
+from tests.subgroup_fixtures import share
 
 
 def test_team_defaults_to_no_subgroups(db_session):
@@ -33,7 +35,7 @@ def test_subgroups_are_ordered_and_cascade(db_session):
     assert db_session.query(TeamSubgroup).count() == 0
 
 
-def test_membership_carries_subgroup(db_session):
+def test_membership_group_lives_in_shares(db_session):
     team = Team(name="Команда 1С (Бухгалтерия)", has_subgroups=True)
     db_session.add(team)
     db_session.flush()
@@ -42,15 +44,13 @@ def test_membership_carries_subgroup(db_session):
     emp = Employee(jira_account_id="acc-1", display_name="Иванов")
     db_session.add(emp)
     db_session.flush()
-    db_session.add(
-        EmployeeTeam(
-            employee_id=emp.id, team=team.name, is_primary=True, subgroup_id=group.id
-        )
-    )
+    db_session.add(EmployeeTeam(employee_id=emp.id, team=team.name, is_primary=True))
+    db_session.add(share(emp.id, team.name, group.id))
     db_session.commit()
 
-    row = db_session.query(EmployeeTeam).one()
-    assert row.subgroup_id == group.id
+    assert ss.load_team(db_session, team.name)[emp.id] == [
+        ss.ShareRecord(None, ((group.id, 100),))
+    ]
 
 
 def test_issue_subgroup_defaults(db_session):
@@ -106,7 +106,8 @@ def test_disable_keeps_subgroups(db_session):
     assert [g.name for g in team.subgroups] == ["Расчёты"]
 
 
-def test_assign_employee_covers_all_membership_periods(db_session):
+def test_assign_employee_one_record_for_all_membership_periods(db_session):
+    """Группа задаётся на пару сотрудник/команда, а не на период участия."""
     service = TeamRegistryService(db_session)
     team = service.set_has_subgroups("Команда А", True)
     group = service.add_subgroup(team.name, "Расчёты")
@@ -123,5 +124,6 @@ def test_assign_employee_covers_all_membership_periods(db_session):
 
     service.assign_employee(emp.id, "Команда А", group.id)
 
-    rows = db_session.query(EmployeeTeam).filter(EmployeeTeam.employee_id == emp.id).all()
-    assert {r.subgroup_id for r in rows} == {group.id}
+    assert ss.load_team(db_session, "Команда А")[emp.id] == [
+        ss.ShareRecord(None, ((group.id, 100),))
+    ]

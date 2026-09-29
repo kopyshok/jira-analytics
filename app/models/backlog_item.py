@@ -99,6 +99,15 @@ class BacklogItem(Base, TimestampMixin):
     assignee_jira_account_at_choice: Mapped[Optional[str]] = mapped_column(
         String(128), nullable=True,
     )
+    # Разработчик задачи — выбирают вручную в сценарии или на бэклоге. Jira
+    # его не пишет и не затирает. Пусто — фазу «Разработка» ресурсное
+    # планирование подбирает само («Разработчик» из Jira, подбор по команде).
+    developer_employee_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("employees.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     customer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cost_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
@@ -129,6 +138,10 @@ class BacklogItem(Base, TimestampMixin):
     assignee: Mapped[Optional["Employee"]] = relationship(
         "Employee",
         foreign_keys=[assignee_employee_id],
+    )
+    developer: Mapped[Optional["Employee"]] = relationship(
+        "Employee",
+        foreign_keys=[developer_employee_id],
     )
     allocations: Mapped[List["ScenarioAllocation"]] = relationship(
         back_populates="backlog_item"

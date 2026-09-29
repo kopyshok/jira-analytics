@@ -7,6 +7,7 @@ import pytest
 from app.models import Employee, EmployeeTeam, Team, TeamSubgroup
 from app.services.kpi.kpi_service import report_with_approvals
 from app.services.subgroup_filter import NO_SUBGROUP_TOKEN, employee_ids
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 
@@ -35,10 +36,11 @@ def people(db_session):
         db_session.add(
             EmployeeTeam(
                 employee_id=emp.id, team=TEAM, is_primary=True,
-                subgroup_id=group.id if group else None,
                 joined_at=date(2020, 1, 1),
             )
         )
+        if group:
+            db_session.add(share(emp.id, TEAM, group.id))
         made[code] = emp
     db_session.commit()
     return {"calc": calc, "integ": integ, **made}
@@ -72,6 +74,43 @@ def test_kpi_report_narrowed_by_employee_group(db_session, people):
     assert whole_ids >= calc_ids
     assert calc_ids <= {people["a"].id}
     assert people["b"].id not in calc_ids
+
+
+def test_kpi_period_uses_group_on_each_day_not_today(db_session, people):
+    """Период отчёта режется по группе человека на его дни, а не на сегодня."""
+    moved = Employee(
+        jira_account_id="acc-moved", display_name="Смирнов", is_active=True, role="dev"
+    )
+    db_session.add(moved)
+    db_session.flush()
+    db_session.add(EmployeeTeam(
+        employee_id=moved.id, team=TEAM, is_primary=True, joined_at=date(2020, 1, 1),
+    ))
+    db_session.add(share(moved.id, TEAM, people["calc"].id))
+    db_session.add(share(moved.id, TEAM, people["integ"].id, valid_from=date(2026, 8, 15)))
+    db_session.commit()
+
+    def ids(report):
+        return {r["employee_id"] for r in report["rows"]} | {
+            s["employee_id"] for s in report["skipped"]
+        }
+
+    # Квартал июль-сентябрь захватывает обе группы человека.
+    q3_integ = report_with_approvals(
+        db_session, [TEAM], 2026, 9, months=3, subgroups=[people["integ"].id]
+    )
+    assert moved.id in ids(q3_integ)
+
+    # Июль — человек ещё целиком в старой группе.
+    july_integ = report_with_approvals(
+        db_session, [TEAM], 2026, 7, subgroups=[people["integ"].id]
+    )
+    assert moved.id not in ids(july_integ)
+
+    july_calc = report_with_approvals(
+        db_session, [TEAM], 2026, 7, subgroups=[people["calc"].id]
+    )
+    assert moved.id in ids(july_calc)
 
 
 def test_empty_filter_leaves_report_untouched(db_session, people):

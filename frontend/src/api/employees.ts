@@ -56,5 +56,5 @@ export const updateMembershipLeftAt = (
 
 export const transferEmployeeTeam = (
   employeeId: string,
-  body: { from_team: string; to_team: string; on: string },
+  body: { from_team: string; to_team: string; on: string; subgroup_id?: string | null },
 ) => api.post<EmployeeTeamItem[]>(`/employees/${employeeId}/teams/transfer`, body);

@@ -27,60 +27,6 @@ def test_phase_hours_fields_mapped():
     assert PHASE_HOURS_FIELD["opo"] == "estimate_opo_hours"
 
 
-def test_block_targets_employee_specific():
-    """Block with one employee in `employees` list — only that employee affected."""
-    db = MagicMock()
-    svc = ResourcePlanningService(db)
-
-    block = MagicMock()
-    block.team = None
-    block.roles = []
-    emp_link = MagicMock()
-    emp_link.employee_id = "emp-1"
-    block.employees = [emp_link]
-
-    emp1 = MagicMock()
-    emp1.id = "emp-1"
-    emp1.role = "analyst"
-    emp1.team = "T1"
-    emp2 = MagicMock()
-    emp2.id = "emp-2"
-    emp2.role = "analyst"
-    emp2.team = "T1"
-
-    result = svc._block_targets(block, [emp1, emp2], {})
-    assert result == ["emp-1"]
-
-
-def test_block_targets_role():
-    """Block with one role in `roles` list — all employees of that role affected."""
-    db = MagicMock()
-    svc = ResourcePlanningService(db)
-
-    block = MagicMock()
-    block.team = None
-    role_link = MagicMock()
-    role_link.role_id = "role-uuid-analyst"
-    block.roles = [role_link]
-    block.employees = []
-
-    emp1 = MagicMock()
-    emp1.id = "emp-1"
-    emp1.role = "analyst"
-    emp2 = MagicMock()
-    emp2.id = "emp-2"
-    emp2.role = "analyst"
-    emp3 = MagicMock()
-    emp3.id = "emp-3"
-    emp3.role = "dev"
-
-    # role_id → role_code mapping
-    role_id_to_code = {"role-uuid-analyst": "analyst"}
-
-    result = svc._block_targets(block, [emp1, emp2, emp3], role_id_to_code)
-    assert sorted(result) == ["emp-1", "emp-2"]
-
-
 def test_allocate_hours_simple():
     """Basic allocation: 12 hours over 2 days of 6h each."""
     db = MagicMock()

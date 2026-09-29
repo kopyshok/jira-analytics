@@ -74,6 +74,33 @@ def team_defaults(
     return out
 
 
+def teams_defaults(
+    db: Session, keys: set[tuple[str, int, int]],
+) -> dict[tuple[str, int, int], dict[str, float]]:
+    """``team_defaults`` сразу для нескольких (команда, год, квартал) — одним запросом."""
+    if not keys:
+        return {}
+    rows = (
+        db.query(InvolvementDefault)
+        .filter(InvolvementDefault.team.in_({team for team, _, _ in keys}))
+        .order_by(
+            InvolvementDefault.effective_year, InvolvementDefault.effective_quarter
+        )
+        .all()
+    )
+    out: dict[tuple[str, int, int], dict[str, float]] = {}
+    for team, year, quarter in keys:
+        # По возрастанию начала действия: последняя подходящая запись роли побеждает.
+        out[(team, year, quarter)] = {
+            r.role: r.involvement
+            for r in rows
+            if r.team == team
+            and r.role in INVOLVEMENT_ROLES
+            and (r.effective_year, r.effective_quarter) <= (year, quarter)
+        }
+    return out
+
+
 # Фаза плана → поле вовлечённости в BacklogItem.
 PHASE_FIELD = {
     "analyst": "involvement_analyst",
@@ -84,11 +111,17 @@ PHASE_FIELD = {
 
 
 def effective_for_phase(
-    item: BacklogItem, phase: str, defaults: dict[str, float],
+    item: BacklogItem,
+    phase: str,
+    defaults: dict[str, float],
+    personal: Optional[float] = None,
 ) -> Optional[float]:
-    """Вовлечённость фазы: своё значение задачи, иначе значение справочника."""
+    """Вовлечённость фазы: личная вовлечённость исполнителя на квартал
+    (``personal``), иначе своё значение задачи, иначе значение справочника."""
     field = PHASE_FIELD.get(phase)
     if not field:
         return None
+    if personal is not None:
+        return personal
     own = getattr(item, field, None)
     return own if own is not None else defaults.get(phase)

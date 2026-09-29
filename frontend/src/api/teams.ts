@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { SubgroupShareItem, SubgroupShareRecord } from '../types/api';
 
 export type Subgroup = { id: string; name: string; sort_order: number };
 export type TeamRegistryRow = { name: string; has_subgroups: boolean; subgroups: Subgroup[] };
@@ -23,3 +24,31 @@ export const setEmployeeSubgroup = (
   team: string,
   subgroupId: string | null,
 ) => api.put<void>(`/teams/employees/${employeeId}/subgroup`, { team, subgroup_id: subgroupId });
+
+export const getSubgroupShares = (employeeId: string, team: string) =>
+  api.get<SubgroupShareRecord[]>(`/teams/employees/${employeeId}/subgroup-shares`, { team });
+
+export interface UngroupedEmployee {
+  employee_id: string;
+  display_name: string;
+  team: string;
+}
+
+/** Сотрудники без группы в квартале — для плашки в «Ресурсах» и «Сценариях». */
+export const getUngroupedEmployees = (teams: string[], year: number, quarter: number) =>
+  api.get<UngroupedEmployee[]>('/teams/ungrouped', {
+    ...(teams.length ? { teams: teams.join(',') } : {}),
+    year: String(year),
+    quarter: String(quarter),
+  });
+
+export const putSubgroupShare = (
+  employeeId: string,
+  body: { team: string; valid_from: string | null; shares: SubgroupShareItem[] },
+) => api.put<SubgroupShareRecord[]>(`/teams/employees/${employeeId}/subgroup-shares`, body);
+
+export const deleteSubgroupShare = (employeeId: string, team: string, validFrom: string | null) =>
+  api.del<SubgroupShareRecord[]>(
+    `/teams/employees/${employeeId}/subgroup-shares?team=${enc(team)}`
+      + (validFrom ? `&valid_from=${validFrom}` : ''),
+  );

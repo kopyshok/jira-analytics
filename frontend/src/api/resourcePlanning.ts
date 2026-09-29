@@ -8,8 +8,20 @@ export interface ScheduledBlock {
   start_date: string;
   end_date: string;
   reason: string;
+  work_type_id: string | null;
+  /** Подпись вида работ; пусто — период создан до ввода вида работ. */
+  work_type_label?: string | null;
+  /** Подписи ролей периода. */
+  role_labels?: string[];
+  /** Имена сотрудников периода. */
+  employee_names?: string[];
   created_at: string;
 }
+
+export type ScheduledBlockInput = Omit<
+  ScheduledBlock,
+  'id' | 'created_at' | 'work_type_label' | 'role_labels' | 'employee_names'
+> & { work_type_id: string };
 
 export interface ResourcePlan {
   id: string;
@@ -88,6 +100,8 @@ export interface AssignmentOut {
   worklog_hours_actual: number;
   /** Группа внутри команды, к которой отнесена работа. */
   subgroup_id?: string | null;
+  /** Работа на группу, где у исполнителя в эти дни нет доли — помощь соседней группе. */
+  other_subgroup?: boolean;
 }
 
 export interface ConflictOut {
@@ -142,6 +156,30 @@ export interface EmployeeLoadDay {
   off?: 'weekend' | 'holiday' | 'absence' | 'out_of_team' | null;
   /** Доля ёмкости дня, занятая планами других команд, %. */
   ext_pct?: number;
+  /** Нормированные работы дня: заблокированный период, остаток дня после
+   *  вовлечённости и доля запаса на свободное время. Доля ёмкости дня, %. */
+  normed_pct?: number;
+  /** То же в часах. */
+  normed_hours?: number;
+  /** Заблокированный день: «причина · вид работ». */
+  blocked?: string | null;
+}
+
+/** Часы нормированных работ по виду — для подсказки у имени и сводки. */
+export interface NormedTypeHours {
+  label: string;
+  hours: number;
+}
+
+/** Загрузка человека за квартал, часы; одинакова в плане любой команды. */
+export interface EmployeeQuarterLoad {
+  capacity_hours: number;
+  own_hours: number;
+  other_teams_hours: number;
+  normed_hours: number;
+  unplaced_hours: number;
+  pct: number;
+  normed_by_type: NormedTypeHours[];
 }
 
 /** Переход сотрудника на границе участия в команде плана внутри квартала. */
@@ -168,6 +206,8 @@ export interface EmployeeLoadOut {
   /** Привлечён из другой команды (в команде плана не состоял ни дня квартала). */
   is_borrowed?: boolean;
   borrowed_from?: string | null;
+  /** Загрузка за квартал: запас нормированных работ основной команды человека. */
+  quarter?: EmployeeQuarterLoad | null;
 }
 
 export interface ResetCounts {
@@ -193,10 +233,55 @@ export interface ExternalBookingOut {
   provisional: boolean;
   /** Человек привлечён в ЭТОТ план (в его команде не состоял ни дня квартала). */
   employee_is_borrowed: boolean;
-  /** Бронь-привлечение: команда брони взяла человека не из своего состава. */
+  /** Бронь-привлечение: команда брони человеку не домашняя (не состоит в ней
+   *  или она у него не основная) — она подстраивается и получает конфликт. */
   is_borrowing: boolean;
   /** Дни брони, где этот план тоже занял человека и вместе выходит больше его дня. */
   overlap_days: string[];
+}
+
+/** Запас вида работ роли и его расход с датой, часы. */
+export interface ReserveTypeRow {
+  work_type_id: string;
+  label: string;
+  planned_hours: number;
+  blocked_hours: number;
+  other_teams_hours: number;
+  remaining_hours: number;
+  overuse_hours: number;
+}
+
+export interface ReserveRoleOut {
+  role: string;
+  role_label: string;
+  rows: ReserveTypeRow[];
+}
+
+/** Работа людей команды плана над задачей другой команды за квартал. */
+export interface OtherTeamWorkOut {
+  backlog_item_id: string;
+  issue_key: string | null;
+  title: string;
+  team: string;
+  /** Роль исполнителя — как у ReserveRoleOut.role; строка раскрывается в таблице этой роли. */
+  role: string;
+  hours: number;
+  work_type_id: string;
+  is_manual: boolean;
+}
+
+export interface WorkTypeOption {
+  id: string;
+  label: string;
+}
+
+/** Запас нормированных работ команды плана на квартал. */
+export interface ReserveOut {
+  team: string;
+  scenario_name: string;
+  roles: ReserveRoleOut[];
+  other_team_work: OtherTeamWorkOut[];
+  work_types: WorkTypeOption[];
 }
 
 export interface GanttProjection {
@@ -206,12 +291,18 @@ export interface GanttProjection {
   pert_projection: InitiativePertOut[];
   dependencies: DependencyOut[];
   employee_load?: EmployeeLoadOut[];
+  /** Сотрудник команды плана → группы, где у него есть доля в дни участия
+   *  внутри квартала плана, по убыванию «доля × дни» (первая — главная).
+   *  Команда без деления — пусто. */
+  employee_subgroups?: Record<string, string[]>;
   /** Брони людей плана (свои и привлечённые) в опорных планах других команд. */
   external_bookings?: ExternalBookingOut[];
   /** Брони, вычитаемые из доступности плана, изменились после его расчёта. */
   stale_due_to_other_teams?: boolean;
   /** Команды, чьи планы изменились после расчёта. */
   stale_teams?: string[];
+  /** Запас нормированных работ команды плана на квартал; null — запаса нет. */
+  reserve?: ReserveOut | null;
   reset_counts: ResetCounts;
 }
 
@@ -326,10 +417,10 @@ export const clearAssignmentManualEdit = (
 export const getScheduledBlocks = (team?: string) =>
   api.get<ScheduledBlock[]>('/resource-planning/scheduled-blocks', team ? { team } : undefined);
 
-export const createScheduledBlock = (data: Omit<ScheduledBlock, 'id' | 'created_at'>) =>
+export const createScheduledBlock = (data: ScheduledBlockInput) =>
   api.post<ScheduledBlock>('/resource-planning/scheduled-blocks', data);
 
-export const updateScheduledBlock = (id: string, data: Partial<Omit<ScheduledBlock, 'id' | 'created_at'>>) =>
+export const updateScheduledBlock = (id: string, data: Partial<ScheduledBlockInput>) =>
   api.patch<ScheduledBlock>(`/resource-planning/scheduled-blocks/${id}`, data);
 
 export const deleteScheduledBlock = (id: string) =>
@@ -418,11 +509,13 @@ export interface DailyBreakdownItem {
   date: string;
   available_hours: number;
   used_hours: number;
-  status: 'work' | 'absence' | 'holiday' | 'weekend' | 'blocked_by_other' | 'pre_start_idle';
+  status: 'work' | 'absence' | 'holiday' | 'weekend' | 'blocked_by_other' | 'blocked' | 'pre_start_idle';
   blocker_assignment_id?: string | null;
   blocker_item_key?: string | null;
   blocker_phase_label?: string | null;
   absence_reason?: string | null;
+  /** Причина заблокированного периода (status === 'blocked'). */
+  block_reason?: string | null;
   is_pre_start?: boolean;
   co_occupants?: DayCoOccupant[];
 }
@@ -443,8 +536,8 @@ export interface AbsenceWindowItem {
 export interface PhaseCalcDetails {
   duration_days_jira: number | null;
   involvement_pct: number | null;
-  /** 'task' — значение задачи, 'team' — из справочника команды. */
-  involvement_source?: 'task' | 'team' | null;
+  /** 'employee' — личная настройка сотрудника, 'task' — значение задачи, 'team' — из справочника команды. */
+  involvement_source?: 'employee' | 'task' | 'team' | null;
   parallel_count: number;
   role_pct: number | null;
   daily_capacity_hours: number;
@@ -582,3 +675,14 @@ export const patchDependency = (
 
 export const deleteDependency = (planId: string, depId: string) =>
   api.del(`/resource-planning/resource-plans/${planId}/dependencies/${depId}`);
+
+export interface WorkTypeOverrideInput {
+  team: string;
+  backlog_item_id: string;
+  /** null — вернуть вид по умолчанию («Технические задачи»). */
+  work_type_id: string | null;
+}
+
+/** Чем команда считает работу своих людей над задачей другой команды. */
+export const putWorkTypeOverride = (data: WorkTypeOverrideInput) =>
+  api.put('/resource-planning/work-type-overrides', data);

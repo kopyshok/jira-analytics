@@ -23,6 +23,7 @@ import ConflictPanel from '../components/resource-planning/ConflictPanel';
 import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlocksModal';
 import AssignmentSidebar from '../components/resource-planning/AssignmentSidebar';
 import EmployeeLoadHeatmap from '../components/resource-planning/EmployeeLoadHeatmap';
+import NormedReserveSummary from '../components/resource-planning/NormedReserveSummary';
 import AppearanceModal from '../components/resource-planning/AppearanceModal';
 import BulkResetDropdown from '../components/resource-planning/BulkResetDropdown';
 import type { RpLayout, ViewMode } from '../components/resource-planning/GanttRows';
@@ -123,17 +124,18 @@ function ResourcePlanningPageInner() {
     () => (registryRow?.has_subgroups ? registryRow.subgroups.map(g => g.name) : []),
     [registryRow],
   );
+  // Группы сотрудника — из ответа диаграммы (employee_subgroups): список id,
+  // по убыванию «доля × дни», первый — главная группа. Не «сегодняшняя»
+  // группа из членства — у общих и переведённых людей групп несколько.
   const subgroupByEmployee = useMemo(() => {
-    if (!registryRow?.has_subgroups || !team) return {};
+    if (!registryRow?.has_subgroups || !gantt?.employee_subgroups) return {};
     const names = new Map(registryRow.subgroups.map(g => [g.id, g.name]));
-    const out: Record<string, string> = {};
-    for (const e of allEmployees) {
-      const membership = e.teams?.find(t => t.team === team);
-      const name = membership?.subgroup_id ? names.get(membership.subgroup_id) : undefined;
-      out[e.id] = name ?? '';
+    const out: Record<string, string[]> = {};
+    for (const [empId, groupIds] of Object.entries(gantt.employee_subgroups)) {
+      out[empId] = groupIds.map(id => names.get(id)).filter((n): n is string => !!n);
     }
     return out;
-  }, [registryRow, team, allEmployees]);
+  }, [registryRow, gantt]);
   // Группа инициативы: своя группа работы, иначе группа её главного
   // исполнителя из сценария (та же логика, что в Сценариях).
   const subgroupNameById = useMemo(
@@ -152,6 +154,14 @@ function ResourcePlanningPageInner() {
         member_to: r.member_to,
       }))
     : employees;
+  // Состав команды для выбора сотрудников заблокированного периода — без привлечённых.
+  const blockMembers = useMemo(
+    () => (gantt?.employee_load ?? [])
+      .filter(r => !r.is_borrowed)
+      .map(r => ({ id: r.employee_id, name: r.employee_name ?? '' }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [gantt],
+  );
   const compute = useComputeResourcePlan();
   const createPlan = useCreateResourcePlan();
 
@@ -222,9 +232,9 @@ function ResourcePlanningPageInner() {
   const sectionByItem = useMemo(
     () =>
       groupBySubgroup && subgroupOrder.length > 0
-        ? buildSectionByItem(sortedAssignments, subgroupNameById, subgroupByEmployee)
+        ? buildSectionByItem(sortedAssignments, subgroupNameById)
         : undefined,
-    [groupBySubgroup, subgroupOrder, sortedAssignments, subgroupNameById, subgroupByEmployee],
+    [groupBySubgroup, subgroupOrder, sortedAssignments, subgroupNameById],
   );
 
   const displayedAssignments = useMemo(
@@ -599,6 +609,10 @@ function ResourcePlanningPageInner() {
         />
       )}
 
+      {gantt?.reserve && gantt.plan.team && viewMode === 'two-level' && (
+        <NormedReserveSummary reserve={gantt.reserve} />
+      )}
+
       {gantt?.employee_load && gantt.employee_load.length > 0 && viewMode === 'two-level' && (
         <div data-tour="rp-load">
         <EmployeeLoadHeatmap
@@ -625,7 +639,12 @@ function ResourcePlanningPageInner() {
         }
       />
 
-      <ScheduledBlocksModal open={blocksOpen} onClose={() => setBlocksOpen(false)} team={team || undefined} />
+      <ScheduledBlocksModal
+        open={blocksOpen}
+        onClose={() => setBlocksOpen(false)}
+        team={team || undefined}
+        members={blockMembers}
+      />
 
       <Modal
         open={forkModalOpen}

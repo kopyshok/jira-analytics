@@ -523,11 +523,11 @@ def shared_member(db_session):
     sc_b, plan_b = make_plan(db_session, "B")
     add_item(db_session, sc_b, "Работа B", dev=12)
     db_session.commit()
-    return {"sc_b": sc_b, "plan_a": plan_a.id, "plan_b": plan_b.id}
+    return {"sc_a": sc_a, "sc_b": sc_b, "plan_a": plan_a.id, "plan_b": plan_b.id}
 
 
 def test_shared_member_recomputes_do_not_flag_each_other(client, db_session, shared_member):
-    """Планы вычитают брони друг друга. Пересчёт пересоздаёт строки, но часы
+    """План B вычитает брони основной команды A. Пересчёт пересоздаёт строки, но часы
     человека по дням те же — соседний план не устаревает, и пометки не
     гоняются между командами по кругу."""
     t = shared_member
@@ -542,23 +542,59 @@ def test_shared_member_recomputes_do_not_flag_each_other(client, db_session, sha
         assert _gantt(client, plan_id)["stale_due_to_other_teams"] is False, plan_id
 
 
-def test_shared_member_real_change_marks_other_plan_stale(client, db_session, shared_member):
+def test_primary_plan_change_marks_secondary_plan_stale(client, db_session, shared_member):
+    """Основная команда A не уступает: её изменение старит план B, а
+    изменение B план A не трогает."""
     t = shared_member
     for plan_id in (t["plan_a"], t["plan_b"], t["plan_a"]):
         _compute(db_session, plan_id)
+    add_item(db_session, t["sc_a"], "Ещё работа A", dev=6)
     add_item(db_session, t["sc_b"], "Ещё работа B", dev=6)
     db_session.commit()
-    _compute(db_session, t["plan_b"])
-
-    body_a = _gantt(client, t["plan_a"])
-
-    assert body_a["stale_due_to_other_teams"] is True
-    assert body_a["stale_teams"] == ["B"]
-    assert _gantt(client, t["plan_b"])["stale_due_to_other_teams"] is False
-
     _compute(db_session, t["plan_a"])
 
+    body_b = _gantt(client, t["plan_b"])
+
+    assert body_b["stale_due_to_other_teams"] is True
+    assert body_b["stale_teams"] == ["A"]
+
+    _compute(db_session, t["plan_b"])
+
+    assert _gantt(client, t["plan_b"])["stale_due_to_other_teams"] is False
     assert _gantt(client, t["plan_a"])["stale_due_to_other_teams"] is False
+
+
+def test_secondary_plan_gets_overlap_conflict_primary_plan_marks_it(client, db_session):
+    """E в A (основная) и в B; оба плана заняли его 01.01–02.01. Конфликт —
+    у B, которая уступает; у A — только отметки, что B получит конфликт."""
+    from tests.services.xteam_factory import join_team
+
+    e = make_employee(db_session, "Шутов", "A")
+    join_team(db_session, e, "B")
+    sc_a, plan_a = make_plan(db_session, "A")
+    book(db_session, plan_a, add_item(db_session, sc_a, "Работа A", dev=12), e,
+         {"2026-01-01": 6.0, "2026-01-02": 6.0})
+    sc_b, plan_b = make_plan(db_session, "B")
+    b_row = book(db_session, plan_b, add_item(db_session, sc_b, "Работа B", dev=12), e,
+                 {"2026-01-01": 6.0, "2026-01-02": 6.0}, pinned_employee=True)
+    db_session.commit()
+
+    body_b = _gantt(client, plan_b.id)
+    [live] = [c for c in body_b["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"]
+    assert (live["assignment_id"], live["employee_id"]) == (b_row.id, e.id)
+    [from_a] = body_b["external_bookings"]
+    assert (from_a["team"], from_a["is_borrowing"]) == ("A", False)
+    assert from_a["overlap_days"] == ["2026-01-01", "2026-01-02"]
+
+    r = client.get(f"{BASE}/{plan_b.id}/conflicts", params={"group_by": "type"})
+    groups = {g["key"]: g["conflicts"] for g in r.json()["groups"]}
+    assert [c["id"] for c in groups["CROSS_TEAM_OVERLAP"]] == [live["id"]]
+
+    body_a = _gantt(client, plan_a.id)
+    assert [c for c in body_a["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == []
+    [from_b] = body_a["external_bookings"]
+    assert (from_b["team"], from_b["is_borrowing"]) == ("B", True)
+    assert from_b["overlap_days"] == ["2026-01-01", "2026-01-02"]
 
 
 def test_recomputed_plan_without_tasks_is_not_stale(client, db_session):
@@ -568,15 +604,122 @@ def test_recomputed_plan_without_tasks_is_not_stale(client, db_session):
 
     s = make_employee(db_session, "Шутов", "A")
     join_team(db_session, s, "B")
-    sc_b, plan_b = make_plan(db_session, "B")
-    book(db_session, plan_b, add_item(db_session, sc_b, "Работа B", dev=12), s,
+    sc_a, plan_a = make_plan(db_session, "A")
+    book(db_session, plan_a, add_item(db_session, sc_a, "Работа A", dev=12), s,
          {"2026-01-05": 6.0, "2026-01-06": 6.0})
-    _, plan_a = make_plan(db_session, "A")
+    _, plan_b = make_plan(db_session, "B")
     db_session.commit()
 
-    _compute(db_session, plan_a.id)
+    _compute(db_session, plan_b.id)
 
-    assert _gantt(client, plan_a.id)["stale_due_to_other_teams"] is False
+    assert _gantt(client, plan_b.id)["stale_due_to_other_teams"] is False
+
+
+def test_secondary_plan_takes_only_truly_free_hours(client, db_session):
+    """Основная команда A заняла Шутова на 90%: 5,4 ч задачи и 0,6 ч
+    нормированных работ — день занят целиком. Неосновная B раньше добирала эти
+    0,6 ч; теперь её работа встаёт только в свободные дни, а старая раскладка
+    поверх нормированных работ — пересечение с планом A."""
+    import json
+
+    from app.models import ResourcePlanAssignment
+    from tests.services.normed_factory import _rules, _types
+    from tests.services.xteam_factory import join_team
+
+    e = make_employee(db_session, "Шутов", "A")
+    join_team(db_session, e, "B")
+    sc_a, plan_a = make_plan(db_session, "A")
+    _rules(db_session, sc_a, _types(db_session), role=None)
+    item_a = add_item(db_session, sc_a, "Работа A", dev=10.8)
+    item_a.involvement_dev = 0.9
+    book(db_session, plan_a, item_a, e, {"2026-01-01": 5.4, "2026-01-02": 5.4})
+    sc_b, plan_b = make_plan(db_session, "B")
+    item_b = add_item(db_session, sc_b, "Работа B", dev=6)
+    book(db_session, plan_b, item_b, e, {"2026-01-01": 0.6, "2026-01-02": 0.6, "2026-01-05": 4.8})
+    db_session.commit()
+
+    body = _gantt(client, plan_b.id)
+    assert [c["type"] for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == [
+        "CROSS_TEAM_OVERLAP"
+    ]
+    assert body["external_bookings"][0]["overlap_days"] == ["2026-01-01", "2026-01-02"]
+    # Домашний план A отмечает те же дни: B получит там конфликт.
+    [from_b] = _gantt(client, plan_a.id)["external_bookings"]
+    assert from_b["overlap_days"] == ["2026-01-01", "2026-01-02"]
+
+    _compute(db_session, plan_b.id)
+
+    [row] = db_session.query(ResourcePlanAssignment).filter_by(plan_id=plan_b.id).all()
+    assert json.loads(row.daily_hours_json) == {"2026-01-05": 6.0}
+    body = _gantt(client, plan_b.id)
+    assert [c for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == []
+    day = _day(_row(body, e.id), "2026-01-01")
+    assert (day["pct"], day["ext_pct"], day["normed_pct"]) == (0.0, 90.0, 10.0)
+
+
+def test_load_counts_other_work_share_of_involvement(client, db_session):
+    """Загрузка по дням: вовлечённость 90% — 5,4 ч задачи и 0,6 ч
+    нормированных работ, день занят целиком. В день, где задача взяла 3 ч, —
+    те же 10% дня; остаток запаса ложится сначала на дни без задач и сам
+    перегруз не рисует."""
+    from tests.services.normed_factory import _rules, _types
+
+    e = make_employee(db_session, "Пряничников", "A")
+    sc, plan = make_plan(db_session, "A")
+    _rules(db_session, sc, _types(db_session), role=None)
+    item = add_item(db_session, sc, "Работа A", dev=8.4)
+    item.involvement_dev = 0.9
+    book(db_session, plan, item, e, {"2026-01-05": 5.4, "2026-01-06": 3.0})
+    db_session.commit()
+
+    row = _row(_gantt(client, plan.id), e.id)
+
+    full = _day(row, "2026-01-05")
+    assert (full["pct"], full["normed_pct"], full["normed_hours"]) == (90.0, 10.0, 0.6)
+    free = _day(row, "2026-01-07")
+    assert free["pct"] == 0.0 and 0.0 < free["normed_pct"] < 100.0
+    partial = _day(row, "2026-01-06")
+    assert partial["pct"] == 50.0
+    # Только 0,6 ч остатка дня по вовлечённости: остаток запаса (55% нормы)
+    # целиком помещается в дни без задач, свободные 2,4 ч дня с задачей он
+    # берёт лишь при нехватке (спека, раздел 3). Раньше сюда шла ещё и доля
+    # запаса пропорционально свободным часам.
+    assert partial["normed_hours"] == 0.6
+    assert row["quarter"]["unplaced_hours"] == 0.0
+
+
+def test_secondary_plan_leaves_daily_other_work_on_free_days(client, db_session):
+    """В дни, когда основная команда A его не заняла, неосновная B берёт не весь
+    день, а по вовлечённости из справочника A (разработчик — 90%). Нормированные
+    работы на диаграмме — только из запаса A; у A нет правил, запаса нет, и
+    остаток дня слой не заполняет."""
+    import json
+
+    from app.models import InvolvementDefault, ResourcePlanAssignment
+    from tests.services.xteam_factory import join_team
+
+    db_session.add(InvolvementDefault(
+        team="A", role="dev", effective_year=2026, effective_quarter=1, involvement=0.9,
+    ))
+    e = make_employee(db_session, "Шутов", "A", role="dev")
+    join_team(db_session, e, "B")
+    make_plan(db_session, "A")
+    sc_b, plan_b = make_plan(db_session, "B")
+    add_item(db_session, sc_b, "Работа B", dev=10.8)
+    db_session.commit()
+
+    _compute(db_session, plan_b.id)
+
+    [row] = db_session.query(ResourcePlanAssignment).filter_by(plan_id=plan_b.id).all()
+    assert {k: round(v, 2) for k, v in json.loads(row.daily_hours_json).items()} == {
+        "2026-01-01": 5.4, "2026-01-02": 5.4,
+    }
+    load = _row(_gantt(client, plan_b.id), e.id)
+    day = _day(load, "2026-01-01")
+    # У A нет правил нормированных работ — запаса нет, слой пуст.
+    assert (day["pct"], day["normed_pct"]) == (90.0, 0.0)
+    free = _day(load, "2026-01-05")
+    assert (free["pct"], free["ext_pct"], free["normed_pct"]) == (0.0, 0.0, 0.0)
 
 
 def test_jira_developer_left_out_of_plan_does_not_make_it_stale(client, db_session):

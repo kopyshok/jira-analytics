@@ -219,8 +219,11 @@ def dashboard_hours_balance(
             for row in db.query(Employee.id).filter(Employee.is_active == True).all()  # noqa: E712
         ]
 
-    # Баланс часов — показатель человека, поэтому режется по его приписке.
-    in_subgroups = subgroup_employee_ids(db, parse_subgroups_csv(subgroups), team_ids)
+    # Баланс часов — показатель человека, поэтому режется по его доле в
+    # группе за период: общий сотрудник виден в каждой своей группе целиком.
+    in_subgroups = subgroup_employee_ids(
+        db, parse_subgroups_csv(subgroups), team_ids, resolved_from, resolved_to
+    )
     if in_subgroups is not None:
         employee_ids = [e for e in employee_ids if e in in_subgroups]
 

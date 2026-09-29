@@ -13,6 +13,7 @@ import {
   createDependency, patchDependency, deleteDependency,
   type DependencyOut,
   bulkClearAssignments, type BulkClearMode,
+  putWorkTypeOverride, type WorkTypeOverrideInput,
 } from '../api/resourcePlanning';
 import { trackAction } from '../lib/usage/track';
 import { candidatesQueryKey, sameCandidatesTarget } from '../utils/rpCandidates';
@@ -24,11 +25,16 @@ export const useScheduledBlocks = (team?: string) =>
     staleTime: 30_000,
   });
 
+// Период меняет и «Кого закрывает» (список периодов), и запас/загрузку по дням
+// в диаграммах — инвалидируем оба. Событие с бэкенда придёт параллельно.
 export const useCreateScheduledBlock = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createScheduledBlock,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduled-blocks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scheduled-blocks'] });
+      qc.invalidateQueries({ queryKey: ['gantt'] });
+    },
   });
 };
 
@@ -37,7 +43,10 @@ export const useUpdateScheduledBlock = () => {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Parameters<typeof updateScheduledBlock>[1] }) =>
       updateScheduledBlock(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduled-blocks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scheduled-blocks'] });
+      qc.invalidateQueries({ queryKey: ['gantt'] });
+    },
   });
 };
 
@@ -45,7 +54,10 @@ export const useDeleteScheduledBlock = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: deleteScheduledBlock,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduled-blocks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scheduled-blocks'] });
+      qc.invalidateQueries({ queryKey: ['gantt'] });
+    },
   });
 };
 
@@ -261,5 +273,16 @@ export function useDeleteDependency() {
     onSuccess: (_, { planId }) => {
       qc.invalidateQueries({ queryKey: ['gantt', planId] });
     },
+  });
+}
+
+/** Вид работ, которым команда плана считает работу своих людей над задачей
+ *  другой команды. Затрагивает запас и разбивку по дням — инвалидирует все
+ *  открытые диаграммы. */
+export function useSetWorkTypeOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: WorkTypeOverrideInput) => putWorkTypeOverride(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['gantt'] }),
   });
 }

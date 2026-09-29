@@ -13,6 +13,7 @@ import {
   getScenarioAllocations,
   patchAllocation,
   patchAllocationAssignee,
+  patchAllocationDeveloper,
   getScenarioAssigneeCandidates,
   reorderAllocations,
   getScenarioResource,
@@ -348,22 +349,45 @@ export const usePatchAllocationAssignee = () => {
       patchAllocationAssignee(scenarioId, allocId, assigneeEmployeeId),
     onSuccess: (_res, vars) => {
       qc.invalidateQueries({ queryKey: ['planning', 'allocations', vars.scenarioId] });
+      qc.invalidateQueries({ queryKey: ['backlog'] });
     },
     onError: () => {
-      notification.error({ title: 'Не удалось сменить исполнителя' });
+      notification.error({ title: 'Не удалось сменить аналитика' });
     },
   });
 };
 
-/** Кандидаты в исполнители строки сценария — грузятся, когда список открыт. */
+export const usePatchAllocationDeveloper = () => {
+  const qc = useQueryClient();
+  const { notification } = App.useApp();
+  return useMutation<
+    AllocationResponse,
+    Error,
+    { scenarioId: string; allocId: string; developerEmployeeId: string | null }
+  >({
+    mutationFn: ({ scenarioId, allocId, developerEmployeeId }) =>
+      patchAllocationDeveloper(scenarioId, allocId, developerEmployeeId),
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: ['planning', 'allocations', vars.scenarioId] });
+      qc.invalidateQueries({ queryKey: ['backlog'] });
+    },
+    onError: () => {
+      notification.error({ title: 'Не удалось сменить разработчика' });
+    },
+  });
+};
+
+/** Кандидаты строки сценария — грузятся, когда список открыт.
+ *  phase='dev' — для колонки «Разработчик». */
 export function useScenarioAssigneeCandidates(
   scenarioId: string,
   backlogItemId: string,
   enabled: boolean,
+  phase: 'analyst' | 'dev' = 'analyst',
 ) {
   return useQuery<AssignmentCandidateGroup[]>({
-    queryKey: ['planning', 'assignee-candidates', scenarioId, backlogItemId],
-    queryFn: () => getScenarioAssigneeCandidates(scenarioId, backlogItemId),
+    queryKey: ['planning', 'assignee-candidates', scenarioId, backlogItemId, phase],
+    queryFn: () => getScenarioAssigneeCandidates(scenarioId, backlogItemId, phase),
     enabled: enabled && !!scenarioId && !!backlogItemId,
     staleTime: 30_000,
   });

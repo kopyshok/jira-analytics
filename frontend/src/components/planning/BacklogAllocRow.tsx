@@ -27,7 +27,7 @@ export type BacklogAllocRowProps = {
   gridTemplate: string;
   gridGap: number;
   continuationInfo: ContinuationInfoRow | undefined;
-  /** Состав команды сценария — список исполнителя, если кандидаты из всех команд не загрузились. */
+  /** Состав команды сценария — список аналитика и разработчика, если кандидаты из всех команд не загрузились. */
   teamAssigneeOptions: { label: string; value: string }[];
   /** Группы команды. undefined — у команды нет деления, колонка не рисуется. */
   subgroupOptions?: { label: string; value: string }[];
@@ -40,9 +40,95 @@ export type BacklogAllocRowProps = {
   onToggle: (a: AllocationResponse) => void;
   onPriorityChange: (backlogItemId: string, priority: number | null) => void;
   onAssigneeChange: (allocId: string, employeeId: string | null) => void;
+  onDeveloperChange: (allocId: string, employeeId: string | null) => void;
   onSubgroupChange?: (issueId: string, subgroupId: string | null) => void;
   onOpenBreakdown: (issueId: string, issueKey: string) => void;
 };
+
+type PersonSelectProps = {
+  scenarioId: string;
+  backlogItemId: string;
+  phase: 'analyst' | 'dev';
+  isDraft: boolean;
+  value: string | null;
+  displayName: string | null;
+  /** Кто стоит в соседней колонке — его выбрать нельзя. */
+  busyId: string | null;
+  busyHint: string;
+  teamAssigneeOptions: { label: string; value: string }[];
+  roleLabels: ReadonlyMap<string, string>;
+  onChange: (employeeId: string | null) => void;
+};
+
+/** Выбор человека строки — аналитика или разработчика. */
+function PersonSelect({
+  scenarioId, backlogItemId, phase, isDraft, value, displayName, busyId, busyHint,
+  teamAssigneeOptions, roleLabels, onChange,
+}: PersonSelectProps) {
+  const { notification } = App.useApp();
+  // Кандидаты — все, кто в квартале сценария состоит в какой-либо команде.
+  // Грузятся, только пока список открыт: строк в сценарии много.
+  const [open, setOpen] = useState(false);
+  const candidates = useScenarioAssigneeCandidates(scenarioId, backlogItemId, open, phase);
+  // Пока список не пришёл — одна опция с текущим; не загрузился — состав
+  // команды сценария, как было до выбора из всех команд.
+  const options = useMemo<SelectProps['options']>(
+    () =>
+      candidates.data?.length
+        ? candidateOptions(candidates.data, roleLabels, { id: busyId, hint: busyHint })
+        : candidates.isError
+          ? teamAssigneeOptions.map((o) =>
+              o.value === busyId ? { ...o, label: `${o.label} — ${busyHint}`, disabled: true } : o,
+            )
+          : value
+            ? [{ value, label: displayName ?? '—' }]
+            : [],
+    [candidates.data, candidates.isError, roleLabels, busyId, busyHint, teamAssigneeOptions, value, displayName],
+  );
+  // Каждая неудачная загрузка списка — одно уведомление (с тем же ключом
+  // повтор заменяет прежнее, а не копит стопку).
+  const candidatesError = candidates.error;
+  useEffect(() => {
+    if (!candidatesError) return;
+    notification.error({
+      key: 'scenario-assignee-candidates',
+      title: 'Не удалось загрузить список сотрудников',
+      description: 'Показан состав команды сценария.',
+    });
+  }, [candidatesError, notification]);
+
+  if (!isDraft && !value) {
+    return <span style={{ fontSize: 12, color: DARK_THEME.textMuted }}>{displayName ?? '—'}</span>;
+  }
+  return (
+    <Select
+      size="small"
+      value={value ?? undefined}
+      placeholder={displayName ?? '—'}
+      allowClear
+      disabled={!isDraft}
+      style={{ width: '100%', fontSize: 12 }}
+      // Шире колонки: подпись с названием команды и загрузкой целиком
+      // помещается почти у всех. Числом, а не false — иначе AntD
+      // выключает виртуальный список.
+      popupMatchSelectWidth={640}
+      showSearch={{ optionFilterProp: 'label' }}
+      loading={candidates.isFetching}
+      notFoundContent={
+        candidates.isFetching
+          ? <Spin size="small" />
+          : candidates.isError
+            ? 'Не удалось загрузить список сотрудников'
+            : undefined
+      }
+      options={options}
+      onOpenChange={setOpen}
+      // В закрытом поле — только имя; роль, команда и загрузка — в списке.
+      labelRender={({ label }) => displayName ?? label}
+      onChange={(v: string | undefined) => onChange(v ?? null)}
+    />
+  );
+}
 
 function BacklogAllocRowBase({
   alloc: a,
@@ -65,6 +151,7 @@ function BacklogAllocRowBase({
   onToggle,
   onPriorityChange,
   onAssigneeChange,
+  onDeveloperChange,
   onSubgroupChange,
   onOpenBreakdown,
 }: BacklogAllocRowProps) {
@@ -78,39 +165,10 @@ function BacklogAllocRowBase({
     [setNodeRef, registerRef, a.id],
   );
 
-  // Кандидаты — все, кто в квартале сценария состоит в какой-либо команде.
-  // Грузятся, только пока список открыт: строк в сценарии много.
-  const { notification } = App.useApp();
-  const [assigneeOpen, setAssigneeOpen] = useState(false);
-  const candidates = useScenarioAssigneeCandidates(scenarioId, a.backlog_item_id, assigneeOpen);
   const roleLabels = useMemo(
     () => new Map(roles.map((r) => [r.code, r.label] as const)),
     [roles],
   );
-  // Пока список не пришёл — одна опция с текущим исполнителем; не загрузился —
-  // состав команды сценария, как было до выбора из всех команд.
-  const assigneeOptions = useMemo<SelectProps['options']>(
-    () =>
-      candidates.data?.length
-        ? candidateOptions(candidates.data, roleLabels)
-        : candidates.isError
-          ? teamAssigneeOptions
-          : a.assignee_employee_id
-            ? [{ value: a.assignee_employee_id, label: a.assignee_display_name ?? '—' }]
-            : [],
-    [candidates.data, candidates.isError, roleLabels, teamAssigneeOptions, a.assignee_employee_id, a.assignee_display_name],
-  );
-  // Каждая неудачная загрузка списка — одно уведомление (с тем же ключом
-  // повтор заменяет прежнее, а не копит стопку).
-  const candidatesError = candidates.error;
-  useEffect(() => {
-    if (!candidatesError) return;
-    notification.error({
-      key: 'scenario-assignee-candidates',
-      title: 'Не удалось загрузить список исполнителей',
-      description: 'Показан состав команды сценария.',
-    });
-  }, [candidatesError, notification]);
 
   const raw = effectiveEstimate(a);
   // С квартала отсечки часы ОПЭ показываем внутри АН и ПР.
@@ -300,38 +358,34 @@ function BacklogAllocRowBase({
         )}
       </div>
       <div onClick={(e) => e.stopPropagation()}>
-        {!isDraft && !a.assignee_employee_id ? (
-          <span style={{ fontSize: 12, color: DARK_THEME.textMuted }}>
-            {a.assignee_display_name ?? '—'}
-          </span>
-        ) : (
-          <Select
-            size="small"
-            value={a.assignee_employee_id ?? undefined}
-            placeholder={a.assignee_display_name ?? '—'}
-            allowClear
-            disabled={!isDraft}
-            style={{ width: '100%', fontSize: 12 }}
-            // Шире колонки: подпись с названием команды и загрузкой целиком
-            // помещается почти у всех. Числом, а не false — иначе AntD
-            // выключает виртуальный список.
-            popupMatchSelectWidth={640}
-            showSearch={{ optionFilterProp: 'label' }}
-            loading={candidates.isFetching}
-            notFoundContent={
-              candidates.isFetching
-                ? <Spin size="small" />
-                : candidates.isError
-                  ? 'Не удалось загрузить список исполнителей'
-                  : undefined
-            }
-            options={assigneeOptions}
-            onOpenChange={setAssigneeOpen}
-            // В закрытом поле — только имя; роль, команда и загрузка — в списке.
-            labelRender={({ label }) => a.assignee_display_name ?? label}
-            onChange={(value: string | undefined) => onAssigneeChange(a.id, value ?? null)}
-          />
-        )}
+        <PersonSelect
+          scenarioId={scenarioId}
+          backlogItemId={a.backlog_item_id}
+          phase="analyst"
+          isDraft={isDraft}
+          value={a.assignee_employee_id}
+          displayName={a.assignee_display_name}
+          busyId={a.developer_employee_id}
+          busyHint="уже разработчик этой задачи"
+          teamAssigneeOptions={teamAssigneeOptions}
+          roleLabels={roleLabels}
+          onChange={(id) => onAssigneeChange(a.id, id)}
+        />
+      </div>
+      <div onClick={(e) => e.stopPropagation()}>
+        <PersonSelect
+          scenarioId={scenarioId}
+          backlogItemId={a.backlog_item_id}
+          phase="dev"
+          isDraft={isDraft}
+          value={a.developer_employee_id}
+          displayName={a.developer_display_name}
+          busyId={a.assignee_employee_id}
+          busyHint="уже аналитик этой задачи"
+          teamAssigneeOptions={teamAssigneeOptions}
+          roleLabels={roleLabels}
+          onChange={(id) => onDeveloperChange(a.id, id)}
+        />
       </div>
       {subgroupOptions && (
         <div onClick={(e) => e.stopPropagation()}>

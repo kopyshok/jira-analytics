@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { App } from 'antd';
 import type { AssignmentOut, EmployeeLoadOut, ExternalBookingOut } from '../../api/resourcePlanning';
 import type { EmployeeResponse } from '../../types/api';
@@ -46,9 +46,10 @@ interface Props {
   /** Группа команды для каждой инициативы: показывать строки секциями групп.
    *  План остаётся общекомандным — секции только визуальные. */
   sectionByItem?: Record<string, string>;
-  /** Группа сотрудника внутри команды: строка помечается, если исполнитель
-   *  не из группы инициативы (плавающий разработчик соседней группы). */
-  subgroupByEmployee?: Record<string, string>;
+  /** Сотрудник → его группы внутри команды (сервер отдаёт список, первая —
+   *  главная). Строка помечается, если группа секции не входит в список —
+   *  человек занят соседней группой, где у него в квартале доли нет. */
+  subgroupByEmployee?: Record<string, string[]>;
   /** Свёрнутые секции групп (названия). */
   collapsedSections?: string[];
   onToggleSection?: (name: string, collapsed: boolean) => void;
@@ -393,10 +394,14 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
   // Призрак новой позиции: пока тянут и дальше — до ответа сервера и
   // перечитывания плана, чтобы полоса не прыгала назад.
   const [ghost, setGhost] = useState<{ left: number; width: number } | null>(null);
+  // Полосу сдвинули: щелчок после отпускания кнопки панель не открывает.
+  // Состояние переноса тут не годится — оно сбрасывается раньше щелчка.
+  const movedRef = useRef(false);
 
   const beginDrag = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    movedRef.current = false;
     // Пока прежний перенос сохраняется и план перечитывается, id строк могут
     // смениться — новый перенос ушёл бы на удалённую строку.
     if (dragLocked) return;
@@ -435,6 +440,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
       setGhost(null);
       return;
     }
+    movedRef.current = true;
     const requested = shiftByColumns(drag.origStart, dx, timeline);
     setGhost({ left: dateToLeft(requested, timeline), width: drag.widthPct });
     // Промис, а не колбэки mutate: после пересчёта строка может смениться,
@@ -502,13 +508,13 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
       data-testid={`rp-bar-${refKey}`}
       onMouseDown={beginDrag}
       onClick={(e) => {
-        if (drag) return;
+        if (movedRef.current) return;
         if (onClick) {
           e.stopPropagation();
           onClick();
         }
       }}
-      title={`${PHASE_LABELS[assignment.phase]} — ${assignment.hours_allocated?.toFixed(0)}ч`}
+      title={`${PHASE_LABELS[assignment.phase]} — ${assignment.hours_allocated?.toFixed(0)}ч${assignment.other_subgroup ? ' · работа на соседнюю группу' : ''}`}
       className={barClassName || undefined}
       style={{
         position: 'absolute',
@@ -522,7 +528,9 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         borderRadius: 3,
         border: assignment.is_on_critical_path
           ? '1px solid #e85d4a'
-          : 'none',
+          : assignment.other_subgroup
+            ? '1px dashed #a78bfa'
+            : 'none',
         boxShadow: hasConflict
           ? 'inset 0 0 0 2px #ef4444'
           : isMe
@@ -1030,9 +1038,13 @@ function TwoLevelRows({
                 const isHighlighted = !!highlightedEmployeeId && empId === highlightedEmployeeId;
                 const isDimmed = !!fadeOthers && !isHighlighted;
                 // Исполнитель из другой группы — помощь соседей, помечаем строку.
-                const empGroup = empId ? subgroupByEmployee?.[empId] : undefined;
+                // Смотрим на весь список групп человека за квартал, а не только
+                // на сегодняшнюю: у общих и переведённых групп несколько.
+                const empGroups = empId ? subgroupByEmployee?.[empId] : undefined;
                 const foreignGroup =
-                  !!section && !!empGroup && empGroup !== section ? empGroup : null;
+                  !!section && !!empGroups?.length && !empGroups.includes(section)
+                    ? empGroups[0]
+                    : null;
                 const assigneeNode = phase === 'qa' ? (
                   <span style={{ color: '#4a6a90' }}>—</span>
                 ) : (
@@ -1428,7 +1440,7 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
                     if (el) rowRefs.current.set(refKey, el);
                     else rowRefs.current.delete(refKey);
                   }}
-                  title={`${a.backlog_item_title} — ${PHASE_LABELS[a.phase]} (${a.hours_allocated?.toFixed(0)}ч)`}
+                  title={`${a.backlog_item_title} — ${PHASE_LABELS[a.phase]} (${a.hours_allocated?.toFixed(0)}ч)${a.other_subgroup ? ' · работа на соседнюю группу' : ''}`}
                   onClick={(e) => {
                     if (a.phase === 'qa') return;
                     e.stopPropagation();

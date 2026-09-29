@@ -251,3 +251,65 @@ def test_reassign_falls_back_to_non_pinned_candidate():
     reassign = [e for e in events if e.action == "reassign"]
     assert len(reassign) == 1
     assert reassign[0].assignment_id == "A_FREE"
+
+
+def test_locked_developer_is_not_reassigned_to_peer():
+    """Разработчика из колонки сценария выравниватель не подменяет: нехватка
+    времени — конфликт, а не переназначение на коллегу той же роли."""
+    def _run(locked):
+        a1 = _mk_assignment(
+            "A1", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 6.0, item_id="I1"
+        )
+        a1.slack_days = 0.0
+        a2 = _mk_assignment(
+            "A2", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 4.0, item_id="I2"
+        )
+        a2.slack_days = 0.0
+        avail = {
+            "EMP-1": {date(2026, 4, 1): 8.0},
+            "EMP-2": {date(2026, 4, 1): 8.0},
+        }
+        peers = {"EMP-1": ["EMP-1", "EMP-2"]}
+        events = RcpspLeveler().level(
+            [a1, a2], avail, q_end=date(2026, 4, 30), role_pools=peers,
+            locked=locked,
+        )
+        return a1, a2, events
+
+    # Без блокировки — одна из фаз уходит к коллеге.
+    a1, a2, events = _run(None)
+    assert {a1.employee_id, a2.employee_id} == {"EMP-1", "EMP-2"}
+
+    # Обе фазы — у разработчика из колонки: никого не подменяем, эскалация.
+    a1, a2, events = _run({("I1", "dev"): "EMP-1", ("I2", "dev"): "EMP-1"})
+    assert a1.employee_id == "EMP-1"
+    assert a2.employee_id == "EMP-1"
+    assert [e for e in events if e.action == "reassign"] == []
+    assert len([e for e in events if e.action == "escalate"]) == 1
+
+
+def test_locked_only_for_its_employee():
+    """Блокировка держит только выбранного разработчика: фазу, которая уже у
+    другого сотрудника (например, закрепили вручную), выравниватель двигает."""
+    a1 = _mk_assignment(
+        "A1", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 6.0, item_id="I1"
+    )
+    a1.slack_days = 0.0
+    a2 = _mk_assignment(
+        "A2", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 4.0, item_id="I2"
+    )
+    a2.slack_days = 0.0
+    avail = {
+        "EMP-1": {date(2026, 4, 1): 8.0},
+        "EMP-2": {date(2026, 4, 1): 8.0},
+    }
+    peers = {"EMP-1": ["EMP-1", "EMP-2"]}
+    events = RcpspLeveler().level(
+        [a1, a2], avail, q_end=date(2026, 4, 30), role_pools=peers,
+        locked={("I1", "dev"): "EMP-1", ("I2", "dev"): "EMP-3"},
+    )
+
+    assert a1.employee_id == "EMP-1"
+    assert a2.employee_id == "EMP-2"
+    reassign = [e for e in events if e.action == "reassign"]
+    assert [e.assignment_id for e in reassign] == ["A2"]

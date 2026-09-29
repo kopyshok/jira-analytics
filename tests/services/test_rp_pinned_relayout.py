@@ -35,10 +35,10 @@ def _weekdays(start: str, end: str, hours: float = 6.0) -> dict:
 
 
 def test_pinned_phase_skips_other_team_work(db_session):
-    """Шутов состоит в A и B; B занимает его 06.01 — фаза плана A,
+    """Шутов в B (основная) и в A; B занимает его 06.01 — фаза плана A,
     закреплённая с 05.01, этот день обходит."""
-    e = make_employee(db_session, "Шутов", "A")
-    join_team(db_session, e, "B")
+    e = make_employee(db_session, "Шутов", "B")
+    join_team(db_session, e, "A")
     sc_b, plan_b = make_plan(db_session, "B")
     book(db_session, plan_b, add_item(db_session, sc_b, "Работа B", dev=6), e,
          {"2026-01-06": 6.0})
@@ -137,10 +137,10 @@ def test_pinned_testing_phase_follows_its_date(db_session):
 
 
 def test_pinned_phase_without_free_days_is_reported(db_session):
-    """Человек до конца окна занят в команде C, где он тоже состоит, —
-    часы закреплённой фазы не размещены, и это видно конфликтом."""
-    e = make_employee(db_session, "Свой", "T")
-    join_team(db_session, e, "C")
+    """Человек до конца окна занят в своей основной команде C, в T он тоже
+    состоит, — часы закреплённой фазы не размещены, и это видно конфликтом."""
+    e = make_employee(db_session, "Свой", "C")
+    join_team(db_session, e, "T")
     sc_c, plan_c = make_plan(db_session, "C")
     book(db_session, plan_c, add_item(db_session, sc_c, "Работа C", dev=1), e,
          _weekdays("2026-01-01", "2026-04-30"))
@@ -235,8 +235,8 @@ def test_pinned_testing_phase_without_working_days_is_reported(db_session):
 def test_pinned_phase_without_free_days_has_empty_layout(db_session):
     """Не размещённая закреплённая фаза хранит пустую раскладку: читатели не
     раскладывают её часы «поровну по дням полосы» как у старых строк."""
-    e = make_employee(db_session, "Свой", "T")
-    join_team(db_session, e, "C")
+    e = make_employee(db_session, "Свой", "C")
+    join_team(db_session, e, "T")
     sc_c, plan_c = make_plan(db_session, "C")
     book(db_session, plan_c, add_item(db_session, sc_c, "Работа C", dev=1), e,
          _weekdays("2026-01-01", "2026-04-30"))

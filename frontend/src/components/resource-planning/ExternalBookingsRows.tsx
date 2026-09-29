@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import type { ExternalBookingOut } from '../../api/resourcePlanning';
+import { useJiraBaseUrl } from '../../hooks/useSettings';
+import { IssueKey } from '../teamdesk/IssueCells';
 import type { ProductionCalendarDayResponse } from '../../types/api';
 import type { GanttTimeline, WorkdayTimeline } from '../../utils/gantt';
 import { dateToLeft, datesToWidth, fmtLocalIso } from '../../utils/gantt';
@@ -12,12 +14,19 @@ import {
   workdayChecker,
 } from '../../utils/externalBookings';
 
-const ROW_H = 28;
+// Две строки подписи: «имя · ключ · фаза» и название задачи.
+const ROW_H = 36;
 const BAR_H = 16;
 // Левая колонка перекрывает метку «сегодня» (z=20) при горизонтальном скролле —
 // как у строк задач.
 const STICKY_Z = 25;
-const OVERLAP_HINT = 'пересекается с вашим планом — техкоманда получит конфликт';
+// Бронь домашней для человека команды: подстраивается этот план — пересечение
+// уходит его пересчётом.
+const HOME_OVERLAP_HINT = 'пересекается с вашим планом — нажмите «Распределить»';
+const overlapHint = (b: ExternalBookingOut) =>
+  b.is_borrowing
+    ? `пересекается с вашим планом — ${b.team} получит конфликт`
+    : HOME_OVERLAP_HINT;
 
 interface Props {
   bookings: ExternalBookingOut[];
@@ -36,6 +45,9 @@ interface Props {
   collapsed: boolean;
   onToggle: () => void;
 }
+
+// Ключ — размером с подпись вокруг, иначе вторая строка уезжает вниз.
+const KEY_STYLE = { fontSize: 'inherit', lineHeight: 'inherit' };
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
 
@@ -56,6 +68,7 @@ export default function ExternalBookingsRows({
   collapsed,
   onToggle,
 }: Props) {
+  const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
   const rows = useMemo(() => {
     const from = fmtLocalIso(timeline.startDate);
     const to = fmtLocalIso(timeline.endDate);
@@ -106,6 +119,9 @@ export default function ExternalBookingsRows({
       </button>
       {!collapsed && rows.map(({ b, runs }) => {
         const label = labelOf(b);
+        // Без ключа название уже стоит в подписи вместо него.
+        const name = b.issue_key ? b.title : '';
+        const full = name ? `${label} — ${name}` : label;
         const meta = b.provisional ? `${b.team} · предварительно` : b.team;
         return (
           <div
@@ -113,7 +129,7 @@ export default function ExternalBookingsRows({
             style={{ display: 'flex', height: ROW_H, borderBottom: '1px solid #0e2540' }}
           >
             <div
-              title={`${label} — ${meta}`}
+              title={`${full} — ${meta}`}
               style={{
                 width: leftColWidth,
                 boxSizing: 'border-box',
@@ -132,8 +148,21 @@ export default function ExternalBookingsRows({
                 whiteSpace: 'nowrap',
               }}
             >
-              <span style={{ color: '#9ab3cc', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {label}
+              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.3 }}>
+                <span style={{ color: '#9ab3cc', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {/* Ключ в подписи — ссылка в Jira. */}
+                  {label.split(' · ').map((part, i) => (
+                    <Fragment key={i}>
+                      {i > 0 && ' · '}
+                      {part === b.issue_key ? <IssueKey issueKey={part} jiraBaseUrl={jiraBaseUrl} style={KEY_STYLE} /> : part}
+                    </Fragment>
+                  ))}
+                </span>
+                {name && (
+                  <span style={{ fontSize: 11, color: '#7a9ab8', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {name}
+                  </span>
+                )}
               </span>
               {/* «предварительно» — отдельной строкой: длинное название команды его не съест. */}
               <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, fontSize: 11, lineHeight: 1.15 }}>
@@ -145,7 +174,7 @@ export default function ExternalBookingsRows({
               {runs.map((r) => (
                 <div
                   key={r.start}
-                  title={`${label} — ${meta}: ${ddmm(r.start)}–${ddmm(r.end)}, ${Math.round(r.hours)} ч. Только просмотр`}
+                  title={`${full} — ${meta}: ${ddmm(r.start)}–${ddmm(r.end)}, ${Math.round(r.hours)} ч. Только просмотр`}
                   style={{
                     position: 'absolute',
                     left: `${dateToLeft(r.start, timeline)}%`,
@@ -163,7 +192,7 @@ export default function ExternalBookingsRows({
               {showOverlap && b.overlap_days.map((d) => (
                 <div
                   key={`overlap-${d}`}
-                  title={`${ddmm(d)}: ${OVERLAP_HINT}`}
+                  title={`${ddmm(d)}: ${overlapHint(b)}`}
                   style={{
                     position: 'absolute',
                     left: `${dateToLeft(d, timeline)}%`,

@@ -1,4 +1,4 @@
-import { App, Button, Dropdown, Modal } from 'antd';
+import { App, Button, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useBulkClear } from '../../hooks/useResourcePlanning';
@@ -26,7 +26,9 @@ const MODE_DESCRIPTIONS: Record<BulkClearMode, (n: number) => string> = {
 const TOTAL = (c: ResetCounts) => c.pinned_dates + c.pinned_employees + c.edited_predecessors;
 
 export default function BulkResetDropdown({ planId, counts }: Props) {
-  const { message } = App.useApp();
+  // Окно подтверждения — из App.useApp: статический Modal.confirm не видит
+  // тему приложения и в тёмной теме рисует тёмный текст на тёмном фоне.
+  const { message, modal } = App.useApp();
   const bulkClear = useBulkClear(planId);
 
   const countFor = (mode: BulkClearMode): number => {
@@ -39,7 +41,7 @@ export default function BulkResetDropdown({ planId, counts }: Props) {
   const handleClick = (mode: BulkClearMode) => {
     const n = countFor(mode);
     if (n === 0 && mode !== 'all') return;
-    Modal.confirm({
+    modal.confirm({
       title: MODE_LABELS[mode],
       content: MODE_DESCRIPTIONS[mode](n),
       okText: 'Сбросить',

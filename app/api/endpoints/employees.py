@@ -5,15 +5,17 @@
 
 from datetime import date, datetime
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Employee, Role
+from app.models import Employee, EmployeeTeam, Role, TeamSubgroup
+from app.services import subgroup_shares as ss
 from app.services.employee_team_service import EmployeeTeamService
+from app.services.subgroup_share_service import SubgroupShareService
 
 
 router = APIRouter()
@@ -24,11 +26,43 @@ class EmployeeTeamItem(BaseModel):
     is_primary: bool
     joined_at: Optional[date] = None
     left_at: Optional[date] = None
-    # Группа внутри команды; пусто, если у команды выключен признак деления
-    # или сотрудника ещё не приписали.
+    # Группа внутри команды, если сегодня человек целиком в одной группе;
+    # пусто, если у команды выключен признак деления, группы нет или человек
+    # поделён между несколькими группами.
     subgroup_id: Optional[str] = None
+    # Текущее распределение по группам: «Ломбард 60% · РФМ 40%». Пусто — нет группы.
+    subgroup_label: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+def _team_items(db: Session, rows: Sequence[EmployeeTeam]) -> List[EmployeeTeamItem]:
+    """Строки участия + группа на сегодня из истории распределения."""
+    rows = list(rows)
+    if not rows:
+        return []
+    today = date.today()
+    records = ss.load_all(db, {r.employee_id for r in rows})
+    groups = db.query(TeamSubgroup.id, TeamSubgroup.name, TeamSubgroup.sort_order).all()
+    names: dict[str, str] = {g: n for g, n, _ in groups}
+    # Порядок групп в подписи — как в реестре (sort_order, имя), тот же,
+    # что использует subgroup_shares.distribution_label — экраны согласуются.
+    order: dict[str, tuple[int, str]] = {g: (so, n) for g, n, so in groups}
+    items: List[EmployeeTeamItem] = []
+    for row in rows:
+        item = EmployeeTeamItem.model_validate(row)
+        rec = ss.record_on(records.get((row.employee_id, row.team), []), today)
+        item.subgroup_id = rec.shares[0][0] if rec and len(rec.shares) == 1 else None
+        item.subgroup_label = (
+            " · ".join(
+                f"{names.get(g, '?')}{f' {p}%' if p < 100 else ''}"
+                for g, p in sorted(rec.shares, key=lambda gp: order.get(gp[0], (10**9, "")))
+            )
+            if rec
+            else None
+        )
+        items.append(item)
+    return items
 
 
 class EmployeeResponse(BaseModel):
@@ -79,18 +113,31 @@ def list_employees(
     employees = query.all()
 
     result: List[EmployeeResponse] = []
-    for e in employees:
-        payload = EmployeeResponse.model_validate(e)
-        if with_teams:
-            # Отсортировать: primary первым, потом по имени.
-            teams = sorted(
-                e.teams,
-                key=lambda t: (not t.is_primary, t.team),
-            )
-            payload.teams = [EmployeeTeamItem.model_validate(t) for t in teams]
-        else:
+    if with_teams:
+        # Строки всех сотрудников за один проход через _team_items — иначе
+        # на каждого сотрудника уходит по два лишних запроса.
+        rows_by_emp: dict[str, List[EmployeeTeam]] = {
+            e.id: sorted(e.teams, key=lambda t: (not t.is_primary, t.team))
+            for e in employees
+        }
+        all_rows: List[EmployeeTeam] = [
+            row for rows in rows_by_emp.values() for row in rows
+        ]
+        all_items = _team_items(db, all_rows)
+        items_by_emp: dict[str, List[EmployeeTeamItem]] = {}
+        offset = 0
+        for emp_id, rows in rows_by_emp.items():
+            items_by_emp[emp_id] = all_items[offset : offset + len(rows)]
+            offset += len(rows)
+        for e in employees:
+            payload = EmployeeResponse.model_validate(e)
+            payload.teams = items_by_emp[e.id]
+            result.append(payload)
+    else:
+        for e in employees:
+            payload = EmployeeResponse.model_validate(e)
             payload.teams = None  # не утекать ORM-relationship когда не запрошено
-        result.append(payload)
+            result.append(payload)
     return result
 
 
@@ -257,7 +304,7 @@ def get_teams(employee_id: str, db: Session = Depends(get_db)):
     if emp is None:
         raise HTTPException(status_code=404, detail="Employee not found")
     rows = EmployeeTeamService(db).list_teams(employee_id)
-    return [EmployeeTeamItem.model_validate(r) for r in rows]
+    return _team_items(db, rows)
 
 
 @router.post("/{employee_id}/teams", response_model=EmployeeTeamItem)
@@ -276,7 +323,7 @@ def post_team(
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return EmployeeTeamItem.model_validate(row)
+    return _team_items(db, [row])[0]
 
 
 @router.put("/{employee_id}/teams/primary", response_model=List[EmployeeTeamItem])
@@ -295,7 +342,7 @@ def put_primary(
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Employee not in team {req.team!r}")
     rows = svc.list_teams(employee_id)
-    return [EmployeeTeamItem.model_validate(r) for r in rows]
+    return _team_items(db, rows)
 
 
 @router.put("/{employee_id}/teams", response_model=List[EmployeeTeamItem])
@@ -311,7 +358,7 @@ def put_teams(
     rows = EmployeeTeamService(db).replace_teams(
         employee_id, req.teams, primary=req.primary,
     )
-    return [EmployeeTeamItem.model_validate(r) for r in rows]
+    return _team_items(db, rows)
 
 
 @router.delete("/{employee_id}/teams/{team}", status_code=204)
@@ -347,7 +394,7 @@ def patch_joined_at(
         if "not found" in msg:
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=422, detail=msg)
-    return EmployeeTeamItem.model_validate(row)
+    return _team_items(db, [row])[0]
 
 
 class LeftAtPayload(BaseModel):
@@ -369,13 +416,15 @@ def patch_left_at(
         if "not found" in msg:
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=422, detail=msg)
-    return EmployeeTeamItem.model_validate(row)
+    return _team_items(db, [row])[0]
 
 
 class TransferRequest(BaseModel):
     from_team: str
     to_team: str
     on: date
+    # Обязательна, если у новой команды есть деление на группы.
+    subgroup_id: Optional[str] = None
 
 
 @router.post("/{employee_id}/teams/transfer", response_model=List[EmployeeTeamItem])
@@ -388,6 +437,9 @@ def post_transfer(
     emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
     if emp is None:
         raise HTTPException(status_code=404, detail="Employee not found")
+    groups = dict(ss.team_subgroups(db, req.to_team))
+    if groups and req.subgroup_id not in groups:
+        raise HTTPException(status_code=422, detail="Выберите группу в новой команде")
     svc = EmployeeTeamService(db)
     try:
         svc.transfer(employee_id, from_team=req.from_team, to_team=req.to_team, on=req.on)
@@ -396,5 +448,9 @@ def post_transfer(
         if "не найдено" in msg:
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=422, detail=msg)
+    if groups and req.subgroup_id:
+        SubgroupShareService(db).set_record(
+            employee_id, req.to_team, req.on, {req.subgroup_id: 100}
+        )
     rows = svc.list_teams(employee_id)
-    return [EmployeeTeamItem.model_validate(r) for r in rows]
+    return _team_items(db, rows)

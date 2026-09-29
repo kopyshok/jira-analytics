@@ -12,17 +12,21 @@ interface Props {
   assignment: AssignmentOut | null;
 }
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 export default function SplitAssignmentModal({ open, onClose, onSplit, planId, assignment }: Props) {
   const { message } = App.useApp();
-  const total = assignment?.hours_allocated ?? 0;
+  // Сотые: в уже рассчитанных планах часы фазы бывают 79.99999999999997.
+  const total = round2(assignment?.hours_allocated ?? 0);
   const [parts, setParts] = useState<number[]>([Math.round(total / 2), Math.round(total - total / 2)]);
   const [cascade, setCascade] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open && assignment) {
-      const half = Math.round((assignment.hours_allocated ?? 0) / 2);
-      setParts([half, (assignment.hours_allocated ?? 0) - half]);
+      const t = round2(assignment.hours_allocated ?? 0);
+      const half = Math.round(t / 2);
+      setParts([half, round2(t - half)]);
       setCascade(true);
     }
   }, [open, assignment]);

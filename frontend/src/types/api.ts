@@ -6,8 +6,21 @@ export interface EmployeeTeamItem {
   joined_at?: string | null;
   /** Первый день ВНЕ команды. null — состоит сейчас. */
   left_at?: string | null;
-  /** Группа внутри команды. null — команда не делится или не приписан. */
+  /** Группа, если сегодня сотрудник целиком в одной группе; иначе null. */
   subgroup_id?: string | null;
+  /** Текущее распределение: «Ломбард 60% · РФМ 40%». null — группы нет. */
+  subgroup_label?: string | null;
+}
+
+export interface SubgroupShareItem {
+  subgroup_id: string;
+  percent: number;
+}
+
+export interface SubgroupShareRecord {
+  /** null — «с начала участия». */
+  valid_from: string | null;
+  shares: SubgroupShareItem[];
 }
 
 export type EmployeeRole = string;  // now driven by roles registry
@@ -519,6 +532,8 @@ export interface BacklogItemResponse {
   approved_scenarios: BacklogItemScenarioRef[];
   assignee_employee_id: string | null;
   assignee_display_name: string | null;
+  developer_employee_id: string | null;
+  developer_display_name: string | null;
   customer: string | null;
   jira_status: string | null;
   jira_status_category: string | null;
@@ -625,6 +640,10 @@ export interface ResourceEmployee {
   is_overcommitted?: boolean;
   /** Группа внутри команды. null — у команды нет деления. */
   subgroup_id?: string | null;
+  /** Часы по группам за квартал; ключ '' — дни без группы. */
+  subgroup_hours?: Record<string, number>;
+  /** Подписи участия в группе: «60%», «с 15.11», «до 15.11». */
+  subgroup_labels?: Record<string, string>;
 }
 
 export interface ResourceBase {
@@ -676,6 +695,8 @@ export interface ResourceSummaryOut {
   booked_by_other_teams_by_role?: Record<string, number>;
   /** Часы людей команды в планах команд, взявших их к себе (не вычтены из «На бэклог»). */
   borrowed_by_other_teams_by_role?: Record<string, number>;
+  /** Активные участники без группы хоть в один день квартала — утвердить нельзя. */
+  ungrouped_employees?: { employee_id: string; display_name: string }[];
 }
 
 /** Переток одной группы: часы, ушедшие к соседям и пришедшие от них. */
@@ -710,6 +731,8 @@ export interface AllocationResponse {
   assignee_employee_id: string | null;
   assignee_display_name: string | null;
   assignee_role: string | null;
+  developer_employee_id: string | null;
+  developer_display_name: string | null;
   customer: string | null;
   cost_type: string | null;
   source_category: string | null;
@@ -761,6 +784,9 @@ export interface EmployeeDiff {
   months: MonthDiff[];
   /** Дата выбытия из команды сценария, если человек ушёл после утверждения. */
   left_team_at?: string | null;
+  /** Подпись распределения по группам до/после утверждения; null — без группы. Есть, только если распределение изменилось. */
+  subgroup_before?: string | null;
+  subgroup_after?: string | null;
 }
 
 export interface CapacityDiffResponse {
@@ -1297,4 +1323,31 @@ export interface InvolvementDefault {
   effective_year: number;
   effective_quarter: number;
   involvement: number;
+}
+
+export interface PersonalNormedItem {
+  work_type_id: string;
+  label: string;
+  percent_of_norm: number;
+}
+
+export interface PersonalSetting {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  employee_role: string | null;
+  effective_year: number;
+  effective_quarter: number;
+  involvement: number | null;
+  normed_custom: boolean;
+  normed: PersonalNormedItem[];
+}
+
+export interface PersonalSettingInput {
+  employee_id: string;
+  effective_year: number;
+  effective_quarter: number;
+  involvement: number | null;
+  normed_custom: boolean;
+  normed: { work_type_id: string; percent_of_norm: number }[];
 }

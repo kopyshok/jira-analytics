@@ -85,7 +85,7 @@ def _seed(db) -> None:
     # Родитель — квартальная задача на вкладке «Активные», эпик — в «Бэклоге».
     _add(db, "RFA-10", category="quarterly_tasks", **RFA)
     _add(db, "OS-10", parent="RFA-10")
-    # Родитель утверждён в сценарии — из «Бэклога» уходит.
+    # Родитель утверждён в сценарии — из «Бэклога» уходит вместе с эпиком.
     _add(db, "RFA-20", **RFA)
     _add(db, "OS-20", parent="RFA-20")
     # Родитель выполнен — из «Бэклога» уходит, но из бэклога не архивирован.
@@ -218,7 +218,6 @@ def test_role_matches_candidate_selection(client, testclient_db_session, lock):
         ({"view": "active"}, "bi-RFA-1", "regular"),
         ({"view": "active"}, "bi-OS-10", "inert"),
         ({"view": "quarterly"}, "bi-RFA-10", "regular"),
-        ({"view": "active"}, "bi-OS-20", "inert"),
         ({"view": "active"}, "bi-OS-30", "inert"),
         ({"view": "active"}, "bi-OS-40", "regular"),
         ({"view": "active", "teams": TEAM_A}, "bi-RFA-50", "by_epics"),
@@ -227,7 +226,7 @@ def test_role_matches_candidate_selection(client, testclient_db_session, lock):
     ],
     ids=[
         "parent-hidden-by-team-filter", "child-row", "discovery-on-top-of-parent",
-        "whole-parent", "parent-on-other-tab", "quarterly-parent", "approved-parent",
+        "whole-parent", "parent-on-other-tab", "quarterly-parent",
         "done-parent", "archived-parent-no-group", "by-epics-children-hidden",
         "by-epics-children-shown", "by-epics-child",
     ],

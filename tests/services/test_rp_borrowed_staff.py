@@ -292,9 +292,9 @@ def test_borrowed_jira_developer_with_work_covers_missing_developers(
 def test_phase_without_capacity_is_reported_not_dropped(db_session, sample_project):
     """Ни у кого нет ёмкости — разработка не пропадает молча, а даёт конфликт."""
     e = make_employee(db_session, "Пряничников", "A", jira_account_id="acc-e")
-    own = make_employee(db_session, "Свой B", "B")
+    own = make_employee(db_session, "Свой B", "C")
     _booked_all_window(db_session, "A", e)
-    join_team(db_session, own, "C")  # общий сотрудник: бронь C вычитается
+    join_team(db_session, own, "B")  # B у него не основная: бронь C вычитается
     _booked_all_window(db_session, "C", own)
     issue = make_issue(db_session, sample_project, "OS-3", developer="acc-e")
     sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
@@ -404,10 +404,10 @@ def test_chain_shortfall_is_one_neutral_conflict_per_initiative(db_session):
 def test_phase_pushed_by_predecessor_past_free_days_is_reported(db_session):
     """Связь сдвинула фазу туда, где у исполнителя нет ни часа, — это не «размещено»."""
     d1 = make_employee(db_session, "Разработчик 1", "B")
-    d2 = make_employee(db_session, "Разработчик 2", "B")
-    # Весь апрель (месяц запаса) второй разработчик занят командой C,
-    # где он тоже состоит.
-    join_team(db_session, d2, "C")
+    d2 = make_employee(db_session, "Разработчик 2", "C")
+    # Весь апрель (месяц запаса) второй разработчик занят своей основной
+    # командой C; в B он тоже состоит.
+    join_team(db_session, d2, "B")
     sc_c, plan_c = make_plan(db_session, "C")
     book(db_session, plan_c, add_item(db_session, sc_c, "Работа C", dev=1), d2,
          _weekdays("2026-04-01", "2026-04-30"))
@@ -503,8 +503,8 @@ def test_plan_without_people_reports_it_instead_of_old_conflicts(db_session):
 
 def test_leveler_does_not_delay_onto_other_team_bookings(db_session):
     """Перегрузку выравниватель снимает сдвигом только на дни без чужих броней."""
-    e = make_employee(db_session, "Пряничников", "A")
-    join_team(db_session, e, "B")  # общий сотрудник: бронь B вычитается
+    e = make_employee(db_session, "Пряничников", "B")
+    join_team(db_session, e, "A")  # A у него не основная: бронь B вычитается
     # План B держит E во вторник 06.01.
     sc_b, plan_b = make_plan(db_session, "B")
     item_b = add_item(db_session, sc_b, "Работа B", dev=6)
@@ -523,8 +523,8 @@ def test_leveler_does_not_delay_onto_other_team_bookings(db_session):
 
 def test_plan_avoids_previous_quarter_spill_of_other_team(db_session):
     """План B на прошлый квартал выполз в январь — план A этот хвост обходит."""
-    e = make_employee(db_session, "Пряничников", "A")
-    join_team(db_session, e, "B")  # общий сотрудник: хвост B вычитается
+    e = make_employee(db_session, "Пряничников", "B")
+    join_team(db_session, e, "A")  # A у него не основная: хвост B вычитается
     sc_b, plan_b = make_plan(db_session, "B", year=2025, quarter="Q4")
     item_b = add_item(db_session, sc_b, "Хвост B", dev=12)
     book(db_session, plan_b, item_b, e, {"2026-01-01": 6.0, "2026-01-02": 6.0})

@@ -5,18 +5,30 @@ from datetime import date
 from app.models import EmployeeTeam, Team, TeamSubgroup
 from app.services.resource_base_service import ResourceBaseService
 from tests.services.xteam_factory import add_item, book, join_team, make_employee, make_plan
+from tests.subgroup_fixtures import share
 
 
-def _setup(db_session):
-    """E состоит в A и в B (общий сотрудник); B бронирует его на 05.01."""
-    e = make_employee(db_session, "Пряничников", "A")
-    join_team(db_session, e, "B")
+def _setup(db_session, primary="B"):
+    """E состоит в A и в B (общий сотрудник, основная — ``primary``); B
+    бронирует его на 05.01. Сценарий — команды A."""
+    e = make_employee(db_session, "Пряничников", primary)
+    join_team(db_session, e, "A" if primary == "B" else "B")
     sc_b, plan_b = make_plan(db_session, "B")
     item_b = add_item(db_session, sc_b, "Работа B", dev=6)
     book(db_session, plan_b, item_b, e, {"2026-01-05": 6.0})
     sc_a, _ = make_plan(db_session, "A", scenario_status="draft")
     db_session.commit()
     return e, sc_a
+
+
+def test_primary_team_base_keeps_hours_booked_by_secondary_team(db_session):
+    """A — основная команда E: бронь B базу A не уменьшает, показана справочно."""
+    e, sc_a = _setup(db_session, primary="A")
+
+    s = ResourceBaseService(db_session).compute_summary(sc_a)
+
+    assert s.booked_by_other_teams_by_role == {}
+    assert s.borrowed_by_other_teams_by_role == {"developer": 6.0}
 
 
 def test_daily_base_minus_other_team_bookings(db_session):
@@ -62,7 +74,7 @@ def test_subgroup_capacity_loses_only_booked_member_hours(db_session):
     e, sc_a = _setup(db_session)
     g = make_employee(db_session, "Сосед", "A")
     for emp, sg in ((e, "sg-x"), (g, "sg-y")):
-        db_session.query(EmployeeTeam).filter_by(employee_id=emp.id, team="A").one().subgroup_id = sg
+        db_session.add(share(emp.id, "A", sg))
     db_session.commit()
 
     s = ResourceBaseService(db_session).compute_summary(sc_a)
@@ -71,6 +83,50 @@ def test_subgroup_capacity_loses_only_booked_member_hours(db_session):
     gross_y = s.gross_by_subgroup_role["sg-y"]["developer"]
     assert s.available_by_subgroup_role["sg-x"]["developer"] == round(gross_x - 6.0, 2)
     assert s.available_by_subgroup_role["sg-y"]["developer"] == gross_y
+
+
+def test_subgroup_split_50_50_booking_costs_each_group_half(db_session):
+    """Сотрудник поделён 50/50 между группами — бронь другой команды режет
+    доступное каждой группы поровну."""
+    db_session.add(Team(id="t-a2", name="A", has_subgroups=True))
+    db_session.flush()
+    db_session.add_all([
+        TeamSubgroup(id="sg-p", team_id="t-a2", name="P", sort_order=1),
+        TeamSubgroup(id="sg-q", team_id="t-a2", name="Q", sort_order=2),
+    ])
+    e, sc_a = _setup(db_session)  # бронь B: 6 ч на 05.01
+    db_session.add(share(e.id, "A", "sg-p", 50))
+    db_session.add(share(e.id, "A", "sg-q", 50))
+    db_session.commit()
+
+    s = ResourceBaseService(db_session).compute_summary(sc_a)
+
+    gross_p = s.gross_by_subgroup_role["sg-p"]["developer"]
+    gross_q = s.gross_by_subgroup_role["sg-q"]["developer"]
+    assert s.available_by_subgroup_role["sg-p"]["developer"] == round(gross_p - 3.0, 2)
+    assert s.available_by_subgroup_role["sg-q"]["developer"] == round(gross_q - 3.0, 2)
+
+
+def test_subgroup_transfer_after_booking_charges_old_group_only(db_session):
+    """Перевод вступает в силу на следующий день после брони — бронь снимается
+    только со старой группы, не делится между старой и новой."""
+    db_session.add(Team(id="t-a3", name="A", has_subgroups=True))
+    db_session.flush()
+    db_session.add_all([
+        TeamSubgroup(id="sg-old", team_id="t-a3", name="Old", sort_order=1),
+        TeamSubgroup(id="sg-new", team_id="t-a3", name="New", sort_order=2),
+    ])
+    e, sc_a = _setup(db_session)  # бронь B: 6 ч на 05.01
+    db_session.add(share(e.id, "A", "sg-old"))
+    db_session.add(share(e.id, "A", "sg-new", valid_from=date(2026, 1, 6)))
+    db_session.commit()
+
+    s = ResourceBaseService(db_session).compute_summary(sc_a)
+
+    gross_old = s.gross_by_subgroup_role["sg-old"]["developer"]
+    gross_new = s.gross_by_subgroup_role["sg-new"]["developer"]
+    assert s.available_by_subgroup_role["sg-old"]["developer"] == round(gross_old - 6.0, 2)
+    assert s.available_by_subgroup_role["sg-new"]["developer"] == gross_new
 
 
 def test_resource_summary_endpoint_returns_booked_hours(db_session):

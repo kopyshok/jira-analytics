@@ -8,7 +8,7 @@ import {
 } from 'antd';
 import {
   BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined,
-  DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined,
+  CodeOutlined, DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined,
   PlusOutlined, RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
 import BacklogAllocRow from '../components/planning/BacklogAllocRow';
@@ -28,6 +28,7 @@ import ScenarioRevisionHistoryDrawer from '../components/planning/ScenarioRevisi
 import InvolvementDefaultsDrawer from '../components/planning/InvolvementDefaultsDrawer';
 import { useOpoCutoff } from '../hooks/useOpoCutoff';
 import HoursBreakdownDrawer from '../components/hours/HoursBreakdownDrawer';
+import EmployeeDrawer from '../components/capacity/EmployeeDrawer';
 import { useScenarioContinuationInfo } from '../hooks/useScenarioContinuationInfo';
 import {
   useScenarios,
@@ -41,6 +42,7 @@ import {
   useScenarioResourceSummary,
   useUpdateScenario,
   usePatchAllocationAssignee,
+  usePatchAllocationDeveloper,
   useSetAllocationSubgroup,
   useReorderAllocations,
   useCapacityDiff,
@@ -64,9 +66,9 @@ import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../uti
 import { effectiveEstimate } from '../utils/allocationEstimates';
 import type { AllocationResponse } from '../types/api';
 
-const GRID = '24px 36px 48px minmax(0, 1fr) 150px 180px 260px 90px';
-// Та же сетка + колонка «Группа» после исполнителя — для команд с делением.
-const GRID_WITH_SUBGROUP = '24px 36px 48px minmax(0, 1fr) 150px 140px 180px 260px 90px';
+const GRID = '24px 36px 48px minmax(0, 1fr) 130px 130px 180px 260px 90px';
+// Та же сетка + колонка «Группа» после разработчика — для команд с делением.
+const GRID_WITH_SUBGROUP = '24px 36px 48px minmax(0, 1fr) 130px 130px 140px 180px 260px 90px';
 const GRID_GAP = 8;
 
 
@@ -153,6 +155,20 @@ function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
                   </span>
                 </div>
               )}
+              {(emp.subgroup_before || emp.subgroup_after) && (
+                <div style={{
+                  display: 'flex', gap: 8, padding: '4px 6px',
+                  background: 'rgba(245,158,11,0.07)', borderRadius: 5,
+                  fontSize: 12, marginBottom: 3,
+                }}>
+                  <span style={{ color: '#e2e8f0', fontWeight: 500, minWidth: 120 }}>
+                    {emp.employee_name}
+                  </span>
+                  <span style={{ color: 'var(--text-muted, #94a3b8)' }}>
+                    группа: {emp.subgroup_before ?? 'без группы'} → {emp.subgroup_after ?? 'без группы'}
+                  </span>
+                </div>
+              )}
               {emp.months.map(m => (
                 <div key={`${m.year}-${m.month}`} style={{
                   display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap',
@@ -214,6 +230,7 @@ export default function PlanningPage() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [involvementOpen, setInvolvementOpen] = useState(false);
+  const [ungroupedDrawerId, setUngroupedDrawerId] = useState<string | null>(null);
   useRegisterHelp('Планирование сценариев', planningHelp);
   // Компактный режим — всегда включён; тумблер выпилен по запросу PM.
   const compact = true;
@@ -278,6 +295,7 @@ export default function PlanningPage() {
   const appearanceValue = appearance.data ?? DEFAULT_APPEARANCE;
   const liftIncluded = appearanceValue.scenario_lift_included;
   const { mutate: patchAssignee } = usePatchAllocationAssignee();
+  const { mutate: patchDeveloper } = usePatchAllocationDeveloper();
   const { mutate: patchBacklogPriority } = usePatchBacklogPriority();
   const updateScenario = useUpdateScenario();
   const deleteScenario = useDeleteScenario();
@@ -505,11 +523,20 @@ export default function PlanningPage() {
     [patchAssignee, scenarioId],
   );
 
+  const handleDeveloperChange = useCallback(
+    (allocId: string, employeeId: string | null) => {
+      if (!scenarioId) return;
+      patchDeveloper({ scenarioId, allocId, developerEmployeeId: employeeId });
+    },
+    [patchDeveloper, scenarioId],
+  );
+
   // === Группы внутри команды =============================================
   // Список групп приходит вместе со сводкой ресурса. Пусто — у команды нет
   // деления, и раздел выглядит ровно как до правки.
   const subgroups = useMemo(() => resourceSummary?.subgroups ?? [], [resourceSummary]);
   const hasSubgroups = subgroups.length > 0;
+  const ungrouped = resourceSummary?.ungrouped_employees ?? [];
   const subgroupOptions = useMemo(
     () => subgroups.map((g) => ({ label: g.name, value: g.id })),
     [subgroups],
@@ -663,7 +690,7 @@ export default function PlanningPage() {
                 Сравнить
               </Button>
             </Tooltip>
-            <Tooltip title="Справочник вовлечённости по ролям">
+            <Tooltip title="Вовлечённость и нормированные работы">
               <Button onClick={() => setInvolvementOpen(true)} data-tour="planning-involvement">
                 Вовлечённость
               </Button>
@@ -750,16 +777,33 @@ export default function PlanningPage() {
               </div>
               <Space>
                 {isDraft ? (
-                  <Button
-                    type="primary"
-                    icon={<CheckCircleOutlined />}
-                    size="small"
-                    onClick={handleApprove}
-                    loading={approve.isPending}
-                    data-tour="planning-approve"
-                  >
-                    Утвердить
-                  </Button>
+                  ungrouped.length > 0 ? (
+                    <Tooltip title={`Сначала проставьте группы: ${ungrouped.map((u) => u.display_name).join(', ')}`}>
+                      {/* Tooltip не показывается на disabled-кнопках без обёртки. */}
+                      <span style={{ display: 'inline-block', cursor: 'not-allowed' }}>
+                        <Button
+                          type="primary"
+                          icon={<CheckCircleOutlined />}
+                          size="small"
+                          disabled
+                          data-tour="planning-approve"
+                        >
+                          Утвердить
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      size="small"
+                      onClick={handleApprove}
+                      loading={approve.isPending}
+                      data-tour="planning-approve"
+                    >
+                      Утвердить
+                    </Button>
+                  )
                 ) : (
                   <Button
                     icon={<RollbackOutlined />}
@@ -873,6 +917,26 @@ export default function PlanningPage() {
             ))}
           </div>
 
+          {isDraft && ungrouped.length > 0 && (
+            <Alert
+              type="error"
+              showIcon
+              title={`Без группы: ${ungrouped.length} чел. — сценарий нельзя утвердить`}
+              description={
+                <>
+                  {ungrouped.map((u, i) => (
+                    <span key={u.employee_id}>
+                      {i > 0 && ', '}
+                      <a onClick={() => setUngroupedDrawerId(u.employee_id)}>{u.display_name}</a>
+                    </span>
+                  ))}
+                  {' — '}
+                  <a onClick={() => navigate('/capacity')}>Открыть «Ресурсы»</a>
+                </>
+              }
+            />
+          )}
+
           {/* Двуколоночная сетка */}
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 460px', gap: 16, alignItems: 'start' }}>
             {/* Левая колонка — контент активной вкладки */}
@@ -919,7 +983,11 @@ export default function PlanningPage() {
                   <span>Идея</span>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <UserOutlined className="icon-bob" style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
-                    Исполнитель
+                    Аналитик
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <CodeOutlined style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
+                    Разработчик
                   </span>
                   {hasSubgroups && <span>Группа</span>}
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -985,6 +1053,7 @@ export default function PlanningPage() {
                                   onToggle={toggleAllocation}
                                   onPriorityChange={handlePriorityChange}
                                   onAssigneeChange={handleAssigneeChange}
+                                  onDeveloperChange={handleDeveloperChange}
                                   onSubgroupChange={handleSubgroupChange}
                                   onOpenBreakdown={handleOpenBreakdown}
                                 />
@@ -1073,8 +1142,13 @@ export default function PlanningPage() {
         open={involvementOpen}
         onClose={() => setInvolvementOpen(false)}
         team={scenario?.team ?? null}
+        scenarioId={scenarioId}
       />
       <ApproveCelebration visible={celebrate} />
+      <EmployeeDrawer
+        employeeId={ungroupedDrawerId}
+        onClose={() => setUngroupedDrawerId(null)}
+      />
       <HoursBreakdownDrawer
         open={breakdown.open}
         onClose={() => setBreakdown((b) => ({ ...b, open: false }))}
