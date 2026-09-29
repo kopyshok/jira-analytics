@@ -735,7 +735,11 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             .join(', ');
         const booked = byRole(summary.booked_by_other_teams_by_role);
         const borrowed = byRole(summary.borrowed_by_other_teams_by_role);
-        if (!booked && !borrowed) return null;
+        const normed = byRole(summary.primary_normed_by_role);
+        const normedWho = (summary.primary_normed_people ?? [])
+          .map((p) => `${p.display_name} — ${Math.round(p.hours).toLocaleString('ru')} ч`)
+          .join('\n');
+        if (!booked && !borrowed && !normed) return null;
         return (
           <div
             style={{
@@ -748,6 +752,12 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             {booked && (
               <div>
                 Занято в планах других команд этого квартала: {booked}. Эти часы уже вычтены из «На бэклог».
+              </div>
+            )}
+            {normed && (
+              <div title={normedWho}>
+                Нормированные работы основной команды у общих сотрудников: {normed}. Эти часы уже
+                вычтены из «На бэклог».
               </div>
             )}
             {borrowed && <div>Привлечены другими командами: {borrowed} (не вычтено).</div>}

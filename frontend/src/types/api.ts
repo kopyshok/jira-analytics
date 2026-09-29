@@ -697,6 +697,9 @@ export interface ResourceSummaryOut {
   booked_by_other_teams_by_role?: Record<string, number>;
   /** Часы людей команды в планах команд, взявших их к себе (не вычтены из «На бэклог»). */
   borrowed_by_other_teams_by_role?: Record<string, number>;
+  /** Нормированные работы основной команды у общих сотрудников (уже вычтены из «На бэклог»). */
+  primary_normed_by_role?: Record<string, number>;
+  primary_normed_people?: { employee_id: string; display_name: string; hours: number }[];
   /** Активные участники без группы хоть в один день квартала — утвердить нельзя. */
   ungrouped_employees?: { employee_id: string; display_name: string }[];
 }
