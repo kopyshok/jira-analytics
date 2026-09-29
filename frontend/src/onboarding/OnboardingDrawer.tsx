@@ -4,6 +4,7 @@ import { CheckCircleFilled, MinusCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { formatDateOnly } from '../utils/format';
 import type { OnboardingStatus } from '../api/onboarding';
+import VideoModal from '../help-videos/VideoModal';
 import { useOnboarding } from './OnboardingContext';
 import { INTRO_STEPS, SETUP_STEPS, isClosed, type SetupStep } from './steps';
 
@@ -41,6 +42,7 @@ function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nes
   // «Проверил» и «Пропустить» — разные действия, каждое со своим busy, иначе
   // клик по одной кнопке подсвечивает загрузкой и вторую.
   const [busyAction, setBusyAction] = useState<RowState | null>(null);
+  const [videoOpen, setVideoOpen] = useState(false);
   const closed = isClosed(step, status);
   const own = step.children ? undefined : status?.steps[step.id];
   const state: RowState = step.children ? groupState(step, status) : (own?.state ?? 'pending');
@@ -63,7 +65,7 @@ function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nes
     : null;
 
   // Выполненный авто-подпункт без кнопок — без пустой строки под ним.
-  const hasActions = !!step.tourId || !!step.route
+  const hasActions = !!step.tourId || !!step.route || !!step.videoId
     || (!step.children && (state !== 'done' || own?.source === 'manual'));
 
   return (
@@ -83,6 +85,9 @@ function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nes
           {step.route && (
             <Button size="small" onClick={() => { closePanel(); navigate(step.route as string); }}>Перейти</Button>
           )}
+          {step.videoId && (
+            <Button size="small" onClick={() => setVideoOpen(true)}>Видео</Button>
+          )}
           {!step.children && state === 'pending' && step.manual && (
             <Button size="small" loading={busyAction === 'done'} onClick={() => act('done')}>Проверил</Button>
           )}
@@ -96,6 +101,7 @@ function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nes
         )}
         {step.children?.map(c => <StepRow key={c.id} step={c} nested />)}
       </div>
+      {step.videoId && <VideoModal id={videoOpen ? step.videoId : null} onClose={() => setVideoOpen(false)} />}
     </div>
   );
 }

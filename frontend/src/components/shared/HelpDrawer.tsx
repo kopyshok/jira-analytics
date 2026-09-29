@@ -1,9 +1,18 @@
 import { useMemo, type ReactNode } from 'react';
 import { Drawer, Tabs, Typography } from 'antd';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { DARK_THEME } from '../../utils/constants';
 import AllVersionsView from '../release-notes/AllVersionsView';
+import VideoLink from '../../help-videos/VideoLink';
+
+const VIDEO_SCHEME = 'video:';
+
+/** react-markdown по умолчанию вырезает неизвестные схемы ссылок (в т.ч. `video:`) —
+ * пропускаем их как есть, для остального оставляем стандартную защиту от XSS. */
+function urlTransform(url: string): string {
+  return url.startsWith(VIDEO_SCHEME) ? url : defaultUrlTransform(url);
+}
 
 interface Props {
   open: boolean;
@@ -80,11 +89,21 @@ export default function HelpDrawer({
       if (isBlock) return <pre className="help-code-block"><code>{children}</code></pre>;
       return <code className="help-code-inline">{children}</code>;
     },
-    a: ({ href, children }: { href?: string; children?: ReactNode }) => (
-      <Typography.Link href={href} target={href?.startsWith('http') ? '_blank' : undefined} rel="noreferrer">
-        {children}
-      </Typography.Link>
-    ),
+    a: ({ href, children }: { href?: string; children?: ReactNode }) => {
+      if (href?.startsWith(VIDEO_SCHEME)) {
+        return (
+          <VideoLink
+            id={href.slice(VIDEO_SCHEME.length)}
+            fallback={typeof children === 'string' ? children : undefined}
+          />
+        );
+      }
+      return (
+        <Typography.Link href={href} target={href?.startsWith('http') ? '_blank' : undefined} rel="noreferrer">
+          {children}
+        </Typography.Link>
+      );
+    },
   }), [imageBase]);
 
   return (
@@ -110,7 +129,7 @@ export default function HelpDrawer({
             disabled: !content,
             children: (
               <div className="help-markdown">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={urlTransform}>
                   {content}
                 </ReactMarkdown>
               </div>
