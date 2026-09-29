@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import (
     EmployeeCapacityOverride,
+    EmployeePersonalNormed,
     MandatoryWorkType,
     RoleCapacityRule,
     ScheduledBlock,
@@ -145,6 +146,16 @@ def delete_work_type(wt_id: str, db: Session = Depends(get_db)):
             status_code=409,
             detail="Вид работ используется в заблокированных периодах или в выборе вида "
             "у задач других команд",
+        )
+    in_personal = (
+        db.query(EmployeePersonalNormed.id)
+        .filter(EmployeePersonalNormed.work_type_id == wt_id)
+        .first()
+    )
+    if in_personal is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Вид работ используется в личных нормированных работах сотрудников",
         )
     db.delete(wt)
     db.commit()
