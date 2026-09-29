@@ -175,6 +175,9 @@ export const useSetEmployeeActive = () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
       qc.invalidateQueries({ queryKey: ['dashboard-norm-work'] });
+      // Неактивный не требует группы и не входит в ресурс сценария.
+      qc.invalidateQueries({ queryKey: ['planning'] });
+      qc.invalidateQueries({ queryKey: ['teams', 'ungrouped'] });
     },
   });
 };

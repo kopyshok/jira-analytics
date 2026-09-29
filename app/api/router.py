@@ -1,6 +1,8 @@
 """API router configuration."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+
+from app.services.event_bus import EventBroadcaster, get_event_bus
 
 from app.api.endpoints import admin_db_export as admin_db_export_endpoints
 from app.api.endpoints import admin_errors as admin_errors_endpoints
@@ -60,6 +62,23 @@ _auth_dep = [Depends(get_current_user)]
 _admin_dep = [Depends(require_admin)]
 
 
+def _notify_on_change(*entities: str):
+    """Зависимость роутера: после успешного изменяющего запроса — событие
+    entity_changed, по которому другие вкладки и пользователи перечитывают
+    данные. Ошибка в обработчике до кода после ``yield`` не доходит."""
+
+    async def dep(request: Request, bus: EventBroadcaster = Depends(get_event_bus)):
+        yield
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            await bus.publish({"type": "entity_changed", "entities": list(entities)})
+
+    return dep
+
+
+# Состав команд, роли, активность и группы сотрудников.
+_employees_changed = [Depends(_notify_on_change("employees"))]
+
+
 @api_router.get("/")
 async def root():
     """API root endpoint."""
@@ -93,13 +112,15 @@ api_router.include_router(desk_public_endpoints.router, prefix="/desk", tags=["d
 
 # Authenticated business routers
 api_router.include_router(
-    employees.router, prefix="/employees", tags=["employees"], dependencies=_auth_dep,
+    employees.router, prefix="/employees", tags=["employees"],
+    dependencies=_auth_dep + _employees_changed,
 )
 api_router.include_router(
     projects.router, prefix="/projects", tags=["projects"], dependencies=_auth_dep,
 )
 api_router.include_router(
-    teams_endpoints.router, prefix="/teams", tags=["teams"], dependencies=_auth_dep,
+    teams_endpoints.router, prefix="/teams", tags=["teams"],
+    dependencies=_auth_dep + _employees_changed,
 )
 api_router.include_router(
     sync.router, prefix="/sync", tags=["sync"], dependencies=_auth_dep,

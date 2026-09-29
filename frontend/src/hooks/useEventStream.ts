@@ -116,9 +116,18 @@ export function invalidateForEntity(entity: string, qc: ReturnType<typeof useQue
       qc.invalidateQueries({ queryKey: ['dashboard-categories'] });
       break;
     case 'employees':
+      // Состав, активность и группы сотрудников: от них зависят ресурс
+      // сценариев, секции групп, плашка «Без группы» и витрины.
       qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['employee', 'teams'] });
+      qc.invalidateQueries({ queryKey: ['subgroup-shares'] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
+      qc.invalidateQueries({ queryKey: ['planning'] });
+      qc.invalidateQueries({ queryKey: ['gantt'] });
+      qc.invalidateQueries({ queryKey: ['resource-plans'] });
       qc.invalidateQueries({ queryKey: ['dashboard-norm-work'] });
+      qc.invalidateQueries({ queryKey: ['dashboard', 'hours-balance'] });
       break;
     case 'projects':
       qc.invalidateQueries({ queryKey: ['scope', 'projects'] });
