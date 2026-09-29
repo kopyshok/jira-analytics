@@ -5,18 +5,24 @@
 лежат в факте группы 2, а группа 1 обязана видеть, что её ресурс ушёл на
 сторону.
 
+Группа человека берётся на дату списания: прошлый переток при переводе не
+пересчитывается. Работа общего сотрудника в любой из его групп — не переток;
+вне их «ушло» делится между его группами по долям, «пришло» — в группу задачи.
+
 Это **не** «помощь извне»: граница «свои — чужие» остаётся на уровне большой
-команды, и виджет помощи извне на группы не реагирует.
+команды, и виджет помощи извне на группы не реагирует. Часы, списанные вне
+участия в команде, — помощь извне, в переток они не попадают.
 """
 
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import EmployeeTeam, Issue, Team, TeamSubgroup, Worklog
+from app.models import Issue, Team, TeamSubgroup, Worklog
+from app.services import subgroup_shares as ss
+from app.services import team_membership as tm
 
 
 @dataclass
@@ -44,41 +50,49 @@ def flow_for_team(
     if not names:
         return []
 
-    emp_group: dict[str, Optional[str]] = {
-        emp_id: sg
-        for emp_id, sg in db.query(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id)
-        .filter(EmployeeTeam.team == team)
-        .all()
-    }
+    intervals = tm.member_intervals(db, [team], from_, to_)
+    if not intervals:
+        return []
+    records = ss.load_team(db, team, intervals.keys())
 
     rows = (
         db.query(
             Worklog.employee_id,
             Issue.effective_subgroup_id,
-            func.sum(Worklog.hours).label("hours"),
+            Worklog.started_at,
+            Worklog.hours,
         )
         .join(Issue, Issue.id == Worklog.issue_id)
         .filter(
             Issue.team == team,
             Issue.effective_subgroup_id.isnot(None),
+            Worklog.employee_id.in_(list(intervals.keys())),
             Worklog.started_at >= datetime.combine(from_, datetime.min.time()),
             Worklog.started_at <= datetime.combine(to_, datetime.max.time()),
         )
-        .group_by(Worklog.employee_id, Issue.effective_subgroup_id)
         .all()
     )
 
     acc: dict[str, dict[str, float]] = {
         gid: {"out": 0.0, "in": 0.0} for gid in names
     }
-    for employee_id, issue_group, hours in rows:
-        own = emp_group.get(employee_id)
-        # Человек без приписки и чужак из другой команды перетоком не считаются:
-        # у первого нет группы-источника, второй — помощь извне.
-        if not own or own == issue_group or own not in acc or issue_group not in acc:
+    for employee_id, issue_group, started_at, hours in rows:
+        if issue_group not in acc:
             continue
-        acc[own]["out"] += float(hours or 0)
-        acc[issue_group]["in"] += float(hours or 0)
+        # Группа человека — на дату списания. Без группы и не участник команды
+        # в этот день перетоком не считаются: у первого нет группы-источника,
+        # второй — помощь извне. Работа в любой своей группе — не переток.
+        day = started_at.date()
+        if not tm.day_in_intervals(day, intervals.get(employee_id, [])):
+            continue
+        shares = ss.shares_on(records.get(employee_id, []), day)
+        if not shares or issue_group in shares:
+            continue
+        h = float(hours or 0)
+        for group, part in shares.items():
+            if group in acc:
+                acc[group]["out"] += h * part
+        acc[issue_group]["in"] += h
 
     return [
         SubgroupFlow(

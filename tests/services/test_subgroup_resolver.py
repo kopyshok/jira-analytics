@@ -1,5 +1,7 @@
 """Лесенка разрешения группы: явно -> от родителя -> по исполнителю."""
 
+from datetime import date, datetime
+
 import pytest
 
 from app.models import Employee, EmployeeTeam, Issue, Project, Team, TeamSubgroup
@@ -113,6 +115,124 @@ def test_group_of_another_team_is_ignored(db_session, setup):
     issue = _issue(db_session, "OS-5", assigned_subgroup_id=alien.id)
 
     res = SubgroupResolver(db_session).resolve_for_issue(issue)
+
+    assert res.subgroup_id is None
+    assert res.source == SubgroupSource.NONE
+
+
+# --- Группа исполнителя на дату -------------------------------------------
+
+TODAY = date(2026, 12, 1)
+
+
+def _employee(db_session, account_id, *shares):
+    """Сотрудник команды с записями распределения ``(группа, процент, с даты)``."""
+    emp = Employee(jira_account_id=account_id, display_name=account_id)
+    db_session.add(emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=emp.id, team=TEAM, is_primary=True))
+    for subgroup, percent, valid_from in shares:
+        db_session.add(share(emp.id, TEAM, subgroup.id, percent, valid_from))
+    db_session.commit()
+    return emp
+
+
+def test_guess_takes_group_on_resolution_date(db_session, setup):
+    """Закрытая задача — группа исполнителя на дату закрытия, открытая — на сегодня."""
+    _employee(
+        db_session, "acc-moved",
+        (setup["calc"], 100, None),
+        (setup["integ"], 100, date(2026, 11, 15)),
+    )
+    closed = _issue(
+        db_session, "OS-20", assignee_account_id="acc-moved",
+        status_category="done", resolved_at=datetime(2026, 11, 1, 12, 0),
+    )
+    open_ = _issue(db_session, "OS-21", assignee_account_id="acc-moved")
+
+    resolver = SubgroupResolver(db_session, today=TODAY)
+
+    assert resolver.resolve_for_issue(closed).subgroup_id == setup["calc"].id
+    assert resolver.resolve_for_issue(open_).subgroup_id == setup["integ"].id
+    assert resolver.resolve_for_issue(open_).source == SubgroupSource.GUESS
+
+
+def test_closed_without_resolved_at_uses_status_changed_at(db_session, setup):
+    """Закрытая по статусу задача без ``resolved_at`` — берём дату смены статуса."""
+    _employee(
+        db_session, "acc-moved",
+        (setup["calc"], 100, None),
+        (setup["integ"], 100, date(2026, 11, 15)),
+    )
+    closed = _issue(
+        db_session, "OS-24", assignee_account_id="acc-moved",
+        status_category="done", resolved_at=None,
+        status_changed_at=datetime(2026, 11, 10, 9, 0),
+    )
+
+    res = SubgroupResolver(db_session, today=TODAY).resolve_for_issue(closed)
+
+    assert res.subgroup_id == setup["calc"].id
+
+
+def test_open_task_with_resolved_at_still_uses_today(db_session, setup):
+    """Не закрытая по статусу задача не считается закрытой, даже если дата резолюции есть."""
+    _employee(
+        db_session, "acc-moved",
+        (setup["calc"], 100, None),
+        (setup["integ"], 100, date(2026, 11, 15)),
+    )
+    reopened = _issue(
+        db_session, "OS-25", assignee_account_id="acc-moved",
+        status_category="indeterminate", resolved_at=datetime(2026, 11, 1, 12, 0),
+    )
+
+    res = SubgroupResolver(db_session, today=TODAY).resolve_for_issue(reopened)
+
+    assert res.subgroup_id == setup["integ"].id
+
+
+def test_closed_exactly_on_transfer_date_gets_new_group(db_session, setup):
+    """Задача, закрытая ровно в день перевода, получает новую группу."""
+    _employee(
+        db_session, "acc-moved",
+        (setup["calc"], 100, None),
+        (setup["integ"], 100, date(2026, 11, 15)),
+    )
+    closed = _issue(
+        db_session, "OS-26", assignee_account_id="acc-moved",
+        status_category="done", resolved_at=datetime(2026, 11, 15, 0, 30),
+    )
+
+    res = SubgroupResolver(db_session, today=TODAY).resolve_for_issue(closed)
+
+    assert res.subgroup_id == setup["integ"].id
+
+
+def test_future_transfer_does_not_move_open_task_yet(db_session, setup):
+    """Перевод с будущей даты двигает открытые задачи только после её наступления."""
+    _employee(
+        db_session, "acc-moved",
+        (setup["calc"], 100, None),
+        (setup["integ"], 100, date(2026, 11, 15)),
+    )
+    open_ = _issue(db_session, "OS-22", assignee_account_id="acc-moved")
+
+    res = SubgroupResolver(db_session, today=date(2026, 11, 14)).resolve_for_issue(open_)
+
+    assert res.subgroup_id == setup["calc"].id
+
+
+def test_shared_assignee_gives_no_guess(db_session, setup):
+    """Поделённый между группами исполнитель группу задаче не даёт."""
+    _employee(
+        db_session, "acc-shared",
+        (setup["calc"], 60, None),
+        (setup["integ"], 40, None),
+    )
+    issue = _issue(db_session, "OS-23", assignee_account_id="acc-shared")
+
+    res = SubgroupResolver(db_session, today=TODAY).resolve_for_issue(issue)
 
     assert res.subgroup_id is None
     assert res.source == SubgroupSource.NONE
