@@ -154,6 +154,20 @@ function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
                   </span>
                 </div>
               )}
+              {(emp.subgroup_before || emp.subgroup_after) && (
+                <div style={{
+                  display: 'flex', gap: 8, padding: '4px 6px',
+                  background: 'rgba(245,158,11,0.07)', borderRadius: 5,
+                  fontSize: 12, marginBottom: 3,
+                }}>
+                  <span style={{ color: '#e2e8f0', fontWeight: 500, minWidth: 120 }}>
+                    {emp.employee_name}
+                  </span>
+                  <span style={{ color: 'var(--text-muted, #94a3b8)' }}>
+                    группа: {emp.subgroup_before ?? 'без группы'} → {emp.subgroup_after ?? 'без группы'}
+                  </span>
+                </div>
+              )}
               {emp.months.map(m => (
                 <div key={`${m.year}-${m.month}`} style={{
                   display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap',
@@ -520,6 +534,7 @@ export default function PlanningPage() {
   // деления, и раздел выглядит ровно как до правки.
   const subgroups = useMemo(() => resourceSummary?.subgroups ?? [], [resourceSummary]);
   const hasSubgroups = subgroups.length > 0;
+  const ungrouped = resourceSummary?.ungrouped_employees ?? [];
   const subgroupOptions = useMemo(
     () => subgroups.map((g) => ({ label: g.name, value: g.id })),
     [subgroups],
@@ -759,15 +774,31 @@ export default function PlanningPage() {
               </div>
               <Space>
                 {isDraft ? (
-                  <Button
-                    type="primary"
-                    icon={<CheckCircleOutlined />}
-                    size="small"
-                    onClick={handleApprove}
-                    loading={approve.isPending}
-                  >
-                    Утвердить
-                  </Button>
+                  ungrouped.length > 0 ? (
+                    <Tooltip title={`Сначала проставьте группы: ${ungrouped.map((u) => u.display_name).join(', ')}`}>
+                      {/* Tooltip не показывается на disabled-кнопках без обёртки. */}
+                      <span style={{ display: 'inline-block', cursor: 'not-allowed' }}>
+                        <Button
+                          type="primary"
+                          icon={<CheckCircleOutlined />}
+                          size="small"
+                          disabled
+                        >
+                          Утвердить
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      size="small"
+                      onClick={handleApprove}
+                      loading={approve.isPending}
+                    >
+                      Утвердить
+                    </Button>
+                  )
                 ) : (
                   <Button
                     icon={<RollbackOutlined />}
@@ -879,6 +910,21 @@ export default function PlanningPage() {
               </div>
             ))}
           </div>
+
+          {ungrouped.length > 0 && (
+            <Alert
+              type="error"
+              showIcon
+              title={`Без группы: ${ungrouped.length} чел. — сценарий нельзя утвердить`}
+              description={
+                <>
+                  {ungrouped.map((u) => u.display_name).join(', ')}
+                  {' — '}
+                  <a onClick={() => navigate('/capacity')}>Открыть «Ресурсы»</a>
+                </>
+              }
+            />
+          )}
 
           {/* Двуколоночная сетка */}
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 460px', gap: 16, alignItems: 'start' }}>

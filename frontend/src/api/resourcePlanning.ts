@@ -100,6 +100,8 @@ export interface AssignmentOut {
   worklog_hours_actual: number;
   /** Группа внутри команды, к которой отнесена работа. */
   subgroup_id?: string | null;
+  /** Работа на группу, где у исполнителя в эти дни нет доли — помощь соседней группе. */
+  other_subgroup?: boolean;
 }
 
 export interface ConflictOut {

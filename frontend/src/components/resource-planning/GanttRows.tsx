@@ -512,7 +512,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
           onClick();
         }
       }}
-      title={`${PHASE_LABELS[assignment.phase]} — ${assignment.hours_allocated?.toFixed(0)}ч`}
+      title={`${PHASE_LABELS[assignment.phase]} — ${assignment.hours_allocated?.toFixed(0)}ч${assignment.other_subgroup ? ' · работа на соседнюю группу' : ''}`}
       className={barClassName || undefined}
       style={{
         position: 'absolute',
@@ -526,7 +526,9 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         borderRadius: 3,
         border: assignment.is_on_critical_path
           ? '1px solid #e85d4a'
-          : 'none',
+          : assignment.other_subgroup
+            ? '1px dashed #a78bfa'
+            : 'none',
         boxShadow: hasConflict
           ? 'inset 0 0 0 2px #ef4444'
           : isMe
@@ -1432,7 +1434,7 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
                     if (el) rowRefs.current.set(refKey, el);
                     else rowRefs.current.delete(refKey);
                   }}
-                  title={`${a.backlog_item_title} — ${PHASE_LABELS[a.phase]} (${a.hours_allocated?.toFixed(0)}ч)`}
+                  title={`${a.backlog_item_title} — ${PHASE_LABELS[a.phase]} (${a.hours_allocated?.toFixed(0)}ч)${a.other_subgroup ? ' · работа на соседнюю группу' : ''}`}
                   onClick={(e) => {
                     if (a.phase === 'qa') return;
                     e.stopPropagation();
