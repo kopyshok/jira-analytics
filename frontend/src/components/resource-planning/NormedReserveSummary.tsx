@@ -2,6 +2,8 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { App, Select } from 'antd';
 import type { OtherTeamWorkOut, ReserveOut, ReserveTypeRow } from '../../api/resourcePlanning';
 import { useSetWorkTypeOverride } from '../../hooks/useResourcePlanning';
+import { useJiraBaseUrl } from '../../hooks/useSettings';
+import { IssueKey } from '../teamdesk/IssueCells';
 import {
   fmtHours,
   itemsForRow,
@@ -33,6 +35,7 @@ const tdStyle: React.CSSProperties = {
 export default function NormedReserveSummary({ reserve }: Props) {
   const { message } = App.useApp();
   const setOverride = useSetWorkTypeOverride();
+  const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
   // Блок при каждом открытии плана свёрнут заново — состояние намеренно не персистится.
   const [expanded, setExpanded] = useState(false);
   // Раскрытые строки видов работ (задачи других команд) — ключ «роль::вид работ».
@@ -108,7 +111,13 @@ export default function NormedReserveSummary({ reserve }: Props) {
         return (
           <div key={itemKey(item)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#cfe1f5' }}>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {item.issue_key ? `${item.issue_key} · ${item.title}` : item.title}
+              {item.issue_key && (
+                <>
+                  <IssueKey issueKey={item.issue_key} jiraBaseUrl={jiraBaseUrl} />
+                  {' · '}
+                </>
+              )}
+              {item.title}
             </span>
             <span style={{ color: '#9ab3cc', flexShrink: 0 }}>{item.team}</span>
             <span style={{ color: '#9ab3cc', flexShrink: 0, width: 56, textAlign: 'right' }}>
