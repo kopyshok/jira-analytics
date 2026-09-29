@@ -8,7 +8,9 @@ export async function loginAs(page: Page, email = E2E_EMAIL, password = E2E_PASS
   await page.fill('input[type=email]', email);
   await page.fill('input[type=password]', password);
   await page.click('button[type=submit]');
-  await page.waitForURL(/\/(?!login)/);
+  // Регулярка по всему адресу срабатывала сразу («http://» — тоже «/» не перед login),
+  // и следующий переход обрывал запрос входа.
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 }
 
 export type BrowserErrorTracker = {

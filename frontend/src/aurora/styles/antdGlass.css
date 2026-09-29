@@ -165,6 +165,15 @@ html[data-theme="aurora"] .ant-drawer-header {
   background: var(--glass-bg) !important;
 }
 
+/* Закреплённые колонки — сплошной фон: прозрачные пропускали прокрученные под ними колонки. */
+:where([data-theme="aurora"]) .ant-table-cell.ant-table-cell-fix {
+  background: var(--bg) !important;
+}
+
+:where([data-theme="aurora"]) .ant-table-tbody > tr:hover > td.ant-table-cell-fix {
+  background: linear-gradient(var(--glass-bg), var(--glass-bg)), var(--bg) !important;
+}
+
 :where([data-theme="aurora"]) .ant-tabs-nav::before {
   border-bottom-color: var(--glass-border) !important;
 }
@@ -444,6 +453,9 @@ html[data-theme="aurora"][data-mode="light"] .ant-table-tbody > tr > td {
 }
 html[data-theme="aurora"][data-mode="light"] .ant-table-tbody > tr:hover > td {
   background: rgba(195,203,217,0.25) !important;
+}
+html[data-theme="aurora"][data-mode="light"] .ant-table-tbody > tr:hover > td.ant-table-cell-fix {
+  background: linear-gradient(rgba(195,203,217,0.25), rgba(195,203,217,0.25)), var(--bg) !important;
 }
 
 /* Tree node hover */
