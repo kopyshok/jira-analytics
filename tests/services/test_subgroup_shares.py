@@ -49,6 +49,19 @@ def test_segments_and_groups_between():
     assert ss.groups_between(records, date(2026, 12, 1), Q_END) == {B}
 
 
+def test_group_weights_sum_days_times_percent():
+    """Вес группы за период — сумма по отрезкам «дни × процент»."""
+    # Октябрь (31 день) целиком в A, с 01.11 — A 40 / B 60 до конца года (61 день).
+    records = [rec(None, (A, 100)), rec(date(2026, 11, 1), (B, 60), (A, 40))]
+    assert ss.group_weights(records, Q_START, Q_END) == {
+        A: 31 * 100 + 61 * 40,
+        B: 61 * 60,
+    }
+    # Период до первой записи с датой — групп нет.
+    assert ss.group_weights([rec(date(2026, 11, 1), (A, 100))], Q_START, date(2026, 10, 31)) == {}
+    assert ss.group_weights([], Q_START, Q_END) == {}
+
+
 def test_group_labels():
     transfer = [rec(None, (A, 100)), rec(date(2026, 11, 15), (B, 100))]
     assert ss.group_label(transfer, A, Q_START, Q_END) == "до 15.11"

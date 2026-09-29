@@ -154,9 +154,60 @@ def groups_between(records: Records, start: date, end: date) -> set[str]:
     return {g for _, _, rec in segments(records, start, end) for g in rec.groups}
 
 
+def group_weights(records: Records, start: date, end: date) -> dict[str, float]:
+    """Вес групп за период: сумма по отрезкам «дни × процент». Пусто — групп нет.
+
+    ``start``/``end`` — границы, обрезанные по датам участия сотрудника.
+    Ключи совпадают с ``groups_between`` за тот же период.
+    """
+    out: dict[str, float] = {}
+    for lo, hi, rec in segments(records, start, end):
+        days = (hi - lo).days + 1
+        for g, pct in rec.shares:
+            out[g] = out.get(g, 0.0) + days * pct
+    return out
+
+
 def membership_bounds(spans: list[tuple[date, date]]) -> tuple[date, date]:
     """Границы участия внутри периода: первый и последний день (включительно)."""
     return spans[0][0], spans[-1][1]
+
+
+def member_group_weights(
+    db: Session, team: str, records: dict[str, Records], start: date, end: date
+) -> dict[str, dict[str, float]]:
+    """Сотрудник → вес его групп за дни участия в команде внутри периода.
+
+    ``records`` — записи команды (``load_team``). Границы сужаются до участия
+    сотрудника: иначе привлечённому или ушедшему и вернувшемуся попадут дни,
+    когда он в команде не состоял. Нет участия в периоде или групп — нет ключа.
+    """
+    intervals = tm.member_intervals(db, [team], start, end)
+    out: dict[str, dict[str, float]] = {}
+    for emp_id, recs in records.items():
+        spans = intervals.get(emp_id)
+        if not spans:
+            continue
+        weights = group_weights(recs, *membership_bounds(spans))
+        if weights:
+            out[emp_id] = weights
+    return out
+
+
+def work_group(
+    issue_group: Optional[str], assignee_records: Records, start: date, end: date
+) -> Optional[str]:
+    """Группа работы плана за период [start, end].
+
+    Своя группа задачи, а без неё — группа главного исполнителя на опорный
+    день (сегодня, прижатое к периоду), если он в этот день целиком в одной
+    группе. У поделённого группы нет. Одно правило для планировщика и
+    диаграммы.
+    """
+    if issue_group:
+        return issue_group
+    ref_day = min(max(date.today(), start), end)
+    return single_group_on(assignee_records, ref_day)
 
 
 def _fmt(d: date) -> str:

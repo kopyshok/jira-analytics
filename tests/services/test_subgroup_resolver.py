@@ -232,3 +232,23 @@ def test_shared_assignee_gives_no_guess(db_session, setup):
 
     assert res.subgroup_id is None
     assert res.source == SubgroupSource.NONE
+
+
+def test_record_without_membership_is_ignored(db_session, setup):
+    """Участие в команде удалили как ошибку ввода, а запись распределения
+    осталась — группу по такому исполнителю не угадываем."""
+    orphan = Employee(jira_account_id="acc-orphan", display_name="Сирота")
+    db_session.add(orphan)
+    db_session.flush()
+    db_session.add(share(orphan.id, TEAM, setup["calc"].id))
+    db_session.commit()
+    issue = _issue(db_session, "OS-30", assignee_account_id="acc-orphan")
+
+    resolver = SubgroupResolver(db_session, today=TODAY)
+    res = resolver.resolve_for_issue(issue)
+    assert res.subgroup_id is None
+    assert res.source == SubgroupSource.NONE
+
+    resolver.recompute_effective(TEAM)
+    db_session.refresh(issue)
+    assert issue.effective_subgroup_id is None

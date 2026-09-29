@@ -8,6 +8,7 @@ Create Date: 2026-09-29
 (dev-база от create_all). Безымянный внешний ключ (SQLite, таблица от
 create_all) пересоздание таблицы в batch-режиме отбрасывает вместе с колонкой.
 """
+from datetime import date
 from typing import Sequence, Union
 
 from alembic import context, op
@@ -59,7 +60,6 @@ def downgrade() -> None:
         )
     if context.is_offline_mode():
         return
-    # Вернуть базовую группу «100 % с начала участия».
     bind = op.get_bind()
     sh = sa.table(
         "employee_subgroup_shares",
@@ -72,13 +72,36 @@ def downgrade() -> None:
         sa.column("employee_id", sa.String), sa.column("team", sa.String),
         sa.column("subgroup_id", sa.String),
     )
-    for emp_id, team, subgroup_id in bind.execute(
-        sa.select(sh.c.employee_id, sh.c.team, sh.c.subgroup_id).where(
-            sh.c.valid_from.is_(None), sh.c.percent == 100
-        )
-    ).all():
+    for (emp_id, team), subgroup_id in _groups_today(bind, sh).items():
         bind.execute(
             et.update()
             .where(et.c.employee_id == emp_id, et.c.team == team)
             .values(subgroup_id=subgroup_id)
         )
+
+
+def _groups_today(bind, sh) -> dict:
+    """(сотрудник, команда) → группа для колонки: та, что действует сегодня.
+
+    Сегодня целиком в одной группе — она; поделён — группа с наибольшей долей
+    в сегодняшней записи; сегодня записи ещё нет (все с будущих дат) —
+    наибольшая доля первой записи. При равных долях — меньший id группы.
+    Колонка держит одну группу, поэтому история переводов и деление теряются.
+    """
+    today = date.today()
+    records: dict = {}  # (сотрудник, команда) → {valid_from: [(процент, группа)]}
+    for emp_id, team, valid_from, subgroup_id, percent in bind.execute(
+        sa.select(sh.c.employee_id, sh.c.team, sh.c.valid_from, sh.c.subgroup_id, sh.c.percent)
+    ).all():
+        if isinstance(valid_from, str):
+            valid_from = date.fromisoformat(valid_from[:10])
+        records.setdefault((emp_id, team), {}).setdefault(valid_from, []).append(
+            (int(percent), subgroup_id)
+        )
+    out: dict = {}
+    for key, by_date in records.items():
+        starts = sorted(by_date, key=lambda d: d or date.min)
+        started = [d for d in starts if d is None or d <= today]
+        shares = by_date[started[-1] if started else starts[0]]
+        out[key] = min(shares, key=lambda s: (-s[0], s[1]))[1]
+    return out

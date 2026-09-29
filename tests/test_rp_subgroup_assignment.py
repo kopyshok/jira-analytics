@@ -436,3 +436,131 @@ def test_gantt_marks_assignments_outside_employee_subgroup(client, db_session):
 
     assert by_id[a_own.id]["other_subgroup"] is False
     assert by_id[a_other.id]["other_subgroup"] is True
+
+
+def _ordered_groups(db_session, team: str, *keys: str) -> list[str]:
+    """Группы команды с явным порядком в реестре (по порядку ``keys``)."""
+    ids = []
+    for order, key in enumerate(keys, start=1):
+        gid = _subgroup(db_session, key, team)
+        db_session.get(TeamSubgroup, gid).sort_order = order
+        ids.append(gid)
+    db_session.commit()
+    return ids
+
+
+def test_gantt_employee_subgroups_ordered_by_weight(client, db_session):
+    """Группы сотрудника в квартале плана — по убыванию «доля × дни»,
+    при равенстве — в порядке реестра. Без записей — сотрудника в ответе нет."""
+    ga, gb = _ordered_groups(db_session, "T10", "A", "B")
+    split = _emp_shared(db_session, "Общий", {gb: 40, ga: 60}, "T10")
+    half = _emp_shared(db_session, "Пополам", {gb: 50, ga: 50}, "T10")
+    # A с начала участия, B с 20.01: 19 дней в A, 71 день в B — B тяжелее.
+    moved = _emp(db_session, "Переведённый", "A", "T10")
+    db_session.add(share(moved.id, "T10", gb, 100, date(2026, 1, 20)))
+    nobody = _emp(db_session, "Без группы", None, "T10")
+    plan = ResourcePlan(team="T10", quarter="Q1", year=2026, status="ready")
+    db_session.add(plan)
+    db_session.commit()
+
+    r = client.get(f"/api/v1/resource-planning/resource-plans/{plan.id}/gantt")
+    assert r.status_code == 200, r.text
+    groups = r.json()["employee_subgroups"]
+
+    assert groups[split.id] == [ga, gb]
+    assert groups[half.id] == [ga, gb]
+    assert groups[moved.id] == [gb, ga]
+    assert nobody.id not in groups
+
+
+def test_gantt_employee_subgroups_clipped_to_membership(client, db_session):
+    """Группа из записи до вступления в команду в квартал не попадает."""
+    ga, gb = _ordered_groups(db_session, "T11", "A", "B")
+    emp = Employee(
+        jira_account_id="acc-t11", display_name="Пришедший", role="developer",
+        team="T11", is_active=True,
+    )
+    db_session.add(emp)
+    db_session.commit()
+    db_session.add(
+        EmployeeTeam(employee_id=emp.id, team="T11", is_primary=True, joined_at=date(2026, 2, 1))
+    )
+    db_session.add(share(emp.id, "T11", ga, 100, None))
+    db_session.add(share(emp.id, "T11", gb, 100, date(2026, 2, 1)))
+    plan = ResourcePlan(team="T11", quarter="Q1", year=2026, status="ready")
+    db_session.add(plan)
+    db_session.commit()
+
+    r = client.get(f"/api/v1/resource-planning/resource-plans/{plan.id}/gantt")
+    assert r.status_code == 200, r.text
+    assert r.json()["employee_subgroups"] == {emp.id: [gb]}
+
+
+def test_gantt_employee_subgroups_empty_without_division(client, db_session):
+    """Команда без деления — пустой словарь, даже если записи остались."""
+    team = Team(name="Plain2", has_subgroups=False)
+    db_session.add(team)
+    db_session.flush()
+    ga = _subgroup(db_session, "A", "Plain2")
+    emp = Employee(jira_account_id="acc-plain2", display_name="X", is_active=True, team="Plain2")
+    db_session.add(emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=emp.id, team="Plain2", is_primary=True))
+    db_session.add(share(emp.id, "Plain2", ga))
+    plan = ResourcePlan(team="Plain2", quarter="Q1", year=2026, status="ready")
+    db_session.add(plan)
+    db_session.commit()
+
+    r = client.get(f"/api/v1/resource-planning/resource-plans/{plan.id}/gantt")
+    assert r.status_code == 200, r.text
+    assert r.json()["employee_subgroups"] == {}
+
+
+def test_gantt_assignment_group_falls_back_to_scenario_assignee(client, db_session):
+    """Работа без своей группы получает группу главного исполнителя из сценария
+    на опорный день (сегодня, прижатое к концу квартала 31.03.2026) — то же
+    правило, что у планировщика. Исполнитель фазы без доли в этой группе
+    получает метку «чужая группа»."""
+    ga, gb = _ordered_groups(db_session, "T12", "A", "B")
+    moved = _emp(db_session, "Переведённый", "A", "T12")
+    db_session.add(share(moved.id, "T12", gb, 100, date(2026, 3, 1)))
+    only_a = _emp(db_session, "Только A", "A", "T12")
+    only_b = _emp(db_session, "Только B", "B", "T12")
+    shared = _emp_shared(db_session, "Общий", {ga: 60, gb: 40}, "T12")
+    plan = ResourcePlan(team="T12", quarter="Q1", year=2026, status="ready")
+    no_group = BacklogItem(title="без группы", estimate_dev_hours=1.0,
+                           assignee_employee_id=moved.id)
+    no_issue = BacklogItem(title="без задачи", estimate_dev_hours=1.0,
+                           assignee_employee_id=moved.id)
+    shared_lead = BacklogItem(title="у общего", estimate_dev_hours=1.0,
+                              assignee_employee_id=shared.id)
+    own = BacklogItem(title="своя группа", estimate_dev_hours=1.0,
+                      assignee_employee_id=moved.id)
+    db_session.add_all([plan, no_group, no_issue, shared_lead, own])
+    db_session.flush()
+    no_group.issue = _issue_with_group(db_session, "RPT-12", "T12", None)
+    shared_lead.issue = _issue_with_group(db_session, "RPT-13", "T12", None)
+    own.issue = _issue_with_group(db_session, "RPT-14", "T12", ga)
+    db_session.flush()
+    days = (date(2026, 1, 5), date(2026, 1, 6))
+    a_fallback = _plan_assignment(db_session, plan, no_group, only_a, *days)
+    a_fallback_own = _plan_assignment(db_session, plan, no_issue, only_b, *days)
+    a_split_lead = _plan_assignment(db_session, plan, shared_lead, only_a, *days)
+    a_own = _plan_assignment(db_session, plan, own, only_b, *days)
+    db_session.commit()
+
+    r = client.get(f"/api/v1/resource-planning/resource-plans/{plan.id}/gantt")
+    assert r.status_code == 200, r.text
+    by_id = {a["id"]: a for a in r.json()["assignments"]}
+
+    # Главный исполнитель на 31.03 целиком в B — работа группы B.
+    assert by_id[a_fallback.id]["subgroup_id"] == gb
+    assert by_id[a_fallback.id]["other_subgroup"] is True
+    assert by_id[a_fallback_own.id]["subgroup_id"] == gb
+    assert by_id[a_fallback_own.id]["other_subgroup"] is False
+    # Поделённый главный исполнитель однозначной группы не даёт.
+    assert by_id[a_split_lead.id]["subgroup_id"] is None
+    assert by_id[a_split_lead.id]["other_subgroup"] is False
+    # Своя группа задачи главнее группы исполнителя.
+    assert by_id[a_own.id]["subgroup_id"] == ga
+    assert by_id[a_own.id]["other_subgroup"] is True
