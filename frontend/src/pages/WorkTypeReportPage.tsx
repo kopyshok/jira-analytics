@@ -60,6 +60,7 @@ function findIssueClassification(
 
 export default function WorkTypeReportPage() {
   const { enabled: aiEnabled, isLoading: aiStatusLoading } = useAiEnabled();
+  useRegisterHelp('Отчёт по видам работ', workTypeReportHelp);
   if (!aiStatusLoading && !aiEnabled) {
     return (
       <AiOffNotice
@@ -85,7 +86,6 @@ function WorkTypeReportPageInner() {
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [buildDone, setBuildDone] = useState(false);
   const buildStream = useBuildWorkTypeReportStream();
-  useRegisterHelp('Отчёт по видам работ', workTypeReportHelp);
 
   const activeTypes = useMemo(() => workTypes ?? [], [workTypes]);
 
