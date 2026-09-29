@@ -40,8 +40,8 @@ def data(db_session):
     db_session.add_all([a, b, alien])
     db_session.flush()
     db_session.add_all([
-        EmployeeTeam(employee_id=a.id, team=TEAM, is_primary=True, subgroup_id=calc.id),
-        EmployeeTeam(employee_id=b.id, team=TEAM, is_primary=True, subgroup_id=integ.id),
+        EmployeeTeam(employee_id=a.id, team=TEAM, is_primary=True),
+        EmployeeTeam(employee_id=b.id, team=TEAM, is_primary=True),
         EmployeeTeam(employee_id=alien.id, team=OTHER_TEAM, is_primary=True),
     ])
     db_session.add_all([

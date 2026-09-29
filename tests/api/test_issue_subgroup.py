@@ -49,11 +49,7 @@ def seeded(testclient_db_session):
     )
     db.add(emp)
     db.flush()
-    db.add(
-        EmployeeTeam(
-            employee_id="e-1", team=TEAM, is_primary=True, subgroup_id="sg-2"
-        )
-    )
+    db.add(EmployeeTeam(employee_id="e-1", team=TEAM, is_primary=True))
     db.add(share("e-1", TEAM, "sg-2"))
     issue = Issue(
         id="i-1",

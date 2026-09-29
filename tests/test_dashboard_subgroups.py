@@ -47,12 +47,10 @@ def data(db_session):
     db_session.flush()
     db_session.add_all([
         EmployeeTeam(
-            employee_id=a.id, team=TEAM, is_primary=True, subgroup_id=calc.id,
-            joined_at=date(2020, 1, 1),
+            employee_id=a.id, team=TEAM, is_primary=True, joined_at=date(2020, 1, 1),
         ),
         EmployeeTeam(
-            employee_id=b.id, team=TEAM, is_primary=True, subgroup_id=integ.id,
-            joined_at=date(2020, 1, 1),
+            employee_id=b.id, team=TEAM, is_primary=True, joined_at=date(2020, 1, 1),
         ),
     ])
     db_session.add_all([

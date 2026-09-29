@@ -103,20 +103,7 @@ class SubgroupShareService:
     def _finish(self, employee_id: str, team: str) -> ss.Records:
         self.db.flush()
         records = self.history(employee_id, team)
-        self._sync_legacy_column(employee_id, team, records)
         self.db.commit()
         # Группа человека — третья ступень лесенки группы задачи.
         SubgroupResolver(self.db).recompute_effective(team=team)
         return records
-
-    def _sync_legacy_column(
-        self, employee_id: str, team: str, records: ss.Records
-    ) -> None:
-        """Переходный период: колонка группы у участия повторяет группу «на сегодня».
-
-        Удаляется вместе с колонкой (задача 7 плана).
-        """
-        group = ss.single_group_on(records, date.today())
-        self.db.query(EmployeeTeam).filter(
-            EmployeeTeam.employee_id == employee_id, EmployeeTeam.team == team
-        ).update({EmployeeTeam.subgroup_id: group}, synchronize_session=False)

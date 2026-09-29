@@ -76,9 +76,6 @@ class TeamRegistryService:
         внешние ключи по умолчанию не проверяются, и каскад не сработал бы.
         """
         group = self.db.query(TeamSubgroup).filter(TeamSubgroup.id == subgroup_id).one()
-        self.db.query(EmployeeTeam).filter(
-            EmployeeTeam.subgroup_id == subgroup_id
-        ).update({EmployeeTeam.subgroup_id: None}, synchronize_session=False)
         self.db.query(Issue).filter(
             Issue.assigned_subgroup_id == subgroup_id
         ).update({Issue.assigned_subgroup_id: None}, synchronize_session=False)

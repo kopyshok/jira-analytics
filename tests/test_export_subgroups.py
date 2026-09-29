@@ -39,7 +39,7 @@ def data(db_session):
     emp = Employee(jira_account_id="acc-a", display_name="Алексеев", is_active=True, role="dev")
     db_session.add(emp)
     db_session.flush()
-    db_session.add(EmployeeTeam(employee_id=emp.id, team=TEAM, is_primary=True, subgroup_id=calc.id))
+    db_session.add(EmployeeTeam(employee_id=emp.id, team=TEAM, is_primary=True))
     db_session.add(share(emp.id, TEAM, calc.id))
 
     issue = Issue(

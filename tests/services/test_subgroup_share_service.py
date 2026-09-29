@@ -87,14 +87,6 @@ def test_delete_record(db_session, team):
         svc.delete_record("e1", "T", date(2026, 12, 1))
 
 
-def test_legacy_column_follows_today(db_session, team):
-    svc = SubgroupShareService(db_session)
-    svc.set_record("e1", "T", None, {A: 60, B: 40})
-    assert db_session.query(EmployeeTeam.subgroup_id).filter_by(employee_id="e1").scalar() is None
-    svc.set_record("e1", "T", None, {B: 100})
-    assert db_session.query(EmployeeTeam.subgroup_id).filter_by(employee_id="e1").scalar() == B
-
-
 def test_assign_employee_sets_base_record(db_session, team):
     TeamRegistryService(db_session).assign_employee("e1", "T", A)
     assert ss.load_team(db_session, "T")["e1"] == [ss.ShareRecord(None, ((A, 100),))]
