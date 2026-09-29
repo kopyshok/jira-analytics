@@ -200,7 +200,8 @@ def _hours_on_day(
 def _compute_unavailable_days_for_assignment(
     db: Session, a: "ResourcePlanAssignment"
 ) -> List["UnavailableDay"]:
-    """Посчитать недоступные дни для одной фазы (выходные/праздники/отпуска/блокировки ОПЭ).
+    """Посчитать недоступные дни для одной фазы (выходные/праздники/отпуска/
+    блокировки ОПЭ и заблокированные периоды).
 
     Использует ту же логику, что и батч-функция в get_gantt, но точечным
     запросом — для случаев, когда нужно вернуть актуальное состояние одного
@@ -258,6 +259,14 @@ def _compute_unavailable_days_for_assignment(
             and not (p.end_date < a.start_date or p.start_date > a.end_date)
         ]
 
+    emp_blocked = (
+        sb.resolve_blocked_days(db, [a.employee], a.start_date, a.end_date, a.plan.team).get(
+            a.employee.id, {}
+        )
+        if a.employee
+        else {}
+    )
+
     out: List[UnavailableDay] = []
     d = a.start_date
     while d <= a.end_date:
@@ -276,6 +285,8 @@ def _compute_unavailable_days_for_assignment(
         if a.phase not in PREEMPTING_PHASES and any(
             ss <= d <= se for _sid, ss, se in emp_preempts
         ):
+            kind = "block"
+        if kind is None and d in emp_blocked:
             kind = "block"
         if kind:
             out.append(UnavailableDay(date=d, type=kind))
@@ -502,12 +513,15 @@ class DailyBreakdownItem(BaseModel):
         "holiday",
         "weekend",
         "blocked_by_other",
+        "blocked",
         "pre_start_idle",
     ]
     blocker_assignment_id: Optional[str] = None
     blocker_item_key: Optional[str] = None
     blocker_phase_label: Optional[str] = None
     absence_reason: Optional[str] = None
+    # Причина заблокированного периода (status == "blocked").
+    block_reason: Optional[str] = None
     is_pre_start: bool = False
     # Куда ушёл остаток дня: другие фазы того же сотрудника с часами в этот день.
     co_occupants: List[DayCoOccupant] = []
@@ -1607,12 +1621,28 @@ def get_gantt(
                 (x.id, x.start_date, x.end_date)
             )
 
+    # Заблокированные периодами дни исполнителей — те же, что у планировщика.
+    starts = [a.start_date for a in assignments_raw if a.start_date]
+    ends = [a.end_date for a in assignments_raw if a.end_date]
+    blocked_by_emp = (
+        sb.resolve_blocked_days(
+            db,
+            {a.employee.id: a.employee for a in assignments_raw if a.employee}.values(),
+            min(starts),
+            max(ends),
+            plan.team,
+        )
+        if starts and ends
+        else {}
+    )
+
     def _unavailable_days(a: ResourcePlanAssignment) -> list[UnavailableDay]:
         if not a.start_date or not a.end_date:
             return []
         out: list[UnavailableDay] = []
         d = a.start_date
         emp_absences = absences_by_emp.get(a.employee_id, [])
+        emp_blocked = blocked_by_emp.get(a.employee_id or "", {})
         emp_preempts = [
             (sid, ss, se) for sid, ss, se in preempt_windows_by_emp.get(a.employee_id, [])
             if sid != a.id and not (se < a.start_date or ss > a.end_date)
@@ -1635,6 +1665,8 @@ def get_gantt(
             if a.phase not in PREEMPTING_PHASES and any(
                 ss <= d <= se for _sid, ss, se in emp_preempts
             ):
+                kind = "block"
+            if kind is None and d in emp_blocked:
                 kind = "block"
             if kind:
                 out.append(UnavailableDay(date=d, type=kind))
@@ -3429,12 +3461,14 @@ def _classify_day(
     used_h: float,
     skip_assignment_id: Optional[str] = None,
     bookings: Optional[List[cto.ExternalBooking]] = None,
+    blocked: Optional[Dict[date, sb.BlockHit]] = None,
 ) -> Dict[str, object]:
     """Классификация одного дня для daily_breakdown / algorithm_log.
 
-    Возвращает dict {status, absence_reason, blocker_*}. ``bookings`` — брони
-    сотрудника в опорных планах других команд: день, который они съели
-    целиком, — «занят» их задачей, а не блокировка.
+    Возвращает dict {status, absence_reason, block_reason, blocker_*}.
+    ``bookings`` — брони сотрудника в опорных планах других команд: день,
+    который они съели целиком, — «занят» их задачей, а не блокировка.
+    ``blocked`` — заблокированные периодами дни исполнителя в этом плане.
     """
     cal = calendar_map.get(d)
     if cal and not cal.is_workday:
@@ -3456,6 +3490,9 @@ def _classify_day(
         }
     if used_h > 0:
         return {"status": "work"}
+    hit = (blocked or {}).get(d)
+    if hit is not None:
+        return {"status": "blocked", "block_reason": hit.reason}
     avail_h = avail_map.get(d, 0.0)
     if avail_h <= 0.01:
         booking = max(
@@ -3502,6 +3539,7 @@ def _build_algorithm_log(
     absences: list,
     calendar_map: dict,
     bookings: Optional[List[cto.ExternalBooking]] = None,
+    blocked: Optional[Dict[date, sb.BlockHit]] = None,
 ) -> List[str]:
     """Текст «откуда дата старта» для боковой панели.
 
@@ -3546,10 +3584,12 @@ def _build_algorithm_log(
                 used_h=0.0,
                 skip_assignment_id=a.id,
                 bookings=bookings,
+                blocked=blocked,
             )
             key = (
                 info["status"],
                 info.get("absence_reason"),
+                info.get("block_reason"),
                 info.get("blocker_item_key"),
                 info.get("blocker_phase_label"),
             )
@@ -3568,6 +3608,8 @@ def _build_algorithm_log(
                 status = info["status"]
                 if status == "absence":
                     log.append(f"  · {rng} — отсутствие ({info.get('absence_reason')}).")
+                elif status == "blocked":
+                    log.append(f"  · {rng} — заблокировано ({info.get('block_reason')}).")
                 elif status == "holiday":
                     log.append(f"  · {rng} — праздник.")
                 elif status == "weekend":
@@ -3640,6 +3682,7 @@ def _build_daily_breakdown(
     calendar_map: dict,
     expected_start: Optional[date] = None,
     bookings: Optional[List[cto.ExternalBooking]] = None,
+    blocked: Optional[Dict[date, sb.BlockHit]] = None,
 ) -> List[DailyBreakdownItem]:
     """Посуточная разбивка фазы.
 
@@ -3677,6 +3720,7 @@ def _build_daily_breakdown(
             used_h=used_h,
             skip_assignment_id=a.id,
             bookings=bookings,
+            blocked=blocked,
         )
         status = info["status"]
         # На рабочем дне фаза могла взять лишь часть часов — остаток ушёл
@@ -3704,6 +3748,7 @@ def _build_daily_breakdown(
             blocker_item_key=info.get("blocker_item_key"),
             blocker_phase_label=info.get("blocker_phase_label"),
             absence_reason=info.get("absence_reason"),
+            block_reason=info.get("block_reason"),
             is_pre_start=is_pre,
             co_occupants=co_occupants,
         ))
@@ -3975,6 +4020,7 @@ def explain_assignment(
     # конфликта меряют перегрузку.
     raw_full_avail: Dict[date, float] = {}
     other_bookings: List[cto.ExternalBooking] = []
+    owner_blocked: Dict[date, sb.BlockHit] = {}
     if a.employee_id and horizon_start and horizon_end:
         # Привлечённому дни вне команды плана — норма, а не «вне команды».
         try:
@@ -3989,11 +4035,13 @@ def explain_assignment(
             borrowed_here = set()
             yields_here = set()
         owner_only = [e for e in employees if e.id == a.employee_id]
+        owner_hits = sb.resolve_blocked_days(db, owner_only, horizon_start, horizon_end, plan.team)
+        owner_blocked = owner_hits.get(a.employee_id, {})
         raw_avail = svc.build_availability(
             owner_only,
             horizon_start,
             horizon_end,
-            sb.resolve_blocked_days(db, owner_only, horizon_start, horizon_end, plan.team),
+            owner_hits,
             team=plan.team,
             borrowed=borrowed_here,
         )
@@ -4186,14 +4234,14 @@ def explain_assignment(
         "algorithm_log": _build_algorithm_log(
             a, plan, all_emp_assignments, same_item_assignments,
             full_avail, absences_in_window_raw, calendar_map,
-            bookings=other_bookings,
+            bookings=other_bookings, blocked=owner_blocked,
         ),
         "daily_breakdown": [
             item.model_dump(mode="json")
             for item in _build_daily_breakdown(
                 a, full_avail, all_emp_assignments, absences_in_window_raw,
                 calendar_map, expected_start=expected_start_date,
-                bookings=other_bookings,
+                bookings=other_bookings, blocked=owner_blocked,
             )
         ],
         "absences_in_window": [

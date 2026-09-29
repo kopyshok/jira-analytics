@@ -203,7 +203,7 @@ def test_conflict_explain_treats_home_block_as_unavailable(db_session):
 
 def test_assignment_explain_treats_home_block_as_unavailable(db_session):
     """Посуточная расшифровка фазы гостя: дни периода основной команды —
-    доступно 0 ч, «Блокировка»; соседние будни доступны."""
+    доступно 0 ч, «Заблокировано» с причиной периода; соседние будни доступны."""
     _e, plan, a = _guest_in_blok(db_session)
     db_session.commit()
 
@@ -213,7 +213,7 @@ def test_assignment_explain_treats_home_block_as_unavailable(db_session):
     days = {d["date"]: d for d in body["daily_breakdown"]}
     for iso in ("2026-01-12", "2026-01-14"):
         assert days[iso]["available_hours"] == 0.0
-        assert (days[iso]["status"], days[iso]["absence_reason"]) == ("absence", "Блокировка")
+        assert (days[iso]["status"], days[iso]["block_reason"]) == ("blocked", "Закрытие месяца")
     assert days["2026-01-13"]["available_hours"] == 0.0
     for iso in ("2026-01-09", "2026-01-15"):
         assert days[iso]["available_hours"] > 0.0
