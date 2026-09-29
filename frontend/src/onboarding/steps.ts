@@ -11,6 +11,8 @@ export interface SetupStep {
   tourId?: string;
   /** Ручной шаг отмечается кнопкой «Проверил». */
   manual?: boolean;
+  /** id ролика-инструкции (см. help-videos/videos.ts) — включает кнопку «Видео». */
+  videoId?: string;
   /** Подпункты: шаг закрыт, когда закрыты все. */
   children?: SetupStep[];
 }
@@ -34,6 +36,7 @@ export const SETUP_STEPS: SetupStep[] = [
     hint: 'Разберите задачи команды по категориям: от категории зависит, куда пойдут часы в отчётах и что попадёт в целевые задачи. Шаг выполнен, когда неразобранных осталось не больше 10%.',
     route: '/categories',
     tourId: 'categories',
+    videoId: 'categorize-issue',
   },
   {
     id: 'team_roles',
@@ -49,6 +52,7 @@ export const SETUP_STEPS: SetupStep[] = [
     route: '/capacity',
     tourId: 'capacity-absences',
     manual: true,
+    videoId: 'absence-add',
   },
   {
     id: 'backlog',
