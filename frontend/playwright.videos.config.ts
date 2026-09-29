@@ -6,8 +6,11 @@ import { defineConfig, devices } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 
 const pythonCmd = process.env.PYTHON_CMD ?? 'py -3.10';
-const backendPort = 8012;
-const frontendPort = 5176;
+// Порты и копия базы — свои на каждый запуск: несколько пробных съёмок могут идти
+// параллельно (VIDEOS_BACKEND_PORT=8021 VIDEOS_FRONTEND_PORT=5181 npm run videos -- <ролик>).
+const backendPort = Number(process.env.VIDEOS_BACKEND_PORT ?? 8012);
+const frontendPort = Number(process.env.VIDEOS_FRONTEND_PORT ?? 5176);
+const runDb = `demo_run_${backendPort}`;
 const backendUrl = `http://127.0.0.1:${backendPort}`;
 const frontendUrl = `http://127.0.0.1:${frontendPort}`;
 const viewport = { width: 1440, height: 900 };
@@ -15,7 +18,7 @@ const viewport = { width: 1440, height: 900 };
 export default defineConfig({
   testDir: './help-videos',
   testMatch: '*.video.ts',
-  outputDir: './test-results/help-videos',
+  outputDir: `./test-results/help-videos-${backendPort}`,
   timeout: 120_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
@@ -27,7 +30,7 @@ export default defineConfig({
   use: {
     ...devices['Desktop Chrome'],
     baseURL: frontendUrl,
-    storageState: fileURLToPath(new URL('../data/demo_run.auth.json', import.meta.url)),
+    storageState: fileURLToPath(new URL(`../data/${runDb}.auth.json`, import.meta.url)),
     viewport,
     deviceScaleFactor: 1,
     video: { mode: 'on', size: viewport },
@@ -44,7 +47,8 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
-        DATABASE_URL: 'sqlite:///./data/demo_run.db',
+        DATABASE_URL: `sqlite:///./data/${runDb}.db`,
+        VIDEOS_RUN_DB: `${runDb}.db`,
         DEBUG: 'false',
         CORS_ORIGINS: frontendUrl,
         JWT_SECRET_KEY: 'help-videos-secret-not-for-production-32-chars-long',

@@ -1,4 +1,4 @@
-// Свежая копия демо-базы перед съёмкой: data/demo.db → data/demo_run.db.
+// Свежая копия демо-базы перед съёмкой: data/demo.db → data/<VIDEOS_RUN_DB>.
 // Запускается из команды бэкенда в playwright.videos.config.ts, ДО uvicorn:
 // сервер Playwright стартует раньше globalSetup, поэтому копировать там поздно.
 import { copyFileSync, existsSync, rmSync } from 'node:fs';
@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 const dataDir = resolve(import.meta.dirname, '..', '..', 'data');
 const source = resolve(dataDir, 'demo.db');
-const target = resolve(dataDir, 'demo_run.db');
+const target = resolve(dataDir, process.env.VIDEOS_RUN_DB ?? 'demo_run.db');
 
 if (!existsSync(source)) {
   console.error(

@@ -11,6 +11,7 @@
     "e2e": "playwright test",
     "e2e:install": "playwright install chromium",
     "videos": "playwright test -c playwright.videos.config.ts",
+    "videos:sheets": "node --no-warnings help-videos/contact-sheets.ts",
     "preview": "vite preview"
   },
   "dependencies": {
