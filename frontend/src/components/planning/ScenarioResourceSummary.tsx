@@ -401,10 +401,13 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             </div>
           </div>
 
-          {/* Нормированные работы */}
+          {/* Рабочее время: календарь за вычетом отсутствий, до нормированных работ */}
           <div style={rowStyle({ borderTop: 'none' })}>
-            <div style={{ ...CELL_LABEL, background: DARK_THEME.cardBg, fontWeight: 600, color: DARK_THEME.textPrimary, whiteSpace: 'nowrap' as const }}>
-              Нормированные работы
+            <div
+              title="Часы по производственному календарю за вычетом отпусков и отсутствий. Нормированные работы — строками ниже."
+              style={{ ...CELL_LABEL, background: DARK_THEME.cardBg, fontWeight: 600, color: DARK_THEME.textPrimary, whiteSpace: 'nowrap' as const }}
+            >
+              Рабочее время
             </div>
             {summary.roles.map((role) => (
               <div key={role} style={{ ...CELL, ...roleCellStyle(role), fontWeight: 600 }}>
