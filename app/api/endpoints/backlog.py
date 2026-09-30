@@ -86,10 +86,6 @@ class BacklogItemUpdate(BaseModel):
     parallel_count_analyst: Optional[int] = Field(default=None, ge=1, le=5)
     parallel_count_dev: Optional[int] = Field(default=None, ge=1, le=5)
     parallel_count_qa: Optional[int] = Field(default=None, ge=1, le=5)
-    involvement_analyst: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    involvement_dev: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    involvement_qa: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    involvement_launch: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     duration_analyst_days: Optional[float] = Field(default=None, ge=0)
     duration_dev_days: Optional[float] = Field(default=None, ge=0)
     duration_qa_days: Optional[float] = Field(default=None, ge=0)
@@ -211,7 +207,7 @@ class BacklogItemResponse(BaseModel):
     parallel_count_analyst: Optional[int] = None
     parallel_count_dev: Optional[int] = None
     parallel_count_qa: Optional[int] = None
-    # Planning parameters: effective values (from Jira or manual override).
+    # Вовлечённость, зафиксированная в фазе ресурсного плана (None — нет фиксации).
     involvement_analyst: Optional[float] = None
     involvement_dev: Optional[float] = None
     involvement_qa: Optional[float] = None
@@ -221,10 +217,6 @@ class BacklogItemResponse(BaseModel):
     duration_qa_days: Optional[float] = None
     duration_launch_days: Optional[float] = None
     # Current Jira values (for badge "Jira" vs "manual"). May lag local override.
-    involvement_analyst_jira: Optional[float] = None
-    involvement_dev_jira: Optional[float] = None
-    involvement_qa_jira: Optional[float] = None
-    involvement_launch_jira: Optional[float] = None
     duration_analyst_days_jira: Optional[float] = None
     duration_dev_days_jira: Optional[float] = None
     duration_qa_days_jira: Optional[float] = None
@@ -505,10 +497,6 @@ def _to_response(
         duration_dev_days=item.duration_dev_days,
         duration_qa_days=item.duration_qa_days,
         duration_launch_days=item.duration_launch_days,
-        involvement_analyst_jira=issue.involvement_analyst if issue else None,
-        involvement_dev_jira=issue.involvement_dev if issue else None,
-        involvement_qa_jira=issue.involvement_qa if issue else None,
-        involvement_launch_jira=issue.involvement_launch if issue else None,
         duration_analyst_days_jira=issue.duration_analyst_days if issue else None,
         duration_dev_days_jira=issue.duration_dev_days if issue else None,
         duration_qa_days_jira=issue.duration_qa_days if issue else None,

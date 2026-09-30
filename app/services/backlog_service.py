@@ -505,11 +505,11 @@ class BacklogService:
             existing.estimate_opo_hours = issue.planned_opo_hours
             existing.impact = issue.impact
             existing.risk = issue.risk
-            # Jira involvement + calendar duration: только заполненные значения из Jira
-            # перетирают локальные. Пустое поле в Jira не сбрасывает ручную правку PM.
-            # Сброс к Jira — через PATCH /backlog/{id} с явным null.
+            # Calendar duration: только заполненные значения из Jira перетирают
+            # локальные. Пустое поле в Jira не сбрасывает ручную правку PM.
+            # Сброс к Jira — через PATCH /backlog/{id} с явным null. Вовлечённость
+            # из Jira не берём — она фиксируется в фазе ресурсного плана.
             for fld in (
-                "involvement_analyst", "involvement_dev", "involvement_qa", "involvement_launch",
                 "duration_analyst_days", "duration_dev_days", "duration_qa_days", "duration_launch_days",
             ):
                 jira_val = getattr(issue, fld, None)

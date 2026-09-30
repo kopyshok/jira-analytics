@@ -365,10 +365,6 @@ _PLANNED_NUMERIC_SETTING_KEYS = [
     "jira_planned_dev_hours_field_id",
     "jira_planned_qa_hours_field_id",
     "jira_planned_opo_hours_field_id",
-    "jira_involvement_analyst_field_id",
-    "jira_involvement_dev_field_id",
-    "jira_involvement_qa_field_id",
-    "jira_involvement_opo_field_id",
     "jira_duration_analyst_field_id",
     "jira_duration_dev_field_id",
     "jira_duration_qa_field_id",
@@ -714,7 +710,7 @@ class SyncService:
 
     def _configured_planned_field_ids(self) -> List[str]:
         """Список настроенных (непустых) customfield IDs для полей плановых
-        трудозатрат, involvement, duration, impact, risk.
+        трудозатрат, duration, impact, risk.
 
         Используется для расширения ``fields=`` параметра в запросах к Jira,
         чтобы эти поля реально возвращались в ответе и попадали в ``_extra``.
@@ -1010,10 +1006,6 @@ class SyncService:
         data["reporter_account_id"] = _author.jira_account_id if _author else None
         data["reporter_display_name"] = _author.display_name if _author else None
 
-        data["involvement_analyst"] = _fld_float("jira_involvement_analyst_field_id")
-        data["involvement_dev"] = _fld_float("jira_involvement_dev_field_id")
-        data["involvement_qa"] = _fld_float("jira_involvement_qa_field_id")
-        data["involvement_launch"] = _fld_float("jira_involvement_opo_field_id")
         data["duration_analyst_days"] = _fld_float("jira_duration_analyst_field_id")
         data["duration_dev_days"] = _fld_float("jira_duration_dev_field_id")
         data["duration_qa_days"] = _fld_float("jira_duration_qa_field_id")
