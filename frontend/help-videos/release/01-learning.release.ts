@@ -1,10 +1,9 @@
-// Глава 8 «Ролики в справке и «Первые шаги»»: кнопка «Первые шаги» в шапке, панель
+// Глава «Ролики в справке и «Первые шаги»»: кнопка «Первые шаги» в шапке, панель
 // с настройкой команды и экскурсиями, ролик у шага, экскурсия по шапке и блок
 // «Видео» в справке раздела. Всё на одной странице — ресурсном плане демо-команды.
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { Director } from '../director.ts';
-import { CHAPTERS } from './chapters.ts';
 import { chapterTitle, releaseFrame, saveClip } from './common.ts';
 import { plural } from './slides.ts';
 
@@ -59,10 +58,10 @@ test.beforeAll(async ({ playwright }, testInfo) => {
   await request.dispose();
 });
 
-test('08-learning', async ({ page }) => {
+test('01-learning', async ({ page }) => {
   const d = new Director(page);
   await d.install();
-  await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle(8, CHAPTERS[7]));
+  await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle('Ролики в справке и «Первые шаги»'));
 
   const button = page.getByTestId('onboarding-button');
   await expect(button).toBeVisible({ timeout: 60_000 });
@@ -117,5 +116,5 @@ test('08-learning', async ({ page }) => {
   await d.caption(`${videos} — в справке разделов и «Первых шагах»`);
   await d.show(cards.nth(0), cards.nth(2));
   await d.pause(2500);
-  await saveClip(page, '08-learning');
+  await saveClip(page, '01-learning');
 });

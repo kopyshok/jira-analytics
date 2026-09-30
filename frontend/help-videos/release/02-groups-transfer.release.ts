@@ -1,11 +1,10 @@
-// Глава 1 «Группы: перевод и деление сотрудника»: «Ресурсы» команды с группами →
+// Глава «Группы: перевод и деление сотрудника»: «Ресурсы» команды с группами →
 // группа в строке сотрудника → карточка → блок «Группы» → деление 60/40 с даты →
 // окно перевода в другую группу (объясняет, зачем дата).
 // Красной плашки «Без группы» в демо-данных нет: у всех активных участников
 // команды группа есть, поэтому в главе её не показываем.
 import { expect, test } from '@playwright/test';
 import { Director } from '../director.ts';
-import { CHAPTERS } from './chapters.ts';
 import { chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 /** Сотрудник команды с группами, которого делим и переводим (демо-база). */
@@ -61,10 +60,10 @@ test.beforeAll(async ({ playwright }, testInfo) => {
   await request.dispose();
 });
 
-test('01-groups-transfer', async ({ page }) => {
+test('02-groups-transfer', async ({ page }) => {
   const d = new Director(page);
   await d.install();
-  await d.open('/capacity', chapterTitle(1, CHAPTERS[0]));
+  await d.open('/capacity', chapterTitle('Группы: перевод и деление сотрудника'));
 
   const row = page.locator('tbody tr.capacity-emp-row', { hasText: PERSON });
   const groupLink = row.locator('a', { hasText: fromGroup });
@@ -123,5 +122,5 @@ test('01-groups-transfer', async ({ page }) => {
   await d.caption('Прошлое не меняется: до даты часы — в прежней группе');
   await d.show(groups);
   await d.pause(2700);
-  await saveClip(page, '01-groups-transfer');
+  await saveClip(page, '02-groups-transfer');
 });

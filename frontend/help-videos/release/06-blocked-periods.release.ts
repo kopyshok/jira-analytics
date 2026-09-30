@@ -1,10 +1,9 @@
-// Глава 5 «Заблокированные периоды»: ресурсный план → «Заблокированные периоды» →
+// Глава «Заблокированные периоды»: ресурсный план → «Заблокированные периоды» →
 // даты, обязательный вид работ, конкретный сотрудник → «Добавить» → в списке видно,
 // кому назначен период и на кого период роли теперь не действует (сотрудник главнее).
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import dayjs from 'dayjs';
 import { Director } from '../director.ts';
-import { CHAPTERS } from './chapters.ts';
 import { apiUrl, chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 const TEAM = 'Команда Альфа';
@@ -60,7 +59,7 @@ test.beforeAll(async ({ playwright }, testInfo) => {
     })).ok(),
   ).toBeTruthy();
 
-  // Самый свежий сценарий команды. Глава 2 в общем прогоне возвращает его в черновик,
+  // Самый свежий сценарий команды. Глава о разработчике в общем прогоне возвращает его в черновик,
   // а ресурсный план показывает только утверждённые — утверждаем обратно.
   const scenarios = await getJson<Scenario[]>(`${api}/planning/scenarios?teams=${encodeURIComponent(TEAM)}`);
   const scenario = scenarios
@@ -146,14 +145,14 @@ async function aside(page: Page, target: Locator): Promise<void> {
   });
 }
 
-test('05-blocked-periods', async ({ page }) => {
+test('06-blocked-periods', async ({ page }) => {
   const name = person!.employee_name!;
   const surname = name.split(' ')[0];
   const workType = rival!.work_type_label!;
 
   const d = new Director(page);
   await d.install();
-  await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle(5, CHAPTERS[4]));
+  await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle('Заблокированные периоды'));
   await expect(page.locator('.ant-tag', { hasText: /^Готово$/ })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-testid^="rp-bar-"]').first()).toBeVisible({ timeout: 60_000 });
   await page.mouse.move(900, 120);
@@ -229,7 +228,7 @@ test('05-blocked-periods', async ({ page }) => {
   await d.caption('Сотрудник главнее роли: видно, на кого период не действует');
   await d.show(rivalRow.locator('td').nth(1));
   await d.pause(2600);
-  await saveClip(page, '05-blocked-periods');
+  await saveClip(page, '06-blocked-periods');
 
   // Период ролика меняет раскладку плана — следующим главам общего прогона он
   // не нужен: снимаем и пересчитываем план.

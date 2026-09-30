@@ -1,4 +1,4 @@
-// Глава 3 «Ресурс групп в сценарии»: сценарий команды с группами → «По сотрудникам»
+// Глава «Ресурс групп в сценарии»: сценарий команды с группами → «По сотрудникам»
 // разбит на группы → поделённый сотрудник в двух группах с пометкой «общий N%» и
 // часами по доле → переведённый внутри квартала — в обеих группах со своими днями →
 // деление после утверждения видно в «Доступность изменилась».
@@ -6,10 +6,9 @@
 // у всех активных участников команды группа есть.
 import { expect, test } from '@playwright/test';
 import { Director } from '../director.ts';
-import { CHAPTERS } from './chapters.ts';
 import { chapterTitle, releaseFrame, saveClip } from './common.ts';
 
-/** Сотрудник, которого глава 1 делит между группами (демо-база). */
+/** Сотрудник, которого глава о переводе и делении делит между группами (демо-база). */
 const PERSON = 'Ольховская Раиса';
 
 type Team = { name: string; has_subgroups: boolean; subgroups: { id: string; name: string }[] };
@@ -54,7 +53,7 @@ test.beforeAll(async ({ playwright }, testInfo) => {
   expect(person, `нет сотрудника ${PERSON}`).toBeTruthy();
   const sharesUrl = `${api}/teams/employees/${person!.id}/subgroup-shares`;
 
-  // 1) Сотрудник — целиком в своей группе (записи с датой, в т.ч. из главы 1, снимаем).
+  // 1) Сотрудник — целиком в своей группе (записи с датой, в т.ч. из главы о делении, снимаем).
   let history = await getJson<ShareRecord[]>(`${sharesUrl}?team=${encodeURIComponent(team)}`);
   for (const r of history.filter((x) => x.valid_from)) {
     expect((await request.delete(sharesUrl, { params: { team, valid_from: r.valid_from! } })).ok()).toBeTruthy();
@@ -90,10 +89,10 @@ test.beforeAll(async ({ playwright }, testInfo) => {
   await request.dispose();
 });
 
-test('03-groups-scenario', async ({ page }) => {
+test('04-groups-scenario', async ({ page }) => {
   const d = new Director(page);
   await d.install();
-  await d.open(`/planning?scenario=${scenarioId}`, chapterTitle(3, CHAPTERS[2]));
+  await d.open(`/planning?scenario=${scenarioId}`, chapterTitle('Ресурс групп в сценарии'));
 
   const card = page.locator('.ant-card', { has: page.locator('.ant-card-head', { hasText: 'По сотрудникам' }) });
   // Строка сотрудника в панели: пометка → имя с пометками → шапка строки → строка целиком.
@@ -151,5 +150,5 @@ test('03-groups-scenario', async ({ page }) => {
   await d.caption('Часы групп считаются по долям и датам перевода');
   await d.show(driftLine);
   await d.pause(2600);
-  await saveClip(page, '03-groups-scenario');
+  await saveClip(page, '04-groups-scenario');
 });
