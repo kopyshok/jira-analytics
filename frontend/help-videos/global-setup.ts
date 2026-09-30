@@ -18,6 +18,14 @@ export default async function globalSetup(config: FullConfig) {
   if (!res.ok()) {
     throw new Error(`Вход демо-пользователем не удался: ${res.status()} ${await res.text()}`);
   }
+  // Окно «Что нового» закрыло бы кадр: выпуски у демо-пользователя отмечаем прочитанными.
+  const unread = (await (await api.get(`${backendUrl}/api/v1/release-notes/unread`)).json()) as {
+    unread_versions: string[];
+  };
+  for (const version of unread.unread_versions) {
+    const seen = await api.post(`${backendUrl}/api/v1/release-notes/mark-seen`, { data: { version } });
+    if (!seen.ok()) throw new Error(`Не отмечен выпуск ${version}: ${seen.status()}`);
+  }
   await api.storageState({ path: statePath });
   await api.dispose();
 

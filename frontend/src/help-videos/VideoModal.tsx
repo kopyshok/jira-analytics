@@ -34,8 +34,6 @@ export default function VideoModal({ id, onClose }: Props) {
           src={video.src}
           poster={video.poster}
           autoPlay={!reduceMotion}
-          loop
-          muted
           controls
           playsInline
           style={{ width: '100%', display: 'block', borderRadius: 8 }}

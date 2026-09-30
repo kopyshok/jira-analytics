@@ -6,6 +6,7 @@ import type { Locator, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { type Cue, type Line, mix, speak, VOICE_DIR, VOICE_ON } from './voice.ts';
 
 /** Куда кладутся готовые ролики и обложки (попадают в сборку как статика). */
 const OUT_DIR = fileURLToPath(new URL('../public/help-videos/', import.meta.url));
@@ -14,6 +15,10 @@ const OUT_DIR = fileURLToPath(new URL('../public/help-videos/', import.meta.url)
 const MIN_CAPTION_MS = 2200;
 /** Время переезда курсора (совпадает с CSS-переходом в слое). */
 const TRAVEL_MS = 600;
+/** Подпись проявляется с задержкой (см. caption в слое) — голос стартует вместе с ней. */
+const CAPTION_FADE_MS = 180;
+/** Тишина после фразы диктора, прежде чем зазвучит следующая. */
+const VOICE_GAP_MS = 400;
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -147,7 +152,7 @@ function overlayScript() {
         c.textContent = text;
         c.classList.toggle('title', variant === 'title');
         c.classList.add('show');
-      }, 180);
+      }, 180); // = CAPTION_FADE_MS
     },
   };
 }
@@ -155,6 +160,12 @@ function overlayScript() {
 export class Director {
   private captionAt = 0;
   private posterJpeg: Buffer | null = null;
+  /** Начало записи: окно создаётся перед сценарием, запись идёт с него. */
+  private readonly startedAt = Date.now();
+  /** Фразы диктора с моментами начала от старта записи. */
+  private readonly cues: Cue[] = [];
+  /** Текущая фраза диктора: следующая подпись ждёт её конца. */
+  private speaking: Promise<Line> | null = null;
 
   constructor(private readonly page: Page) {}
 
@@ -231,17 +242,26 @@ export class Director {
     const video = this.page.video();
     if (!video) throw new Error('Запись видео не включена в конфигурации');
     if (!this.posterJpeg) throw new Error('Не снята обложка: вызовите poster()');
+    // Последняя фраза диктора должна договориться до конца записи.
+    if (VOICE_ON) await this.waitCaptionMin();
     await this.page.close();
     const raw = `${OUT_DIR}${id}.raw.webm`;
+    const silent = VOICE_ON ? `${OUT_DIR}${id}.silent.webm` : `${OUT_DIR}${id}.webm`;
     await video.saveAs(raw);
     try {
       execFileSync('ffmpeg', [
         '-y', '-loglevel', 'error', '-i', raw,
         '-c:v', 'libvpx-vp9', '-crf', '48', '-b:v', '0', '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1', '-an',
-        `${OUT_DIR}${id}.webm`,
+        silent,
       ]);
+      if (VOICE_ON) {
+        // Фразы с моментами — рядом с кэшем голоса: музыку и громкость можно пересвести без пересъёмки.
+        writeFileSync(`${VOICE_DIR}${id}.cues.json`, JSON.stringify(this.cues, null, 1));
+        mix(silent, this.cues, `${OUT_DIR}${id}.webm`);
+      }
     } finally {
       rmSync(raw, { force: true });
+      if (VOICE_ON) rmSync(silent, { force: true });
     }
     writeFileSync(`${OUT_DIR}${id}.jpg`, this.posterJpeg);
   }
@@ -282,11 +302,21 @@ export class Director {
     await this.waitCaptionMin();
     await this.page.evaluate(([t, v]) => window.__director?.caption(t, v as 'bar' | 'title'), [text, variant]);
     this.captionAt = Date.now();
+    if (!VOICE_ON) return;
+    // Фраза озвучивается, пока идут действия на экране; её длину ждёт следующая подпись.
+    const at = this.captionAt + CAPTION_FADE_MS - this.startedAt;
+    this.speaking = speak(text).then((line) => {
+      this.cues.push({ file: line.file, at });
+      return line;
+    });
+    this.speaking.catch(() => {}); // ошибку озвучки поднимет следующее ожидание
   }
 
+  /** Подпись висит не меньше MIN_CAPTION_MS, а с диктором — пока он не договорит фразу. */
   private async waitCaptionMin(): Promise<void> {
     if (!this.captionAt) return;
-    const left = MIN_CAPTION_MS - (Date.now() - this.captionAt);
+    const voiceMs = this.speaking ? CAPTION_FADE_MS + (await this.speaking).ms + VOICE_GAP_MS : 0;
+    const left = Math.max(MIN_CAPTION_MS, voiceMs) - (Date.now() - this.captionAt);
     if (left > 0) await this.pause(left);
   }
 }
