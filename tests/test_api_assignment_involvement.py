@@ -142,3 +142,24 @@ def test_put_involvement_rejects_out_of_range(client, db_session, ready_plan):
         json={"involvement_pct": 150},
     )
     assert r.status_code == 422
+
+
+def test_put_null_involvement_unfixes(client, db_session, ready_plan):
+    """Снятая галочка «Зафиксировано»: процент у задачи стирается, фаза
+    снова берёт личную настройку или справочник."""
+    from app.models import BacklogItem
+
+    def put(pct):
+        a = _analyst_assignment(db_session, ready_plan["plan_id"])
+        return client.put(
+            f"/api/v1/resource-planning/resource-plans/{ready_plan['plan_id']}"
+            f"/assignments/{a.id}/involvement",
+            json={"involvement_pct": pct},
+        )
+
+    assert put(70).status_code == 200
+    r = put(None)
+    assert r.status_code == 200, r.text
+
+    db_session.expire_all()
+    assert db_session.get(BacklogItem, ready_plan["item_id"]).involvement_analyst is None
