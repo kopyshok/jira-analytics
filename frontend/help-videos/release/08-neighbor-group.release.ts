@@ -1,11 +1,10 @@
-// Глава 7 «Работа на соседнюю группу»: ресурсный план команды с группами →
+// Глава «Работа на соседнюю группу»: ресурсный план команды с группами →
 // исполнителя фазы перевели в другую группу посреди фазы → план пересчитан,
 // задача осталась за этим человеком → с даты перевода на полосе пунктирная рамка.
 // Вид «Исполнители» (без пунктирных рамок инициатив, чтобы не путать) и масштаб
 // «День»: тонкая рамка на неделях теряется при сжатии видео.
 import { expect, test } from '@playwright/test';
 import { Director } from '../director.ts';
-import { CHAPTERS } from './chapters.ts';
 import { chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 type Team = { name: string; has_subgroups: boolean; subgroups: { id: string; name: string }[] };
@@ -150,13 +149,13 @@ test.beforeAll(async ({ playwright }, testInfo) => {
   await request.dispose();
 });
 
-test('07-neighbor-group', async ({ page }) => {
+test('08-neighbor-group', async ({ page }) => {
   const a = target!;
   const from = ddmm(a.other_subgroup_ranges[0].start);
 
   const d = new Director(page);
   await d.install();
-  await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle(7, CHAPTERS[6]));
+  await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle('Работа на соседнюю группу'));
 
   const bar = page.getByTestId(`rp-bar-${a.backlog_item_id}-${a.phase}-${a.part_number}`);
   const dashed = bar.getByTestId('rp-other-subgroup-range');
@@ -209,5 +208,5 @@ test('07-neighbor-group', async ({ page }) => {
   await d.caption('Работа на соседнюю группу сразу видна на плане');
   await showBar();
   await d.pause(2800);
-  await saveClip(page, '07-neighbor-group');
+  await saveClip(page, '08-neighbor-group');
 });

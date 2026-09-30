@@ -1,10 +1,9 @@
-// Глава 4 «Личная вовлечённость и нормированные работы»: страница сценария →
+// Глава «Личная вовлечённость и нормированные работы»: страница сценария →
 // «Вовлечённость» → значения по ролям в процентах → раздел «Сотрудники» →
 // запись конкретному человеку на квартал: своя вовлечённость и свои проценты
 // нормированных работ → запись в списке.
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { Director } from '../director.ts';
-import { CHAPTERS } from './chapters.ts';
 import { apiUrl, chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 const TEAM = 'Команда Альфа';
@@ -99,13 +98,13 @@ async function aside(page: Page, target: Locator): Promise<void> {
   });
 }
 
-test('04-personal-involvement', async ({ page }) => {
+test('05-personal-involvement', async ({ page }) => {
   const name = person!.display_name;
   const surname = name.split(' ')[0];
 
   const d = new Director(page);
   await d.install();
-  await d.open(`/planning?scenario=${scenarioId}`, chapterTitle(4, CHAPTERS[3]));
+  await d.open(`/planning?scenario=${scenarioId}`, chapterTitle('Личная вовлечённость и нормированные работы'));
 
   const openBtn = page.locator('[data-tour="planning-involvement"]');
   await expect(openBtn).toBeVisible({ timeout: 60_000 });
@@ -181,7 +180,7 @@ test('04-personal-involvement', async ({ page }) => {
   await d.caption('Личная настройка главнее задачи и правил роли');
   await d.show(row);
   await d.pause(3000);
-  await saveClip(page, '04-personal-involvement');
+  await saveClip(page, '05-personal-involvement');
 
   // Запись меняет раскладку и запас сотрудника — следующим главам общего прогона
   // она не нужна: снимаем.
