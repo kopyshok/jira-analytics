@@ -1,10 +1,9 @@
-// Глава 6 «Нормированные работы в «Загрузке по дням»»: план квартала → новые
+// Глава «Нормированные работы в «Загрузке по дням»»: план квартала → новые
 // предупреждения (перерасход, «Квартал не вмещается») → свёрнутая в строку сводка
 // запаса → развёрнутая таблица с полосками «занято из заложенного» → процент
 // загрузки у имени с подсказкой → дни с нормированными работами.
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { Director } from '../director.ts';
-import { CHAPTERS } from './chapters.ts';
 import { chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 const TEAM = 'Команда Альфа';
@@ -135,10 +134,10 @@ async function showNativeTip(page: Page, target: Locator, text: string): Promise
   );
 }
 
-test('06-normed-load', async ({ page }) => {
+test('07-normed-load', async ({ page }) => {
   const d = new Director(page);
   await d.install();
-  await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle(6, CHAPTERS[5]));
+  await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle('Нормированные работы в «Загрузке по дням»'));
 
   await expect(page.locator('.ant-tag', { hasText: /^Готово$/ })).toBeVisible({ timeout: 60_000 });
   const load = page.locator('[data-tour="rp-load"]');
@@ -241,5 +240,5 @@ test('06-normed-load', async ({ page }) => {
   await d.caption('Видно, сколько времени уходит на нормированные работы');
   await d.show(load.locator(':scope > div'));
   await d.pause(2600);
-  await saveClip(page, '06-normed-load');
+  await saveClip(page, '07-normed-load');
 });

@@ -2,6 +2,7 @@
 import { type Page, test } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { CHAPTERS } from './chapters.ts';
 
 /** Номер версии в заставке и финале. */
 export const RELEASE = '1.12';
@@ -23,9 +24,11 @@ export function apiUrl(): string {
   return `${String(test.info().config.metadata.backendUrl)}/api/v1`;
 }
 
-/** Заголовок главы: «3 / 8 · Название». */
-export function chapterTitle(n: number, title: string, total = 8): string {
-  return `${n} / ${total} · ${title}`;
+/** Заголовок главы «3 / 8 · Название»: номер — место главы в оглавлении CHAPTERS. */
+export function chapterTitle(title: string): string {
+  const n = CHAPTERS.indexOf(title) + 1;
+  if (!n) throw new Error(`Главы «${title}» нет в оглавлении chapters.ts`);
+  return `${n} / ${CHAPTERS.length} · ${title}`;
 }
 
 /** Закрыть окно и сохранить запись главы в data/release-video/clips/<id>.webm. */

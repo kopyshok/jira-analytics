@@ -9,4 +9,5 @@ export default defineConfig({
   ...base,
   testDir: './help-videos/release',
   testMatch: '*.release.ts',
+  globalSetup: './help-videos/release/global-setup.ts',
 });
