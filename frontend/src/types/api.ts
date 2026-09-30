@@ -550,21 +550,17 @@ export interface BacklogItemResponse {
   } | null;
   goals: string | null;
   quarter_label: string | null;
-  // Planning parameters — effective values (from Jira or manual override).
-  // Override via PATCH /backlog/{id}; sync no longer wipes manual values when Jira is empty.
+  // Вовлечённость, зафиксированная в фазе ресурсного плана (null — нет фиксации).
   involvement_analyst: number | null;
   involvement_dev: number | null;
   involvement_qa: number | null;
   involvement_launch: number | null;
+  // Длительности фаз — из Jira или ручная правка (PATCH /backlog/{id}).
   duration_analyst_days: number | null;
   duration_dev_days: number | null;
   duration_qa_days: number | null;
   duration_launch_days: number | null;
   // Current Jira values (for badge "from Jira" vs "manual override").
-  involvement_analyst_jira: number | null;
-  involvement_dev_jira: number | null;
-  involvement_qa_jira: number | null;
-  involvement_launch_jira: number | null;
   duration_analyst_days_jira: number | null;
   duration_dev_days_jira: number | null;
   duration_qa_days_jira: number | null;

@@ -605,11 +605,12 @@ export async function patchAssignment(
   );
 }
 
-/** Записать вовлечённость фазы (0..100%) на инициативу; сервер пересчитывает план. */
+/** Зафиксировать вовлечённость фазы (0..100%) у инициативы; null — снять фиксацию.
+ *  Сервер пересчитывает план. */
 export async function setAssignmentInvolvement(
   planId: string,
   assignmentId: string,
-  involvementPct: number,
+  involvementPct: number | null,
 ): Promise<void> {
   await api.put(
     `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/involvement`,

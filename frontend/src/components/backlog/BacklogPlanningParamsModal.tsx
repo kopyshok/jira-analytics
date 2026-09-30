@@ -35,7 +35,6 @@ interface FieldValue {
 }
 
 interface FormState {
-  involvement: Record<PhaseKey, FieldValue>;
   duration: Record<PhaseKey, FieldValue>;
   parallel: Record<Exclude<PhaseKey, 'launch'>, FieldValue>;
 }
@@ -43,12 +42,6 @@ interface FormState {
 function buildState(item: BacklogItemResponse | null): FormState {
   const i = item;
   return {
-    involvement: {
-      analyst: { effective: i?.involvement_analyst ?? null, jira: i?.involvement_analyst_jira ?? null },
-      dev: { effective: i?.involvement_dev ?? null, jira: i?.involvement_dev_jira ?? null },
-      qa: { effective: i?.involvement_qa ?? null, jira: i?.involvement_qa_jira ?? null },
-      launch: { effective: i?.involvement_launch ?? null, jira: i?.involvement_launch_jira ?? null },
-    },
     duration: {
       analyst: { effective: i?.duration_analyst_days ?? null, jira: i?.duration_analyst_days_jira ?? null },
       dev: { effective: i?.duration_dev_days ?? null, jira: i?.duration_dev_days_jira ?? null },
@@ -76,14 +69,9 @@ function PhaseRow({
   state: FormState;
   onChange: (next: FormState) => void;
 }) {
-  const inv = state.involvement[phase];
   const dur = state.duration[phase];
   const par = phase === 'launch' ? null : state.parallel[phase];
 
-  const setInv = (v: number | null) => onChange({
-    ...state,
-    involvement: { ...state.involvement, [phase]: { ...inv, effective: v } },
-  });
   const setDur = (v: number | null) => onChange({
     ...state,
     duration: { ...state.duration, [phase]: { ...dur, effective: v } },
@@ -96,7 +84,6 @@ function PhaseRow({
     });
   };
 
-  const resetInv = () => setInv(inv.jira);
   const resetDur = () => setDur(dur.jira);
 
   const labelStyle: React.CSSProperties = { width: 160, display: 'inline-block' };
@@ -106,24 +93,6 @@ function PhaseRow({
         {PHASE_LABELS[phase]}
       </Typography.Title>
       <Space orientation="vertical" size={6} style={{ width: '100%' }}>
-        <Space style={{ width: '100%' }}>
-          <span style={labelStyle}>Вовлечённость (0–1)</span>
-          <InputNumber
-            value={inv.effective}
-            onChange={setInv}
-            min={0}
-            max={1}
-            step={0.05}
-            style={{ width: 100 }}
-            placeholder={inv.jira != null ? String(inv.jira) : '—'}
-          />
-          <SourceBadge {...inv} />
-          {inv.jira !== null && inv.effective !== inv.jira && (
-            <Button size="small" icon={<ReloadOutlined />} onClick={resetInv}>
-              К Jira
-            </Button>
-          )}
-        </Space>
         <Space style={{ width: '100%' }}>
           <span style={labelStyle}>Длительность (дней)</span>
           <InputNumber
@@ -272,9 +241,6 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
       ? ['analyst', 'dev', 'qa']
       : ['analyst', 'dev', 'qa', 'launch'];
     for (const ph of phases) {
-      if (state.involvement[ph].effective !== initial.involvement[ph].effective) {
-        patch[`involvement_${ph}`] = state.involvement[ph].effective;
-      }
       if (state.duration[ph].effective !== initial.duration[ph].effective) {
         patch[`duration_${ph}_days`] = state.duration[ph].effective;
       }
