@@ -248,7 +248,8 @@ def test_leak_check_finds_planted_leak(conn, table, column, planted):
     findings = leak_check.check(conn, sensitive)
 
     assert findings
-    assert all(f.startswith(f"{table}.{column}: ") for f in findings)
+    assert all(f.startswith(f"{table}.{column} (строка ") for f in findings)
+    assert not any(planted.strip() in f for f in findings)  # сам текст в вывод не попадает
 
 
 def test_leak_check_scans_binary_values():
@@ -257,7 +258,7 @@ def test_leak_check_scans_binary_values():
     conn.execute("INSERT INTO blobs VALUES ('1', ?)", ("выгрузка: https://files.acme-demo.ru/x".encode(),))
 
     assert leak_check.check(conn, Sensitive(strings=frozenset(), project_keys=frozenset())) == [
-        "blobs.data: выгрузка: https://files.acme-demo.ru/x"]
+        "blobs.data (строка 1): ссылка"]
 
 
 def test_surname_is_matched_as_word_in_any_case_form():
@@ -272,7 +273,7 @@ def test_surname_is_matched_as_word_in_any_case_form():
     sensitive = Sensitive(strings=frozenset(), project_keys=frozenset(),
                           words=frozenset(surname_forms("новиков") | surname_forms("боков")))
 
-    assert leak_check.check(conn, sensitive) == ["notes.body: передать новикову"]
+    assert leak_check.check(conn, sensitive) == ["notes.body (строка 3): фамилия"]
 
 
 # --- сборка целиком: временный файл, отказ от перезаписи ---------------------------------------
