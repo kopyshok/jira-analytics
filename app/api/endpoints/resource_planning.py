@@ -695,8 +695,8 @@ InvolvementSource = Literal["employee", "task", "team"]
 class PhaseCalcDetails(BaseModel):
     duration_days_jira: Optional[int] = None
     involvement_pct: Optional[int] = None
-    # Откуда взята вовлечённость: "employee" — личная вовлечённость
-    # исполнителя на квартал плана, "task" — задана у задачи, "team" — из
+    # Откуда взята вовлечённость: "task" — зафиксирована в фазе, "employee" —
+    # личная вовлечённость исполнителя на квартал плана, "team" — из
     # справочника команды, None — не задана нигде (считаем как 100%).
     involvement_source: Optional[InvolvementSource] = None
     parallel_count: int = 1
@@ -2508,9 +2508,9 @@ def list_assignment_candidates(
 
 
 class InvolvementUpdate(BaseModel):
-    """Новая вовлечённость фазы в процентах (0..100)."""
+    """Зафиксировать вовлечённость фазы в процентах (0..100); None — снять фиксацию."""
 
-    involvement_pct: int = Field(ge=0, le=100)
+    involvement_pct: Optional[int] = Field(ge=0, le=100)
 
 
 _PHASE_INVOLVEMENT_FIELD = {
@@ -2530,10 +2530,11 @@ async def set_assignment_involvement(
     _: User = Depends(get_current_user),
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    """Записать вовлечённость фазы на инициативу и пересчитать план.
+    """Зафиксировать вовлечённость фазы (или снять фиксацию) и пересчитать план.
 
-    Вовлечённость — свойство инициативы (BacklogItem) per-фаза, поэтому правка
-    влияет на все планы/сценарии, где задействована эта задача.
+    Фиксация — свойство инициативы (BacklogItem) per-фаза, поэтому правка
+    влияет на все планы/сценарии, где задействована эта задача. Без фиксации
+    фаза берёт личную настройку исполнителя или справочник команды.
     """
     def work() -> None:
         lock_plan(db, plan_id)
@@ -2554,7 +2555,8 @@ async def set_assignment_involvement(
         if not bi:
             raise HTTPException(404, "Backlog item not found")
 
-        setattr(bi, field, data.involvement_pct / 100.0)
+        pct = data.involvement_pct
+        setattr(bi, field, None if pct is None else pct / 100.0)
         db.flush()
         _recompute_or_rollback(db, plan_id, "reschedule_failed")
 
@@ -4003,7 +4005,7 @@ def _effective_involvement(
     db: Session, a: "ResourcePlanAssignment", bi: "BacklogItem",
 ) -> tuple[Optional[float], Optional[InvolvementSource]]:
     """Вовлечённость фазы так же, как её считает планировщик, и её источник:
-    "employee" — личная исполнителя, "task" — своё значение задачи, "team" —
+    "task" — зафиксирована в фазе, "employee" — личная исполнителя, "team" —
     справочник команды; (None, None) — не задана нигде."""
     personal = _personal_involvement(db, a.plan_id, a.employee_id)
     inv = effective_for_phase(
@@ -4011,9 +4013,9 @@ def _effective_involvement(
     )
     if inv is None:
         return None, None
-    if personal is not None:
-        return inv, "employee"
-    return inv, "task" if getattr(bi, PHASE_FIELD[a.phase]) is not None else "team"
+    if getattr(bi, PHASE_FIELD[a.phase]) is not None:
+        return inv, "task"
+    return inv, "employee" if personal is not None else "team"
 
 
 def _build_phase_calc(
