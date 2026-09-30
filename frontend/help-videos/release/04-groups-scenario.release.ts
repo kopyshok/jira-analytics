@@ -150,5 +150,5 @@ test('04-groups-scenario', async ({ page }) => {
   await d.caption('Часы групп считаются по долям и датам перевода');
   await d.show(driftLine);
   await d.pause(2600);
-  await saveClip(page, '04-groups-scenario');
+  await saveClip(d, '04-groups-scenario');
 });

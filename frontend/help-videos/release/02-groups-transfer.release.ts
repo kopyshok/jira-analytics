@@ -122,5 +122,5 @@ test('02-groups-transfer', async ({ page }) => {
   await d.caption('Прошлое не меняется: до даты часы — в прежней группе');
   await d.show(groups);
   await d.pause(2700);
-  await saveClip(page, '02-groups-transfer');
+  await saveClip(d, '02-groups-transfer');
 });
