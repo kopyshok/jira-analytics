@@ -50,10 +50,6 @@ export const updateBacklogItem = (id: string, data: Partial<{
   parallel_count_analyst: number | null;
   parallel_count_dev: number | null;
   parallel_count_qa: number | null;
-  involvement_analyst: number | null;
-  involvement_dev: number | null;
-  involvement_qa: number | null;
-  involvement_launch: number | null;
   duration_analyst_days: number | null;
   duration_dev_days: number | null;
   duration_qa_days: number | null;

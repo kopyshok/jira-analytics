@@ -2,7 +2,7 @@
 // «Сотрудник» (группы Из Jira / Моя команда / Другие команды, загрузка %) →
 // конфликт при смене → «Всё равно сохранить и пересчитать» → исполнитель
 // закрепился сам. Другая фаза: новая дата «Начало», «Зафиксировать дату» /
-// «Снять фиксацию», «Вовлечённость» → «Сохранить» — фаза удлинилась.
+// «Снять фиксацию», «Вовлечённость» → «Зафиксировано» → «Сохранить» — фаза удлинилась.
 // Данные готовятся в beforeAll — запись идёт с момента открытия окна.
 import { expect, test } from '@playwright/test';
 import dayjs from 'dayjs';
@@ -15,14 +15,17 @@ type Gantt = { assignments: Assignment[] };
 type Candidate = { employee_id: string; display_name: string; role: string | null };
 type CandidateGroup = { key: string; label: string; employees: Candidate[] };
 type Preview = { has_conflicts: boolean };
-type Explain = { phase_calc: { involvement_pct: number | null } | null };
+type Explain = {
+  phase_calc: { involvement_pct: number | null; involvement_source?: string | null } | null;
+};
 type Key = { item: string; phase: string; part: number };
 
 let planId = '';
 let phaseAKey: Key;
 let nextEmployee: Candidate;
 let phaseBKey: Key;
-let phaseBInvolvementBefore = 0;
+// Фиксация вовлечённости фазы Б до ролика: null — фаза не была зафиксирована.
+let phaseBFixedBefore: number | null = null;
 
 const keyOf = (a: Assignment): Key => ({ item: a.backlog_item_id, phase: a.phase, part: a.part_number });
 const byKey = (list: Assignment[], k: Key) =>
@@ -106,14 +109,16 @@ test.beforeAll(async ({ playwright }, testInfo) => {
   if (!devB) throw new Error('Нет второй разработки с исполнителем и тестированием');
   phaseBKey = keyOf(devB);
   const explainB: Explain = await (await request.get(`${url}/assignments/${devB.id}/explain`)).json();
-  phaseBInvolvementBefore = explainB.phase_calc?.involvement_pct ?? 90;
+  phaseBFixedBefore = explainB.phase_calc?.involvement_source === 'task'
+    ? explainB.phase_calc.involvement_pct
+    : null;
 
   await request.dispose();
 });
 
 test.afterAll(async ({ playwright }, testInfo) => {
-  // Вовлечённость фазы Б записывается в саму задачу — возвращаем как было,
-  // иначе другие ролики раздела увидят изменённые часы этой задачи.
+  // Фиксация вовлечённости фазы Б записывается в саму задачу — возвращаем как
+  // было, иначе другие ролики раздела увидят изменённую фазу этой задачи.
   const api = `${String(testInfo.config.metadata.backendUrl)}/api/v1`;
   const rp = `${api}/resource-planning`;
   const url = `${rp}/resource-plans/${planId}`;
@@ -124,7 +129,7 @@ test.afterAll(async ({ playwright }, testInfo) => {
   const current = byKey(g.assignments, phaseBKey);
   if (current) {
     await request.put(`${url}/assignments/${current.id}/involvement`, {
-      data: { involvement_pct: phaseBInvolvementBefore },
+      data: { involvement_pct: phaseBFixedBefore },
     });
   }
   await request.dispose();
@@ -239,6 +244,11 @@ test('rp-executor', async ({ page }) => {
   await d.show(involvementField);
   await d.pause(1000);
 
+  const fixBox = involvementField.getByRole('checkbox', { name: 'Зафиксировано' });
+  if (!(await fixBox.isChecked())) {
+    await d.click(fixBox, 'Отметьте «Зафиксировано» — у фазы будет свой процент, справочник на неё не действует');
+  }
+  await expect(input).toBeEnabled();
   await d.click(input, `Впишите новое значение — например, ${NEXT}%`);
   const inputBox = (await input.boundingBox())!;
   await page.evaluate(
@@ -252,7 +262,7 @@ test('rp-executor', async ({ page }) => {
   await d.click(involvementField.getByRole('button', { name: 'Сохранить' }), 'Нажмите «Сохранить»');
 
   await expect(endField).not.toHaveText(endBefore);
-  await d.caption('Вовлечённость сохранилась в самой задаче — во всех планах и сценариях');
+  await d.caption('Процент зафиксирован для этой фазы задачи — во всех планах; снять — убрать галочку');
   await d.show(endField);
   await d.pause(1600);
 

@@ -59,13 +59,9 @@ const GROUPS: FieldGroup[] = [
   },
   {
     panelKey: 'involvement_duration',
-    title: 'Вовлеченность и длительности',
-    subtitle: 'Для будущего календарного планирования',
+    title: 'Длительности',
+    subtitle: 'Длительность фаз для ресурсного планирования',
     fields: [
-      { key: 'jira_involvement_analyst_field_id', label: 'Вовлеченность аналитика' },
-      { key: 'jira_involvement_dev_field_id',     label: 'Вовлеченность разработчика' },
-      { key: 'jira_involvement_qa_field_id',      label: 'Вовлеченность тестировщика' },
-      { key: 'jira_involvement_opo_field_id',     label: 'Вовлеченность ОПЭ' },
       { key: 'jira_duration_analyst_field_id',    label: 'Длительность анализа' },
       { key: 'jira_duration_dev_field_id',        label: 'Длительность разработки' },
       { key: 'jira_duration_qa_field_id',         label: 'Длительность тестирования' },
