@@ -72,3 +72,29 @@ def test_reject_unknown_role(client):
         "effective_year": 2026, "effective_quarter": 1, "involvement": 0.8,
     })
     assert r.status_code == 422
+
+
+def test_reference_change_marks_team_plans_stale(client, db_session):
+    """Сроки фаз посчитаны по старому проценту — планы команды с квартала
+    действия записи просят пересчёт; чужие и более ранние не трогаются."""
+    from app.models import ResourcePlan
+
+    def plan(team, year, quarter):
+        p = ResourcePlan(team=team, year=year, quarter=quarter, status="ready")
+        db_session.add(p)
+        return p
+
+    q3, q4, q1_next, other = (
+        plan("A", 2026, "Q3"), plan("A", 2026, "Q4"), plan("A", 2027, "Q1"), plan("B", 2026, "Q4"),
+    )
+    db_session.commit()
+
+    r = client.post("/api/v1/planning/involvement-defaults", json={
+        "team": "A", "role": "analyst", "effective_year": 2026,
+        "effective_quarter": 4, "involvement": 0.9,
+    })
+    assert r.status_code == 201, r.text
+
+    for p in (q3, q4, q1_next, other):
+        db_session.refresh(p)
+    assert (q3.status, q4.status, q1_next.status, other.status) == ("ready", "stale", "stale", "ready")

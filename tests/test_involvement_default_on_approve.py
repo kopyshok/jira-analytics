@@ -9,6 +9,7 @@ from app.main import app
 from app.models import (
     BacklogItem, InvolvementDefault, PlanningScenario, ScenarioAllocation,
 )
+from app.services.involvement_default_service import effective_for_phase, team_defaults
 
 
 @pytest.fixture
@@ -54,7 +55,9 @@ def _scenario_with_item(db, team="A", year=2026, quarter="Q1",
     return sc, item
 
 
-def test_approve_fills_empty_involvement(client, db_session):
+def test_approve_does_not_write_reference_into_task(client, db_session):
+    """Утверждение не вписывает справочник в задачу: записанный процент стал бы
+    «своим» у задачи и перекрыл бы последующие правки справочника."""
     sc, item = _scenario_with_item(db_session, involvement_analyst=None)
     db_session.add(InvolvementDefault(
         team="A", role="analyst", effective_year=2026, effective_quarter=1, involvement=0.8,
@@ -65,7 +68,7 @@ def test_approve_fills_empty_involvement(client, db_session):
     assert r.status_code == 200, r.text
 
     db_session.refresh(item)
-    assert item.involvement_analyst == 0.8
+    assert item.involvement_analyst is None
 
 
 def test_approve_does_not_overwrite_existing(client, db_session):
@@ -82,14 +85,19 @@ def test_approve_does_not_overwrite_existing(client, db_session):
     assert item.involvement_analyst == 0.5
 
 
-def test_revert_keeps_written_value(client, db_session):
+def test_reference_change_after_approve_reaches_phase(client, db_session):
+    """Правка справочника после утверждения доходит до фазы задачи."""
     sc, item = _scenario_with_item(db_session, involvement_analyst=None)
-    db_session.add(InvolvementDefault(
-        team="A", role="analyst", effective_year=2026, effective_quarter=1, involvement=0.8,
-    ))
+    ref = InvolvementDefault(
+        team="A", role="analyst", effective_year=2026, effective_quarter=1, involvement=0.7,
+    )
+    db_session.add(ref)
     db_session.commit()
     client.post(f"/api/v1/planning/scenarios/{sc.id}/approve")
-    client.post(f"/api/v1/planning/scenarios/{sc.id}/revert-to-draft")
+
+    r = client.patch(f"/api/v1/planning/involvement-defaults/{ref.id}", json={"involvement": 0.9})
+    assert r.status_code == 200, r.text
 
     db_session.refresh(item)
-    assert item.involvement_analyst == 0.8
+    defaults = team_defaults(db_session, "A", 2026, 1)
+    assert effective_for_phase(item, "analyst", defaults) == 0.9

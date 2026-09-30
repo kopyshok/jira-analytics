@@ -2,14 +2,19 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import InvolvementDefault
+from app.models import InvolvementDefault, ResourcePlan
 from app.models.involvement_default import INVOLVEMENT_ROLES
+from app.services.cross_team_occupancy import quarter_num
+from app.services.event_bus import EventBroadcaster, get_event_bus
 
 router = APIRouter()
+
+_CHANGED = {"type": "entity_changed", "entities": ["planning", "resource_planning"]}
 
 
 class InvolvementDefaultResponse(BaseModel):
@@ -64,6 +69,17 @@ def _check_clash(db, team, role, year, quarter, exclude_id=None) -> None:
         )
 
 
+def _mark_plans_stale(db: Session, team: str, year: int, quarter: int) -> None:
+    """Планы команды с квартала действия записи — «Требуется пересчёт»: фазы уже
+    берут новый процент, а сроки фаз посчитаны по старому."""
+    for plan in db.query(ResourcePlan).filter(
+        ResourcePlan.team == team, ResourcePlan.status == "ready",
+    ):
+        q = quarter_num(plan.quarter)
+        if plan.year is not None and q is not None and (plan.year, q) >= (year, quarter):
+            plan.status = "stale"
+
+
 @router.get("", response_model=List[InvolvementDefaultResponse])
 def list_defaults(team: Optional[str] = Query(None), db: Session = Depends(get_db)):
     q = db.query(InvolvementDefault)
@@ -78,46 +94,78 @@ def list_defaults(team: Optional[str] = Query(None), db: Session = Depends(get_d
 
 
 @router.post("", response_model=InvolvementDefaultResponse, status_code=201)
-def create_default(req: InvolvementDefaultCreate, db: Session = Depends(get_db)):
-    _check_role(req.role)
-    _check_clash(db, req.team, req.role, req.effective_year, req.effective_quarter)
-    row = InvolvementDefault(**req.model_dump())
-    db.add(row)
-    db.commit()
-    db.refresh(row)
+async def create_default(
+    req: InvolvementDefaultCreate,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    def work() -> InvolvementDefault:
+        _check_role(req.role)
+        _check_clash(db, req.team, req.role, req.effective_year, req.effective_quarter)
+        row = InvolvementDefault(**req.model_dump())
+        db.add(row)
+        _mark_plans_stale(db, row.team, row.effective_year, row.effective_quarter)
+        db.commit()
+        db.refresh(row)
+        return row
+
+    row = await run_in_threadpool(work)
+    await event_bus.publish(_CHANGED)
     return row
 
 
 @router.patch("/{default_id}", response_model=InvolvementDefaultResponse)
-def update_default(default_id: str, req: InvolvementDefaultUpdate, db: Session = Depends(get_db)):
-    row = db.query(InvolvementDefault).filter(InvolvementDefault.id == default_id).one_or_none()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Not found")
-    data = req.model_dump(exclude_unset=True)
-    if "role" in data:
-        _check_role(data["role"])
-    merged = {
-        "team": data.get("team", row.team),
-        "role": data.get("role", row.role),
-        "year": data.get("effective_year", row.effective_year),
-        "quarter": data.get("effective_quarter", row.effective_quarter),
-    }
-    _check_clash(
-        db, merged["team"], merged["role"], merged["year"], merged["quarter"],
-        exclude_id=default_id,
-    )
-    for k, v in data.items():
-        setattr(row, k, v)
-    db.commit()
-    db.refresh(row)
+async def update_default(
+    default_id: str,
+    req: InvolvementDefaultUpdate,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    def work() -> InvolvementDefault:
+        row = db.query(InvolvementDefault).filter(InvolvementDefault.id == default_id).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        data = req.model_dump(exclude_unset=True)
+        if "role" in data:
+            _check_role(data["role"])
+        merged = {
+            "team": data.get("team", row.team),
+            "role": data.get("role", row.role),
+            "year": data.get("effective_year", row.effective_year),
+            "quarter": data.get("effective_quarter", row.effective_quarter),
+        }
+        _check_clash(
+            db, merged["team"], merged["role"], merged["year"], merged["quarter"],
+            exclude_id=default_id,
+        )
+        # Задеты кварталы и до правки, и после: запись могла сменить команду или начало.
+        _mark_plans_stale(db, row.team, row.effective_year, row.effective_quarter)
+        for k, v in data.items():
+            setattr(row, k, v)
+        _mark_plans_stale(db, row.team, row.effective_year, row.effective_quarter)
+        db.commit()
+        db.refresh(row)
+        return row
+
+    row = await run_in_threadpool(work)
+    await event_bus.publish(_CHANGED)
     return row
 
 
 @router.delete("/{default_id}", status_code=204)
-def delete_default(default_id: str, db: Session = Depends(get_db)):
-    row = db.query(InvolvementDefault).filter(InvolvementDefault.id == default_id).one_or_none()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Not found")
-    db.delete(row)
-    db.commit()
+async def delete_default(
+    default_id: str,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    def work() -> None:
+        row = db.query(InvolvementDefault).filter(InvolvementDefault.id == default_id).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        _mark_plans_stale(db, row.team, row.effective_year, row.effective_quarter)
+        db.delete(row)
+        db.commit()
+
+    await run_in_threadpool(work)
+    await event_bus.publish(_CHANGED)
     return None
