@@ -1,4 +1,4 @@
-// Глава 2 «Разработчик задачи в сценарии»: колонка «Исполнитель» стала «Аналитиком»,
+// Глава «Разработчик задачи в сценарии»: колонка «Исполнитель» стала «Аналитиком»,
 // рядом — новая колонка «Разработчик»; выбранному разработчику засчитываются часы
 // разработки, и он не может быть аналитиком той же задачи.
 import { expect, test } from '@playwright/test';
@@ -97,12 +97,12 @@ test.afterAll(async ({ playwright }, testInfo) => {
   await request.dispose();
 });
 
-test('02-scenario-developer', async ({ page }) => {
+test('03-scenario-developer', async ({ page }) => {
   const surname = dev!.display_name.split(' ')[0];
 
   const d = new Director(page);
   await d.install();
-  await d.open(`/planning?scenario=${scenarioId}`, chapterTitle(2, 'Разработчик задачи в сценарии'));
+  await d.open(`/planning?scenario=${scenarioId}`, chapterTitle('Разработчик задачи в сценарии'));
 
   const backlog = page.locator('.ant-card', { has: page.locator('.ant-card-head', { hasText: 'Элементы бэклога' }) });
   const row = page.locator(`[data-alloc-id="${allocId}"]`);
@@ -161,5 +161,5 @@ test('02-scenario-developer', async ({ page }) => {
   await d.caption('Ресурсный план отдаст разработчику фазу «Разработка»');
   await d.show(devSelect);
   await d.pause(2600);
-  await saveClip(page, '02-scenario-developer');
+  await saveClip(page, '03-scenario-developer');
 });

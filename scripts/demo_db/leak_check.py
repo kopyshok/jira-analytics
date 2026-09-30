@@ -118,7 +118,11 @@ def _tables(conn: sqlite3.Connection) -> list[str]:
 
 
 def check(conn: sqlite3.Connection, sensitive: "Sensitive") -> list[str]:
-    """Находки вида «таблица.колонка: фрагмент»; пустой список — утечек нет."""
+    """Находки вида «таблица.колонка (строка N): вид находки»; пустой список — утечек нет.
+
+    Сам найденный текст в находку не попадает: сборщик печатает находки, и исходные
+    данные остались бы в выводе и журналах. Строку по номеру смотрят в базе сами.
+    """
     pattern = trie_pattern(sensitive.strings)
     tokens = re.compile(pattern) if pattern else None
     pattern = word_pattern(sensitive.words)
@@ -127,24 +131,20 @@ def check(conn: sqlite3.Connection, sensitive: "Sensitive") -> list[str]:
     key_re = re.compile(r"\b(?:%s)-\d+" % "|".join(map(re.escape, keys))) if keys else None
     originals = sensitive.originals
 
-    def around(text: str, m: re.Match) -> str:
-        return text[max(0, m.start() - 20):m.end() + 20]
-
     def hit(text: str) -> Optional[str]:
-        for rx in (tokens, words, key_re):
-            m = rx.search(text) if rx else None
-            if m:
-                return around(text, m)
+        for rx, kind in ((tokens, "исходная строка"), (words, "фамилия"), (key_re, "ключ задачи")):
+            if rx and rx.search(text):
+                return kind
         for m in _EMAIL_RE.finditer(text):
             domain = m.group(1)
             if domain != ALLOWED_EMAIL_DOMAIN and not domain.endswith("." + ALLOWED_EMAIL_DOMAIN):
-                return around(text, m)
+                return "e-mail"
         for m in _URL_RE.finditer(text):
             if m.group(1) not in ALLOWED_URL_HOSTS:
-                return around(text, m)
+                return "ссылка"
         for m in _IP_RE.finditer(text):
             if all(int(g) <= 255 for g in m.groups()) and m.group(0) not in ALLOWED_IPS:
-                return around(text, m)
+                return "IP-адрес"
         return None
 
     def copied(value: str) -> bool:
@@ -153,18 +153,18 @@ def check(conn: sqlite3.Connection, sensitive: "Sensitive") -> list[str]:
     findings: list[str] = []
     for table in _tables(conn):
         cols = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]
-        for row in conn.execute(f'SELECT * FROM "{table}"'):
+        for rowid, *row in conn.execute(f'SELECT rowid, * FROM "{table}"'):
             strs = [(c, t) for c, t in ((c, _text(v)) for c, v in zip(cols, row)) if t]
             if not strs:
                 continue
             for col, value in strs:
                 if copied(value):
-                    findings.append(f"{table}.{col}: совпадает с исходным текстом: {value[:60]}")
+                    findings.append(f"{table}.{col} (строка {rowid}): совпадает с исходным текстом")
             if hit(_prepare(_SEP.join(v for _, v in strs))):
                 for col, value in strs:
-                    fragment = hit(_prepare(value))
-                    if fragment is not None:
-                        findings.append(f"{table}.{col}: {fragment}")
+                    kind = hit(_prepare(value))
+                    if kind is not None:
+                        findings.append(f"{table}.{col} (строка {rowid}): {kind}")
             if len(findings) >= MAX_FINDINGS:
                 return findings
     return findings
