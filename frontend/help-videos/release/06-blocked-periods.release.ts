@@ -228,7 +228,7 @@ test('06-blocked-periods', async ({ page }) => {
   await d.caption('Сотрудник главнее роли: видно, на кого период не действует');
   await d.show(rivalRow.locator('td').nth(1));
   await d.pause(2600);
-  await saveClip(page, '06-blocked-periods');
+  await saveClip(d, '06-blocked-periods');
 
   // Период ролика меняет раскладку плана — следующим главам общего прогона он
   // не нужен: снимаем и пересчитываем план.

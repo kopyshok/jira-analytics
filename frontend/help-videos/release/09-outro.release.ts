@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { Director } from '../director.ts';
 import { MORE } from './chapters.ts';
 import { RELEASE, saveClip, releaseFrame } from './common.ts';
-import { outroHtml } from './slides.ts';
+import { outroHtml, plural } from './slides.ts';
 
 releaseFrame();
 
@@ -21,6 +21,9 @@ test('09-outro', async ({ page }) => {
   const d = new Director(page);
   await d.install();
   await page.setContent(outroHtml(RELEASE, MORE, fixes));
+  const more = `${MORE.length} ${plural(MORE.length, 'улучшение', 'улучшения', 'улучшений')}`;
+  const fixesText = fixes > 0 ? ` и ${fixes} ${plural(fixes, 'исправление', 'исправления', 'исправлений')}` : '';
+  await d.say(`А также — ещё ${more}${fixesText}. Подробнее — в окне «Что нового».`);
   await d.pause(900 + MORE.length * 450 + 300 + 4500);
-  await saveClip(page, '09-outro');
+  await saveClip(d, '09-outro');
 });

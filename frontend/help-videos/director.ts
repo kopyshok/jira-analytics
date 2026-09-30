@@ -167,7 +167,7 @@ export class Director {
   /** Текущая фраза диктора: следующая подпись ждёт её конца. */
   private speaking: Promise<Line> | null = null;
 
-  constructor(private readonly page: Page) {}
+  constructor(readonly page: Page) {}
 
   /**
    * Подключить слой (переживает переходы между страницами) и закрасить пустую
@@ -242,8 +242,7 @@ export class Director {
     const video = this.page.video();
     if (!video) throw new Error('Запись видео не включена в конфигурации');
     if (!this.posterJpeg) throw new Error('Не снята обложка: вызовите poster()');
-    // Последняя фраза диктора должна договориться до конца записи.
-    if (VOICE_ON) await this.waitCaptionMin();
+    await this.finishVoice();
     await this.page.close();
     const raw = `${OUT_DIR}${id}.raw.webm`;
     const silent = VOICE_ON ? `${OUT_DIR}${id}.silent.webm` : `${OUT_DIR}${id}.webm`;
@@ -264,6 +263,20 @@ export class Director {
       if (VOICE_ON) rmSync(silent, { force: true });
     }
     writeFileSync(`${OUT_DIR}${id}.jpg`, this.posterJpeg);
+  }
+
+  /** Фраза диктора без подписи — для заставки и финала сводного ролика. */
+  async say(text: string): Promise<void> {
+    if (!VOICE_ON) return;
+    await this.waitCaptionMin();
+    this.captionAt = Date.now();
+    this.voice(text, this.captionAt - this.startedAt);
+  }
+
+  /** Дождаться, пока диктор договорит последнюю фразу, и вернуть все фразы с моментами. */
+  async finishVoice(): Promise<Cue[]> {
+    if (VOICE_ON) await this.waitCaptionMin();
+    return this.cues;
   }
 
   private async aim(locator: Locator, to: Locator | undefined, aside: boolean): Promise<void> {
@@ -302,9 +315,11 @@ export class Director {
     await this.waitCaptionMin();
     await this.page.evaluate(([t, v]) => window.__director?.caption(t, v as 'bar' | 'title'), [text, variant]);
     this.captionAt = Date.now();
-    if (!VOICE_ON) return;
-    // Фраза озвучивается, пока идут действия на экране; её длину ждёт следующая подпись.
-    const at = this.captionAt + CAPTION_FADE_MS - this.startedAt;
+    if (VOICE_ON) this.voice(text, this.captionAt + CAPTION_FADE_MS - this.startedAt);
+  }
+
+  /** Фраза озвучивается, пока идут действия на экране; её длину ждёт следующая подпись. */
+  private voice(text: string, at: number): void {
     this.speaking = speak(text).then((line) => {
       this.cues.push({ file: line.file, at });
       return line;

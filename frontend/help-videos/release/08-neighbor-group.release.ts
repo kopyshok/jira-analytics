@@ -208,5 +208,5 @@ test('08-neighbor-group', async ({ page }) => {
   await d.caption('Работа на соседнюю группу сразу видна на плане');
   await showBar();
   await d.pause(2800);
-  await saveClip(page, '08-neighbor-group');
+  await saveClip(d, '08-neighbor-group');
 });
