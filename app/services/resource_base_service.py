@@ -106,6 +106,7 @@ class EmployeeBase:
     role: Optional[str]
     days: list[EmployeeDayHours]
     total_hours: float
+    gross_hours: float                     # норма до вычета обязательных работ (после отсутствий)
     shared_with: list[str]                 # чужие команды за этот квартал
     committed_hours_all_teams: float       # часы, заложенные всеми командами
     is_overcommitted: bool                 # заложено больше календарной нормы
@@ -248,6 +249,7 @@ class ResourceBaseService:
             by_group: dict[str, float] = {}
 
             days_out: list[EmployeeDayHours] = []
+            gross = 0.0
             cur = period_start
             while cur < period_end:
                 norm = day_hours(cur)
@@ -267,6 +269,12 @@ class ResourceBaseService:
                 if on_absence:
                     cur += timedelta(days=1)
                     continue
+
+                # Норма до вычета обязательных работ — для подписи «норма» на
+                # фронте; личный процент обязательных работ у человека может
+                # отличаться от среднего по роли, поэтому это не то же самое,
+                # что валовая норма роли / число людей.
+                gross += norm
 
                 pct = pool_share(e)
 
@@ -321,6 +329,7 @@ class ResourceBaseService:
                     role=e.role,
                     days=days_out,
                     total_hours=total,
+                    gross_hours=round(gross, 2),
                     shared_with=others,
                     committed_hours_all_teams=committed,
                     is_overcommitted=committed > round(calendar_norm, 2) + 0.01,

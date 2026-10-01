@@ -630,6 +630,8 @@ export interface ResourceEmployee {
   display_name: string;
   role: string | null;
   total_hours: number;
+  /** Норма до вычета обязательных работ (после отсутствий), личная, не средняя по роли. */
+  gross_hours?: number;
   days: ResourceDayHours[];
   /** Другие команды сотрудника в этом квартале (ресурс не делится). */
   shared_with?: string[];
