@@ -389,6 +389,10 @@ class ResourceBaseEmployeeOut(BaseModel):
     display_name: str
     role: Optional[str] = None
     total_hours: float
+    # Норма до вычета обязательных работ (после отсутствий) — для подписи
+    # «норма» на фронте; личный процент обязательных работ у человека может
+    # отличаться от среднего по роли.
+    gross_hours: float = 0.0
     days: List[ResourceBaseDayOut]
     # Общий сотрудник: ресурс не делится, но пересечение команд показывается.
     shared_with: List[str] = []
@@ -577,6 +581,7 @@ def _resource_to_response(base) -> ResourceBaseOut:
                 display_name=e.display_name,
                 role=e.role,
                 total_hours=e.total_hours,
+                gross_hours=getattr(e, "gross_hours", 0.0),
                 days=[
                     ResourceBaseDayOut(date=d.date.isoformat(), hours=d.hours)
                     for d in e.days
