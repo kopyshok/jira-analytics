@@ -87,22 +87,50 @@ function JiraKey({ k, url }: { k: string; url: string | null }) {
   );
 }
 
-function ChildRow({ c }: { c: ProjectChild }) {
+/** Узел дерева задач: каждый уровень свёрнут, раскрывается своей стрелкой. */
+export function ChildRow({ c, depth = 0 }: { c: ProjectChild; depth?: number }) {
+  const [open, setOpen] = useState(false);
   const kind = deskStatusKind(c.status);
+  const kids = c.children ?? [];
+  const hasKids = kids.length > 0;
+  const done = (c.status_category ?? '').toLowerCase() === 'done';
   return (
-    <div className="desk-child-row">
-      <span className={`desk-status-dot desk-dot-${kind}`} />
-      {c.key && <JiraKey k={c.key} url={c.jira_url} />}
-      <span className="desk-child-name">
-        {c.jira_url ? (
-          <a href={c.jira_url} target="_blank" rel="noreferrer">{c.title ?? c.key ?? '—'}</a>
-        ) : (c.title ?? c.key ?? '—')}
-      </span>
-      {c.status && (
-        <span className={`desk-status-badge desk-badge-${kind} desk-child-status`}>{c.status}</span>
-      )}
-      <span className="desk-child-hrs">{Math.round(c.fact_hours)} ч</span>
-    </div>
+    <>
+      <div
+        className={`desk-child-row${done ? ' desk-child-done' : ''}`}
+        style={{ paddingLeft: depth * 18 }}
+        data-testid="desk-tree-row"
+      >
+        <span
+          className={`desk-tree-chevron${open ? ' open' : ''}${hasKids ? '' : ' hidden'}`}
+          role={hasKids ? 'button' : undefined}
+          aria-label={hasKids ? (open ? 'Свернуть' : 'Развернуть') : undefined}
+          aria-expanded={hasKids ? open : undefined}
+          tabIndex={hasKids ? 0 : undefined}
+          onClick={() => hasKids && setOpen((o) => !o)}
+          onKeyDown={(e) => {
+            if (hasKids && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              setOpen((o) => !o);
+            }
+          }}
+        >▸</span>
+        <span className={`desk-status-dot desk-dot-${kind}`} />
+        {c.key && <JiraKey k={c.key} url={c.jira_url} />}
+        <span className="desk-child-name">{c.title ?? c.key ?? '—'}</span>
+        {c.status && (
+          <span className={`desk-status-badge desk-badge-${kind} desk-child-status`}>{c.status}</span>
+        )}
+        {c.assignee && <span className="desk-child-assignee">{c.assignee}</span>}
+        <span className="desk-child-hrs mono" title="Оценка и факт по задаче со всеми подзадачами">
+          {c.estimate_hours != null ? `${Math.round(c.estimate_hours)} / ` : '— / '}
+          {Math.round(c.fact_hours)} ч
+        </span>
+      </div>
+      {open && kids.map((k, i) => (
+        <ChildRow key={`${k.key ?? ''}-${i}`} c={k} depth={depth + 1} />
+      ))}
+    </>
   );
 }
 

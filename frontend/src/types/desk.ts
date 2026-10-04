@@ -29,12 +29,17 @@ export interface DeskMeta {
   summary: DeskSummary;
 }
 
+/** Узел дерева задач проекта; часы — по всему поддереву узла. */
 export interface ProjectChild {
   key: string | null;
   title: string | null;
   jira_url: string | null;
   status: string | null;
+  status_category?: string | null;
+  assignee?: string | null;
+  estimate_hours?: number | null;
   fact_hours: number;
+  children?: ProjectChild[];
 }
 
 /** Разбивка проекта по виду работ (analyst, dev, qa, opo — всегда 4, в этом порядке). */
