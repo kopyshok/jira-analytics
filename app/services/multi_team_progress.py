@@ -20,7 +20,7 @@
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
 
 from sqlalchemy.orm import Session
 
@@ -31,9 +31,10 @@ from app.services.backlog_service import (
     teams_make_multi_team,
 )
 
-TAKEN = "taken"
-NOT_TAKEN = "not_taken"
-NO_EPIC = "no_epic"
+TakeStatus = Literal["taken", "not_taken", "no_epic"]
+TAKEN: TakeStatus = "taken"
+NOT_TAKEN: TakeStatus = "not_taken"
+NO_EPIC: TakeStatus = "no_epic"
 
 _CHUNK = 500
 
@@ -57,7 +58,7 @@ class TeamTake:
     """Статус одной команды-участницы."""
 
     team: str
-    status: str
+    status: TakeStatus
     scenarios: list[ScenarioMark] = field(default_factory=list)
 
 
@@ -75,7 +76,7 @@ class RfaProgress:
     def total(self) -> int:
         return len(self.teams)
 
-    def status_of(self, team: Optional[str]) -> Optional[str]:
+    def status_of(self, team: Optional[str]) -> Optional[TakeStatus]:
         for t in self.teams:
             if t.team == team:
                 return t.status
@@ -88,7 +89,7 @@ class RowProgress:
 
     rfa: RfaProgress
     own_team: Optional[str]
-    own_status: Optional[str]
+    own_status: Optional[TakeStatus]
 
 
 def _chunks(ids: list[str]) -> Iterator[list[str]]:
@@ -183,8 +184,10 @@ def multi_team_progress(
             scenarios = sorted(
                 marks.get((rfa_id, team), set()), key=lambda m: (m.year, m.quarter, m.name)
             )
-            status = TAKEN if scenarios else NOT_TAKEN if team in with_epic else NO_EPIC
-            teams.append(TeamTake(team=team, status=status, scenarios=scenarios))
+            take: TakeStatus = (
+                TAKEN if scenarios else NOT_TAKEN if team in with_epic else NO_EPIC
+            )
+            teams.append(TeamTake(team=team, status=take, scenarios=scenarios))
         result[rfa_id] = RfaProgress(teams=teams)
     return result
 
