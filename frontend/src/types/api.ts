@@ -1361,6 +1361,9 @@ export interface InvolvementFactCell {
   project_hours: number;
   logged_hours: number;
   norm_hours: number;
+  /** Всё списанное в дни с проектной работой и число таких дней. */
+  project_day_hours: number;
+  project_days: number;
   fact: number | null;
   logged_of_norm: number | null;
 }

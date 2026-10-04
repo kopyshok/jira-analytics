@@ -1,4 +1,4 @@
-"""Фактическая вовлечённость: доля проектных часов в списаниях.
+"""Фактическая вовлечённость: доля проектных часов в дни с проектной работой.
 
 Квартал — III 2026. Производственного календаря в базе нет, поэтому норма —
 8 ч по будням: июль 184 ч (23 дня), август 168 ч (21), сентябрь 176 ч (22).
@@ -111,15 +111,42 @@ def test_category_work_types_only_mapped(db_session, world):
     assert set(mapping) == {"quarterly_tasks", "support_consultation"}
 
 
+def test_fact_counts_only_days_with_project_work(db_session, world):
+    """Глубина погружения: только дни с проектным списанием, проектные ÷ всё списанное в эти дни.
+
+    Пример пользователя: день целиком на проекте и день целиком на нормированных
+    работах — вовлечённость 100%, а не 50%.
+    """
+    dev = _employee(db_session, "Погружённый", "dev")
+    _member(db_session, dev, "Альфа")
+    _log(db_session, dev, world["project"], date(2026, 7, 6), 8)
+    _log(db_session, dev, world["support"], date(2026, 7, 7), 8)
+    db_session.commit()
+
+    person = _person(_team(team_facts(db_session, ["Альфа"], 2026, 3), "Альфа"), "Погружённый")
+    assert person.total.fact == pytest.approx(1.0)
+    assert person.total.project_days == 1
+    assert person.total.logged_hours == 16
+
+    # День пополам: 6 ч проект + 2 ч сопровождение → (8 + 6) / (8 + 8).
+    _log(db_session, dev, world["project"], date(2026, 7, 8), 6)
+    _log(db_session, dev, world["support"], date(2026, 7, 8), 2)
+    db_session.commit()
+    person = _person(_team(team_facts(db_session, ["Альфа"], 2026, 3), "Альфа"), "Погружённый")
+    assert person.total.fact == pytest.approx(14 / 16)
+    assert person.total.project_days == 2
+    assert person.total.project_day_hours == 16
+
+
 def test_fact_and_logged_of_norm_by_month(db_session, world):
-    """Факт = проектные ÷ все списанные; «списано от нормы» = все ÷ норма."""
+    """Факт = проектные ÷ всё списанное в проектные дни; «списано от нормы» = все ÷ норма."""
     an = _employee(db_session, "Аналитикова", "analyst")
     _member(db_session, an, "Альфа")
     _log(db_session, an, world["project"], date(2026, 7, 6), 60)
-    _log(db_session, an, world["support"], date(2026, 7, 7), 20)
+    _log(db_session, an, world["support"], date(2026, 7, 6), 20)
     _log(db_session, an, world["project"], date(2026, 8, 3), 30)
-    _log(db_session, an, world["none"], date(2026, 8, 4), 6)
-    _log(db_session, an, world["unmapped"], date(2026, 8, 5), 4)
+    _log(db_session, an, world["none"], date(2026, 8, 3), 6)
+    _log(db_session, an, world["unmapped"], date(2026, 8, 3), 4)
     db_session.commit()
 
     person = _person(_team(team_facts(db_session, ["Альфа"], 2026, 3), "Альфа"), "Аналитикова")
@@ -149,20 +176,23 @@ def test_excluded_from_analysis_not_counted(db_session, world):
 
 
 def test_role_average_is_ratio_of_sums(db_session, world):
-    """Среднее по роли — Σ проектных ÷ Σ всех, а не среднее процентов людей."""
+    """Среднее по роли — Σ проектных ÷ Σ списанного в проектные дни, а не среднее процентов
+    людей (было бы (25% + 100%) / 2)."""
     d1 = _employee(db_session, "Первый", "dev")
     d2 = _employee(db_session, "Второй", "dev")
     for d in (d1, d2):
         _member(db_session, d, "Альфа")
     _log(db_session, d1, world["project"], date(2026, 7, 6), 10)
-    _log(db_session, d2, world["support"], date(2026, 7, 6), 30)
+    _log(db_session, d1, world["support"], date(2026, 7, 6), 30)
+    _log(db_session, d2, world["project"], date(2026, 7, 6), 8)
     db_session.commit()
 
     team = _team(team_facts(db_session, ["Альфа"], 2026, 3), "Альфа")
     dev = _role(team, "dev")
     assert dev.people == 2
-    assert dev.total.fact == pytest.approx(10 / 40)
-    assert dev.months[7].fact == pytest.approx(10 / 40)
+    assert dev.total.fact == pytest.approx(18 / 48)
+    assert dev.months[7].fact == pytest.approx(18 / 48)
+    assert dev.total.project_days == 2
     assert dev.total.norm_hours == 2 * 528
     assert [r.role for r in team.roles] == ["dev"]
 
@@ -257,7 +287,8 @@ def test_running_quarter_counts_to_today(db_session, world):
     месяцы целиком в будущем пустые."""
     dev = _employee(db_session, "Текущий", "dev")
     _member(db_session, dev, "Альфа")
-    _log(db_session, dev, world["project"], date(2026, 10, 1), 8)
+    _log(db_session, dev, world["project"], date(2026, 10, 1), 4)
+    _log(db_session, dev, world["support"], date(2026, 10, 1), 4)
     _log(db_session, dev, world["support"], date(2026, 10, 2), 8)
     _log(db_session, dev, world["support"], date(2026, 11, 10), 8)  # будущее
     db_session.commit()

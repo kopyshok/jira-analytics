@@ -92,6 +92,8 @@ class FactCellOut(BaseModel):
     project_hours: float
     logged_hours: float
     norm_hours: float
+    project_day_hours: float
+    project_days: int
     fact: Optional[float]
     logged_of_norm: Optional[float]
 
@@ -133,6 +135,8 @@ def _cell(c: FactCell) -> dict:
         "project_hours": round(c.project_hours, 1),
         "logged_hours": round(c.logged_hours, 1),
         "norm_hours": round(c.norm_hours, 1),
+        "project_day_hours": round(c.project_day_hours, 1),
+        "project_days": c.project_days,
         "fact": None if c.fact is None else round(c.fact, 4),
         "logged_of_norm": None if c.logged_of_norm is None else round(c.logged_of_norm, 4),
     }

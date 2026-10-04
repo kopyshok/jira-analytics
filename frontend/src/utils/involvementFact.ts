@@ -15,7 +15,8 @@ const MONTHS = [
 
 /** Пояснения формулы — для подсказок к заголовкам и подписи «факт». */
 export const FACT_FORMULA =
-  'Доля часов на задачах вида «Проекты и развитие» среди всех списанных часов';
+  'Глубина погружения: в дни, когда сотрудник списывал время на задачи «Проекты и развитие», — '
+  + 'доля проектных часов во всём списанном за эти дни. Дни без проектной работы не учитываются';
 export const LOGGED_OF_NORM_FORMULA =
   'Сколько часов списано от нормы рабочего времени (календарь минус отсутствия). '
   + 'Если списано мало, факту вовлечённости верить нельзя';
@@ -54,16 +55,22 @@ export function monthLabel(month: number): string {
 export function factHint(role: InvolvementFactRole | undefined, year: number, quarter: number): string {
   const period = formatQuarter(year, quarter);
   if (!role) return `${period} · нет сотрудников с этой ролью`;
-  if (role.total.fact == null) return `За ${period} списаний нет · ${role.people} чел.`;
-  return `${period} · ${role.people} чел. · списано от нормы ${formatInvolvement(role.total.logged_of_norm)}`;
+  if (role.total.fact == null) {
+    const what = role.total.logged_hours > 0 ? 'дней с проектной работой нет' : 'списаний нет';
+    return `За ${period} ${what} · ${role.people} чел.`;
+  }
+  return `${period} · ${role.people} чел. · дней с проектами ${role.total.project_days}`
+    + ` · списано от нормы ${formatInvolvement(role.total.logged_of_norm)}`;
 }
 
 const hours = (h: number) => `${Math.round(h)} ч`;
 
 /** Подсказка к ячейке отчёта: из каких часов получился процент. */
 export function cellHint(c: InvolvementFactCell): string {
-  return `На проектных задачах ${hours(c.project_hours)} из ${hours(c.logged_hours)} списанных`
-    + ` · норма ${hours(c.norm_hours)}`;
+  const tail = ` · всего списано ${hours(c.logged_hours)} · норма ${hours(c.norm_hours)}`;
+  if (c.project_days === 0) return `Дней с проектной работой нет${tail}`;
+  return `Дней с проектами ${c.project_days}: на проектных задачах ${hours(c.project_hours)}`
+    + ` из ${hours(c.project_day_hours)}, списанных в эти дни${tail}`;
 }
 
 export type FactRow =

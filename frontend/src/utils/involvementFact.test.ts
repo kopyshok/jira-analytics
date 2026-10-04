@@ -5,7 +5,8 @@ import {
 } from './involvementFact';
 
 const cell = (over: Partial<InvolvementFactCell> = {}): InvolvementFactCell => ({
-  project_hours: 0, logged_hours: 0, norm_hours: 0, fact: null, logged_of_norm: null, ...over,
+  project_hours: 0, logged_hours: 0, norm_hours: 0, project_day_hours: 0, project_days: 0,
+  fact: null, logged_of_norm: null, ...over,
 });
 
 describe('lastCompletedQuarter', () => {
@@ -40,11 +41,18 @@ describe('monthLabel', () => {
 
 describe('factHint', () => {
   it('квартал, число людей и списано от нормы', () => {
-    const role = { role: 'dev', people: 3, months: [], total: cell({ fact: 0.43, logged_of_norm: 0.987 }) };
-    expect(factHint(role, 2026, 3)).toBe('Q3 2026 · 3 чел. · списано от нормы 99%');
+    const role = {
+      role: 'dev', people: 3, months: [],
+      total: cell({ fact: 0.83, project_days: 41, logged_of_norm: 0.987 }),
+    };
+    expect(factHint(role, 2026, 3)).toBe('Q3 2026 · 3 чел. · дней с проектами 41 · списано от нормы 99%');
   });
   it('в команде нет людей роли', () => {
     expect(factHint(undefined, 2026, 3)).toBe('Q3 2026 · нет сотрудников с этой ролью');
+  });
+  it('списания есть, проектных дней нет', () => {
+    const role = { role: 'dev', people: 2, months: [], total: cell({ logged_hours: 300, logged_of_norm: 0.9 }) };
+    expect(factHint(role, 2026, 3)).toBe('За Q3 2026 дней с проектной работой нет · 2 чел.');
   });
   it('люди есть, списаний нет', () => {
     const role = { role: 'dev', people: 2, months: [], total: cell({ logged_of_norm: 0 }) };
@@ -54,8 +62,14 @@ describe('factHint', () => {
 
 describe('cellHint', () => {
   it('часы словами', () => {
-    expect(cellHint(cell({ project_hours: 30, logged_hours: 40, norm_hours: 184 })))
-      .toBe('На проектных задачах 30 ч из 40 ч списанных · норма 184 ч');
+    expect(cellHint(cell({
+      project_hours: 30, project_day_hours: 40, project_days: 5, logged_hours: 120, norm_hours: 184,
+    }))).toBe('Дней с проектами 5: на проектных задачах 30 ч из 40 ч, списанных в эти дни'
+      + ' · всего списано 120 ч · норма 184 ч');
+  });
+  it('без проектных дней', () => {
+    expect(cellHint(cell({ logged_hours: 80, norm_hours: 184 })))
+      .toBe('Дней с проектной работой нет · всего списано 80 ч · норма 184 ч');
   });
 });
 
