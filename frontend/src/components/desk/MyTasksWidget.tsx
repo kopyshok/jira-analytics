@@ -141,11 +141,17 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
 
   return (
     <div className={`desk-project-row${activeNow ? ' active-now' : ''}`}>
-      <span
-        className={`desk-tree-chevron${open ? ' open' : ''}${hasChildren ? '' : ' hidden'}`}
-        role={hasChildren ? 'button' : undefined}
-        onClick={() => hasChildren && setOpen((o) => !o)}
-      >▸</span>
+      {hasChildren ? (
+        <button
+          type="button"
+          className={`desk-tree-btn desk-tree-chevron${open ? ' open' : ''}`}
+          aria-label={open ? 'Свернуть' : 'Развернуть'}
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >▸</button>
+      ) : (
+        <span className="desk-tree-chevron hidden" aria-hidden="true">▸</span>
+      )}
       <span className={`desk-status-dot desk-dot-${kind}`} />
       <div className="desk-project-meta">
         <div className="desk-project-name">

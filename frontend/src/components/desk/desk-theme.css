@@ -382,7 +382,7 @@
 .desk-project-list { display: flex; flex-direction: column; }
 .desk-project-row {
   display: grid;
-  grid-template-columns: 14px 18px 1fr auto;
+  grid-template-columns: 20px 18px 1fr auto;
   align-items: center;
   gap: 12px;
   padding: 12px 10px;
@@ -797,13 +797,24 @@
 /* ───────── Work-type drill-down tree ───────── */
 .desk-tree-chevron {
   display: inline-flex;
-  width: 12px;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
-  color: var(--ink-4);
-  font-size: 9px;
-  transition: transform 0.15s;
+  border-radius: 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 0.15s, background 0.15s, color 0.15s;
 }
-.desk-tree-chevron.open { transform: rotate(90deg); }
+.desk-tree-btn.desk-tree-chevron:hover,
+.desk-tree-btn.desk-tree-chevron:focus-visible {
+  background: oklch(0.72 0.13 195 / 0.14);
+  color: var(--accent);
+}
+.desk-tree-btn.desk-tree-chevron:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.desk-tree-chevron.open { transform: rotate(90deg); color: var(--accent); }
 .desk-tree-chevron.hidden { visibility: hidden; }
 
 .desk-wt-head {
