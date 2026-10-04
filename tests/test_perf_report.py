@@ -130,9 +130,11 @@ def test_slow_requests_get_minute_load_and_verdict(db_session):
     assert first["process_cpu"] == pytest.approx(10)
     assert first["verdict"] == "other_load"
     assert first["verdict_label"]
+    assert first["verdict_reason"] == "сервер загружен на 95%, наш сервис — 10%"
     assert first["top_queries"][0]["sql"].startswith("SELECT")
     assert second["host_cpu"] is None
     assert second["verdict"] == "database"
+    assert second["verdict_reason"] == "ожидание базы — 83% времени запроса"
     assert data["verdicts"] == {"other_load": 1, "database": 1}
     assert data["totals"]["slow"] == 2
     bucket = next(p for p in data["series"] if p["slow"])
@@ -189,3 +191,20 @@ def test_xlsx_has_three_sheets(db_session):
     assert wb["Медленные запросы"].max_row == 2
     assert wb["Снимки сервера"].max_row == 2
     assert wb["Медленные запросы"]["A2"].value.hour == 15
+
+
+def test_verdict_reason_names_the_deciding_number():
+    from types import SimpleNamespace
+
+    from app.services.perf_report import verdict_reason
+
+    slow = SimpleNamespace(duration_ms=3000.0, db_ms=0.0, cpu_ms=2700.0)
+    snap = SimpleNamespace(host_cpu_percent=40.0, process_cpu_percent=95.0, cpu_count=4)
+    assert verdict_reason("our_code", slow, snap) == (
+        "наш сервис за время запроса занимал процессор на 90% одного ядра"
+    )
+    idle = SimpleNamespace(duration_ms=3000.0, db_ms=0.0, cpu_ms=0.0)
+    assert verdict_reason("our_code", idle, snap) == (
+        "наш сервис в ту минуту занимал процессор на 95% одного ядра"
+    )
+    assert verdict_reason("waiting", idle, None) == "процессор и база почти не были заняты"

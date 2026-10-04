@@ -49,9 +49,17 @@ function fmtAxisTime(iso: string, period: PerfPeriod): string {
 }
 
 /** «Сервер загружен на 95%, наш сервис — 10% → похоже, ресурсы занял кто-то другой». */
-function loadCaption(host: number | null, proc: number | null, verdictLabel: string): string {
-  if (host == null || proc == null) return verdictLabel;
-  return `Сервер загружен на ${fmtPct(host)}, наш сервис — ${fmtPct(proc)} → ${verdictLabel.toLowerCase()}`;
+function verdictCaption(reason: string, verdictLabel: string): string {
+  return `${reason.charAt(0).toUpperCase()}${reason.slice(1)} → ${verdictLabel.toLowerCase()}`;
+}
+
+/** Подпись точки графика: по загрузке — если медленные из-за чужой нагрузки, иначе самая частая причина. */
+function pointCaption(p: ChartPoint): string | null {
+  if (p.slow === 0 || !p.verdict || !p.verdictLabel) return null;
+  if (p.verdict === 'other_load' && p.host != null && p.proc != null) {
+    return verdictCaption(`сервер загружен на ${fmtPct(p.host)}, наш сервис — ${fmtPct(p.proc)}`, p.verdictLabel);
+  }
+  return `Чаще всего: ${p.verdictLabel.toLowerCase()}`;
 }
 
 interface ChartPoint {
@@ -62,11 +70,13 @@ interface ChartPoint {
   host: number | null;
   hostMax: number | null;
   proc: number | null;
+  verdict: PerfVerdict | null;
   verdictLabel: string | null;
 }
 
 function ChartTip({ point, bg, border }: { point?: ChartPoint; bg: string; border: string }) {
   if (!point) return null;
+  const caption = pointCaption(point);
   return (
     <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 8, padding: '8px 10px', fontSize: 12, maxWidth: 320 }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{point.label}</div>
@@ -78,11 +88,7 @@ function ChartTip({ point, bg, border }: { point?: ChartPoint; bg: string; borde
         {point.hostMax != null && point.hostMax !== point.host ? ` (пик ${fmtPct(point.hostMax)})` : ''}
       </div>
       <div>Наш сервис: {fmtPct(point.proc)} от сервера</div>
-      {point.slow > 0 && point.verdictLabel && (
-        <div style={{ marginTop: 6, fontWeight: 600 }}>
-          {loadCaption(point.host, point.proc, point.verdictLabel)}
-        </div>
-      )}
+      {caption && <div style={{ marginTop: 6, fontWeight: 600 }}>{caption}</div>}
     </div>
   );
 }
@@ -97,6 +103,7 @@ function LoadChart({ data, period }: { data: PerfOverview; period: PerfPeriod })
     host: p.host_cpu,
     hostMax: p.host_cpu_max,
     proc: p.process_cpu,
+    verdict: p.verdict,
     verdictLabel: p.verdict_label,
   }));
   const step = data.bucket_minutes >= 60 ? `${data.bucket_minutes / 60} ч` : `${data.bucket_minutes} мин`;
@@ -116,7 +123,11 @@ function LoadChart({ data, period }: { data: PerfOverview; period: PerfPeriod })
               yAxisId="pct" orientation="right" domain={[0, 100]} stroke={t.textMuted}
               tick={{ fontSize: 10.5 }} width={38} tickFormatter={(v: number) => `${v}%`}
             />
-            <YAxis yAxisId="slow" hide allowDecimals={false} />
+            {/* Столбики медленных — в нижней половине, чтобы не закрывать линии. */}
+            <YAxis
+              yAxisId="slow" hide allowDecimals={false}
+              domain={[0, (dataMax: number) => Math.max(dataMax * 2, 4)]}
+            />
             <Tooltip
               content={({ active, payload }) => (
                 active ? (
@@ -130,11 +141,11 @@ function LoadChart({ data, period }: { data: PerfOverview; period: PerfPeriod })
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Area
-              yAxisId="pct" type="monotone" dataKey="host" name="Процессор сервера, %"
+              yAxisId="pct" type="linear" dataKey="host" name="Процессор сервера, %"
               stroke={t.amber} fill={t.amber} fillOpacity={0.12} connectNulls isAnimationActive={false}
             />
             <Area
-              yAxisId="pct" type="monotone" dataKey="proc" name="Наш сервис, % от сервера"
+              yAxisId="pct" type="linear" dataKey="proc" name="Наш сервис, % от сервера"
               stroke={t.success} fill={t.success} fillOpacity={0.12} connectNulls isAnimationActive={false}
             />
             <Bar
@@ -142,7 +153,7 @@ function LoadChart({ data, period }: { data: PerfOverview; period: PerfPeriod })
               maxBarSize={8} isAnimationActive={false}
             />
             <Line
-              yAxisId="ms" type="monotone" dataKey="p95" name="95% запросов быстрее"
+              yAxisId="ms" type="linear" dataKey="p95" name="95% запросов быстрее"
               stroke={t.cyanPrimary} strokeWidth={2} dot={false} isAnimationActive={false}
             />
           </ComposedChart>
@@ -171,7 +182,7 @@ function SlowDetails({ row }: { row: PerfSlowRequest }) {
       </Text>
       <Text>
         Ожидание базы данных: {fmtMs(row.db_ms)} из {fmtMs(row.duration_ms)}, обращений — {row.db_count}.
-        {' '}Процессор нашего сервиса во время запроса: {fmtPct(cpu)} одного ядра.
+        {' '}Наш сервис за это время занимал процессор на {fmtPct(cpu)} одного ядра (все его запросы, не только этот).
       </Text>
       {row.host_cpu != null ? (
         <Text>
@@ -184,7 +195,7 @@ function SlowDetails({ row }: { row: PerfSlowRequest }) {
       ) : (
         <Text type="secondary">Снимка нагрузки сервера рядом с этим моментом нет.</Text>
       )}
-      <Text strong>{loadCaption(row.host_cpu, row.process_cpu, row.verdict_label)}</Text>
+      <Text strong>{verdictCaption(row.verdict_reason, row.verdict_label)}</Text>
       {row.top_queries.length > 0 && (
         <>
           <Text type="secondary">Самые долгие обращения к базе:</Text>

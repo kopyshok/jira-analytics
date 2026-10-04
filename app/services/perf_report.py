@@ -258,6 +258,26 @@ def _verdict_for(slow: Any, snap: Optional[PerfServerSnapshot]) -> str:
     )
 
 
+def verdict_reason(code: str, slow: Any, snap: Optional[PerfServerSnapshot]) -> str:
+    """На чём основан вывод — цифра, которая его решила."""
+    if code == "other_load" and snap is not None:
+        return (
+            f"сервер загружен на {round(snap.host_cpu_percent)}%, "
+            f"наш сервис — {round(_share(snap))}%"
+        )
+    if code == "database":
+        return f"ожидание базы — {round(slow.db_ms / slow.duration_ms * 100)}% времени запроса"
+    if code == "our_code":
+        request_cpu = slow.cpu_ms / slow.duration_ms * 100 if slow.duration_ms else 0
+        if request_cpu >= REQUEST_CPU_HIGH or snap is None:
+            return f"наш сервис за время запроса занимал процессор на {round(request_cpu)}% одного ядра"
+        return (
+            f"наш сервис в ту минуту занимал процессор на "
+            f"{round(snap.process_cpu_percent)}% одного ядра"
+        )
+    return "процессор и база почти не были заняты"
+
+
 def overview(
     db: Session,
     period: str,
@@ -377,6 +397,7 @@ def overview(
             **_load(snap),
             "verdict": v,
             "verdict_label": VERDICT_LABELS[v],
+            "verdict_reason": verdict_reason(v, r, snap),
         })
 
     return {
@@ -533,9 +554,10 @@ def render_markdown(data: dict[str, Any], *, tz_offset_min: int = 0) -> str:
             f"- Раздел: {s['section']}; пользователь: {s['user'] or '—'}; ответ: {s['status_code']}",
             f"- Адрес: `{address}`",
             f"- База: обращений {s['db_count']}, {_n(s['db_ms'])} мс ({_pct(db_share)} времени)",
-            f"- Процессор нашего процесса за время запроса: {_pct(cpu)} ядра",
+            f"- Процессор процесса за время запроса (все потоки, не только этот запрос): "
+            f"{_pct(cpu)} ядра",
             f"- Нагрузка сервера в ту минуту: {_load_line(s)}",
-            f"- **Вывод: {s['verdict_label']}**",
+            f"- **Вывод: {s['verdict_label']}** ({s['verdict_reason']})",
         ]
         if s["top_queries"]:
             out += ["", "Самые долгие обращения к базе:", ""]
@@ -616,7 +638,7 @@ def render_xlsx(
         [_local(s["at"], tz), s["section"], s["method"], s["route"], s["path"], s["query"],
          s["user"] or "", s["status_code"], round(s["duration_ms"]), s["db_count"],
          round(s["db_ms"]), round(s["cpu_ms"]), r0(s["host_cpu"]), r0(s["process_cpu"]),
-         s["verdict_label"],
+         f"{s['verdict_label']} ({s['verdict_reason']})",
          "\n\n".join(f"{round(q['ms'])} мс: {q['sql']}" for q in s["top_queries"])]
         for s in data["slow"]
     ], [20, 22, 8, 44, 40, 30, 22, 8, 14, 12, 14, 16, 14, 14, 40, 80])

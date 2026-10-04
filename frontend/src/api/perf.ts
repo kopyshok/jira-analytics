@@ -56,6 +56,8 @@ export interface PerfSlowRequest {
   requests_in_flight: number | null;
   verdict: PerfVerdict;
   verdict_label: string;
+  /** Цифра, которая решила вывод: «сервер загружен на 95%, наш сервис — 10%». */
+  verdict_reason: string;
 }
 
 export interface PerfLoad {
