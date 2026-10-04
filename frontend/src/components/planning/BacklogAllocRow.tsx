@@ -5,7 +5,7 @@ import { App, Checkbox, InputNumber, Select, Spin, Tag } from 'antd';
 import type { SelectProps } from 'antd';
 import { CaretDownOutlined, CaretUpOutlined, HolderOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { createLatestSaver } from '../../utils/latestSaver';
-import { canStepPriority, stepPriority } from '../../utils/priorityStep';
+import { canStepPriority, parsePriorityInput, stepPriority } from '../../utils/priorityStep';
 import { AllocationOverridePopover } from './AllocationOverridePopover';
 import BacklogRoleCell from './BacklogRoleCell';
 import { useScenarioAssigneeCandidates } from '../../hooks/usePlanning';
@@ -52,13 +52,14 @@ export type BacklogAllocRowProps = {
 type PriorityControlProps = {
   backlogItemId: string;
   priority: number | null;
-  cyan: boolean;
   onChange: (backlogItemId: string, priority: number | null) => void | Promise<unknown>;
 };
 
 /** Приоритет: число (ручной ввод) и кнопки ▲ / ▼. Значение меняется сразу, сохранения идут по одному. */
-function PriorityControl({ backlogItemId, priority, cyan, onChange }: PriorityControlProps) {
+function PriorityControl({ backlogItemId, priority, onChange }: PriorityControlProps) {
   const [value, setValue] = useState<number | null>(priority);
+  const [resetKey, setResetKey] = useState(0);
+  const cyan = value != null && value <= 3;
   const busyRef = useRef(false);
   const propRef = useRef(priority);
   const onChangeRef = useRef(onChange);
@@ -104,6 +105,7 @@ function PriorityControl({ backlogItemId, priority, cyan, onChange }: PriorityCo
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
       <InputNumber
+        key={resetKey}
         min={1}
         max={10}
         value={value}
@@ -128,9 +130,11 @@ function PriorityControl({ backlogItemId, priority, cyan, onChange }: PriorityCo
           if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
         }}
         onBlur={(e) => {
+          // Очистка поля не поддерживается: пустое возвращает прежнее значение.
           const raw = e.target.value;
-          const parsed = raw === '' ? null : parseInt(raw, 10);
-          commit(parsed === null || isNaN(parsed) ? null : Math.min(10, Math.max(1, parsed)));
+          const next = parsePriorityInput(raw, value);
+          if (raw === '') setResetKey((k) => k + 1); // перерисовать поле с прежним числом
+          commit(next);
         }}
       />
       <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -294,7 +298,6 @@ function BacklogAllocRowBase({
   const op = eff.opo;
   const total = an + de + qa + op;
   const canDrag = isDraft && !dragLocked;
-  const priorityCyan =a.priority != null && a.priority <= 3;
   const hasOverride =
     a.override_estimate_analyst_hours !== null ||
     a.override_estimate_dev_hours !== null ||
@@ -365,7 +368,6 @@ function BacklogAllocRowBase({
         <PriorityControl
           backlogItemId={a.backlog_item_id}
           priority={a.priority}
-          cyan={priorityCyan}
           onChange={onPriorityChange}
         />
       </div>
