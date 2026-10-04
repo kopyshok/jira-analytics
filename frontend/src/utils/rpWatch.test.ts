@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { freeByMonthLabel, roleTeamPicks, techReserveText } from './rpWatch';
+import { freeByMonthLabel, roleTeamPicks, techReserveText, watchPickerOptions } from './rpWatch';
 import type { EmployeeResponse } from '../types/api';
 import type { ReserveTypeRow } from '../api/resourcePlanning';
 
@@ -56,5 +56,24 @@ describe('techReserveText', () => {
       text: 'сверх запаса 30 ч', over: true,
     });
     expect(techReserveText(null)).toEqual({ text: '—', over: false });
+  });
+});
+
+describe('watchPickerOptions', () => {
+  const list = [
+    emp({ id: 'e1', display_name: 'Пряничников', team: 'ERP' }),
+    emp({ id: 'e2', display_name: 'Абрамов', team: 'ERP' }),
+    emp({ id: 'e3', display_name: 'Шутов', team: 'ERP' }),
+    emp({ id: 'e4', display_name: 'Уволенный', is_active: false }),
+  ];
+  const labels = new Map([['dev', 'Разработчик']]);
+
+  it('люди плана и наблюдаемые находятся поиском, но выбрать их нельзя — с причиной', () => {
+    const opts = watchPickerOptions(list, new Set(['e1']), new Set(['e3']), labels);
+    expect(opts).toEqual([
+      { value: 'e2', label: 'Абрамов · Разработчик · ERP', disabled: false },
+      { value: 'e1', label: 'Пряничников · Разработчик · ERP — уже в плане', disabled: true },
+      { value: 'e3', label: 'Шутов · Разработчик · ERP — уже наблюдается', disabled: true },
+    ]);
   });
 });

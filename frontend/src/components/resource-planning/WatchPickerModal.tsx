@@ -4,14 +4,15 @@ import { App, Button, Modal, Select, Typography } from 'antd';
 import { useEmployees } from '../../hooks/useCapacity';
 import { useRoles } from '../../hooks/useRoles';
 import { useAddPlanWatch } from '../../hooks/useResourcePlanning';
-import { roleTeamPicks } from '../../utils/rpWatch';
+import { roleTeamPicks, watchPickerOptions } from '../../utils/rpWatch';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   planId: string;
-  /** Люди плана и уже наблюдаемые — в выборе их нет. */
-  excludeIds: string[];
+  /** Люди плана и уже наблюдаемые — находятся поиском, но выбрать их нельзя. */
+  planIds: string[];
+  watchedIds: string[];
   /** Квартал плана (ISO, включительно): «вся роль в команде» — состав за квартал. */
   quarterStart: string;
   quarterEnd: string;
@@ -20,7 +21,7 @@ interface Props {
 /** Окно «Подобрать людей»: сотрудники любых команд — по ФИО или всей ролью в команде.
  *  Монтируется только открытым — список сотрудников не грузится на каждом заходе. */
 export default function WatchPickerModal({
-  open, onClose, planId, excludeIds, quarterStart, quarterEnd,
+  open, onClose, planId, planIds, watchedIds, quarterStart, quarterEnd,
 }: Props) {
   const { message } = App.useApp();
   const { data: employees = [] } = useEmployees({ isActive: true, withTeams: true });
@@ -30,17 +31,13 @@ export default function WatchPickerModal({
   const [team, setTeam] = useState<string | undefined>();
   const [role, setRole] = useState<string | undefined>();
 
-  const excluded = useMemo(() => new Set(excludeIds), [excludeIds]);
+  const inPlan = useMemo(() => new Set(planIds), [planIds]);
+  const watched = useMemo(() => new Set(watchedIds), [watchedIds]);
+  const excluded = useMemo(() => new Set([...planIds, ...watchedIds]), [planIds, watchedIds]);
   const roleLabel = useMemo(() => new Map(roles.map((r) => [r.code, r.label])), [roles]);
   const options = useMemo(
-    () => employees
-      .filter((e) => e.is_active && !excluded.has(e.id))
-      .sort((a, b) => a.display_name.localeCompare(b.display_name, 'ru'))
-      .map((e) => ({
-        value: e.id,
-        label: [e.display_name, e.role ? roleLabel.get(e.role) : undefined, e.team].filter(Boolean).join(' · '),
-      })),
-    [employees, excluded, roleLabel],
+    () => watchPickerOptions(employees, inPlan, watched, roleLabel),
+    [employees, inPlan, watched, roleLabel],
   );
   const teamOptions = useMemo(() => {
     const names = new Set<string>();
@@ -92,7 +89,7 @@ export default function WatchPickerModal({
       <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
         Выбранные появятся в «Загрузке по дням» секцией «Наблюдаемые»: загрузка по дням, свободное время по
         месяцам и остаток «Технических задач» основной команды. Список общий для плана — его видят все, кто
-        открывает план.
+        открывает план. Люди этого плана уже есть в «Загрузке по дням» — их выбрать нельзя.
       </Typography.Paragraph>
       <Select
         mode="multiple"

@@ -31,6 +31,26 @@ export function roleTeamPicks(
     .map((e) => e.id);
 }
 
+/**
+ * Варианты окна «Подобрать людей»: активные сотрудники по ФИО. Люди плана и уже
+ * наблюдаемые находятся поиском, но выбрать их нельзя — в подписи причина.
+ */
+export function watchPickerOptions(
+  employees: EmployeeResponse[],
+  inPlan: Set<string>,
+  watched: Set<string>,
+  roleLabel: Map<string, string>,
+): { value: string; label: string; disabled: boolean }[] {
+  return employees
+    .filter((e) => e.is_active)
+    .sort((a, b) => a.display_name.localeCompare(b.display_name, 'ru'))
+    .map((e) => {
+      const reason = inPlan.has(e.id) ? ' — уже в плане' : watched.has(e.id) ? ' — уже наблюдается' : '';
+      const label = [e.display_name, e.role ? roleLabel.get(e.role) : undefined, e.team].filter(Boolean).join(' · ');
+      return { value: e.id, label: label + reason, disabled: reason !== '' };
+    });
+}
+
 /** «окт 40 · ноя 32 · дек 12» — свободные часы по месяцам квартала. */
 export function freeByMonthLabel(months: WatchMonthFree[]): string {
   return months
