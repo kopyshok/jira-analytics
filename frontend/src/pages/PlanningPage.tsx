@@ -66,9 +66,9 @@ import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../uti
 import { effectiveEstimate } from '../utils/allocationEstimates';
 import type { AllocationResponse } from '../types/api';
 
-const GRID = '24px 36px 48px minmax(220px, 1fr) 130px 130px 180px 260px 90px';
+const GRID = '24px 36px 60px minmax(220px, 1fr) 130px 130px 180px 260px 90px';
 // Та же сетка + колонка «Группа» после разработчика — для команд с делением.
-const GRID_WITH_SUBGROUP = '24px 36px 48px minmax(220px, 1fr) 130px 130px 140px 180px 260px 90px';
+const GRID_WITH_SUBGROUP = '24px 36px 60px minmax(220px, 1fr) 130px 130px 140px 180px 260px 90px';
 const GRID_GAP = 8;
 // Уже этой ширины список прокручивается вбок, а не сжимает «Идею» до нуля:
 // колонки (у «Идеи» — её минимум) + зазоры + поля строки и полоса отметки слева.
@@ -302,7 +302,7 @@ export default function PlanningPage() {
   const liftIncluded = appearanceValue.scenario_lift_included;
   const { mutate: patchAssignee } = usePatchAllocationAssignee();
   const { mutate: patchDeveloper } = usePatchAllocationDeveloper();
-  const { mutate: patchBacklogPriority } = usePatchBacklogPriority();
+  const { mutateAsync: patchBacklogPriority } = usePatchBacklogPriority();
   const updateScenario = useUpdateScenario();
   const deleteScenario = useDeleteScenario();
   const approve = useApproveScenario();
@@ -516,7 +516,7 @@ export default function PlanningPage() {
 
   const handlePriorityChange = useCallback(
     (backlogItemId: string, priority: number | null) => {
-      patchBacklogPriority({ backlogItemId, priority });
+      return patchBacklogPriority({ backlogItemId, priority });
     },
     [patchBacklogPriority],
   );
