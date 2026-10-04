@@ -23,6 +23,8 @@ export type BacklogAllocRowProps = {
   scenarioId: string;
   scenarioStatus: 'draft' | 'approved';
   isDraft: boolean;
+  /** Включена сортировка по людям — строки не перетаскиваем. */
+  dragLocked?: boolean;
   compact: boolean;
   flashing: boolean;
   rowStateClass: string;
@@ -247,6 +249,7 @@ function BacklogAllocRowBase({
   scenarioId,
   scenarioStatus,
   isDraft,
+  dragLocked = false,
   compact,
   flashing,
   rowStateClass,
@@ -290,7 +293,8 @@ function BacklogAllocRowBase({
   const qa = eff.qa;
   const op = eff.opo;
   const total = an + de + qa + op;
-  const priorityCyan = a.priority != null && a.priority <= 3;
+  const canDrag = isDraft && !dragLocked;
+  const priorityCyan =a.priority != null && a.priority <= 3;
   const hasOverride =
     a.override_estimate_analyst_hours !== null ||
     a.override_estimate_dev_hours !== null ||
@@ -335,17 +339,17 @@ function BacklogAllocRowBase({
       style={style}
     >
       <span
-        {...(isDraft ? attributes : {})}
-        {...(isDraft ? listeners : {})}
+        {...(canDrag ? attributes : {})}
+        {...(canDrag ? listeners : {})}
         onClick={(e) => e.stopPropagation()}
-        title={isDraft ? 'Перетащить' : ''}
+        title={dragLocked && isDraft ? 'Сброс сортировки — щелчок по заголовку' : isDraft ? 'Перетащить' : ''}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          cursor: isDraft ? 'grab' : 'default',
+          cursor: canDrag ? 'grab' : 'default',
           color: DARK_THEME.textMuted,
-          opacity: isDraft ? 1 : 0.3,
+          opacity: canDrag ? 1 : 0.3,
           touchAction: 'none',
         }}
       >
