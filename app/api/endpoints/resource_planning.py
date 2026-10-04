@@ -2561,7 +2561,10 @@ def list_assignment_candidates(
     «Из Jira»: для разработки — поле «Разработчик», для остальных фаз —
     исполнитель строки сценария. «Моя команда» — состав команды плана за
     квартал. У каждого — загрузка за квартал плана по всем опорным планам
-    команд. Пустые группы не возвращаются.
+    команд с нормированными работами его основной команды и свободные часы в
+    даты фазы; внутри группы — самые свободные сверху. Сама эта фаза
+    кандидата не занимает (иначе нынешний исполнитель выглядит занятым ею).
+    Пустые группы не возвращаются.
     """
     from app.services.jira_developer import jira_developers_for_items
 
@@ -2590,6 +2593,7 @@ def list_assignment_candidates(
             jira_id = jira_developers_for_items(db, [item], q_start, q_end).get(item.id)
         else:
             jira_id = item.assignee_employee_id
+    item_id, phase = a.backlog_item_id, a.phase
     groups = candidate_groups(
         db,
         team=plan.team,
@@ -2598,6 +2602,10 @@ def list_assignment_candidates(
         year=plan.year,
         quarter=cto.quarter_num(plan.quarter),
         jira_employee_id=jira_id,
+        phase_window=(a.start_date, a.end_date) if a.start_date and a.end_date else None,
+        skip_booking=lambda b: (
+            b.team == plan.team and b.backlog_item_id == item_id and b.phase == phase
+        ),
     )
     return [asdict(g) for g in groups]
 
