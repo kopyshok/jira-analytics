@@ -15,8 +15,10 @@ from app.core.auth_deps import get_current_user
 from app.database import get_db
 from app.models import (
     BacklogItem,
+    Employee,
     ResourcePlan,
     ResourcePlanAssignment,
+    ResourcePlanWatch,
     Role,
     ScheduledBlock,
     ScheduledBlockEmployee,
@@ -2339,6 +2341,275 @@ def get_gantt(
         reserve=reserve_out,
         reset_counts=reset_counts,
     )
+
+
+# ── Список наблюдения («Наблюдаемые» в «Загрузке по дням») ─────────────────
+
+
+class WatchMonthFree(BaseModel):
+    month: date  # первое число месяца
+    hours: float
+
+
+class WatchRowOut(EmployeeLoadOut):
+    """Наблюдаемый: строка «Загрузки по дням» той же формулой, что у людей
+    плана. Свой слой — задачи его основной команды (и этого плана), другие
+    команды — остальные брони."""
+    home_team: Optional[str] = None
+    # Свободно за квартал и по месяцам: норма − задачи − нормированные работы.
+    free_hours: float = 0.0
+    free_by_month: List[WatchMonthFree] = []
+    # «Технические задачи» роли человека в запасе основной команды — общий
+    # на роль остаток, как в сводке запаса основной. None — запаса нет.
+    tech_reserve: Optional[ReserveTypeRow] = None
+    # Занят в этом плане.
+    in_plan: bool = False
+
+
+class PlanWatchOut(BaseModel):
+    rows: List[WatchRowOut] = []
+    # Брони наблюдаемых в опорных планах других команд — для подсказки дня.
+    bookings: List[ExternalBookingOut] = []
+
+
+class PlanWatchAdd(BaseModel):
+    employee_ids: List[str] = Field(min_length=1)
+
+
+def _tech_reserve_row(
+    reserves: Dict[str, Optional[nr.TeamReserve]], employee_id: str
+) -> tuple[Optional[str], Optional[ReserveTypeRow]]:
+    """Основная команда человека (с наибольшей нормой в квартале) и строка
+    «Технических задач» его роли в её запасе."""
+    own = [
+        r for r in reserves.values() if r is not None and employee_id in r.people
+    ]
+    if not own:
+        return None, None
+    r = max(own, key=lambda x: x.people[employee_id].norm)
+    role = r.people[employee_id].role or ""
+    row = next(
+        (x for x in r.roles.get(role, []) if x.work_type_id == r.cross_team_work_type_id), None
+    )
+    if row is None:
+        return r.team, None
+    return r.team, ReserveTypeRow(
+        work_type_id=row.work_type_id,
+        label=row.label,
+        planned_hours=round(row.planned, 1),
+        blocked_hours=round(row.blocked, 1),
+        other_teams_hours=round(row.other_teams, 1),
+        remaining_hours=round(row.remaining, 1),
+        overuse_hours=round(row.overuse, 1),
+    )
+
+
+@router.get("/resource-plans/{plan_id}/watch", response_model=PlanWatchOut)
+def get_plan_watch(
+    plan_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Наблюдаемые плана: те же слои и загрузка за квартал, что у людей плана
+    (`_plan_occupancy` + `normed_reserve.people_loads`; цифры не зависят от
+    плана, в котором на человека смотрят), свободно по месяцам квартала и
+    остаток «Технических задач» основной команды. Самые свободные сверху.
+    Запросов — константа на команду, без N+1."""
+    from app.models import Absence, ProductionCalendarDay
+
+    plan = db.get(ResourcePlan, plan_id)
+    if not plan:
+        raise HTTPException(404, "Plan not found")
+    ids = list(
+        db.execute(
+            select(ResourcePlanWatch.employee_id).where(ResourcePlanWatch.plan_id == plan_id)
+        ).scalars()
+    )
+    employees = (
+        db.execute(
+            select(Employee).where(Employee.id.in_(ids), Employee.is_active == True)  # noqa: E712
+        )
+        .scalars()
+        .all()
+        if ids
+        else []
+    )
+    if not plan.team or not employees:
+        return PlanWatchOut()
+    svc = ResourcePlanningService(db)
+    try:
+        q_start, q_end, q_end_ext = svc._quarter_bounds_extended(plan)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    eids = [e.id for e in employees]
+    member_iv = tm.member_intervals(db, [plan.team], q_start, q_end)
+    # Не состоят в команде плана — как привлечённые: их день целиком.
+    borrowed = {eid for eid in eids if eid not in member_iv}
+    assignments_raw = (
+        db.execute(
+            select(ResourcePlanAssignment)
+            .options(joinedload(ResourcePlanAssignment.backlog_item))
+            .where(
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.employee_id.in_(eids),
+            )
+        )
+        .scalars()
+        .unique()
+        .all()
+    )
+    occ = _plan_occupancy(
+        db, svc, plan, list(employees), borrowed, assignments_raw, q_start, q_end_ext
+    )
+    membership = tm.membership_rows(db, eids)
+    # Для показа слоёв брони основной команды — её задачи, свой слой (как у
+    # людей плана в плане их команды); остальные — другие команды. Сумма дня
+    # и раскладка нормированных работ от этого не меняются.
+    homes = {eid: cto._home_teams(membership.get(eid, ()), q_start, q_end) for eid in eids}
+    own: Dict[str, Dict[date, float]] = {eid: dict(occ.used.get(eid, {})) for eid in eids}
+    other: Dict[str, Dict[date, float]] = {eid: {} for eid in eids}
+    for b in occ.bookings:
+        target = own if b.team in homes[b.employee_id] else other
+        days = target[b.employee_id]
+        for d, h in b.daily_hours.items():
+            days[d] = days.get(d, 0.0) + h
+    loads, reserves, labels = _quarter_people_loads(
+        db, svc, plan, employees, own, other, occ.other_share, membership
+    )
+    absences: Dict[str, list] = {}
+    for ab in db.execute(
+        select(Absence).where(
+            Absence.employee_id.in_(eids), Absence.start_date <= q_end, Absence.end_date >= q_start
+        )
+    ).scalars():
+        absences.setdefault(ab.employee_id, []).append(ab)
+    cal_map = {
+        r.date: r.hours
+        for r in db.execute(
+            select(ProductionCalendarDay).where(
+                ProductionCalendarDay.date >= q_start, ProductionCalendarDay.date <= q_end
+            )
+        ).scalars()
+    }
+    months = sorted({date(d.year, d.month, 1) for d in _daterange(q_start, q_end)})
+    rows: List[WatchRowOut] = []
+    for e in employees:
+        base = _employee_load_out(
+            e,
+            q_start=q_start,
+            q_end=q_end,
+            avail=occ.avail,
+            own=own,
+            other=other,
+            load=loads.get(e.id),
+            labels=labels,
+            reserves=reserves,
+            member_iv=member_iv,
+            absences=absences.get(e.id, []),
+            cal_map=cal_map,
+            membership=membership,
+            is_borrowed=False,
+            borrowed_from=None,
+        )
+        load = loads.get(e.id)
+        free = load.free_by_day if load else {}
+        by_month = [
+            WatchMonthFree(
+                month=m,
+                hours=round(
+                    sum(h for d, h in free.items() if (d.year, d.month) == (m.year, m.month)), 1
+                ),
+            )
+            for m in months
+        ]
+        home_team, tech = _tech_reserve_row(reserves, e.id)
+        rows.append(WatchRowOut(
+            **base.model_dump(),
+            home_team=home_team or next(iter(sorted(homes[e.id])), None),
+            free_hours=round(sum(free.values()), 1),
+            free_by_month=by_month,
+            tech_reserve=tech,
+            in_plan=any(h > 0 for h in occ.used.get(e.id, {}).values()),
+        ))
+    rows.sort(key=lambda r: (-r.free_hours, (r.employee_name or "").lower()))
+    names = {e.id: e.display_name for e in employees}
+    return PlanWatchOut(
+        rows=rows,
+        bookings=[
+            ExternalBookingOut(
+                assignment_id=b.assignment_id,
+                employee_id=b.employee_id,
+                employee_name=names.get(b.employee_id),
+                team=b.team,
+                backlog_item_id=b.backlog_item_id,
+                issue_key=b.issue_key,
+                title=b.title,
+                phase=b.phase,
+                start=b.start,
+                end=b.end,
+                daily_hours={d.isoformat(): h for d, h in b.daily_hours.items()},
+                provisional=b.provisional,
+                employee_is_borrowed=b.employee_id in borrowed,
+                is_borrowing=b.is_borrowing,
+            )
+            for b in occ.bookings
+        ],
+    )
+
+
+@router.post("/resource-plans/{plan_id}/watch", status_code=204)
+async def add_plan_watch(
+    plan_id: str,
+    data: PlanWatchAdd,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Добавить людей в список наблюдения плана; уже добавленные — без повтора."""
+    from sqlalchemy.exc import IntegrityError
+
+    if db.get(ResourcePlan, plan_id) is None:
+        raise HTTPException(404, "Plan not found")
+    ids = list(dict.fromkeys(data.employee_ids))
+    known = set(db.execute(select(Employee.id).where(Employee.id.in_(ids))).scalars())
+    if len(known) != len(ids):
+        raise HTTPException(404, "Сотрудник не найден")
+    have = set(
+        db.execute(
+            select(ResourcePlanWatch.employee_id).where(
+                ResourcePlanWatch.plan_id == plan_id, ResourcePlanWatch.employee_id.in_(ids)
+            )
+        ).scalars()
+    )
+    for eid in ids:
+        if eid not in have:
+            db.add(ResourcePlanWatch(plan_id=plan_id, employee_id=eid))
+    try:
+        db.commit()
+    except IntegrityError:
+        # Того же человека только что добавил кто-то ещё — список уже такой.
+        db.rollback()
+    await _announce(event_bus, bookings=False)
+
+
+@router.delete("/resource-plans/{plan_id}/watch/{employee_id}", status_code=204)
+async def remove_plan_watch(
+    plan_id: str,
+    employee_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Убрать человека из списка наблюдения плана (нет в списке — ничего)."""
+    row = db.execute(
+        select(ResourcePlanWatch).where(
+            ResourcePlanWatch.plan_id == plan_id, ResourcePlanWatch.employee_id == employee_id
+        )
+    ).scalar_one_or_none()
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    await _announce(event_bus, bookings=False)
 
 
 def _detect_employee_change_conflicts(
