@@ -655,11 +655,14 @@ export interface AssignmentCandidate {
   display_name: string;
   role: string | null;
   team: string | null;
-  /** Загрузка за квартал плана по опорным планам всех команд, %. */
+  /** Загрузка за квартал плана по опорным планам всех команд, %; у кандидата
+   *  фазы — с нормированными работами основной команды. */
   load_pct: number;
   /** Границы участия в команде плана внутри квартала; null — край покрыт. */
   member_from?: string | null;
   member_to?: string | null;
+  /** Свободно в даты фазы, ч (только у кандидатов фазы плана). */
+  free_hours?: number | null;
 }
 
 export interface AssignmentCandidateGroup {

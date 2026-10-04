@@ -21,6 +21,7 @@ export function sameCandidatesTarget(prev: QueryKey, next: QueryKey): boolean {
 
 /**
  * «Имя · Роль · Команда · 42%»; у своей команды — без команды, с границами участия.
+ * У кандидата фазы перед загрузкой — «свободно 34 ч в даты фазы».
  * Роль — подпись из справочника ролей; служебный код без подписи не показываем.
  */
 export function candidateLabel(
@@ -32,6 +33,7 @@ export function candidateLabel(
   const role = e.role ? roleLabels.get(e.role) : undefined;
   if (role) parts.push(role);
   if (groupKey !== 'team' && e.team) parts.push(e.team);
+  if (e.free_hours != null) parts.push(`свободно ${Math.round(e.free_hours)} ч в даты фазы`);
   parts.push(`${Math.round(e.load_pct)}%`);
   let label = parts.join(' · ');
   if (groupKey === 'team') {
