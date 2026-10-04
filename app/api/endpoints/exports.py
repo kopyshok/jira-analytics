@@ -5,7 +5,7 @@
 чтобы файл скачался по клику в UI или Swagger.
 """
 
-from datetime import datetime
+import re
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -38,6 +38,17 @@ def _attachment_headers(filename: str) -> dict[str, str]:
             f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(filename)}'
         )
     }
+
+
+_BAD_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def scenario_file_name(name: str | None, ext: str) -> str:
+    """Имя файла выгрузки сценария: название сценария без символов,
+    недопустимых в именах файлов Windows; не длиннее 150 знаков."""
+    clean = _BAD_FILENAME_CHARS.sub("_", name or "")
+    clean = clean.strip(" ")[:150].strip(" ").rstrip(". ")
+    return f"{clean or 'scenario'}.{ext}"
 
 
 # === Capacity ===
@@ -78,15 +89,7 @@ async def export_scenario_xlsx(
         raise HTTPException(status_code=404, detail=str(e))
 
     scenario = db.get(PlanningScenario, scenario_id)
-    slug = "".join(
-        c if c.isalnum() else "-" for c in (scenario.name or "scenario")
-    ).lower().strip("-")[:40]
-    fn = (
-        f"scenario_{scenario.quarter or 'Q'}"
-        f"_{scenario.year or 'YYYY'}"
-        f"_{slug}"
-        f"_{datetime.utcnow():%Y-%m-%d}.xlsx"
-    )
+    fn = scenario_file_name(scenario.name if scenario else None, "xlsx")
     return Response(content=data, media_type=XLSX_MIME, headers=_attachment_headers(fn))
 
 
@@ -104,8 +107,10 @@ async def export_scenario_pptx(
         data = service.build_scenario_pptx(scenario_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    scenario = db.get(PlanningScenario, scenario_id)
+    fn = scenario_file_name(scenario.name if scenario else None, "pptx")
     return Response(
         content=data,
         media_type=PPTX_MIME,
-        headers=_attachment_headers(f"scenario-{scenario_id}.pptx"),
+        headers=_attachment_headers(fn),
     )
