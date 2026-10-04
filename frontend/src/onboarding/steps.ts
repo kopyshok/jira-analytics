@@ -21,6 +21,8 @@ export interface IntroStep {
   tourId: string;
   title: string;
   hint: string;
+  /** id ролика-инструкции — включает кнопку «Видео». */
+  videoId?: string;
 }
 
 export const SETUP_STEPS: SetupStep[] = [

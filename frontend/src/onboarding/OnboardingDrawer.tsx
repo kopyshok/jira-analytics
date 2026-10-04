@@ -6,7 +6,7 @@ import { formatDateOnly } from '../utils/format';
 import type { OnboardingStatus } from '../api/onboarding';
 import VideoModal from '../help-videos/VideoModal';
 import { useOnboarding } from './OnboardingContext';
-import { INTRO_STEPS, SETUP_STEPS, isClosed, type SetupStep } from './steps';
+import { INTRO_STEPS, SETUP_STEPS, isClosed, type IntroStep, type SetupStep } from './steps';
 
 type RowState = 'done' | 'skipped' | 'pending';
 
@@ -106,6 +106,27 @@ function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nes
   );
 }
 
+/** Шаг «Знакомства»: экскурсия по разделу и, если есть, ролик. */
+function IntroRow({ step, done, onTour }: { step: IntroStep; done: boolean; onTour: () => void }) {
+  const [videoOpen, setVideoOpen] = useState(false);
+  return (
+    <div style={{ display: 'flex', gap: 10, padding: '10px 0' }}>
+      <div style={{ paddingTop: 2 }}><StatusIcon state={done ? 'done' : 'pending'} /></div>
+      <div style={{ flex: 1 }}>
+        <Typography.Text strong>{step.title}</Typography.Text>
+        <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{step.hint}</Typography.Text></div>
+        <Space size={4} wrap style={{ marginTop: 6 }}>
+          <Button size="small" type="primary" ghost onClick={onTour} data-testid={`tour-start-${step.tourId}`}>
+            {done ? 'Показать ещё раз' : 'Показать'}
+          </Button>
+          {step.videoId && <Button size="small" onClick={() => setVideoOpen(true)}>Видео</Button>}
+        </Space>
+      </div>
+      {step.videoId && <VideoModal id={videoOpen ? step.videoId : null} onClose={() => setVideoOpen(false)} />}
+    </div>
+  );
+}
+
 export default function OnboardingDrawer() {
   const { team, teamOptions, setTeam, status, panelOpen, closePanel, startTour, updateMe } = useOnboarding();
   const { message } = App.useApp();
@@ -165,16 +186,7 @@ export default function OnboardingDrawer() {
 
       <Typography.Title level={5} style={{ marginTop: 24 }}>Знакомство с сервисом</Typography.Title>
       {INTRO_STEPS.map(s => (
-        <div key={s.tourId} style={{ display: 'flex', gap: 10, padding: '10px 0' }}>
-          <div style={{ paddingTop: 2 }}><StatusIcon state={tours.has(s.tourId) ? 'done' : 'pending'} /></div>
-          <div style={{ flex: 1 }}>
-            <Typography.Text strong>{s.title}</Typography.Text>
-            <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{s.hint}</Typography.Text></div>
-            <Button size="small" type="primary" ghost style={{ marginTop: 6 }} onClick={() => startTour(s.tourId)} data-testid={`tour-start-${s.tourId}`}>
-              {tours.has(s.tourId) ? 'Показать ещё раз' : 'Показать'}
-            </Button>
-          </div>
-        </div>
+        <IntroRow key={s.tourId} step={s} done={tours.has(s.tourId)} onTour={() => startTour(s.tourId)} />
       ))}
     </Drawer>
   );
