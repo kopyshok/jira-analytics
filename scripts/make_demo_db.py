@@ -33,6 +33,7 @@ SECRET_KEY_MARKERS = (
 DROP_ROWS = [
     "sync_run", "sync_state", "sync_schedule",          # история синхронизаций
     "usage_events", "usage_daily",                       # аналитика использования
+    "perf_minute", "perf_slow_request", "perf_server_snapshot",  # замеры быстродействия
     "feedback_items",                                    # обратная связь с текстами
     "project_ai_summaries", "issue_classifications",     # AI-тексты про реальные проекты
     "work_type_report_snapshots", "executive_dashboard_snapshots",

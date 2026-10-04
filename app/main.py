@@ -15,7 +15,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import get_settings
 from app.api.router import api_router
 from app.core import error_log
-from app.database import SessionLocal
+from app.core.perf import PerfCollector, install_query_listeners
+from app.core.perf_middleware import PerfMiddleware
+from app.database import SessionLocal, engine
 from app.services.kpi.conditions import ConditionError
 from app.repositories.sync_schedule import SyncScheduleRepository
 from app.services.scheduler import SchedulerService, scheduled_pipeline_runner
@@ -30,6 +32,10 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+#: Замеры быстродействия. Включается в lifespan вместе с циклом записи — без
+#: цикла сборщик копил бы замеры в памяти бесконечно.
+perf_collector = PerfCollector(enabled=False, slow_ms=settings.perf_slow_ms)
 
 
 @asynccontextmanager
@@ -89,6 +95,21 @@ async def lifespan(app: FastAPI):
     backfill_task = asyncio.create_task(backfill_issue_author_once())
     app.state.backfill_author_task = backfill_task
 
+    # --- Быстродействие: замеры запросов и нагрузки сервера ---
+    perf_task = None
+    if settings.perf_enabled:
+        from app.services.perf_writer import run_loop
+
+        install_query_listeners()
+        perf_collector.enabled = True
+        perf_task = asyncio.create_task(run_loop(
+            perf_collector,
+            interval=settings.perf_flush_seconds,
+            retention_days=settings.perf_retention_days,
+            session_factory=SessionLocal,
+            engine=engine,
+        ))
+
     yield
 
     # --- Shutdown ---
@@ -96,6 +117,18 @@ async def lifespan(app: FastAPI):
         warmup_task.cancel()
     if not backfill_task.done():
         backfill_task.cancel()
+    if perf_task is not None:
+        from app.services.perf_writer import flush_collector
+
+        perf_task.cancel()
+        perf_collector.enabled = False
+        # Дописать текущую минуту; ни сбой, ни зависшая база не должны мешать остановке.
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(flush_collector, perf_collector, SessionLocal), timeout=10,
+            )
+        except Exception as exc:
+            logger.warning("perf: замеры последней минуты не записаны: %s", exc)
     sched_svc.shutdown()
     logger.info("Shutting down...")
 
@@ -117,6 +150,9 @@ app.add_middleware(
     # Браузер берёт имя скачиваемого файла из этого заголовка (в dev фронт на другом порту).
     expose_headers=["Content-Disposition"],
 )
+
+# Замеры быстродействия — снаружи остальных слоёв: время запроса целиком.
+app.add_middleware(PerfMiddleware, collector=perf_collector)
 
 # Include API routes
 app.include_router(api_router, prefix="/api/v1")
