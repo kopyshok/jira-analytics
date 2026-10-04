@@ -29,12 +29,16 @@ export interface DeskMeta {
   summary: DeskSummary;
 }
 
+/** Узел дерева задач проекта; часы — по всему поддереву узла. */
 export interface ProjectChild {
   key: string | null;
   title: string | null;
   jira_url: string | null;
   status: string | null;
+  status_category?: string | null;
+  assignee?: string | null;
   fact_hours: number;
+  children?: ProjectChild[];
 }
 
 /** Разбивка проекта по виду работ (analyst, dev, qa, opo — всегда 4, в этом порядке). */
@@ -65,6 +69,9 @@ export interface DeskProject {
   /** Прочие часы (внешняя помощь / без роли) — вне план/факта, информационно. */
   info_hours?: number;
   children?: ProjectChild[];
+  /** Дерево обрезано до tree_limit задач. */
+  tree_truncated?: boolean;
+  tree_limit?: number;
 }
 
 export interface MyTasksData {

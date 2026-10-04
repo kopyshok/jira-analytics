@@ -1,11 +1,20 @@
-import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router';
+import { useEffect, useMemo, useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useParams, useSearchParams } from 'react-router';
 import { ConfigProvider, Result, Spin, theme } from 'antd';
 import ruRURaw from 'antd/locale/ru_RU';
 import { fetchDeskMeta } from '../api/desk';
 import { WIDGET_REGISTRY } from '../components/desk/registry';
-import { fmtLongDate, fmtQuarter, fmtSignedHours, initials } from '../components/desk/format';
+import { fmtLongDate, fmtQuarterShort, fmtSignedHours, initials } from '../components/desk/format';
+import {
+  DeskPeriodContext,
+  MAX_QUARTER_SHIFT,
+  formatQuarterParam,
+  parseQuarterParam,
+  quarterOf,
+  quarterOffset,
+  shiftQuarter,
+} from '../components/desk/deskPeriod';
 import '../components/desk/desk-theme.css';
 
 const ruRU = ((ruRURaw as unknown as { default?: typeof ruRURaw }).default
@@ -57,19 +66,58 @@ export default function DeskPage() {
     }
   }, [deskTheme]);
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['desk', token],
-    queryFn: ({ signal }) => fetchDeskMeta(token, signal),
+  // Квартал живёт в адресе (?q=2026-4), чтобы стол можно было переслать ссылкой.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentQuarter = useMemo(() => quarterOf(new Date()), []);
+  const selected = useMemo(
+    () => parseQuarterParam(searchParams.get('q'), currentQuarter),
+    [searchParams, currentQuarter],
+  );
+  const shownQuarter = selected ?? currentQuarter;
+  const changeQuarter = (delta: number) => {
+    const next = shiftQuarter(shownQuarter, delta);
+    if (Math.abs(quarterOffset(next, currentQuarter)) > MAX_QUARTER_SHIFT) return;
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (quarterOffset(next, currentQuarter) === 0) p.delete('q');
+        else p.set('q', formatQuarterParam(next));
+        return p;
+      },
+      { replace: true },
+    );
+  };
+
+  const { data, isLoading, isError, isFetching } = useQuery({
+    queryKey: ['desk', token, selected?.year ?? null, selected?.quarter ?? null],
+    queryFn: ({ signal }) => fetchDeskMeta(token, selected, signal),
     retry: false,
     refetchInterval: 5 * 60_000,
+    placeholderData: keepPreviousData,
   });
+
+  // Часы клиента и сервера могут разойтись на границе квартала — сервер ответит
+  // отказом на «слишком далёкий» квартал. Сбрасываем выбор на текущий квартал.
+  const hasQ = searchParams.has('q');
+  useEffect(() => {
+    if (isError && hasQ) {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete('q');
+          return p;
+        },
+        { replace: true },
+      );
+    }
+  }, [isError, hasQ, setSearchParams]);
 
   const antdConfig = {
     algorithm: deskTheme === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
     token: antdTokensFor(deskTheme),
   };
 
-  if (isLoading) {
+  if (isLoading || (isError && hasQ)) {
     return (
       <ConfigProvider locale={ruRU} theme={antdConfig}>
         <div className="desk-root" data-theme={deskTheme}>
@@ -97,20 +145,25 @@ export default function DeskPage() {
     );
   }
 
-  const { employee, teams, enabled_widgets, period, summary } = data;
+  const { employee, teams, enabled_widgets, summary } = data;
   const widgets = enabled_widgets.filter((k) => WIDGET_REGISTRY[k]);
 
   const toggle = () => setDeskTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
   return (
     <ConfigProvider locale={ruRU} theme={antdConfig}>
+      <DeskPeriodContext.Provider value={selected}>
       <div className="desk-root" data-theme={deskTheme}>
         <div className="desk-layout">
           <DeskHeader
             name={employee.display_name}
             teams={teams}
-            year={period.year}
-            quarter={period.quarter}
+            year={shownQuarter.year}
+            quarter={shownQuarter.quarter}
+            loading={isFetching}
+            canPrev={quarterOffset(shownQuarter, currentQuarter) > -MAX_QUARTER_SHIFT}
+            canNext={quarterOffset(shownQuarter, currentQuarter) < MAX_QUARTER_SHIFT}
+            onShiftQuarter={changeQuarter}
             summary={summary}
             deskTheme={deskTheme}
             onToggleTheme={toggle}
@@ -124,6 +177,7 @@ export default function DeskPage() {
           )}
         </div>
       </div>
+      </DeskPeriodContext.Provider>
     </ConfigProvider>
   );
 }
@@ -134,6 +188,10 @@ function DeskHeader({
   teams,
   year,
   quarter,
+  loading,
+  canPrev,
+  canNext,
+  onShiftQuarter,
   summary,
   deskTheme,
   onToggleTheme,
@@ -142,6 +200,10 @@ function DeskHeader({
   teams: string[];
   year: number;
   quarter: number;
+  loading: boolean;
+  canPrev: boolean;
+  canNext: boolean;
+  onShiftQuarter: (delta: number) => void;
   summary: import('../types/desk').DeskSummary;
   deskTheme: DeskTheme;
   onToggleTheme: () => void;
@@ -169,7 +231,24 @@ function DeskHeader({
         <div className="desk-header-right">
           <div className="desk-date-block">
             <div className="desk-date-main">{fmtLongDate(new Date())}</div>
-            <div className="desk-quarter">{fmtQuarter(year, quarter)}</div>
+            <div className="desk-quarter-switch">
+              <button
+                type="button"
+                className="desk-quarter-btn"
+                aria-label="Предыдущий квартал"
+                disabled={!canPrev}
+                onClick={() => onShiftQuarter(-1)}
+              >‹</button>
+              <span className="desk-quarter">{fmtQuarterShort(year, quarter)}</span>
+              {loading && <span className="desk-quarter-loading" role="status" aria-label="Загрузка" />}
+              <button
+                type="button"
+                className="desk-quarter-btn"
+                aria-label="Следующий квартал"
+                disabled={!canNext}
+                onClick={() => onShiftQuarter(1)}
+              >›</button>
+            </div>
             <div className="desk-updated">
               <span className="desk-pulse-dot" />
               обновлено только что
