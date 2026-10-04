@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 
-import psutil
+import psutil  # type: ignore[import-untyped]
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -80,9 +80,9 @@ class ServerProbe:
 def _pool_usage(engine: Optional[Engine]) -> tuple[Optional[int], Optional[int]]:
     """Занятые и всего подключений пула. У пулов без очереди (SQLite в памяти) — нет данных."""
     try:
-        pool = engine.pool  # type: ignore[union-attr]
-        in_use = pool.checkedout()  # type: ignore[attr-defined]
-        total = pool.size() + max(getattr(pool, "_max_overflow", 0), 0)  # type: ignore[attr-defined]
+        pool: Any = engine.pool  # type: ignore[union-attr]
+        in_use = pool.checkedout()
+        total = pool.size() + max(getattr(pool, "_max_overflow", 0), 0)
         return int(in_use), int(total)
     except Exception:
         return None, None

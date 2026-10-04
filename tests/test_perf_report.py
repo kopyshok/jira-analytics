@@ -142,3 +142,50 @@ def test_slow_requests_get_minute_load_and_verdict(db_session):
 def test_period_validation():
     with pytest.raises(ValueError):
         overview(None, "2h", now=NOW, slow_ms=2000, flush_seconds=60)  # type: ignore[arg-type]
+
+
+def _seed_for_export(db):
+    m = NOW - timedelta(minutes=5)
+    _minute(db, m, "/api/v1/backlog/{item_id}", [100, 3000], db_count=4, db_ms=2600)
+    _snap(db, NOW - timedelta(minutes=4), host=40, proc=30, cpu_count=4)
+    _slow(db, m + timedelta(seconds=10), db_ms=2600, user_id=STUB_USER_ID)
+    db.commit()
+
+
+def test_markdown_report_for_developers(db_session):
+    from app.services.perf_report import render_markdown
+
+    _seed_for_export(db_session)
+    data = overview(db_session, "1h", now=NOW, slow_ms=2000, flush_seconds=60)
+    text = render_markdown(data, tz_offset_min=180)
+
+    assert text.startswith("# Быстродействие сервиса")
+    for part in ("## Итог", "## Узкие места", "## Медленные запросы", "## Нагрузка сервера"):
+        assert part in text
+    assert "`GET /api/v1/backlog/{item_id}`" in text
+    assert "Целевые задачи" in text
+    assert "Test User" in text
+    assert "Долгая работа с базой" in text
+    assert "SELECT * FROM backlog_items" in text
+    assert "15:25" in text  # время сдвинуто в пояс UTC+3
+    assert "UTC+03:00" in text
+
+
+def test_xlsx_has_three_sheets(db_session):
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from app.services.perf_report import render_xlsx, snapshots_for
+
+    _seed_for_export(db_session)
+    data = overview(db_session, "1h", now=NOW, slow_ms=2000, flush_seconds=60)
+    blob = render_xlsx(data, snapshots_for(db_session, "1h", now=NOW), tz_offset_min=180)
+
+    wb = load_workbook(BytesIO(blob))
+    assert wb.sheetnames == ["Узкие места", "Медленные запросы", "Снимки сервера"]
+    assert wb["Узкие места"].max_row == 2
+    assert wb["Узкие места"]["A1"].value == "Раздел"
+    assert wb["Медленные запросы"].max_row == 2
+    assert wb["Снимки сервера"].max_row == 2
+    assert wb["Медленные запросы"]["A2"].value.hour == 15
