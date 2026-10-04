@@ -152,6 +152,10 @@ class PersonReserve:
     norm: float
     blocked: Dict[str, float] = field(default_factory=dict)
     share: Dict[str, float] = field(default_factory=dict)
+    # Его часы в опорных планах других команд — по виду, чей запас они
+    # расходуют, и задача → вид (для подписи слоя «Другие команды»).
+    other_teams: Dict[str, float] = field(default_factory=dict)
+    other_items: Dict[str, str] = field(default_factory=dict)
 
     @property
     def undated(self) -> float:
@@ -187,6 +191,9 @@ class TeamReserve:
     other_team_work: List[OtherTeamWork]
     # Все виды, уменьшающие запас на проекты: {id: подпись} — для выбора.
     labels: Dict[str, str]
+    # Вид, которым команда по умолчанию считает работу в других командах
+    # («Технические задачи»); None — такого вида нет в справочнике.
+    cross_team_work_type_id: Optional[str] = None
 
 
 def team_reserve(
@@ -320,8 +327,12 @@ def team_reserve(
         b_wt = overrides.get(b.backlog_item_id or "") or default_wt
         if hours <= 0 or b_wt is None:
             continue
-        role = people[b.employee_id].role or ""
+        person = people[b.employee_id]
+        role = person.role or ""
         row(role, b_wt).other_teams += hours
+        person.other_teams[b_wt] = person.other_teams.get(b_wt, 0.0) + hours
+        if b.backlog_item_id:
+            person.other_items[b.backlog_item_id] = b_wt
         key = (b.backlog_item_id, b.team, role)
         if key not in work:
             work[key] = OtherTeamWork(
@@ -357,6 +368,7 @@ def team_reserve(
             wt: w.label
             for wt, w in sorted(types.items(), key=lambda kv: (kv[1].sort_order, kv[1].label))
         },
+        cross_team_work_type_id=default_wt,
     )
 
 
@@ -374,6 +386,9 @@ def merge_person(
             out.blocked[wt] = out.blocked.get(wt, 0.0) + h
         for wt, h in p.share.items():
             out.share[wt] = out.share.get(wt, 0.0) + h
+        for wt, h in p.other_teams.items():
+            out.other_teams[wt] = out.other_teams.get(wt, 0.0) + h
+        out.other_items.update(p.other_items)
     return out
 
 

@@ -502,3 +502,38 @@ def test_guest_normed_empty_without_home_reserve(db_session):
     db_session.commit()
 
     assert nr.guest_normed_by_day(db_session, [p], [], *Q, D("2026-01-01"), D("2026-03-31")) == {}
+
+
+def test_person_other_team_hours_by_work_type(db_session):
+    """Часы человека в других командах — по виду работ, за счёт которого они
+    идут, и задача → вид: по ним «Загрузка по дням» подписывает слой
+    «Другие команды». Выбор вида у задачи переносит часы в выбранный вид."""
+    types, p, s, item = _erp(db_session)
+    tech = types["technical_tasks"].id
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    assert r.cross_team_work_type_id == tech
+    assert {wt: round(h, 1) for wt, h in r.people[p.id].other_teams.items()} == {tech: 180.0}
+    assert r.people[p.id].other_items == {item.id: tech}
+    assert r.people[s.id].other_teams == {} and r.people[s.id].other_items == {}
+
+    support = types["support_consult"].id
+    db_session.add(TeamWorkTypeOverride(team="ERP", backlog_item_id=item.id, work_type_id=support))
+    db_session.commit()
+    r = nr.team_reserve(db_session, "ERP", *Q)
+    assert {wt: round(h, 1) for wt, h in r.people[p.id].other_teams.items()} == {support: 180.0}
+    assert r.people[p.id].other_items == {item.id: support}
+
+
+def test_merge_person_sums_other_team_hours():
+    a = nr.PersonReserve("e", "dev", 100.0, other_teams={"wt": 10.0}, other_items={"i1": "wt"})
+    b = nr.PersonReserve("e", "dev", 50.0, other_teams={"wt": 5.0, "wt2": 1.0},
+                         other_items={"i2": "wt2"})
+    ra = nr.TeamReserve("A", "s", "s", {}, {"e": a}, [], {})
+    rb = nr.TeamReserve("B", "s", "s", {}, {"e": b}, [], {})
+
+    m = nr.merge_person([ra, rb], "e")
+
+    assert m.other_teams == {"wt": 15.0, "wt2": 1.0}
+    assert m.other_items == {"i1": "wt", "i2": "wt2"}
