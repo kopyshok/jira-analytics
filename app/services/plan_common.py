@@ -287,6 +287,69 @@ def _team_ids_for_root(
     return team_ids
 
 
+IN_CHUNK = 500
+
+
+def chunked(seq: Sequence, size: int = IN_CHUNK):
+    """Куски списка для IN (...) — чтобы не упереться в лимит параметров запроса."""
+    items = list(seq)
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
+
+
+def own_fact_by_issue(
+    db: Session,
+    issue_ids: Sequence[str],
+    fact_until: date,
+    team_ids: set[str],
+    member_windows: Optional[Mapping[str, list]] = None,
+) -> Dict[str, float]:
+    """Свои часы по каждой задаче — по тем же правилам, что факт строки проекта.
+
+    Как в ``role_breakdown``: часы автора идут в факт, только если он в команде
+    (``team_ids``), у него роль из ``ROLES`` (РП → Анализ) и день списания
+    попадает в его отрезок участия (``member_windows``); нижней границы нет,
+    верхняя — ``fact_until``. Остальное в факт не входит. Сумма по задачам
+    поддерева поэтому не превосходит факт проекта.
+    """
+    from app.models import Employee, Worklog
+
+    ids = [i for i in dict.fromkeys(issue_ids) if i]
+    out: Dict[str, float] = {}
+    if not ids:
+        return out
+    end_dt = datetime.combine(fact_until, time.max)
+    day_col = func.date(Worklog.started_at).label("day")
+    for part in chunked(ids):
+        rows = (
+            db.query(
+                Worklog.issue_id,
+                Worklog.employee_id,
+                Employee.role,
+                day_col,
+                func.coalesce(func.sum(Worklog.hours), 0.0).label("hours"),
+            )
+            .join(Employee, Employee.id == Worklog.employee_id)
+            .filter(Worklog.issue_id.in_(part), Worklog.started_at <= end_dt)
+            .group_by(Worklog.issue_id, Worklog.employee_id, Employee.role, day_col)
+            .all()
+        )
+        for issue_id, emp_id, role, day_val, hours in rows:
+            r = (role or "").lower()
+            if r == "rp":
+                r = "analyst"
+            if emp_id not in team_ids or r not in ROLES:
+                continue
+            if member_windows:
+                intervals = member_windows.get(emp_id)
+                if intervals is not None:
+                    d = date.fromisoformat(day_val) if isinstance(day_val, str) else day_val
+                    if not tm.day_in_intervals(d, intervals):
+                        continue
+            out[issue_id] = out.get(issue_id, 0.0) + float(hours or 0.0)
+    return out
+
+
 def role_breakdown(
     db: Session,
     plan_ids: Sequence[str],

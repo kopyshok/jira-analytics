@@ -5,11 +5,11 @@ import type { ProjectChild } from '../../types/desk';
 
 const leaf: ProjectChild = {
   key: 'ITL-4', title: 'Лист', jira_url: 'https://j/ITL-4', status: 'Done',
-  status_category: 'done', assignee: null, estimate_hours: null, fact_hours: 3, children: [],
+  status_category: 'done', assignee: null, fact_hours: 3, children: [],
 };
 const mid: ProjectChild = {
   key: 'ITL-3', title: 'Середина', jira_url: 'https://j/ITL-3', status: 'In Progress',
-  status_category: 'indeterminate', assignee: 'Иван', estimate_hours: 4, fact_hours: 3,
+  status_category: 'indeterminate', assignee: 'Иван', fact_hours: 3,
   children: [leaf],
 };
 
@@ -21,6 +21,8 @@ describe('дерево «Мои задачи»', () => {
     expect(html).toContain('href="https://j/ITL-3"');
     expect(html).not.toContain('ITL-4');
     expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('<button');
+    expect(html).not.toContain('estimate');
   });
 
   it('закрытая задача приглушена, у листа стрелки нет', () => {

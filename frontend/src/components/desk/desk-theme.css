@@ -256,6 +256,18 @@
 }
 .desk-quarter-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 .desk-quarter-btn:disabled { opacity: 0.35; cursor: default; }
+.desk-quarter-loading {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--hair);
+  border-top-color: var(--accent);
+  animation: desk-quarter-spin 0.7s linear infinite;
+}
+@keyframes desk-quarter-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .desk-quarter-loading { animation: none; } }
+.desk-tree-btn { background: none; border: none; padding: 0; font: inherit; cursor: pointer; }
+.desk-tree-truncated { font-size: 11px; color: var(--ink-3); }
 .desk-updated {
   display: flex;
   align-items: center;
