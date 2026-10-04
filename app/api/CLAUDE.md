@@ -37,6 +37,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/capacity/absence-reasons` | `absence_reasons.py` | CRUD + reorder |
 | `/backlog` | `backlog.py` | CRUD + refresh-from-jira + link/unlink-jira + archive/restore |
 | `/planning` | `planning.py` | scenarios CRUD + allocations + rules + revisions + resource base (см. ниже) |
+| `/resource-planning` | `resource_planning.py` | периоды, планы, диаграмма (`/resource-plans/{id}/gantt`), кандидаты фазы (свободно в даты фазы, загрузка с нормированными работами), список наблюдения `/resource-plans/{id}/watch` (GET — строки «Загрузки по дням» той же формулой, что у людей плана, + свободно по месяцам и остаток «Технических задач» основной команды; POST `{employee_ids}`; DELETE `/{employee_id}`; правки шлют событие `resource_planning`) |
 | `/exports` | `exports.py` | analytics.xlsx\|pdf, scenarios/{id}.xlsx\|pptx, capacity.xlsx |
 | `/settings` | `settings.py` | **admin-only** — `/jira` (GET\|PUT, redacts token) + `/jira/test` + `/generic` (PUT) + `/generic/{key}` (GET) |
 | `/categories` | `categories.py` | CRUD; `PUT /{id}` принимает `work_type_id: str \| null` (валидация: MandatoryWorkType существует и активен) |

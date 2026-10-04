@@ -1,4 +1,4 @@
-import type { OtherTeamWorkOut, ReserveOut, ReserveTypeRow } from '../api/resourcePlanning';
+import type { OtherTeamWorkOut, ReserveOut, ReserveTypeRow, ReserveUseOut } from '../api/resourcePlanning';
 import { fmtHours as fmtHoursRaw } from './rpBusy';
 
 /** Сколько строк запаса в перерасходе (для красной подсветки и счётчика). */
@@ -109,4 +109,59 @@ export function resolvedOverrideKeys(
     }
   }
   return resolved;
+}
+
+/** Строка подсказки: текст и часть «сверх запаса», которая рисуется красным. */
+export interface ReserveLine {
+  text: string;
+  over?: string;
+}
+
+/**
+ * Подпись слоя «Другие команды»: за счёт какого запаса основной команды идут часы —
+ * «за счёт «Технические задачи»: 80 из 100 ч, осталось 20 ч» (занято и заложено — на роль,
+ * как в сводке запаса). Перерасход — «130 из 100 ч,» и красное «сверх запаса 30 ч».
+ * Строка на вид; ``workTypeIds`` — только эти виды (виды задач дня).
+ */
+export function reserveUseLines(
+  uses: ReserveUseOut[] | null | undefined,
+  workTypeIds?: ReadonlySet<string>,
+): ReserveLine[] {
+  const list = (uses ?? []).filter((u) => !workTypeIds || workTypeIds.has(u.work_type_id));
+  const manyTeams = new Set((uses ?? []).map((u) => u.team)).size > 1;
+  return list.map((u) => {
+    const head = `за счёт «${u.label}»${manyTeams ? ` (${u.team})` : ''}: ${fmtHoursRaw(u.used_hours)} из ${fmtHours(u.planned_hours)}`;
+    return u.overuse_hours > 0.05
+      ? { text: `${head},`, over: `сверх запаса ${fmtHours(u.overuse_hours)}` }
+      : { text: `${head}, осталось ${fmtHours(u.remaining_hours)}` };
+  });
+}
+
+interface DayWork {
+  employee_id: string | null;
+  backlog_item_id?: string | null;
+  daily_hours?: Record<string, number> | null;
+}
+
+/** Виды запаса, за счёт которых идут задачи человека в этот день (фазы плана и брони). */
+export function dayReserveTypes(
+  employeeId: string,
+  date: string,
+  reserveItems: Record<string, string> | null | undefined,
+  assignments: DayWork[],
+  bookings: DayWork[],
+): Set<string> {
+  const out = new Set<string>();
+  if (!reserveItems) return out;
+  for (const w of [...assignments, ...bookings]) {
+    if (w.employee_id !== employeeId || !w.backlog_item_id || (w.daily_hours?.[date] ?? 0) <= 0) continue;
+    const wt = reserveItems[w.backlog_item_id];
+    if (wt) out.add(wt);
+  }
+  return out;
+}
+
+/** У команды есть часы других команд — сводку запаса показываем развёрнутой. */
+export function hasOtherTeamHours(reserve: ReserveOut): boolean {
+  return reserve.other_team_work.some((w) => w.hours > 0.05);
 }

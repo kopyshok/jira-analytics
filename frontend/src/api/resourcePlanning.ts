@@ -175,6 +175,20 @@ export interface NormedTypeHours {
   hours: number;
 }
 
+/** За счёт какого запаса основной команды идут часы человека в других командах:
+ *  вид работ и его запас на роль человека (как в сводке запаса). */
+export interface ReserveUseOut {
+  team: string;
+  work_type_id: string;
+  label: string;
+  /** Часы этого человека в других командах, списанные на этот вид. */
+  hours: number;
+  planned_hours: number;
+  used_hours: number;
+  remaining_hours: number;
+  overuse_hours: number;
+}
+
 /** Загрузка человека за квартал, часы; одинакова в плане любой команды. */
 export interface EmployeeQuarterLoad {
   capacity_hours: number;
@@ -184,6 +198,10 @@ export interface EmployeeQuarterLoad {
   unplaced_hours: number;
   pct: number;
   normed_by_type: NormedTypeHours[];
+  /** Работа в других командах по видам запаса основной команды. */
+  reserve_use?: ReserveUseOut[];
+  /** Задача другой команды → вид работ, за счёт которого она идёт. */
+  reserve_items?: Record<string, string>;
 }
 
 /** Переход сотрудника на границе участия в команде плана внутри квартала. */
@@ -214,6 +232,32 @@ export interface EmployeeLoadOut {
   quarter?: EmployeeQuarterLoad | null;
 }
 
+/** Свободные часы наблюдаемого в месяце квартала. */
+export interface WatchMonthFree {
+  /** Первое число месяца, YYYY-MM-DD. */
+  month: string;
+  hours: number;
+}
+
+/** Наблюдаемый: строка «Загрузки по дням» той же формулой, что у людей плана.
+ *  Свой слой — задачи его основной команды (и этого плана), другие команды — остальное. */
+export interface WatchRowOut extends EmployeeLoadOut {
+  home_team: string | null;
+  /** Свободно за квартал: норма − задачи − нормированные работы, ч. */
+  free_hours: number;
+  free_by_month: WatchMonthFree[];
+  /** «Технические задачи» роли человека в запасе основной команды (общий на роль). */
+  tech_reserve: ReserveTypeRow | null;
+  /** Занят в этом плане. */
+  in_plan: boolean;
+}
+
+export interface PlanWatchOut {
+  rows: WatchRowOut[];
+  /** Брони наблюдаемых в опорных планах других команд — для подсказки дня. */
+  bookings: ExternalBookingOut[];
+}
+
 export interface ResetCounts {
   pinned_dates: number;
   pinned_employees: number;
@@ -226,6 +270,8 @@ export interface ExternalBookingOut {
   employee_id: string;
   employee_name: string | null;
   team: string;
+  /** Задача брони — по ней подсказка дня находит вид работ запаса. */
+  backlog_item_id?: string | null;
   issue_key: string | null;
   title: string;
   phase: string;
@@ -635,11 +681,14 @@ export interface AssignmentCandidate {
   display_name: string;
   role: string | null;
   team: string | null;
-  /** Загрузка за квартал плана по опорным планам всех команд, %. */
+  /** Загрузка за квартал плана по опорным планам всех команд, %; у кандидата
+   *  фазы — с нормированными работами основной команды. */
   load_pct: number;
   /** Границы участия в команде плана внутри квартала; null — край покрыт. */
   member_from?: string | null;
   member_to?: string | null;
+  /** Свободно в даты фазы, ч (только у кандидатов фазы плана). */
+  free_hours?: number | null;
 }
 
 export interface AssignmentCandidateGroup {
@@ -691,3 +740,13 @@ export interface WorkTypeOverrideInput {
 /** Чем команда считает работу своих людей над задачей другой команды. */
 export const putWorkTypeOverride = (data: WorkTypeOverrideInput) =>
   api.put('/resource-planning/work-type-overrides', data);
+
+/** Список наблюдения плана: «Наблюдаемые» в «Загрузке по дням». */
+export const getPlanWatch = (planId: string) =>
+  api.get<PlanWatchOut>(`/resource-planning/resource-plans/${planId}/watch`);
+
+export const addPlanWatch = (planId: string, employeeIds: string[]) =>
+  api.post(`/resource-planning/resource-plans/${planId}/watch`, { employee_ids: employeeIds });
+
+export const removePlanWatch = (planId: string, employeeId: string) =>
+  api.del(`/resource-planning/resource-plans/${planId}/watch/${employeeId}`);

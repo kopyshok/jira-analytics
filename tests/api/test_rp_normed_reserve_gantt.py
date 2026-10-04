@@ -143,6 +143,30 @@ def test_gantt_shows_quarter_load_reserve_and_warnings(client, db_session):
         assert r.status_code == 409, r.text
 
 
+def test_other_team_hours_show_which_reserve_they_eat(client, db_session):
+    """Слой «Другие команды» подписан запасом основной команды: вид работ,
+    заложено и занято на роль, перерасход; задача → вид — для подсказки дня.
+    В плане другой команды у человека то же самое."""
+    types, p, s, item, plan = _erp_with_own_work(db_session)
+    tech = types["technical_tasks"].id
+    expected = [{
+        "team": "ERP", "work_type_id": tech, "label": "technical_tasks", "hours": 180.0,
+        "planned_hours": 102.4, "used_hours": 180.0, "remaining_hours": 0.0,
+        "overuse_hours": 77.6,
+    }]
+
+    for plan_id in (plan.id, _plan(db_session, "Блок").id):
+        rows = _rows(_gantt(client, plan_id))
+        q = rows[p.id]["quarter"]
+        assert q["reserve_use"] == expected
+        assert q["reserve_items"] == {item.id: tech}
+    body = _gantt(client, plan.id)
+    q = _rows(body)[s.id]["quarter"]
+    assert (q["reserve_use"], q["reserve_items"]) == ([], {})
+    # Задача брони — по ней подсказка дня находит вид работ.
+    assert {b["backlog_item_id"] for b in body["external_bookings"]} == {item.id}
+
+
 def test_task_day_takes_residue_after_involvement(client, db_session):
     """Вовлечённость «Блока» 90%: в день брони 7,2 ч — 0,8 ч нормированных
     работ, день занят целиком."""
