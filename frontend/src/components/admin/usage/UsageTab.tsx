@@ -13,7 +13,7 @@ export default function UsageTab() {
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <UsageKpiBar />
-      <Radio.Group
+      <Radio.Group data-tour="usage-period"
         value={days}
         onChange={(e) => setDays(e.target.value)}
         optionType="button"
@@ -23,7 +23,7 @@ export default function UsageTab() {
           { label: '90 дней', value: 90 },
         ]}
       />
-      <Tabs
+      <Tabs data-tour="usage-tabs"
         items={[
           {
             key: 'users',

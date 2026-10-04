@@ -62,14 +62,14 @@ test('rp-reset', async ({ page }) => {
   await expect(swappedRow.getByText(peer.employee_name ?? '', { exact: true })).toBeVisible();
   await d.pause(1200);
   await d.poster();
-  await d.pause(4000);
+  await d.pause(1500);
 
   await d.caption('Эту фазу перенесли вручную');
   await d.show(movedBar);
-  await d.pause(3800);
+  await d.pause(700);
   await d.caption('А здесь вручную сменили исполнителя');
   await d.show(swappedRow.getByText(peer.employee_name ?? '', { exact: true }));
-  await d.pause(3800);
+  await d.pause(700);
 
   await d.click(movedBar, 'У каждой фазы такая правка видна и в её карточке');
   await expect(drawer).toBeVisible();
@@ -77,7 +77,7 @@ test('rp-reset', async ({ page }) => {
   await expect(cardReset).toBeVisible();
   await d.caption('«Снять фиксацию даты» снимет правку только здесь');
   await d.show(cardReset);
-  await d.pause(4000);
+  await d.pause(700);
   await d.click(drawer.locator('.ant-drawer-close'), 'Закройте карточку');
   await expect(drawer).toBeHidden();
   await page.mouse.move(900, 120);
@@ -88,10 +88,13 @@ test('rp-reset', async ({ page }) => {
   await expect(menu.locator('[data-testid="rp-reset-item-employees"]')).toContainText('Сбросить закреплённых исполнителей (1)');
   await d.caption('В скобках — сколько правок каждого вида');
   await d.show(menu);
-  await d.pause(4200);
+  await d.pause(700);
+  await d.caption('Можно сбросить только даты или только исполнителей');
+  await d.show(menu.locator('[data-testid="rp-reset-item-dates"]'), menu.locator('[data-testid="rp-reset-item-employees"]'));
+  await d.pause(700);
   await d.caption('Связи между задачами (оранжевые стрелки) сброс не трогает');
   await d.show(menu.locator('[data-testid="rp-reset-item-predecessors"]'));
-  await d.pause(4200);
+  await d.pause(700);
 
   await d.click(
     menu.locator('[data-testid="rp-reset-item-all"]'),
@@ -113,11 +116,11 @@ test('rp-reset', async ({ page }) => {
 
   await d.caption('План пересчитан: фаза вернулась на своё место');
   await d.show(movedBar);
-  await d.pause(4200);
+  await d.pause(700);
   await d.caption('И исполнитель — прежний');
   await d.show(swappedRow.getByText(originalName, { exact: true }));
-  await d.pause(4200);
+  await d.pause(700);
 
-  await d.caption('Готово', 2600);
+  await d.caption('Готово', 2200);
   await d.save('rp-reset');
 });

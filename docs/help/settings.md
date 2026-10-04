@@ -12,6 +12,30 @@
 
 ---
 
+## Видео
+
+[Как подключить Jira, проекты и поля](video:settings-jira-connection)
+
+[Как завести вид нормированных работ](video:settings-work-types)
+
+[Как разделить команду на группы](video:settings-team-groups)
+
+[Как подготовить календарь и причины отсутствий](video:settings-calendar-reasons)
+
+[Как отделить служебные эпики от инициатив и настроить планирование](video:settings-hierarchy-planning)
+
+[Как завести пользователя и скрыть лишние разделы](video:settings-users-visibility)
+
+[Как настроить оценку KPI для роли](video:settings-kpi)
+
+[Как настроить стол тимлида](video:settings-team-desk)
+
+[Как понять, почему сервис работает медленно](video:settings-performance)
+
+[Как следить за сервисом: использование, обращения, ошибки](video:settings-admin-monitoring)
+
+---
+
 ## 2. Когда сюда заходить
 
 - Первый запуск сервиса — заполнить «Подключение к Jira», сопоставить ключевые поля, выбрать проекты.

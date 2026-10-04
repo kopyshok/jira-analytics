@@ -301,7 +301,7 @@ export default function GeneralRules() {
         </Radio.Group>
       </Card>
 
-      <Card size="small" title="Утверждение квартала">
+      <Card size="small" title="Утверждение квартала" data-tour="kpi-approval">
         <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 10 }}>
           Утверждение замораживает результат квартала снимком: правки весов профиля и нормативов
           после этого на подписанный квартал не влияют. Пока раздел обкатывают, утверждение можно

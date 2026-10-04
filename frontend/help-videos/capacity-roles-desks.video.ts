@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
 import { Director } from './director.ts';
 
 const TEAM = 'Команда Альфа';
-const ANALYST = 'Акимова Алина';
+const ANALYST = 'Ильина Марина';
 const ROLE_CODE = 'consultant-video';
 const ROLE_LABEL = 'Видео-консультант';
 
@@ -76,8 +76,21 @@ test('capacity-roles-desks', async ({ page }) => {
   const desk: { token: string } = await createResp.json();
 
   await expect(deskRow.locator('.ant-tag', { hasText: 'Активен' })).toBeVisible();
+
+  // «Изменить виджеты»: состав стола можно поправить в любой момент.
+  await d.click(deskRow.getByRole('button', { name: 'Изменить виджеты' }), 'Состав стола можно поменять — «Изменить виджеты»');
+  const widgetsModal = page.locator('.ant-modal', { hasText: `Виджеты: ${ANALYST}` });
+  await expect(widgetsModal).toBeVisible();
+  await d.show(widgetsModal.locator('.ant-checkbox-group'));
+  await d.waitVoice();
+  await d.click(widgetsModal.locator('.ant-checkbox-wrapper', { hasText: 'Производственный календарь' }), 'Уберём ненужный виджет');
+  await d.click(widgetsModal.getByRole('button', { name: 'Сохранить' }));
+  await expect(widgetsModal).toBeHidden();
+  await page.mouse.move(900, 120);
+
   await d.click(deskRow.getByRole('button', { name: 'Копировать ссылку' }), 'Скопируйте ссылку — она без входа в систему');
   await expect(page.getByText('Ссылка скопирована')).toBeVisible();
+  await d.waitVoice();
 
   // Открываем стол по ссылке — в этом же окне.
   await page.goto(`/desk/${desk.token}`);
@@ -85,7 +98,7 @@ test('capacity-roles-desks', async ({ page }) => {
   await page.mouse.move(900, 120);
   await d.caption('Так стол выглядит у самого сотрудника');
   await d.show(page.locator('.desk-layout'));
-  await d.pause(1600);
+  await d.waitVoice();
 
   // Возвращаемся в «Ресурсы» → «Рабочие столы».
   await page.goto('/capacity');
@@ -97,12 +110,14 @@ test('capacity-roles-desks', async ({ page }) => {
   await d.click(deskRow2.getByRole('button', { name: 'Перевыпустить' }), 'Ссылка попала не к тому? «Перевыпустить» — старая перестанет работать');
   const regenConfirm = page.locator('.ant-popconfirm:visible', { hasText: 'Перевыпустить стол?' });
   await expect(regenConfirm).toBeVisible();
+  await d.waitVoice();
   await d.click(regenConfirm.getByRole('button', { name: 'Перевыпустить' }));
   await expect(page.getByText('Стол перевыпущен')).toBeVisible();
 
   await d.click(deskRow2.getByRole('button', { name: 'Отозвать' }), 'А если стол больше не нужен — «Отозвать»');
   const revokeConfirm = page.locator('.ant-popconfirm:visible', { hasText: 'Отозвать стол?' });
   await expect(revokeConfirm).toBeVisible();
+  await d.waitVoice();
   await d.click(revokeConfirm.getByRole('button', { name: 'Отозвать' }));
   await expect(page.getByText('Стол отозван')).toBeVisible();
   await expect(deskRow2.locator('.ant-tag', { hasText: 'Нет' })).toBeVisible();
@@ -113,9 +128,13 @@ test('capacity-roles-desks', async ({ page }) => {
   await d.click(page.getByRole('tab', { name: 'Команда' }), 'На вкладке «Команда» есть выгрузка плана');
   const exportBtn = activePane.locator('a.ant-btn', { hasText: 'Экспорт в Excel' });
   await expect(exportBtn).toBeVisible();
-  await d.caption('«Экспорт в Excel» выгрузит план и факт по всем командам');
+  await d.caption('«Экспорт в Excel» выгрузит план и факт команды');
   await d.point(exportBtn);
-  await d.pause(1400);
+  await d.pause(600);
+
+  await d.caption('Роли используются и в столе тимлида, и в KPI');
+  await d.pause(600);
+  await d.waitVoice();
 
   await d.caption('Готово', 2200);
   await d.save('capacity-roles-desks');

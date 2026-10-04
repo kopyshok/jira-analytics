@@ -52,7 +52,7 @@ export default function MetricPreview({ form }: { form: KpiMetricPayload }) {
   const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v)}%`);
 
   return (
-    <Card size="small" title="Предпросмотр на реальных данных" style={{ marginTop: 16 }}>
+    <Card size="small" title="Предпросмотр на реальных данных" style={{ marginTop: 16 }} data-tour="kpi-preview">
       <Space wrap align="end" style={{ marginBottom: 14 }}>
         <div>
           <Text type="secondary" style={{ fontSize: 11 }}>Команда</Text><br />

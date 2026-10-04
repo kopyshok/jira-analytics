@@ -92,6 +92,18 @@ test('backlog-quarter-selection', async ({ page }) => {
   await d.poster();
   await d.pause(1500);
 
+  await d.click(
+    page.getByRole('button', { name: /Обновить с Jira/ }),
+    'Данные из Jira подтягиваются кнопкой «Обновить с Jira»',
+  );
+  const refreshNotice = page.locator('.ant-notification-notice', { hasText: 'Jira не подключена' });
+  await expect(refreshNotice).toBeVisible({ timeout: 30_000 });
+  await d.caption('Если подключения нет, обновятся только данные сервиса');
+  await d.show(refreshNotice);
+  await d.pause(600);
+  await d.waitVoice();
+  await page.mouse.move(700, 120);
+
   const tabs = page.locator('[data-tour="backlog-tabs"] .ant-tabs-nav');
   await d.caption('Три вкладки: задачи квартала, бэклог кандидатов и архив');
   await d.show(tabs);

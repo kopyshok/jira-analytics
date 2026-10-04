@@ -96,7 +96,7 @@ export default function ReleaseNotesAdminTab() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} data-tour="notes-toolbar">
         <Button icon={<PlusOutlined />} onClick={() => setAdding(true)}>
           Добавить запись
         </Button>
@@ -124,7 +124,7 @@ export default function ReleaseNotesAdminTab() {
         </Button>
       </Space>
 
-      <h3>Готовится к выпуску ({drafts.data?.length ?? 0})</h3>
+      <h3 data-tour="notes-drafts">Готовится к выпуску ({drafts.data?.length ?? 0})</h3>
       <Table
         size="small"
         rowKey="id"
@@ -135,7 +135,7 @@ export default function ReleaseNotesAdminTab() {
         locale={{ emptyText: 'Черновиков нет — добавь через «Добавить запись»' }}
       />
 
-      <h3 style={{ marginTop: 32 }}>История версий</h3>
+      <h3 style={{ marginTop: 32 }} data-tour="notes-history">История версий</h3>
       {(!all.data || all.data.feeds.length === 0) ? (
         <Empty description="Нет опубликованных версий" />
       ) : (

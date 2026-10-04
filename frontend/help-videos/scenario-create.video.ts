@@ -1,7 +1,7 @@
 // Ролик «Как собрать сценарий квартала»: «Новый сценарий» на свободный квартал
 // (название и команда подставились) → «Правила» → копия правил прошлого
 // квартала → «Распределение»: галочки, «На бэклог» тает, дефицит по роли
-// появляется и уходит, приоритет, «поднимать наверх», переименование.
+// появляется и уходит, приоритет (число, стрелки, очистка), «поднимать наверх».
 import { expect, test } from '@playwright/test';
 import { Director } from './director.ts';
 
@@ -104,12 +104,12 @@ test('scenario-create', async ({ page }) => {
   const yearInput = periodItem.locator('input').first();
   const quarterSelect = periodItem.locator('.ant-select');
 
-  await d.click(yearInput, 'Укажите год и квартал, где сценария ещё нет');
+  await d.click(yearInput, 'Выберите год и свободный квартал');
   await yearInput.press('Control+A');
   await yearInput.pressSequentially(String(freeYear), { delay: 90 });
   await d.pause(400);
 
-  await d.click(quarterSelect, 'Выберите квартал');
+  await d.click(quarterSelect);
   await d.click(
     page.locator('.ant-select-dropdown:visible .ant-select-item-option', {
       hasText: new RegExp(`^Q${freeQuarter}$`),
@@ -142,18 +142,20 @@ test('scenario-create', async ({ page }) => {
   const popover = page.locator('.ant-popover:visible', { hasText: 'Скопировать правила из сценария' });
   await expect(popover).toBeVisible();
   await d.click(popover.locator('.ant-select'));
+  // Список длинный и виртуальный: нужная строка может быть не отрисована — сужаем поиском.
+  await page.keyboard.type(sourceScenario!.name, { delay: 60 });
   await d.click(
     page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: sourceScenario!.name }),
   );
   await d.click(popover.getByRole('button', { name: 'Скопировать' }));
   await expect(page.getByText(/Скопировано правил/)).toBeVisible({ timeout: 10_000 });
 
-  await d.caption('Правила скопированы — они сразу уменьшают «На бэклог»');
+  await d.caption('Правила скопированы — ресурс на задачи уменьшился');
   await d.show(rulesCard);
   await d.pause(1400);
 
   // === Распределение: галочки, «На бэклог», дефицит ===
-  await d.click(page.locator('[data-tour="planning-tab-distribution"]'), 'Вернитесь на вкладку «Распределение»');
+  await d.click(page.locator('[data-tour="planning-tab-distribution"]'), 'Откройте «Распределение»');
 
   const allocsRes = await page.request.get(`${api}/api/v1/planning/scenarios/${createdScenarioId}/allocations`);
   expect(allocsRes.ok()).toBeTruthy();
@@ -176,7 +178,7 @@ test('scenario-create', async ({ page }) => {
   // клика к строке и открывают свой список вместо переключения галочки.
   // Кликаем прицельно по самой галочке — там нет такой ловушки.
   const checkedIds: string[] = [];
-  for (const a of byHoursAsc.slice(0, 10)) {
+  for (const a of byHoursAsc.slice(0, 6)) {
     const row = page.locator(`[data-flip-wrapper][data-alloc-id="${a.id}"] .backlog-row`);
     const checkbox = row.locator('.ant-checkbox');
     await d.click(checkbox);
@@ -189,7 +191,7 @@ test('scenario-create', async ({ page }) => {
   }
   expect(checkedIds.length, 'ни одна задача не была отмечена').toBeGreaterThan(0);
 
-  await d.caption('«На бэклог» тает по мере включения задач');
+  await d.caption('Остаток ресурса тает по мере включения задач');
   await d.show(resourceRow);
   await d.pause(1400);
 
@@ -198,7 +200,7 @@ test('scenario-create', async ({ page }) => {
   await d.pause(1400);
 
   if (await badge.isVisible()) {
-    await d.caption('Роли не хватает часов — появился бейдж дефицита');
+    await d.caption('Роли не хватает часов — появилась метка дефицита');
     await d.show(badge);
     await d.pause(1600);
 
@@ -218,32 +220,38 @@ test('scenario-create', async ({ page }) => {
   }
   expect(checkedIds.length, 'не осталось отмеченных задач').toBeGreaterThan(0);
 
-  // === Приоритет ===
+  // === Приоритет: число, стрелки, очистка поля ===
   const includedRow = page.locator(`[data-flip-wrapper][data-alloc-id="${checkedIds[0]}"] .backlog-row`);
   const priorityInput = includedRow.locator('.backlog-priority-input input');
-  await d.click(priorityInput, 'Поменяйте приоритет задачи');
+  await d.click(priorityInput, 'Поменяйте приоритет задачи числом');
   await priorityInput.press('Control+A');
-  await priorityInput.pressSequentially('1', { delay: 90 });
+  await priorityInput.pressSequentially('3', { delay: 90 });
   await priorityInput.press('Tab');
   await d.pause(500);
+
+  await d.click(
+    includedRow.getByRole('button', { name: 'Приоритет: прибавить 1' }),
+    'Стрелки прибавляют или убавляют приоритет на единицу',
+  );
+  await expect(priorityInput).toHaveValue('4');
+  await d.pause(400);
+  await d.click(includedRow.getByRole('button', { name: 'Приоритет: убавить 1' }));
+  await expect(priorityInput).toHaveValue('3');
+  await d.pause(400);
+
+  await d.click(priorityInput, 'Если стереть число, вернётся прежнее');
+  await priorityInput.press('Control+A');
+  await priorityInput.press('Delete');
+  await priorityInput.press('Tab');
+  await expect(priorityInput).toHaveValue('3');
+  await d.pause(1000);
 
   // === «поднимать наверх» ===
   await d.click(
     page.locator('[data-tour="planning-lift-toggle"] .ant-switch'),
-    '«поднимать наверх» — иначе включённая задача остаётся на месте',
+    'Переключатель «поднимать наверх» ставит отмеченные задачи выше',
   );
-  await d.pause(800);
-
-  // === Переименование ===
-  const nameWrap = page.locator('[data-tour="planning-scenario-name"]');
-  await d.click(nameWrap.locator('.ant-typography-edit'), 'Переименуйте сценарий');
-  const editArea = page.locator('.ant-typography-edit-content textarea');
-  await expect(editArea).toBeFocused();
-  await editArea.press('Control+A');
-  await editArea.pressSequentially('Итоговый вариант квартала', { delay: 70 });
-  await editArea.press('Enter');
-  await expect(page.getByText('Итоговый вариант квартала', { exact: true })).toBeVisible();
-  await d.pause(600);
+  await d.pause(1200);
 
   await d.caption('Готово', 2200);
   await d.save('scenario-create');

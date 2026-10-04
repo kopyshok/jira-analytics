@@ -315,7 +315,7 @@ test('scenario-review', async ({ page }) => {
 
   const contTag = row.locator('.ant-tag', { hasText: '⚠ продолжение' });
   await expect(contTag).toBeVisible();
-  await d.caption('У переходящей задачи — метка «⚠ продолжение»: пора переоценить остаток');
+  await d.caption('У переходящей задачи — метка «продолжение»: пора переоценить остаток');
   await d.show(contTag);
   await d.pause(1400);
 
@@ -376,8 +376,11 @@ test('scenario-review', async ({ page }) => {
   }
 
   const downloadPromise = page.waitForEvent('download');
-  await d.click(page.getByRole('button', { name: 'Экспорт' }), 'Нажмите «Экспорт» — сводка выгрузится в Excel');
-  await downloadPromise;
+  await d.click(page.getByRole('button', { name: 'Экспорт' }), 'Нажмите «Экспорт» — выгрузится весь сценарий');
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toContain('.xlsx');
+  await d.caption('Файл называется по имени сценария');
+  await d.show(page.locator('.ant-badge-status-text', { hasText: 'Утверждён' }));
   await d.pause(600);
 
   await d.caption('Готово', 2200);

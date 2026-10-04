@@ -805,6 +805,7 @@ function CapacityPeriodSelector({
           <Select
             value={quarter}
             onChange={onQuarterChange}
+            data-tour="capacity-period-quarter"
             style={{ width: 80 }}
             options={[
               { value: '1', label: 'Q1' },

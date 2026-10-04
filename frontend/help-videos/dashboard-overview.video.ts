@@ -86,55 +86,63 @@ test('dashboard-overview', async ({ page }) => {
   await expect(projectsWidget.locator('[data-testid="dash-project-row"]').first()).toBeVisible({ timeout: 20_000 });
   await d.pause(900);
   await d.poster();
-  await d.pause(2000);
+  await d.pause(500);
 
   await d.caption('Проекты квартала — те, что вошли в утверждённый сценарий команды');
   await d.show(projectsWidget);
-  await d.pause(2200);
+  await d.pause(500);
 
   if (silentProjectTitle) {
     const row = projectsWidget.locator('[data-testid="dash-project-row"]', { hasText: silentProjectTitle });
     await d.caption('Плашка «тишина» — по проекту давно никто не списывал часы');
     await d.show(row);
-    await d.pause(1400);
+    await d.pause(500);
   }
   if (overrunProjectTitle && overrunProjectTitle !== silentProjectTitle) {
     const row = projectsWidget.locator('[data-testid="dash-project-row"]', { hasText: overrunProjectTitle });
     await d.caption('А эта — что команда потратила больше часов, чем планировала');
     await d.show(row);
-    await d.pause(2000);
+    await d.pause(500);
   }
+
+  await d.caption('Колонка «Прогноз» — к какой дате проект закроется при текущем темпе');
+  await d.show(projectsWidget.getByText('Прогноз', { exact: true }).first());
+  await d.pause(300);
 
   const kpiTiles = projectsWidget.locator('[data-testid="dash-kpi-tile"]');
   await d.caption('Справа — пять ключевых показателей по всем проектам квартала');
   await d.show(kpiTiles.first(), kpiTiles.last());
-  await d.pause(2000);
+  await d.pause(500);
 
-  await d.caption('А ещё правее — активность по неделям: у каких проектов есть движение');
+  await d.caption('Правее — активность по неделям: где есть движение');
   await d.show(page.getByText('Активность по неделям'));
-  await d.pause(2100);
-
-  await d.click(projectsWidget.locator('[data-testid="dash-projects-gear"]'), 'Шестерёнка «Настройка вида» — какие колонки и блоки показывать');
-  const gearPopover = page.locator('.ant-popover:visible');
-  await expect(gearPopover).toBeVisible();
-  await d.pause(1600);
-  await d.click(projectsWidget.locator('[data-testid="dash-projects-gear"]'));
-  await expect(gearPopover).toBeHidden();
+  await d.pause(500);
 
   // Нормированные работы: перегруз сотрудника → Аналитика → назад.
   const normWidget = page.locator('[data-tour="dash-normed"]');
   const employeeBlock = normWidget.locator('[data-testid="dash-norm-employee"]', { hasText: overloadedEmployeeName });
   await d.caption('Нормированные работы — план и факт по каждому сотруднику');
   await d.show(normWidget);
-  await d.pause(1500);
+  await d.pause(500);
+  const foreignBadge = normWidget.getByText(/чужие \d+ ч/).first();
+  if (await foreignBadge.count()) {
+    await d.caption('Красная метка — чужие часы: списания на задачи других команд');
+    await d.show(foreignBadge);
+    await d.pause(300);
+  }
+  const thematicIcon = normWidget.locator('.anticon-bar-chart').first();
+  await d.caption('Значок рядом с видом работ открывает «Тематический отчёт»');
+  await d.show(thematicIcon);
+  await d.waitVoice();
   await d.click(employeeBlock, 'Щёлкните по имени — откроется Аналитика с часами этого сотрудника');
   await expect(page).toHaveURL(/\/analytics\?employee=/, { timeout: 15_000 });
   const analyticsTable = page.locator('[data-tour="analytics-table"]');
   await expect(analyticsTable).toBeVisible({ timeout: 20_000 });
   await d.caption('Аналитика сразу открылась с фильтром по этому человеку');
   await d.show(page.locator('[data-tour="analytics-filters"] .ant-select').first());
-  await d.pause(2000);
-  await d.click(page.locator('.side-item', { hasText: 'Дашборд' }), 'Вернёмся на Дашборд');
+  await d.pause(500);
+  await d.waitVoice();
+  await d.click(page.locator('.side-item', { hasText: 'Дашборд' }));
   await expect(projectsWidget).toBeVisible({ timeout: 15_000 });
   await d.pause(800);
 
@@ -145,13 +153,20 @@ test('dashboard-overview', async ({ page }) => {
   await expect(catTile).toBeVisible({ timeout: 15_000 });
   await d.caption('Ворклоги по категориям — на что фактически ушли часы команды');
   await d.show(catTile);
-  await d.pause(1900);
+  await d.pause(500);
+
+  const foreignTile = catWidget.locator('[data-testid="dash-cat-tile"]', { hasText: 'Чужие задачи' }).first();
+  if (await foreignTile.count()) {
+    await d.caption('Отдельная плитка — чужие задачи без категории');
+    await d.show(foreignTile);
+    await d.pause(300);
+  }
 
   const worklogCard = catWidget.locator('[data-testid="dash-worklog-card"]').first();
   await expect(worklogCard).toBeVisible();
   await d.caption('А внизу — когда каждый сотрудник последний раз списывал время');
   await d.show(worklogCard);
-  await d.pause(1900);
+  await d.pause(500);
 
   // Баланс часов команды.
   const balanceWidget = page.locator('[data-tour="dash-balance"]');
@@ -159,8 +174,11 @@ test('dashboard-overview', async ({ page }) => {
   await expect(balanceWidget.locator('[data-testid="dash-balance-card"]').first()).toBeVisible({ timeout: 15_000 });
   await d.caption('Баланс часов команды — переработки и недоработки с начала года');
   await d.show(balanceWidget);
-  await d.pause(1600);
+  await d.pause(500);
 
+  await d.caption('Итоговая строка — переработки и нетто всей команды');
+  await d.show(balanceWidget.locator('[data-testid="dash-balance-summary"]'));
+  await d.waitVoice();
   await d.click(page.locator('[data-testid="dash-balance-sort"] .ant-select'), 'Отсортируйте, например, по переработкам');
   await d.click(page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: 'Больше переработали' }));
 
@@ -168,19 +186,18 @@ test('dashboard-overview', async ({ page }) => {
   await d.click(firstBalanceCard, 'Клик по карточке открывает детальный календарь');
   const balanceModal = page.locator('.ant-modal', { hasText: 'Баланс часов —' });
   await expect(balanceModal).toBeVisible();
-  await d.pause(1400);
+  await d.pause(500);
 
   const dayCell = balanceModal.locator('[data-testid="balance-calendar-day"]').first();
   await dayCell.hover();
   await d.caption('Наведите на день — норма, факт и разница');
   await d.show(dayCell);
-  await d.pause(1900);
+  await d.pause(300);
 
-  await d.caption('Отпуск или больничный обнуляет норму дня в этом расчёте');
+  await d.caption('Отпуск или больничный обнуляет норму дня');
   await d.show(balanceModal.getByText('отпуск/больничный'));
-  await d.pause(1900);
-
-  await d.click(balanceModal.locator('.ant-modal-close'), 'Закройте календарь');
+  await d.waitVoice();
+  await d.click(balanceModal.locator('.ant-modal-close'));
   await expect(balanceModal).toBeHidden();
   await page.mouse.move(1100, 160);
 

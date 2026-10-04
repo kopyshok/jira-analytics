@@ -52,37 +52,40 @@ test('start-header', async ({ page }) => {
   await d.pause(700);
   await d.poster();
   await d.pause(1000);
-
-  await d.caption('Слева — когда в последний раз обновлялись данные из Jira');
+  await d.caption('Слева — время последнего обновления из Jira');
   await d.show(page.locator('[data-testid="sync-indicator"]'));
-  await d.pause(1000);
+  await d.pause(600);
 
   // Команда: переключение на команду с группами.
   const teamButton = page.locator('[data-tour="header-team"] button');
-  await d.click(teamButton, 'Команда — тут выбирается, чьи данные видны во всех разделах');
+  await d.click(teamButton, 'Команда определяет, чьи данные видны во всех разделах');
   let popover = page.locator('.ant-popover:visible');
+  await d.waitVoice();
   await d.click(popover.getByRole('button', { name: 'Сбросить' }));
-  await d.type(popover.getByPlaceholder('Поиск команды'), 'Эта', 'Найдите нужную команду поиском');
+  await d.type(popover.getByPlaceholder('Поиск команды'), 'Эта');
+  await d.caption('Можно отметить все команды сразу или только найденные');
+  await d.show(popover.getByText('Выбрать найденные'));
+  await d.waitVoice();
   const etaOption = popover.locator('[data-testid="team-filter-option"]', { hasText: TEAM_WITH_GROUPS });
   await d.click(etaOption, 'У этой команды есть деление на группы');
   const subgroupBlock = popover.locator('[data-testid="team-filter-subgroups"]');
   await expect(subgroupBlock).toBeVisible();
-  await d.caption('Появился второй уровень фильтра — Группы');
+  await d.caption('Появился второй уровень фильтра — блок «Группы»');
   await d.show(subgroupBlock);
-  await d.pause(1000);
-  await d.click(popover.getByRole('button', { name: 'Применить' }), 'Примените выбор');
+  await d.waitVoice();
+  await d.click(popover.getByRole('button', { name: 'Применить' }));
 
   await expect(page.getByRole('button', { name: new RegExp(TEAM_WITH_GROUPS) })).toBeVisible({ timeout: 15_000 });
   await expect(kpiFactTile).toBeVisible({ timeout: 15_000 });
   await d.caption('Дашборд сразу пересчитался под другую команду');
   await d.show(kpiFactTile);
-  await d.pause(1000);
+  await d.waitVoice();
 
   // Вернуться к своей команде.
   await d.click(page.locator('[data-tour="header-team"] button'), 'Вернёмся к своей команде');
   popover = page.locator('.ant-popover:visible');
   await d.click(popover.getByRole('button', { name: 'Сбросить' }));
-  await d.type(popover.getByPlaceholder('Поиск команды'), 'Альфа', 'Выберите обратно «Команда Альфа»');
+  await d.type(popover.getByPlaceholder('Поиск команды'), 'Альфа');
   await d.click(popover.locator('[data-testid="team-filter-option"]', { hasText: TEAM }));
   await d.click(popover.getByRole('button', { name: 'Применить' }));
   await expect(page.getByRole('button', { name: new RegExp(TEAM) })).toBeVisible({ timeout: 15_000 });
@@ -90,50 +93,56 @@ test('start-header', async ({ page }) => {
 
   // Период: год, квартал, месяц.
   const periodSelects = page.locator('[data-tour="header-period"] .ant-select');
-  await d.click(periodSelects.nth(1), 'Период — год, квартал и месяц — тоже общий на все разделы');
+  await d.click(periodSelects.nth(1), 'Период — год, квартал, месяц — общий для всех разделов');
+  await d.waitVoice();
   await d.click(page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: /^Q2 \(/ }));
   await expect(kpiFactTile).toBeVisible({ timeout: 15_000 });
-  await d.caption('Смените квартал — и цифры на дашборде пересчитаются');
+  await d.caption('Смените квартал — цифры пересчитаются');
   await d.show(kpiFactTile);
-  await d.pause(1000);
-  await d.point(periodSelects.nth(2));
-  await d.caption('Можно смотреть весь квартал или один его месяц');
-  await page.mouse.move(1100, 140);
   await d.pause(600);
+  await d.point(periodSelects.nth(2));
+  await page.mouse.move(1100, 140);
+  await d.pause(300);
 
   // Справка раздела.
-  await d.click(page.locator('[data-tour="header-help"] button'), 'Кнопка «?» открывает справку текущего раздела');
+  const helpButton = page.locator('[data-tour="header-help"] button');
+  const unreadDot = page.locator('[data-tour="header-help"] .ant-badge-dot');
+  await d.click(helpButton, 'Кнопка со знаком вопроса открывает справку раздела');
   let drawer = page.locator('.ant-drawer-open');
   await expect(drawer).toBeVisible();
-  await d.pause(1000);
+  await d.waitVoice();
   await d.click(drawer.locator('.ant-drawer-close'));
   await expect(drawer).toBeHidden();
+  if (await unreadDot.count()) {
+    await d.caption('Красная точка на кнопке — в справке есть новости');
+    await d.show(page.locator('[data-tour="header-help"]'));
+    await d.pause(300);
+  }
 
-  await d.click(page.locator('.side-item', { hasText: 'Ресурсы' }), 'У каждого раздела своя справка — например, у «Ресурсов»');
-  await d.click(page.locator('[data-tour="header-help"] button'));
+  await d.click(page.locator('.side-item', { hasText: 'Ресурсы' }), 'У каждого раздела своя справка');
+  await d.click(helpButton);
   drawer = page.locator('.ant-drawer-open');
   await expect(drawer).toBeVisible();
   const videoCard = drawer.getByRole('button', { name: /Смотреть видео/ }).first();
   await expect(videoCard).toBeVisible();
-  await d.caption('В справке разделов иногда есть короткие ролики — вот такая карточка');
+  await d.caption('В справке бывают короткие ролики');
   await d.show(videoCard);
-  await d.pause(900);
+  await d.waitVoice();
   await d.click(drawer.locator('.ant-drawer-close'));
   await expect(drawer).toBeHidden();
-  await d.click(page.locator('.side-item', { hasText: 'Дашборд' }), 'Вернёмся на Дашборд');
+  await d.click(page.locator('.side-item', { hasText: 'Дашборд' }));
 
   // Первые шаги.
-  await d.click(page.locator('[data-tour="header-onboarding"]'), 'Кнопка «Первые шаги» — чек-лист настройки и знакомство с сервисом');
+  await d.click(page.locator('[data-tour="header-onboarding"]'), 'Кнопка «Первые шаги» — чек-лист настройки команды');
   drawer = page.locator('.ant-drawer-open');
   await expect(drawer).toBeVisible();
-  await d.caption('Сверху — шаги настройки команды');
   await d.show(drawer.getByText('Настройка команды', { exact: true }));
-  await d.pause(1100);
+  await d.pause(500);
   const introHeading = drawer.getByText('Знакомство с сервисом', { exact: true });
   await introHeading.scrollIntoViewIfNeeded();
-  await d.caption('А ниже — знакомство с самим сервисом');
+  await d.caption('Ниже — знакомство с самим сервисом');
   await d.show(introHeading);
-  await d.pause(900);
+  await d.waitVoice();
   await d.click(drawer.locator('.ant-drawer-close'));
   await expect(drawer).toBeHidden();
 
@@ -141,10 +150,10 @@ test('start-header', async ({ page }) => {
   const themeSelect = page.locator('.topbar .ant-select', { hasText: 'Aurora' });
   await d.click(themeSelect, 'Тему оформления можно сменить');
   await d.click(page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: 'Aurora светлая' }));
-  await d.pause(900);
-  await d.click(themeSelect, 'Вернём тёмную');
+  await d.pause(700);
+  await d.click(themeSelect);
   await d.click(page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: 'Aurora тёмная' }));
-  await d.pause(600);
+  await d.pause(500);
 
   await d.show(page.locator('[data-tour="dash-projects"]'));
   await d.caption('Готово', 2200);

@@ -108,7 +108,7 @@ function ConditionSetEditor({
   };
 
   return (
-    <Card size="small" title={title} style={{ marginTop: 12 }}>
+    <Card size="small" title={title} style={{ marginTop: 12 }} data-tour="kpi-condition-set">
       <Space wrap style={{ marginBottom: 10 }}>
         <div>
           <Text type="secondary" style={{ fontSize: 11 }}>Единица счёта</Text><br />

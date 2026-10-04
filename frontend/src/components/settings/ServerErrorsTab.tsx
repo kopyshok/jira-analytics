@@ -112,7 +112,7 @@ export default function ServerErrorsTab() {
         }
       />
 
-      <Space wrap>
+      <Space wrap data-tour="errors-toolbar">
         <Button
           icon={<ReloadOutlined />}
           loading={list.isFetching}

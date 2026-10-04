@@ -25,9 +25,13 @@
 
 [Как внести отпуск и увидеть сдвиг плана](video:absence-add)
 
-[Как перевести сотрудника в другую группу](video:employee-transfer)
+[Как перевести сотрудника в другую группу или команду](video:employee-transfer)
+
+[Как читать план и факт команды](video:capacity-team-grid)
 
 [Как настроить роли и рабочий стол аналитика](video:capacity-roles-desks)
+
+[Как пользоваться личным рабочим столом](video:desk-analyst-use)
 
 ---
 

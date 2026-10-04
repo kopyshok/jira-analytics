@@ -46,6 +46,24 @@ test('rp-split', async ({ page }) => {
     await d.pause(500);
   };
 
+  // Коллега той же роли без конфликтов — чтобы не отвлекаться на окно «Конфликты».
+  // Ищем заранее по самой фазе: проверка по каждому кандидату долгая и в кадр не попадает.
+  const groups: CandidateGroup[] = await (await page.request.get(url(`assignments/${dev.id}/candidates`))).json();
+  const team = (groups.find((g) => g.key === 'team')?.employees ?? []).filter((c) => c.employee_id !== dev.employee_id);
+  let peer: Candidate | undefined;
+  for (const c of team) {
+    const preview: Preview = await (
+      await page.request.post(url(`assignments/${dev.id}/preview-employee-change`), {
+        data: { employee_id: c.employee_id },
+      })
+    ).json();
+    if (!preview.has_conflicts) {
+      peer = c;
+      break;
+    }
+  }
+  if (!peer) throw new Error('Нет коллеги без конфликтов для второй части');
+
   const part1 = phaseBar(page, dev);
   const part2 = phaseBar(page, { ...dev, part_number: 2 });
 
@@ -105,34 +123,6 @@ test('rp-split', async ({ page }) => {
     await d.pause(1600);
   }
 
-  // Реальный id второй части после разбивки — понадобится для подбора коллеги.
-  const afterSplit: { assignments: Phase[] } = await (await page.request.get(url('gantt'))).json();
-  const part2Row = afterSplit.assignments.find(
-    (a) => a.backlog_item_id === dev.backlog_item_id && a.phase === 'dev' && a.part_number === 2,
-  );
-  if (!part2Row) throw new Error('Вторая часть не найдена после разбивки');
-
-  // Коллега той же роли без конфликтов — чтобы не отвлекаться на окно «Конфликты».
-  const groups: CandidateGroup[] = await (
-    await page.request.get(url(`assignments/${part2Row.id}/candidates`))
-  ).json();
-  const team = (groups.find((g) => g.key === 'team')?.employees ?? []).filter(
-    (c) => c.employee_id !== part2Row.employee_id,
-  );
-  let peer: Candidate | undefined;
-  for (const c of team) {
-    const preview: Preview = await (
-      await page.request.post(url(`assignments/${part2Row.id}/preview-employee-change`), {
-        data: { employee_id: c.employee_id },
-      })
-    ).json();
-    if (!preview.has_conflicts) {
-      peer = c;
-      break;
-    }
-  }
-  if (!peer) throw new Error('Нет коллеги без конфликтов для второй части');
-
   await d.click(part2, 'Откройте вторую часть');
   await expect(drawer).toBeVisible();
   const employee = field('Сотрудник');
@@ -175,12 +165,12 @@ test('rp-split', async ({ page }) => {
   await expect(part1).toBeVisible();
   await expect(part2).toBeVisible();
   await page.mouse.move(900, 120);
-  await d.caption('План пересчитан — на диаграмме две части фазы');
+  await d.caption('План пересчитан — у каждого человека своя строка фазы');
   await d.show(part1, part2);
-  await d.pause(1400);
-  await d.caption(`Часть 1 — ${dev.employee_name}, часть 2 — ${peer.display_name}`);
+  await d.pause(600);
+  await d.caption(`Первая часть — ${dev.employee_name}, вторая — ${peer.display_name}`);
   await d.show(part1, part2);
-  await d.pause(2400);
+  await d.pause(600);
 
   await d.caption('Готово', 2200);
   await d.save('rp-split');

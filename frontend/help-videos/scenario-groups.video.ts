@@ -67,6 +67,7 @@ let subgroups: Subgroup[] = [];
 let ungroupedId = '';
 let ungroupedName = '';
 let fabricated = false;
+let scenarioWasApproved = false;
 let originalShareRecord: ShareRecord | null = null;
 
 // Данные готовим до открытия окна — запись идёт с момента создания страницы.
@@ -95,6 +96,7 @@ test.beforeAll(async ({ playwright }, testInfo) => {
   expect(scenario, `нет сценария Q4 2026 команды ${TEAM}`).toBeTruthy();
   scenarioId = scenario!.id;
   if (scenario!.status !== 'draft') {
+    scenarioWasApproved = true;
     const res = await request.post(`${api}/planning/scenarios/${scenarioId}/revert-to-draft`);
     expect(res.ok()).toBeTruthy();
   }
@@ -166,6 +168,10 @@ test.afterAll(async ({ playwright }, testInfo) => {
       );
     }
   }
+  // Ролик возвращал сценарий в черновик — снова утверждаем, как было в демо-базе.
+  if (scenarioWasApproved) {
+    await request.post(`${api}/planning/scenarios/${scenarioId}/approve`);
+  }
   await request.put(`${api}/auth/me/teams`, { data: { teams: [HOME_TEAM], subgroups: [] } });
   await request.dispose();
 });
@@ -215,6 +221,7 @@ test('scenario-groups', async ({ page }) => {
   // У команды с делением третий select строки — «Группа» (после аналитика и разработчика).
   const groupSelect = row.locator(':scope > div > div > .ant-select').nth(2);
   await d.click(groupSelect, 'Колонка «Группа» — у задачи есть своя группа');
+  await d.waitVoice();
   const dropdown = page.locator('.ant-select-dropdown:visible');
   const newGroupName = subgroups.find((g) => g.id === newSubgroupId)!.name;
   await expect(dropdown.locator('.ant-select-item-option').first()).toBeVisible({ timeout: 10_000 });
@@ -266,6 +273,7 @@ test('scenario-groups', async ({ page }) => {
   await page.mouse.move(700, 500);
 
   const nameLink = alert.getByText(ungroupedName, { exact: true });
+  await d.waitVoice();
   await d.click(nameLink, `Нажмите на имя «${ungroupedName}»`);
   const drawer = page.locator('.ant-drawer-open');
   await expect(drawer).toBeVisible({ timeout: 10_000 });
@@ -310,6 +318,12 @@ test('scenario-groups', async ({ page }) => {
     await d.show(alert);
   }
   await d.pause(2400);
+
+  const downloadPromise = page.waitForEvent('download');
+  await d.click(page.getByRole('button', { name: 'Экспорт' }), 'В «Экспорте» у команды с группами есть колонка «Группа»');
+  await downloadPromise;
+  await d.waitVoice();
+  await page.mouse.move(700, 500);
 
   await d.caption('Готово', 2200);
   await d.save('scenario-groups');

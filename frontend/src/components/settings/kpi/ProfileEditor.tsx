@@ -172,7 +172,7 @@ export default function ProfileEditor() {
         <Text type="secondary">Профилей пока нет — создайте первый.</Text>
       ) : (
         <>
-          <Card size="small" title="Основное" style={{ marginBottom: 12 }}>
+          <Card size="small" title="Основное" style={{ marginBottom: 12 }} data-tour="kpi-profile-main">
             <Space wrap size="middle">
               <div>
                 <Text type="secondary" style={{ fontSize: 11 }}>Код</Text><br />
@@ -225,7 +225,7 @@ export default function ProfileEditor() {
 
           <Card
             size="small"
-            title="Метрики профиля"
+            title="Метрики профиля" data-tour="kpi-profile-metrics"
             extra={(
               <Select
                 key={form.metrics.length}
@@ -265,7 +265,7 @@ export default function ProfileEditor() {
 
           <Space style={{ marginTop: 16 }}>
             <Button
-              type="primary" disabled={!sumOk}
+              type="primary" disabled={!sumOk} data-tour="kpi-profile-save"
               loading={createMut.isPending || updateMut.isPending}
               onClick={save}
             >
@@ -286,7 +286,7 @@ export default function ProfileEditor() {
       {/* Профиля «по умолчанию» больше нет: сотрудник с непривязанной или
           незаполненной ролью молча исчезает из ведомости. Эта таблица —
           единственный способ увидеть, кого потеряли. */}
-      <Card size="small" title="Покрытие ролей профилями" style={{ marginTop: 20 }}>
+      <Card size="small" title="Покрытие ролей профилями" style={{ marginTop: 20 }} data-tour="kpi-coverage">
         <Table<KpiCoverageRow>
           dataSource={coverageQuery.data?.rows ?? []}
           loading={coverageQuery.isLoading}

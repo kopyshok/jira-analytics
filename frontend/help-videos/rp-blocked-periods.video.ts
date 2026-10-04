@@ -166,17 +166,34 @@ test('rp-blocked-periods', async ({ page }) => {
   expect(usedAfter).toBeGreaterThan(usedBefore);
 
   const summary = page.locator('[data-testid="rp-reserve-summary"]');
+  await d.waitVoice();
   await summary.scrollIntoViewIfNeeded();
-  await d.click(page.locator('[data-testid="rp-reserve-toggle"]'), '«Нормированные работы — запас квартала»: раскройте сводку');
+  // Сводка сама раскрыта, если у команды есть часы других команд: тогда щелчок по заголовку её свернул бы.
+  const toggle = page.locator('[data-testid="rp-reserve-toggle"]');
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') {
+    await d.caption('Под диаграммой — сводка «Нормированные работы — запас квартала»');
+    await d.show(toggle);
+    await d.pause(600);
+  } else {
+    await d.click(toggle, 'Раскройте сводку «Нормированные работы — запас квартала»');
+  }
   const row = summary.locator('tr', { hasText: workType.label });
   await expect(row).toBeVisible();
-  await d.caption('Заложено на квартал / уже занято / осталось — по каждому виду работ');
+  await d.caption('Заложено на квартал, занято и осталось — по каждому виду работ');
   await d.show(row);
-  await d.pause(2000);
+  await d.pause(600);
+
+  // Если вид работ занят и другими командами, строку можно раскрыть — там видны их задачи.
+  const expandable = summary.locator('tr:has([role="button"][aria-expanded="false"]) [role="button"]').first();
+  if (await expandable.count()) {
+    await expandable.scrollIntoViewIfNeeded();
+    await d.click(expandable, 'Строку вида работ можно раскрыть — видны задачи других команд');
+    await d.pause(600);
+  }
 
   await d.caption('Запас считается по правилам сценария');
   await d.show(summary);
-  await d.pause(2000);
+  await d.pause(600);
 
   await d.caption('Готово', 2200);
   await d.save('rp-blocked-periods');

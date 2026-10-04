@@ -292,7 +292,7 @@ export default function HoursBalanceWidget() {
       }
       style={{ background: DARK_THEME.cardBg, border: `1px solid ${DARK_THEME.border}` }}
     >
-      <div style={{
+      <div data-testid="dash-balance-summary" style={{
         background: DARK_THEME.darkAccent, borderRadius: 6, padding: '8px 12px',
         marginBottom: 16, fontSize: 13, color: DARK_THEME.textMuted,
       }}>

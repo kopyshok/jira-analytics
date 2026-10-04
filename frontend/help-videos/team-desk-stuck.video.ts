@@ -132,7 +132,7 @@ test('team-desk-stuck', async ({ page }) => {
   await d.pause(1700);
 
   const showReviewed = filters.locator('.ant-switch').first();
-  await d.click(showReviewed, '«показывать просмотренные» вернёт отметку приглушённым значком');
+  await d.click(showReviewed, 'Включите «показывать просмотренные» — отметка вернётся приглушённым значком');
   await expect(row).toBeVisible();
   await d.show(flagChip);
   await d.pause(1700);
@@ -140,17 +140,17 @@ test('team-desk-stuck', async ({ page }) => {
   await d.click(flagChip, 'Значок приглушён — нажмите на него');
   await d.click(
     page.locator('.ant-dropdown-menu-item', { hasText: 'Вернуть в проблемные' }),
-    'Если отметили по ошибке — снимите её',
+    'Отметили по ошибке — выберите «Вернуть в проблемные»',
   );
   await page.mouse.move(1100, 180);
   await d.pause(900);
 
-  await d.click(showReviewed, 'Выключите переключатель — вернётесь к обычному виду');
+  await d.click(showReviewed, 'Выключите его — вернётся обычный вид');
   await expect(flagBar).toContainText(`· ${countBefore}`);
   await d.pause(1600);
 
-  await d.click(flagChip, 'Разобрались по задаче — отметьте её снова');
-  await d.click(page.locator('.ant-dropdown-menu-item', { hasText: 'Просмотрено' }), 'Выберите «Просмотрено»');
+  await d.click(flagChip, 'Разобрались с задачей — отметьте её снова');
+  await d.click(page.locator('.ant-dropdown-menu-item', { hasText: 'Просмотрено' }), 'Снова выберите «Просмотрено»');
   await expect(modal).toBeVisible();
   await d.pause(300);
   await d.click(modal.getByRole('button', { name: 'Отметить' }), 'Подтвердите');
@@ -158,8 +158,8 @@ test('team-desk-stuck', async ({ page }) => {
   await page.mouse.move(1100, 180);
   await expect(flagBar).toContainText(`· ${countBefore - 1}`);
 
-  await d.caption('Готово', 3000);
   await d.show(flagBar);
-  await d.pause(700);
+  await d.caption('Готово', 2200);
+  await d.pause(500);
   await d.save('team-desk-stuck');
 });

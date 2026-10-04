@@ -62,7 +62,7 @@ test('rp-groups-cross-team', async ({ page }) => {
 
   // Данные обеих команд готовим заранее (только сетевые запросы — экран пока
   // тёмный из d.install()); открываем ролик уже на команде с группами.
-  const { rp, scenario: alfaScenario } = await prepareQuarterPlan(page);
+  const { rp, scenario: alfaScenario, plan: alfaPlan } = await prepareQuarterPlan(page);
   const api = `${String(test.info().config.metadata.backendUrl)}/api/v1`;
   const { plan: etaPlan, created } = await ensureTeamPlan(page, api, rp, ETA_TEAM);
   if (created) createdEtaPlanId = etaPlan.id;
@@ -85,7 +85,7 @@ test('rp-groups-cross-team', async ({ page }) => {
   await expect(crossBar).toBeVisible();
   await d.pause(1200);
   await d.poster();
-  await d.pause(4200);
+  await d.pause(1200);
 
   await d.click(page.locator('[data-tour="rp-view"]'), 'В команде есть деление на группы — откройте «Вид»');
   const popover = page.locator('.ant-popover:visible');
@@ -96,21 +96,23 @@ test('rp-groups-cross-team', async ({ page }) => {
   await sectionHeader.scrollIntoViewIfNeeded();
   await d.caption('Задачи разложены по группам команды');
   await d.show(sectionHeader);
-  await d.pause(4200);
+  await d.pause(600);
 
   const foreignBadge = page.locator('[title^="Из группы"]').first();
   if (await foreignBadge.count()) {
+    await d.waitVoice();
     await foreignBadge.scrollIntoViewIfNeeded();
     await d.caption('Оранжевая метка — человек из другой группы команды');
     await d.show(foreignBadge);
-    await d.pause(4200);
+    await d.pause(600);
   }
 
+  await d.waitVoice();
   await crossBar.scrollIntoViewIfNeeded();
   await page.mouse.move(900, 120);
   await d.caption('Пунктирный контур — работа на соседнюю группу');
   await d.show(crossBar);
-  await d.pause(4600);
+  await d.pause(600);
 
   // Видимый для зрителя переход: меняем команду в шапке приложения.
   const teamButton = page.locator('.topbar').getByRole('button', { name: new RegExp(ETA_TEAM) });
@@ -133,9 +135,38 @@ test('rp-groups-cross-team', async ({ page }) => {
     await page.mouse.move(900, 120);
     await d.caption('«Наши люди в других командах» — чем заняты они там');
     await d.show(ownPeople);
-    await d.pause(4800);
+    await d.pause(600);
   }
 
+  // Загрузка за квартал у человека, которого берут другие команды: подсказка у процента.
+  const alfaGantt: { employee_load: { employee_name: string; quarter?: { other_teams_hours: number } | null }[] } =
+    await (await page.request.get(`${rp}/resource-plans/${alfaPlan.id}/gantt`)).json();
+  const busy = alfaGantt.employee_load.find((e) => (e.quarter?.other_teams_hours ?? 0) > 0);
+  if (busy) {
+    const load = page.locator('[data-tour="rp-load"]');
+    const pct = load
+      .getByText(busy.employee_name, { exact: true })
+      .first()
+      .locator('xpath=ancestor::div[.//*[@data-testid="rp-load-pct"]][1]')
+      .locator('[data-testid="rp-load-pct"]');
+    await d.waitVoice();
+    await load.evaluate((el) => {
+      (el as HTMLElement).style.marginBottom = '160px';
+    });
+    await pct.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await d.pause(500);
+    await d.caption('Наведите на процент загрузки — видно, сколько часов берут другие команды');
+    await d.point(pct);
+    await pct.hover();
+    await d.pause(600);
+    await expect(page.locator('.ant-tooltip:visible').getByText(/Другие команды/)).toBeVisible();
+    await d.waitVoice();
+    await page.mouse.move(900, 120);
+    await page.evaluate(() => window.scrollTo({ left: 0, top: 0 }));
+    await d.pause(400);
+  }
+
+  await d.waitVoice();
   const layoutSwitch = page.locator('[data-tour="rp-layout-switch"]');
   await d.click(
     layoutSwitch.locator('.ant-segmented-item', { hasText: 'Исполнители' }),
@@ -144,10 +175,10 @@ test('rp-groups-cross-team', async ({ page }) => {
   const allWork = page.getByText('Все работы').first();
   await expect(allWork).toBeVisible();
   await page.mouse.move(900, 120);
-  await d.caption('«Все работы» — свой план и работа в других командах на одной полосе');
+  await d.caption('«Все работы» — свой план и чужие команды на одной полосе');
   await d.show(allWork);
-  await d.pause(5000);
+  await d.pause(600);
 
-  await d.caption('Готово', 2600);
+  await d.caption('Готово', 2200);
   await d.save('rp-groups-cross-team');
 });

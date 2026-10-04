@@ -68,19 +68,19 @@ test('projects-portfolio', async ({ page }) => {
   await expect(portfolioView).toBeVisible({ timeout: 20_000 });
   await d.pause(1000);
   await d.poster();
-  await d.pause(2600);
+  await d.pause(500);
 
   // Список слева живёт на текущем квартале сервиса, а не на квартале шапки.
   const activeQuarterTag = page.locator('[data-testid="projects-quarter-tag"].ant-tag-cyan');
   await d.caption('Квартал списка проектов выбирается отдельно — над списком');
   await d.show(page.locator('[data-tour="header-period"]'), activeQuarterTag);
-  await d.pause(2100);
+  await d.pause(500);
   await d.click(page.locator(`[data-testid="projects-quarter-tag"][data-quarter="${LIST_QUARTER}"]`), 'Выберите нужный квартал в списке вручную');
   await expect(portfolioView.locator('[data-testid="portfolio-projects-table"] .ant-table-row').first()).toBeVisible({ timeout: 15_000 });
 
   await d.caption('«Сводка» — кольца по этапам и загрузка всего портфеля');
   await d.show(portfolioView);
-  await d.pause(2600);
+  await d.pause(500);
 
   const table = portfolioView.locator('[data-testid="portfolio-projects-table"]');
   await d.click(table.locator('th', { hasText: 'Факт / План' }), 'Таблицу «Проекты портфеля» можно отсортировать по любой колонке');
@@ -91,23 +91,24 @@ test('projects-portfolio', async ({ page }) => {
   const expandIcon = projectRow.locator('.ant-table-row-expand-icon');
   if (await expandIcon.count()) {
     await d.click(expandIcon, 'Стрелка раскрывает задачи проекта прямо в таблице');
-    await d.pause(1600);
+    await d.pause(500);
   }
 
   const timelineCard = page.locator('.ant-card', { hasText: 'Таймлайн портфеля' });
   await timelineCard.scrollIntoViewIfNeeded();
   await d.caption('Таймлайн портфеля — фазы каждого проекта относительно сегодняшнего дня');
   await d.show(timelineCard);
-  await d.pause(1900);
+  await d.pause(500);
 
   const signals = page.locator('[data-testid="portfolio-signals"]');
   if (await signals.count()) {
     await d.caption('Внизу — сигналы: куда стоит посмотреть в первую очередь');
     await d.show(signals);
-    await d.pause(1900);
+    await d.pause(500);
   }
 
   // Клик по проекту → карточка, вид «Анализ».
+  await d.waitVoice();
   await d.click(projectRow, `Откройте проект «${projectTitle}»`);
   await expect(page).toHaveURL(new RegExp(`/projects/${encodeURIComponent(projectKey)}`), { timeout: 15_000 });
   const headerActions = page.locator('.project-header-actions');
@@ -118,45 +119,48 @@ test('projects-portfolio', async ({ page }) => {
   await expect(categoriesCard).toBeVisible({ timeout: 15_000 });
   await d.caption('«Анализ» — структура трудозатрат по всему проекту');
   await d.show(categoriesCard);
-  await d.pause(1900);
+  await d.pause(500);
 
   const employeesCard = page.locator('.ant-card', { hasText: 'Участники' });
   await d.caption('Участники и часы каждого');
   await d.show(employeesCard);
-  await d.pause(1800);
+  await d.pause(500);
 
   const statusCard = page.locator('.ant-card', { hasText: 'Статус проекта' });
   await d.caption('Статус проекта — короткая сводка и ключевые цифры');
   await d.show(statusCard);
-  await d.pause(1800);
+  await d.pause(500);
 
   // Презентация.
+  await d.waitVoice();
   await d.click(headerActions.getByRole('button', { name: 'Презентация' }), 'Вид «Презентация» — тот же проект одной страницей для встречи');
   await expect(page.locator('.presentation-view')).toBeVisible({ timeout: 15_000 });
-  await d.pause(1800);
+  await d.pause(500);
 
   // План и сроки.
+  await d.waitVoice();
   await d.click(headerActions.getByRole('button', { name: 'План и сроки' }), 'А «План и сроки» — план по этапам и даты фаз');
   const planTimelineCard = page.locator('.ant-card', { hasText: 'Таймлайн проекта' });
   await expect(planTimelineCard).toBeVisible({ timeout: 15_000 });
   await d.caption('Даты фаз здесь берутся из ресурсного плана команды');
   await d.show(planTimelineCard);
-  await d.pause(2100);
+  await d.pause(500);
 
   const tasksCard = page.locator('.ant-card', { hasText: 'Задачи проекта' });
   await d.caption('Ниже — задачи проекта с часами');
   await d.show(tasksCard);
-  await d.pause(1700);
+  await d.pause(500);
 
-  // PNG.
+  // Сохранение картинки.
+  await d.waitVoice();
   const downloadPromise = page.waitForEvent('download', { timeout: 20_000 });
-  await d.click(headerActions.getByRole('button', { name: 'PNG' }), 'Кнопка «PNG» сохранит презентацию картинкой');
+  await d.click(headerActions.getByRole('button', { name: 'PNG' }), 'Сохраните картинку — презентация уйдёт в файл');
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.png$/);
   await d.pause(900);
   await d.caption('Файл сохранён — можно вставить в письмо или отчёт');
   await d.show(page.locator('.presentation-view'));
-  await d.pause(1900);
+  await d.pause(500);
 
   await d.caption('Готово', 4200);
   await d.save('projects-portfolio');
