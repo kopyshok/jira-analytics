@@ -1,7 +1,7 @@
 import { api } from './client';
 
 export type PerfPeriod = '1h' | '24h' | '7d' | '30d';
-export type PerfVerdict = 'other_load' | 'database' | 'our_code' | 'waiting';
+export type PerfVerdict = 'other_load' | 'database' | 'our_code' | 'db_pool' | 'waiting';
 
 export interface PerfSeriesPoint {
   t: string;
@@ -93,6 +93,8 @@ export interface PerfOverview {
   };
   verdicts: Partial<Record<PerfVerdict, number>>;
   verdict_labels: Record<PerfVerdict, string>;
+  /** Сколько последних медленных разобрано на причины; меньше totals.slow — период огромный. */
+  verdicts_basis: number;
   series: PerfSeriesPoint[];
   bottlenecks: PerfBottleneck[];
   slow: PerfSlowRequest[];

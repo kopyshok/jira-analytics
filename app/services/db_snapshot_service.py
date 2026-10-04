@@ -43,6 +43,10 @@ SKIP_TABLES: set[str] = {
     "sync_run",
     "confluence_page_cache",
     "executive_dashboard_snapshots",
+    # Замеры быстродействия — про этот сервер, на другом они бессмысленны.
+    "perf_minute",
+    "perf_slow_request",
+    "perf_server_snapshot",
 }
 
 # Ключи настроек, значения которых не должны уезжать с сервера.

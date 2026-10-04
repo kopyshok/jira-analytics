@@ -27,6 +27,7 @@ const VERDICT_COLOR: Record<PerfVerdict, string> = {
   other_load: 'orange',
   database: 'purple',
   our_code: 'red',
+  db_pool: 'magenta',
   waiting: 'blue',
 };
 
@@ -222,7 +223,8 @@ export default function PerformanceTab() {
   const query = useQuery<PerfOverview>({
     queryKey: ['admin', 'perf', period],
     queryFn: () => perfApi.overview(period),
-    refetchInterval: 60_000,
+    // Неделя и месяц — тяжёлое чтение, а минута погоды там не делает: только по кнопке.
+    refetchInterval: period === '1h' || period === '24h' ? 60_000 : false,
   });
   const data = query.data;
 
@@ -342,9 +344,10 @@ export default function PerformanceTab() {
             Сервис замеряет каждое обращение к нему: сколько оно длилось и сколько раз ходило в базу
             данных. Раз в минуту замеры и загрузка сервера записываются и хранятся 30 дней. Медленным
             считается ответ дольше {slowSeconds} с. Для каждого медленного ответа показана вероятная
-            причина: сервер был занят чем-то другим, долгая работа с базой, медленный наш код или
-            ожидание ответа извне (например, Jira). «Отчёт для разработки» собирает всё нужное
-            разработчику в один файл.
+            причина: сервер был занят чем-то другим, долгая работа с базой, медленный наш код,
+            не хватило подключений к базе или ожидание внешнего сервиса либо очереди. Данные
+            за текущую минуту появляются после её окончания. «Отчёт для разработки» собирает всё
+            нужное разработчику в один файл.
           </Paragraph>
         }
       />
@@ -412,6 +415,11 @@ export default function PerformanceTab() {
                     {data.verdict_labels[code]}: {n}
                   </Tag>
                 ))}
+                {data.verdicts_basis < data.totals.slow && (
+                  <Text type="secondary">
+                    причины — по последним {data.verdicts_basis.toLocaleString('ru-RU')} медленным
+                  </Text>
+                )}
               </Space>
             )}
             {data.load ? (
