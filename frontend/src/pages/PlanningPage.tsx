@@ -50,6 +50,7 @@ import {
   usePatchBacklogPriority,
 } from '../hooks/usePlanning';
 import SubgroupSectionHeader from '../components/planning/SubgroupSectionHeader';
+import NeighborsTakenBanner from '../components/planning/NeighborsTakenBanner';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useAppearance, useUpdateAppearance } from '../api/appearance';
@@ -64,6 +65,7 @@ import { useRoles } from '../hooks/useRoles';
 import { useJiraBaseUrl } from '../hooks/useSettings';
 import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../utils/planning';
 import { effectiveEstimate } from '../utils/allocationEstimates';
+import { neighborsTakenRowIds } from '../utils/multiTeamProgress';
 import type { AllocationResponse } from '../types/api';
 
 const GRID = '24px 36px 48px minmax(220px, 1fr) 130px 130px 180px 260px 90px';
@@ -571,6 +573,17 @@ export default function PlanningPage() {
     return out;
   }, [hasSubgroups, subgroups, orderedAllocations, subgroupOfAlloc]);
 
+  // Мультикомандные RFA: соседние команды уже взяли задачу, а здесь она не
+  // включена. «Показать только их» оставляет в секциях только такие строки.
+  const neighborsTakenIds = useMemo(() => neighborsTakenRowIds(allocations ?? []), [allocations]);
+  const [onlyNeighborsTaken, setOnlyNeighborsTaken] = useState(false);
+  const shownSections = useMemo(() => {
+    if (!onlyNeighborsTaken || neighborsTakenIds.size === 0) return sections;
+    return sections
+      .map((sec) => ({ ...sec, items: sec.items.filter((a) => neighborsTakenIds.has(a.id)) }))
+      .filter((sec) => sec.items.length > 0);
+  }, [sections, onlyNeighborsTaken, neighborsTakenIds]);
+
   // Свёрнутые секции живут в браузере — у каждого планировщика свои.
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
     try {
@@ -964,6 +977,13 @@ export default function PlanningPage() {
                   </span>
                 }
               >
+                {neighborsTakenIds.size > 0 && (
+                  <NeighborsTakenBanner
+                    count={neighborsTakenIds.size}
+                    onlyThem={onlyNeighborsTaken}
+                    onOnlyThemChange={setOnlyNeighborsTaken}
+                  />
+                )}
                 <div style={{ overflowX: 'auto' }}>
                 <div style={{ minWidth: gridMinWidth(hasSubgroups ? GRID_WITH_SUBGROUP : GRID) }}>
                 <div
@@ -1022,7 +1042,7 @@ export default function PlanningPage() {
                   onDragEnd={handleDragEnd}
                 >
                   <div>
-                  {sections.map((section) => {
+                  {shownSections.map((section) => {
                     const collapsed = section.id !== null && collapsedSections.has(section.id);
                     return (
                       <div key={section.id ?? '__all__'}>

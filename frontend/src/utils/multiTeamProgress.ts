@@ -39,3 +39,12 @@ export function neighborsTakenTitle(n: number): string {
   const word = isOne(n) ? 'задачу' : isFew(n) ? 'задачи' : 'задач';
   return `${n} ${word} уже взяли соседи, у вас ${isOne(n) ? 'не включена' : 'не включены'}`;
 }
+
+type ScenarioRow = { id: string; included: boolean; multi_team_progress?: MultiTeamProgress | null };
+
+/** Строки сценария, которые соседи по RFA уже взяли, а здесь они не включены. */
+export function neighborsTakenRowIds(rows: ScenarioRow[]): Set<string> {
+  return new Set(
+    rows.filter((r) => !r.included && neighborsTaken(r.multi_team_progress)).map((r) => r.id),
+  );
+}

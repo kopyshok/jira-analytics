@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MultiTeamProgress, TeamTakeStatus } from '../types/api';
 import {
-  neighborsTaken, neighborsTakenTitle, progressTone, teamTakeLine,
+  neighborsTaken, neighborsTakenRowIds, neighborsTakenTitle, progressTone, teamTakeLine,
 } from './multiTeamProgress';
 
 const progress = (
@@ -81,5 +81,19 @@ describe('neighborsTakenTitle', () => {
     expect(neighborsTakenTitle(5)).toBe('5 задач уже взяли соседи, у вас не включены');
     expect(neighborsTakenTitle(11)).toBe('11 задач уже взяли соседи, у вас не включены');
     expect(neighborsTakenTitle(21)).toBe('21 задачу уже взяли соседи, у вас не включена');
+  });
+});
+
+describe('neighborsTakenRowIds', () => {
+  it('только не включённые строки, которые взяли соседи', () => {
+    const took = progress('Б', { А: 'taken', Б: 'not_taken' });
+    const own = progress('Б', { А: 'not_taken', Б: 'taken' });
+    expect(neighborsTakenRowIds([
+      { id: 'r1', included: false, multi_team_progress: took },
+      { id: 'r2', included: true, multi_team_progress: took },
+      { id: 'r3', included: false, multi_team_progress: own },
+      { id: 'r4', included: false, multi_team_progress: null },
+      { id: 'r5', included: false },
+    ])).toEqual(new Set(['r1']));
   });
 });
