@@ -114,6 +114,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
+    # Браузер берёт имя скачиваемого файла из этого заголовка (в dev фронт на другом порту).
+    expose_headers=["Content-Disposition"],
 )
 
 # Include API routes
