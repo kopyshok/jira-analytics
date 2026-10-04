@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import dayjs from 'dayjs';
 import { App, Button, Modal, Select, Typography } from 'antd';
 
 import { useEmployees } from '../../hooks/useCapacity';
@@ -11,12 +10,18 @@ interface Props {
   open: boolean;
   onClose: () => void;
   planId: string;
-  /** Уже наблюдаемые — в выборе их нет. */
-  watchedIds: string[];
+  /** Люди плана и уже наблюдаемые — в выборе их нет. */
+  excludeIds: string[];
+  /** Квартал плана (ISO, включительно): «вся роль в команде» — состав за квартал. */
+  quarterStart: string;
+  quarterEnd: string;
 }
 
-/** Окно «Подобрать людей»: сотрудники любых команд — по ФИО или всей ролью в команде. */
-export default function WatchPickerModal({ open, onClose, planId, watchedIds }: Props) {
+/** Окно «Подобрать людей»: сотрудники любых команд — по ФИО или всей ролью в команде.
+ *  Монтируется только открытым — список сотрудников не грузится на каждом заходе. */
+export default function WatchPickerModal({
+  open, onClose, planId, excludeIds, quarterStart, quarterEnd,
+}: Props) {
   const { message } = App.useApp();
   const { data: employees = [] } = useEmployees({ isActive: true, withTeams: true });
   const { data: roles = [] } = useRoles();
@@ -25,17 +30,17 @@ export default function WatchPickerModal({ open, onClose, planId, watchedIds }: 
   const [team, setTeam] = useState<string | undefined>();
   const [role, setRole] = useState<string | undefined>();
 
-  const watched = useMemo(() => new Set(watchedIds), [watchedIds]);
+  const excluded = useMemo(() => new Set(excludeIds), [excludeIds]);
   const roleLabel = useMemo(() => new Map(roles.map((r) => [r.code, r.label])), [roles]);
   const options = useMemo(
     () => employees
-      .filter((e) => e.is_active && !watched.has(e.id))
+      .filter((e) => e.is_active && !excluded.has(e.id))
       .sort((a, b) => a.display_name.localeCompare(b.display_name, 'ru'))
       .map((e) => ({
         value: e.id,
         label: [e.display_name, e.role ? roleLabel.get(e.role) : undefined, e.team].filter(Boolean).join(' · '),
       })),
-    [employees, watched, roleLabel],
+    [employees, excluded, roleLabel],
   );
   const teamOptions = useMemo(() => {
     const names = new Set<string>();
@@ -49,9 +54,9 @@ export default function WatchPickerModal({ open, onClose, planId, watchedIds }: 
 
   const addRole = () => {
     if (!team || !role) return;
-    const ids = roleTeamPicks(employees, team, role, dayjs().format('YYYY-MM-DD')).filter((id) => !watched.has(id));
+    const ids = roleTeamPicks(employees, team, role, quarterStart, quarterEnd).filter((id) => !excluded.has(id));
     if (ids.length === 0) {
-      message.info('В команде нет сотрудников этой роли, которых ещё нет в списке');
+      message.info('В команде нет сотрудников этой роли, которых ещё нет в плане или в списке');
       return;
     }
     setPicked((prev) => Array.from(new Set([...prev, ...ids])));

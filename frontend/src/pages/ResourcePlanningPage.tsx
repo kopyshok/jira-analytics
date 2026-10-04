@@ -30,7 +30,7 @@ import type { RpLayout, ViewMode } from '../components/resource-planning/GanttRo
 import {
   useGanttProjection, useResourcePlans, useComputeResourcePlan,
   useScheduledBlocks, useCreateResourcePlan, useForkPlan,
-  useCreateDependency, useDeleteDependency,
+  useCreateDependency, useDeleteDependency, invalidatePlanGantt,
 } from '../hooks/useResourcePlanning';
 import { useRpPreferences } from '../hooks/useRpPreferences';
 import { useScenarios } from '../hooks/usePlanning';
@@ -640,7 +640,7 @@ function ResourcePlanningPageInner() {
         allAssignments={sortedAssignments}
         employees={candidateEmployees}
         onChanged={() =>
-          planId ? qc.invalidateQueries({ queryKey: ['gantt', planId] }) : Promise.resolve()
+          planId ? invalidatePlanGantt(qc, planId) : Promise.resolve()
         }
       />
 

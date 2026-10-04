@@ -14,20 +14,24 @@ describe('roleTeamPicks', () => {
     emp({ id: 'e2', role: 'analyst', teams: [{ team: 'ERP', is_primary: true }] }),
     // В ERP вторая команда — тоже «в команде».
     emp({ id: 'e3', team: 'Блок', teams: [{ team: 'Блок', is_primary: true }, { team: 'ERP', is_primary: false }] }),
-    // Выбыл из ERP до даты — не в команде.
+    // Выбыл из ERP до квартала — не в команде.
     emp({ id: 'e4', teams: [{ team: 'ERP', is_primary: true, left_at: '2026-09-01' }] }),
-    // Придёт позже — ещё не в команде.
+    // Придёт в середине квартала — в команде квартала.
     emp({ id: 'e5', teams: [{ team: 'ERP', is_primary: true, joined_at: '2026-11-01' }] }),
     emp({ id: 'e6', is_active: false, teams: [{ team: 'ERP', is_primary: true }] }),
     // Без списка команд — по основной команде.
     emp({ id: 'e7' }),
+    // Выбыл в середине квартала — тоже в команде квартала.
+    emp({ id: 'e8', teams: [{ team: 'ERP', is_primary: true, left_at: '2026-11-15' }] }),
+    // Придёт после квартала — нет.
+    emp({ id: 'e9', teams: [{ team: 'ERP', is_primary: true, joined_at: '2027-01-10' }] }),
   ];
-  it('все активные сотрудники роли, состоящие в команде на дату', () => {
-    expect(roleTeamPicks(list, 'ERP', 'dev', '2026-10-04')).toEqual(['e1', 'e3', 'e7']);
+  it('все активные сотрудники роли, состоявшие в команде хоть день квартала', () => {
+    expect(roleTeamPicks(list, 'ERP', 'dev', '2026-10-01', '2026-12-31')).toEqual(['e1', 'e3', 'e5', 'e7', 'e8']);
   });
   it('нет команды или роли — пусто', () => {
-    expect(roleTeamPicks(list, '', 'dev', '2026-10-04')).toEqual([]);
-    expect(roleTeamPicks(list, 'ERP', '', '2026-10-04')).toEqual([]);
+    expect(roleTeamPicks(list, '', 'dev', '2026-10-01', '2026-12-31')).toEqual([]);
+    expect(roleTeamPicks(list, 'ERP', '', '2026-10-01', '2026-12-31')).toEqual([]);
   });
 });
 
