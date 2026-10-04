@@ -22,7 +22,7 @@ import PlaneGantt from '../components/resource-planning/PlaneGantt';
 import ConflictPanel from '../components/resource-planning/ConflictPanel';
 import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlocksModal';
 import AssignmentSidebar from '../components/resource-planning/AssignmentSidebar';
-import EmployeeLoadHeatmap from '../components/resource-planning/EmployeeLoadHeatmap';
+import PlanLoadHeatmap from '../components/resource-planning/PlanLoadHeatmap';
 import NormedReserveSummary from '../components/resource-planning/NormedReserveSummary';
 import AppearanceModal from '../components/resource-planning/AppearanceModal';
 import BulkResetDropdown from '../components/resource-planning/BulkResetDropdown';
@@ -30,7 +30,7 @@ import type { RpLayout, ViewMode } from '../components/resource-planning/GanttRo
 import {
   useGanttProjection, useResourcePlans, useComputeResourcePlan,
   useScheduledBlocks, useCreateResourcePlan, useForkPlan,
-  useCreateDependency, useDeleteDependency,
+  useCreateDependency, useDeleteDependency, invalidatePlanGantt,
 } from '../hooks/useResourcePlanning';
 import { useRpPreferences } from '../hooks/useRpPreferences';
 import { useScenarios } from '../hooks/usePlanning';
@@ -631,12 +631,14 @@ function ResourcePlanningPageInner() {
       )}
 
       {gantt?.reserve && gantt.plan.team && viewMode === 'two-level' && (
-        <NormedReserveSummary reserve={gantt.reserve} />
+        // key — план: при открытии другого плана сводка заново решает, развернуться ли.
+        <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} />
       )}
 
       {gantt?.employee_load && gantt.employee_load.length > 0 && viewMode === 'two-level' && (
         <div data-tour="rp-load">
-        <EmployeeLoadHeatmap
+        <PlanLoadHeatmap
+          planId={gantt.plan.id}
           rows={gantt.employee_load}
           subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
           subgroupOrder={subgroupOrder}
@@ -656,7 +658,7 @@ function ResourcePlanningPageInner() {
         allAssignments={sortedAssignments}
         employees={candidateEmployees}
         onChanged={() =>
-          planId ? qc.invalidateQueries({ queryKey: ['gantt', planId] }) : Promise.resolve()
+          planId ? invalidatePlanGantt(qc, planId) : Promise.resolve()
         }
       />
 

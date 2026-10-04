@@ -120,7 +120,7 @@ class ExternalBooking:
     daily_hours: Dict[date, float]
     provisional: bool
     # Бронь-привлечение: команда брони человеку не домашняя в квартале её
-    # плана (см. `_home_teams`) — не состоял в ней или она не основная.
+    # плана (см. `home_teams`) — не состоял в ней или она не основная.
     # Домашняя команда под такую бронь не подстраивается.
     is_borrowing: bool = False
     # План, для которого собраны брони, уступает человека всем командам: он
@@ -181,7 +181,7 @@ def _member_of(
     )
 
 
-def _home_teams(
+def home_teams(
     periods: Iterable[tuple[str, Optional[date], Optional[date], bool]],
     start: date,
     end: date,
@@ -332,10 +332,10 @@ def external_bookings(
                 end=a.end_date,
                 daily_hours=daily,
                 provisional=ref.provisional,
-                is_borrowing=ref.team not in _home_teams(periods, lo, hi),
+                is_borrowing=ref.team not in home_teams(periods, lo, hi),
                 yields_here=team is not None
                 and _member_of(periods, team, *cur_bounds)
-                and team not in _home_teams(periods, *cur_bounds),
+                and team not in home_teams(periods, *cur_bounds),
                 involvement=effective_for_phase(
                     bi,
                     a.phase,
@@ -423,7 +423,7 @@ def base_other_share(
         return out
     lo, hi = quarter_bounds(year, quarter)
     membership = tm.membership_rows(db, list(phase_of))
-    homes = {eid: _home_teams(membership.get(eid, ()), lo, hi) for eid in phase_of}
+    homes = {eid: home_teams(membership.get(eid, ()), lo, hi) for eid in phase_of}
     defaults = teams_defaults(
         db, {(t, year, quarter) for teams in homes.values() for t in teams}
     )
@@ -645,7 +645,7 @@ def guest_ids(
         e
         for e in ids
         if _member_of(membership.get(e, ()), team, start, end)
-        and team not in _home_teams(membership.get(e, ()), start, end)
+        and team not in home_teams(membership.get(e, ()), start, end)
     }
 
 

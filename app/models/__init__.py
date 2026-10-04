@@ -52,6 +52,7 @@ from app.models.scheduled_block_employee import ScheduledBlockEmployee
 from app.models.team_work_type_override import TeamWorkTypeOverride
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
+from app.models.resource_plan_watch import ResourcePlanWatch
 from app.models.release_note import ReleaseNote
 from app.models.plan_item_dependency import PlanItemDependency
 from app.models.plan_conflict import PlanConflict
@@ -133,6 +134,7 @@ __all__ = [
     "TeamWorkTypeOverride",
     "ResourcePlan",
     "ResourcePlanAssignment",
+    "ResourcePlanWatch",
     "ReleaseNote",
     "PlanItemDependency",
     "PlanConflict",

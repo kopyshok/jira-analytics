@@ -502,3 +502,82 @@ def test_guest_normed_empty_without_home_reserve(db_session):
     db_session.commit()
 
     assert nr.guest_normed_by_day(db_session, [p], [], *Q, D("2026-01-01"), D("2026-03-31")) == {}
+
+
+def test_person_other_team_hours_by_work_type(db_session):
+    """Часы человека в других командах — по виду работ, за счёт которого они
+    идут, и задача → вид: по ним «Загрузка по дням» подписывает слой
+    «Другие команды». Выбор вида у задачи переносит часы в выбранный вид."""
+    types, p, s, item = _erp(db_session)
+    tech = types["technical_tasks"].id
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    assert r.cross_team_work_type_id == tech
+    assert {wt: round(h, 1) for wt, h in r.people[p.id].other_teams.items()} == {tech: 180.0}
+    assert r.people[p.id].other_items == {item.id: tech}
+    assert r.people[s.id].other_teams == {} and r.people[s.id].other_items == {}
+
+    support = types["support_consult"].id
+    db_session.add(TeamWorkTypeOverride(team="ERP", backlog_item_id=item.id, work_type_id=support))
+    db_session.commit()
+    r = nr.team_reserve(db_session, "ERP", *Q)
+    assert {wt: round(h, 1) for wt, h in r.people[p.id].other_teams.items()} == {support: 180.0}
+    assert r.people[p.id].other_items == {item.id: support}
+
+
+def test_place_person_free_hours_by_day():
+    """Свободно в день = норма − задачи плана − другие команды − нормированные;
+    заблокированный день — 0."""
+    mon, tue, wed, thu, fri = [D("2026-01-05") + timedelta(days=i) for i in range(5)]
+    capacity = {mon: 8.0, tue: 8.0, wed: 8.0, thu: 8.0, fri: 4.0}
+    reserve = nr.PersonReserve("e", "dev", 36.0, share={"wt": 10.0})
+    blocked = {fri: BlockHit("b", "ERP", "wt", "Релиз")}
+
+    load = nr.place_person(capacity, {mon: 4.0}, {tue: 2.0}, {mon: 0.1, tue: 0.1}, blocked,
+                           reserve, {"wt": "Минорные"})
+
+    free = {d: round(h, 2) for d, h in load.free_by_day.items()}
+    # Доля 10 ч: 0,8 + 0,8 — остатки Пн/Вт, 8,4 ч — поровну на Ср/Чт (по 4,2 ч).
+    assert free == {mon: 3.2, tue: 5.2, wed: 3.8, thu: 3.8, fri: 0.0}
+
+
+def test_people_loads_is_reserve_merge_and_place(db_session):
+    """Загрузка за квартал людей — запас каждой основной команды один раз,
+    раскладка — `place_person` с периодами основной команды и общими."""
+    types, p, s, _item = _erp(db_session)
+    db_session.add(ScheduledBlock(team="ERP", start_date=D("2026-01-05"), end_date=D("2026-01-07"),
+                                  reason="Закрытие месяца", work_type_id=types["support_consult"].id))
+    db_session.commit()
+    cap = nr.calendar_hours(db_session, D("2026-01-01"), D("2026-03-31"))
+    other = {p.id: {D(d): 7.2 for d in _weekdays("2026-01-12", 25)}}
+    residue = {p.id: {d: 0.1 for d in other[p.id]}}
+
+    loads, reserves, labels = nr.people_loads(
+        db_session, [p, s], *Q, capacity={p.id: cap, s.id: cap}, own={}, other_teams=other,
+        residue_share=residue,
+    )
+
+    assert set(reserves) == {"ERP"}
+    r = nr.team_reserve(db_session, "ERP", *Q)
+    hits = {D(d): BlockHit("x", "ERP", types["support_consult"].id, "Закрытие месяца")
+            for d in ("2026-01-05", "2026-01-06", "2026-01-07")}
+    manual = nr.place_person(cap, {}, other[p.id], residue[p.id], hits, r.people[p.id], r.labels)
+    assert round(loads[p.id].pct, 6) == round(manual.pct, 6)
+    assert round(loads[p.id].unplaced, 6) == round(manual.unplaced, 6)
+    assert loads[p.id].normed_by_type == manual.normed_by_type
+    assert labels == r.labels
+    assert loads[s.id].other_teams == 0.0
+
+
+def test_merge_person_sums_other_team_hours():
+    a = nr.PersonReserve("e", "dev", 100.0, other_teams={"wt": 10.0}, other_items={"i1": "wt"})
+    b = nr.PersonReserve("e", "dev", 50.0, other_teams={"wt": 5.0, "wt2": 1.0},
+                         other_items={"i2": "wt2"})
+    ra = nr.TeamReserve("A", "s", "s", {}, {"e": a}, [], {})
+    rb = nr.TeamReserve("B", "s", "s", {}, {"e": b}, [], {})
+
+    m = nr.merge_person([ra, rb], "e")
+
+    assert m.other_teams == {"wt": 15.0, "wt2": 1.0}
+    assert m.other_items == {"i1": "wt", "i2": "wt2"}
