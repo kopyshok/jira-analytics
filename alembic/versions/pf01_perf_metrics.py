@@ -1,7 +1,7 @@
 """perf_minute + perf_slow_request + perf_server_snapshot
 
 Revision ID: pf01_perf_metrics
-Revises: iv01_clear_frozen_involvement
+Revises: wl01_plan_watchlist
 Create Date: 2026-10-04
 
 Замеры быстродействия для раздела админа «Быстродействие»: минутные агрегаты
@@ -17,7 +17,7 @@ from alembic import context, op
 import sqlalchemy as sa
 
 revision: str = "pf01_perf_metrics"
-down_revision: Union[str, None] = "iv01_clear_frozen_involvement"
+down_revision: Union[str, None] = "wl01_plan_watchlist"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
