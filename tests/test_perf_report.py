@@ -52,6 +52,11 @@ def _slow(db, at, *, duration=3000.0, db_ms=0.0, cpu_ms=0.0, route="/api/v1/back
      "waiting"),
     (dict(host_cpu=None, process_share=None, process_core=None, duration_ms=3000, db_ms=0,
           cpu_ms=0), "waiting"),
+    # Ожидание подключения из пула во время в базе не входит — отдельное правило.
+    (dict(host_cpu=40, process_share=5, process_core=20, duration_ms=3000, db_ms=100, cpu_ms=100,
+          pool_in_use=40, pool_size=40), "db_pool"),
+    (dict(host_cpu=40, process_share=5, process_core=20, duration_ms=3000, db_ms=100, cpu_ms=100,
+          pool_in_use=39, pool_size=40), "waiting"),
 ])
 def test_verdict(kw, expected):
     assert verdict(**kw) == expected
@@ -208,3 +213,23 @@ def test_verdict_reason_names_the_deciding_number():
         "наш сервис в ту минуту занимал процессор на 95% одного ядра"
     )
     assert verdict_reason("waiting", idle, None) == "процессор и база почти не были заняты"
+    full = SimpleNamespace(db_pool_in_use=40, db_pool_size=40)
+    assert verdict_reason("db_pool", idle, full) == "заняты все подключения к базе: 40 из 40"
+
+
+def test_slow_total_is_counted_beyond_cause_sample(db_session, monkeypatch):
+    """Число медленных — счётом в базе; причины — по последним SLOW_STATS_LIMIT."""
+    from app.services import perf_report
+    from app.services.perf_report import render_markdown
+
+    monkeypatch.setattr(perf_report, "SLOW_STATS_LIMIT", 2)
+    for i in range(3):
+        _slow(db_session, NOW - timedelta(minutes=10 + i), db_ms=2500)
+    db_session.commit()
+
+    data = overview(db_session, "1h", now=NOW, slow_ms=2000, flush_seconds=60)
+
+    assert data["totals"]["slow"] == 3
+    assert data["verdicts_basis"] == 2
+    assert sum(data["verdicts"].values()) == 2
+    assert "(по последним 2)" in render_markdown(data)

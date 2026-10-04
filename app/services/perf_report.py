@@ -9,11 +9,14 @@
 2. больше половины времени запроса — обращения к базе — долгая работа с базой;
 3. процессор нашего процесса был занят за время запроса (≥ 70% ядра) или
    в ту минуту (≥ 80% ядра) — медленный наш код;
-4. иначе — ожидание: не процессор и не база (например, ответ Jira).
+4. в снимке той минуты заняты все подключения пула — не хватает подключений
+   (ожидание подключения во время в базе не входит, поэтому отдельное правило);
+5. иначе — ожидание: внешний сервис или очередь.
 
-ponytail: снимки нескольких процессов (если сервис поедет в несколько
-воркеров) усредняются вместе, а не складываются по процессу — при одном
-воркере это одно и то же.
+ponytail: занятость пула — мгновенное значение в момент снимка, не пик за
+минуту. Снимки нескольких процессов (если сервис поедет в несколько воркеров)
+усредняются вместе, а не складываются по процессу — при одном воркере это одно
+и то же.
 """
 from __future__ import annotations
 
@@ -53,7 +56,8 @@ VERDICT_LABELS = {
     "other_load": "Похоже, ресурсы сервера занял кто-то другой",
     "database": "Долгая работа с базой",
     "our_code": "Медленный наш код",
-    "waiting": "Ожидание: не процессор и не база (например, ответ Jira)",
+    "db_pool": "Не хватает подключений к базе",
+    "waiting": "Ожидание: внешний сервис или очередь",
 }
 
 BOTTLENECKS_LIMIT = 50
@@ -119,6 +123,8 @@ def verdict(
     duration_ms: float,
     db_ms: float,
     cpu_ms: float,
+    pool_in_use: Optional[int] = None,
+    pool_size: Optional[int] = None,
 ) -> str:
     """Вероятная причина медленного запроса (см. порядок в описании модуля)."""
     if (
@@ -132,6 +138,8 @@ def verdict(
         return "our_code"
     if process_core is not None and process_core >= PROCESS_CORE_HIGH:
         return "our_code"
+    if pool_in_use is not None and pool_size and pool_in_use >= pool_size:
+        return "db_pool"
     return "waiting"
 
 
@@ -255,6 +263,8 @@ def _verdict_for(slow: Any, snap: Optional[PerfServerSnapshot]) -> str:
         duration_ms=slow.duration_ms,
         db_ms=slow.db_ms,
         cpu_ms=slow.cpu_ms,
+        pool_in_use=snap.db_pool_in_use if snap else None,
+        pool_size=snap.db_pool_size if snap else None,
     )
 
 
@@ -275,6 +285,8 @@ def verdict_reason(code: str, slow: Any, snap: Optional[PerfServerSnapshot]) -> 
             f"наш сервис в ту минуту занимал процессор на "
             f"{round(snap.process_cpu_percent)}% одного ядра"
         )
+    if code == "db_pool" and snap is not None:
+        return f"заняты все подключения к базе: {snap.db_pool_in_use} из {snap.db_pool_size}"
     return "процессор и база почти не были заняты"
 
 
@@ -330,7 +342,11 @@ def overview(
             p["host"].append(s.host_cpu_percent)
             p["proc"].append(_share(s))
 
-    # --- медленные: все за период для счёта причин, последние — с деталями
+    # --- медленные: число — счётом в базе; причины — по последним SLOW_STATS_LIMIT
+    # (вывод требует снимка рядом по времени, в SQL его не посчитать переносимо)
+    slow_total = (
+        db.query(func.count(PerfSlowRequest.id)).filter(PerfSlowRequest.at >= start).scalar() or 0
+    )
     slow_cols = (
         db.query(PerfSlowRequest.at, PerfSlowRequest.duration_ms, PerfSlowRequest.db_ms,
                  PerfSlowRequest.cpu_ms)
@@ -407,8 +423,10 @@ def overview(
         "end": iso(now),
         "bucket_minutes": bucket_minutes,
         "slow_ms": slow_ms,
-        "totals": {**totals, "slow": len(slow_cols)},
+        "totals": {**totals, "slow": int(slow_total)},
         "verdicts": dict(verdicts),
+        # Сколько последних медленных разобрано на причины (меньше total — период огромный).
+        "verdicts_basis": len(slow_cols),
         "verdict_labels": VERDICT_LABELS,
         "series": series,
         "bottlenecks": bottlenecks,
@@ -518,7 +536,11 @@ def render_markdown(data: dict[str, Any], *, tz_offset_min: int = 0) -> str:
         f"{_n(totals['p95_ms'])} мс; максимум: {_n(totals['max_ms'])} мс.",
     ]
     if data["verdicts"]:
-        out.append("- Вероятные причины медленных запросов:")
+        basis = (
+            f" (по последним {_n(data['verdicts_basis'])})"
+            if data["verdicts_basis"] < totals["slow"] else ""
+        )
+        out.append(f"- Вероятные причины медленных запросов{basis}:")
         for code, n in sorted(data["verdicts"].items(), key=lambda kv: -kv[1]):
             out.append(f"  - {VERDICT_LABELS[code]} — {n}")
 
