@@ -72,6 +72,7 @@ from app.models.team_desk_daily_rate import TeamDeskDailyRate  # noqa: F401
 from app.models.team_desk_mark import TeamDeskMark  # noqa: F401
 from app.models.team import Team, TeamSubgroup  # noqa: F401
 from app.models.team_onboarding_mark import TeamOnboardingMark  # noqa: F401
+from app.models.perf import PerfMinute, PerfServerSnapshot, PerfSlowRequest  # noqa: F401
 from app.models.kpi import (
     KpiMetric, KpiProfile, KpiProfileMetric, KpiProfileRole, KpiCycleTimeNorm, KpiApproval,
 )
@@ -162,4 +163,7 @@ __all__ = [
     "Team",
     "TeamSubgroup",
     "TeamOnboardingMark",
+    "PerfMinute",
+    "PerfSlowRequest",
+    "PerfServerSnapshot",
 ]
