@@ -144,7 +144,8 @@ export default function GanttChart({
   // Пока перенос фазы сохраняется и план перечитывается, новые переносы ждут:
   // пересчёт пересоздаёт строки с новыми id.
   const patching = useIsMutating({ mutationKey: PATCH_ASSIGNMENT_KEY }) > 0;
-  const refetching = useIsFetching({ queryKey: ['gantt', planId] }) > 0;
+  // Точный ключ: под ['gantt', planId, …] живёт и список наблюдения — его загрузка переносы не держит.
+  const refetching = useIsFetching({ queryKey: ['gantt', planId], exact: true }) > 0;
   const isWorkday = useMemo(() => workdayChecker(calendar), [calendar]);
   const bookings = externalBookings ?? NO_BOOKINGS;
   // Вырезы на полосах: рабочие дни без часов фазы, когда человек занят в

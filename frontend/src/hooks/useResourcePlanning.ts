@@ -14,6 +14,7 @@ import {
   type DependencyOut,
   bulkClearAssignments, type BulkClearMode,
   putWorkTypeOverride, type WorkTypeOverrideInput,
+  getPlanWatch, addPlanWatch, removePlanWatch,
 } from '../api/resourcePlanning';
 import { trackAction } from '../lib/usage/track';
 import { candidatesQueryKey, sameCandidatesTarget } from '../utils/rpCandidates';
@@ -102,6 +103,39 @@ export const useGanttProjection = (planId: string | null) =>
     enabled: !!planId,
     staleTime: 60_000,
   });
+
+/**
+ * Ключ списка наблюдения — под ключом диаграммы плана: всё, что перечитывает
+ * диаграмму (событие «план изменился», отсутствия, личные настройки, правка фазы),
+ * перечитывает и наблюдаемых. Признак «диаграмма перечитывается» смотрит точный ключ.
+ */
+export const planWatchKey = (planId: string | null) => ['gantt', planId, 'watch'] as const;
+
+export const usePlanWatch = (planId: string | null) =>
+  useQuery({
+    queryKey: planWatchKey(planId),
+    queryFn: () => getPlanWatch(planId!),
+    enabled: !!planId,
+    staleTime: 60_000,
+  });
+
+export function useAddPlanWatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, employeeIds }: { planId: string; employeeIds: string[] }) =>
+      addPlanWatch(planId, employeeIds),
+    onSuccess: (_, { planId }) => qc.invalidateQueries({ queryKey: planWatchKey(planId) }),
+  });
+}
+
+export function useRemovePlanWatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, employeeId }: { planId: string; employeeId: string }) =>
+      removePlanWatch(planId, employeeId),
+    onSuccess: (_, { planId }) => qc.invalidateQueries({ queryKey: planWatchKey(planId) }),
+  });
+}
 
 export function usePatchConflict(planId: string | null) {
   const qc = useQueryClient();

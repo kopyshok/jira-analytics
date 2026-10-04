@@ -232,6 +232,32 @@ export interface EmployeeLoadOut {
   quarter?: EmployeeQuarterLoad | null;
 }
 
+/** Свободные часы наблюдаемого в месяце квартала. */
+export interface WatchMonthFree {
+  /** Первое число месяца, YYYY-MM-DD. */
+  month: string;
+  hours: number;
+}
+
+/** Наблюдаемый: строка «Загрузки по дням» той же формулой, что у людей плана.
+ *  Свой слой — задачи его основной команды (и этого плана), другие команды — остальное. */
+export interface WatchRowOut extends EmployeeLoadOut {
+  home_team: string | null;
+  /** Свободно за квартал: норма − задачи − нормированные работы, ч. */
+  free_hours: number;
+  free_by_month: WatchMonthFree[];
+  /** «Технические задачи» роли человека в запасе основной команды (общий на роль). */
+  tech_reserve: ReserveTypeRow | null;
+  /** Занят в этом плане. */
+  in_plan: boolean;
+}
+
+export interface PlanWatchOut {
+  rows: WatchRowOut[];
+  /** Брони наблюдаемых в опорных планах других команд — для подсказки дня. */
+  bookings: ExternalBookingOut[];
+}
+
 export interface ResetCounts {
   pinned_dates: number;
   pinned_employees: number;
@@ -714,3 +740,13 @@ export interface WorkTypeOverrideInput {
 /** Чем команда считает работу своих людей над задачей другой команды. */
 export const putWorkTypeOverride = (data: WorkTypeOverrideInput) =>
   api.put('/resource-planning/work-type-overrides', data);
+
+/** Список наблюдения плана: «Наблюдаемые» в «Загрузке по дням». */
+export const getPlanWatch = (planId: string) =>
+  api.get<PlanWatchOut>(`/resource-planning/resource-plans/${planId}/watch`);
+
+export const addPlanWatch = (planId: string, employeeIds: string[]) =>
+  api.post(`/resource-planning/resource-plans/${planId}/watch`, { employee_ids: employeeIds });
+
+export const removePlanWatch = (planId: string, employeeId: string) =>
+  api.del(`/resource-planning/resource-plans/${planId}/watch/${employeeId}`);

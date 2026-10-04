@@ -22,7 +22,7 @@ import PlaneGantt from '../components/resource-planning/PlaneGantt';
 import ConflictPanel from '../components/resource-planning/ConflictPanel';
 import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlocksModal';
 import AssignmentSidebar from '../components/resource-planning/AssignmentSidebar';
-import EmployeeLoadHeatmap from '../components/resource-planning/EmployeeLoadHeatmap';
+import PlanLoadHeatmap from '../components/resource-planning/PlanLoadHeatmap';
 import NormedReserveSummary from '../components/resource-planning/NormedReserveSummary';
 import AppearanceModal from '../components/resource-planning/AppearanceModal';
 import BulkResetDropdown from '../components/resource-planning/BulkResetDropdown';
@@ -619,7 +619,8 @@ function ResourcePlanningPageInner() {
 
       {gantt?.employee_load && gantt.employee_load.length > 0 && viewMode === 'two-level' && (
         <div data-tour="rp-load">
-        <EmployeeLoadHeatmap
+        <PlanLoadHeatmap
+          planId={gantt.plan.id}
           rows={gantt.employee_load}
           subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
           subgroupOrder={subgroupOrder}
