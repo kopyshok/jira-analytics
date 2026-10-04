@@ -17,6 +17,7 @@ import BacklogPlanningParamsModal from '../components/backlog/BacklogPlanningPar
 import InPlanSwitch from '../components/backlog/InPlanSwitch';
 import MinorChangesCard from '../components/backlog/MinorChangesCard';
 import EstimateDisputePopover from '../components/backlog/EstimateDisputePopover';
+import MultiTeamProgressTag from '../components/shared/MultiTeamProgressTag';
 import {
   countOffPlan, inPlanRole, isOffPlan, type InPlanRow,
 } from '../utils/inPlan';
@@ -243,6 +244,7 @@ export default function BacklogPage() {
         subgroup_source: c.subgroup_source ?? null,
         disputed_roles: c.disputed_roles ?? [],
         estimate_candidates: c.estimate_candidates ?? {},
+        multi_team_progress: c.multi_team_progress ?? null,
         has_parent_in_backlog: true,
         has_children_in_backlog: false,
       })) as unknown as BacklogItemResponse['children'],
@@ -400,6 +402,7 @@ export default function BacklogPage() {
                 <Tag color="gold" style={{ marginInlineEnd: 0 }}>мультикоманда</Tag>
               </Tooltip>
             )}
+            {r.multi_team_progress && <MultiTeamProgressTag progress={r.multi_team_progress} />}
             {/* Все спорные роли задачи — и ОПЭ, чья ячейка после отсечки скрыта. */}
             {r.issue_id && hasDispute(r) && (
               <EstimateDisputePopover

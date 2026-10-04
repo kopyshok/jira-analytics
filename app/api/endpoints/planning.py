@@ -54,6 +54,7 @@ from app.schemas.capacity_diff import (
     MonthDiff,
 )
 from app.schemas.assignee_candidates import CandidateGroupOut
+from app.schemas.multi_team_progress import MultiTeamProgressOut
 from app.schemas.scenario_override import AllocationOverrideRequest
 from app.services import opo_policy, team_membership
 from app.services import subgroup_shares as ss
@@ -69,9 +70,11 @@ from app.services.backlog_service import (
     approved_included_backlog_ids,
     choose_assignee,
     descendant_backlog_ids_of_included_ancestors,
+    issue_is_multi_team,
     mode_excluded_backlog_ids,
     not_in_plan_backlog_ids,
 )
+from app.services.multi_team_progress import multi_team_progress, row_progress
 from app.services.assignee_candidates import candidate_groups, jira_assignee_id
 from app.services.category_resolver import CategoryResolver
 from app.services.cross_team_occupancy import quarter_num
@@ -361,6 +364,8 @@ class AllocationResponse(BaseModel):
     has_children_in_backlog: bool = False
     # Группа внутри команды. None — команда без деления либо группа не определена.
     subgroup_id: Optional[str] = None
+    # Эпик мультикомандной RFA: сколько команд RFA уже взяли работу. Только в списке.
+    multi_team_progress: Optional[MultiTeamProgressOut] = None
 
 
 class AllocationAssigneePatch(BaseModel):
@@ -507,6 +512,7 @@ def _to_allocation_resp(
     employee_role_by_name: dict | None = None,
     parents_in_backlog: set | None = None,
     subgroup_by_employee: dict | None = None,
+    multi_team_progress: Optional[MultiTeamProgressOut] = None,
 ) -> AllocationResponse:
     jira_assignee_name = item.issue.assignee_display_name if item.issue else None
     if item.assignee_manual:
@@ -567,6 +573,7 @@ def _to_allocation_resp(
         issue_id=item.issue_id,
         has_children_in_backlog=has_children,
         subgroup_id=subgroup_id,
+        multi_team_progress=multi_team_progress,
     )
 
 
@@ -1644,9 +1651,28 @@ async def list_scenario_allocations(
 
     subgroup_by_employee = _subgroup_by_employee(db, scenario)
 
+    # «В работе у K из N»: эпики мультикомандных RFA и сами RFA, если они в
+    # строках, — одним расчётом на весь сценарий.
+    row_issues = [item.issue for _, item in rows if item.issue is not None]
+    rfa_candidates = {i.id for i in row_issues if issue_is_multi_team(i)}
+    rfa_candidates |= {
+        i.parent_id for i in row_issues
+        if i.parent_id is not None and i.parent_id not in backlog_issue_ids
+    }
+    progress_by_rfa = multi_team_progress(db, rfa_candidates)
+
+    def _progress(item: BacklogItem) -> Optional[MultiTeamProgressOut]:
+        if item.issue is None or not progress_by_rfa:
+            return None
+        return MultiTeamProgressOut.from_row(row_progress(
+            progress_by_rfa,
+            issue_id=item.issue.id, parent_id=item.issue.parent_id, team=item.issue.team,
+        ))
+
     return [
         _to_allocation_resp(
-            alloc, item, emp_role_by_name, parents_in_backlog, subgroup_by_employee
+            alloc, item, emp_role_by_name, parents_in_backlog, subgroup_by_employee,
+            multi_team_progress=_progress(item),
         )
         for alloc, item in rows
     ]
