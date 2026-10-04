@@ -116,5 +116,5 @@ test('01-learning', async ({ page }) => {
   await d.caption(`${videos} — в справке разделов и «Первых шагах»`);
   await d.show(cards.nth(0), cards.nth(2));
   await d.pause(2500);
-  await saveClip(page, '01-learning');
+  await saveClip(d, '01-learning');
 });

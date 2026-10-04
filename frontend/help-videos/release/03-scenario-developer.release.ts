@@ -161,5 +161,5 @@ test('03-scenario-developer', async ({ page }) => {
   await d.caption('Ресурсный план отдаст разработчику фазу «Разработка»');
   await d.show(devSelect);
   await d.pause(2600);
-  await saveClip(page, '03-scenario-developer');
+  await saveClip(d, '03-scenario-developer');
 });
