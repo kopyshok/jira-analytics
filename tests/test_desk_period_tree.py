@@ -158,10 +158,10 @@ def _seed_tree(db_session, emp_id):
     db_session.add(Project(id="prj-1", jira_project_id="10000", key="ITL", name="ITL", is_active=True))
     db_session.add_all([
         _issue("iss-P", "ITL-1"),
-        _issue("iss-A", "ITL-2", "iss-P", assignee_display_name="Иван", estimated_hours=10.0),
+        _issue("iss-A", "ITL-2", "iss-P", assignee_display_name="Иван"),
         _issue("iss-A1", "ITL-3", "iss-A"),
-        _issue("iss-A11", "ITL-4", "iss-A1", estimated_hours=4.0),
-        _issue("iss-B", "ITL-5", "iss-P", estimated_hours=6.0),
+        _issue("iss-A11", "ITL-4", "iss-A1"),
+        _issue("iss-B", "ITL-5", "iss-P"),
         _issue("iss-C", "ITL-6", "iss-P", status="Done", cat="done"),
     ])
     db_session.add(BacklogItem(id="bi-1", title="Инициатива A", issue_id="iss-P"))
@@ -194,25 +194,120 @@ def test_full_tree_to_leaves(db_session, emp):
     assert set(by_key) == {"ITL-2", "ITL-5", "ITL-6"}
     a = by_key["ITL-2"]
     assert a["fact_hours"] == 4.0  # поддерево A: 1 + 3
-    assert a["estimate_hours"] == 10.0
+    assert "estimate_hours" not in a
     assert a["assignee"] == "Иван"
     assert a["jira_url"].endswith("ITL-2")
     a1 = a["children"][0]
     assert a1["key"] == "ITL-3" and a1["fact_hours"] == 3.0
-    assert a1["estimate_hours"] == 4.0  # своей оценки нет — сумма детей
     leaf = a1["children"][0]
     assert leaf["key"] == "ITL-4" and leaf["children"] == []
     assert leaf["fact_hours"] == 3.0
     assert by_key["ITL-6"]["status_category"] == "done"
-    assert by_key["ITL-6"]["estimate_hours"] is None
 
 
 def test_tree_survives_cycle(db_session, emp):
     _seed_tree(db_session, emp.id)
+    # Цикл: A11 назван родителем A (A → A1 → A11 → A).
     db_session.get(Issue, "iss-A").parent_id = "iss-A11"
     db_session.commit()
     out = _my_tasks(db_session, _desk(db_session, emp))
-    assert out["projects"][0]["key"] == "ITL-1"
+    kids = out["projects"][0]["children"]
+    # A теперь висит под A11, а не под инициативой; обход завершился.
+    assert {c["key"] for c in kids} == {"ITL-5", "ITL-6"}
+
+
+def test_tree_cycle_below_project_terminates(db_session, emp):
+    _seed_tree(db_session, emp.id)
+    # A → A1 → A11, а A11 дополнительно указывает на A1 как на родителя: A1 ↔ A11.
+    db_session.get(Issue, "iss-A1").parent_id = "iss-A11"
+    db_session.get(Issue, "iss-A11").parent_id = "iss-A1"
+    db_session.commit()
+    out = _my_tasks(db_session, _desk(db_session, emp))
+    assert {c["key"] for c in out["projects"][0]["children"]} == {"ITL-2", "ITL-5", "ITL-6"}
+
+
+def test_tree_only_subtrees_of_employee_projects(db_session, emp):
+    _seed_tree(db_session, emp.id)
+    db_session.add(_issue("iss-Z", "ITL-70"))  # чужая инициатива без назначения
+    db_session.add(_issue("iss-Z1", "ITL-71", "iss-Z"))
+    db_session.commit()
+    out = _my_tasks(db_session, _desk(db_session, emp))
+    assert [p["key"] for p in out["projects"]] == ["ITL-1"]
+
+    def keys(nodes):
+        for n in nodes:
+            yield n["key"]
+            yield from keys(n["children"])
+
+    assert "ITL-71" not in set(keys(out["projects"][0]["children"]))
+
+
+def test_tree_facts_follow_project_row_rules(db_session, emp):
+    """Часы чужой команды и часы до вступления в команду не попадают в узлы; узлы <= проект."""
+    year, quarter = _cur()
+    month = {1: 1, 2: 4, 3: 7, 4: 10}[quarter]
+    _seed_tree(db_session, emp.id)
+    ext = Employee(
+        id="emp-ext", jira_account_id="acc-ext", display_name="Внешний", is_active=True,
+        role="dev", team="Beta", synced_at=datetime.utcnow(),
+    )
+    left = Employee(
+        id="emp-left", jira_account_id="acc-left", display_name="Ушедший", is_active=True,
+        role="analyst", team="Alpha", synced_at=datetime.utcnow(),
+    )
+    db_session.add_all([ext, left])
+    db_session.add(EmployeeTeam(
+        id="et-left", employee_id="emp-left", team="Alpha", is_primary=True,
+        joined_at=date(year, month, 20), left_at=None,  # вступил после дня списания
+    ))
+    for i, eid in enumerate(["emp-ext", "emp-left"]):
+        db_session.add(Worklog(
+            id=f"wl-x{i}", jira_worklog_id=f"jwl-x{i}", issue_id="iss-B", employee_id=eid,
+            started_at=datetime(year, month, 16, 10), time_spent_seconds=18000, hours=5.0,
+        ))
+    db_session.commit()
+    project = _my_tasks(db_session, _desk(db_session, emp))["projects"][0]
+    by_key = {c["key"]: c for c in project["children"]}
+    assert by_key["ITL-5"]["fact_hours"] == 2.0  # только часы своего аналитика
+    assert sum(c["fact_hours"] for c in project["children"]) <= project["fact_hours"]
+
+
+def test_tree_truncated_to_node_limit(db_session, emp):
+    from app.services.work_desk_widgets import _project_children
+
+    _seed_tree(db_session, emp.id)
+    for n in range(10):
+        db_session.add(_issue(f"iss-t{n}", f"ITL-8{n}", "iss-P"))
+    db_session.commit()
+    tree, truncated = _project_children(
+        db_session, ["iss-P"], date(2099, 12, 31), {emp.id}, {}, node_limit=5
+    )
+    assert truncated == {"iss-P"}
+
+    def count(nodes):
+        return sum(1 + count(n["children"]) for n in nodes)
+
+    assert count(tree["iss-P"]) == 5
+    # Вширь: сначала прямые дети проекта, глубокие узлы не вытесняют их.
+    assert len(tree["iss-P"]) == 5
+    tree, truncated = _project_children(
+        db_session, ["iss-P"], date(2099, 12, 31), {emp.id}, {}, node_limit=500
+    )
+    assert truncated == set()
+
+
+def test_chunked_in_queries_handle_large_level(db_session, emp):
+    from app.services.work_desk_widgets import _project_children
+
+    _seed_tree(db_session, emp.id)
+    for n in range(1100):
+        db_session.add(_issue(f"iss-m{n}", f"ITL-M{n}", "iss-B"))
+    db_session.commit()
+    tree, truncated = _project_children(
+        db_session, ["iss-P"], date(2099, 12, 31), {emp.id}, {}, node_limit=5000
+    )
+    b = next(c for c in tree["iss-P"] if c["key"] == "ITL-5")
+    assert len(b["children"]) == 1100 and not truncated
 
 
 def test_tree_query_count_independent_of_node_count(db_session, emp):

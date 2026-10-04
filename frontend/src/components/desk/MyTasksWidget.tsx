@@ -101,20 +101,17 @@ export function ChildRow({ c, depth = 0 }: { c: ProjectChild; depth?: number }) 
         style={{ paddingLeft: depth * 18 }}
         data-testid="desk-tree-row"
       >
-        <span
-          className={`desk-tree-chevron${open ? ' open' : ''}${hasKids ? '' : ' hidden'}`}
-          role={hasKids ? 'button' : undefined}
-          aria-label={hasKids ? (open ? 'Свернуть' : 'Развернуть') : undefined}
-          aria-expanded={hasKids ? open : undefined}
-          tabIndex={hasKids ? 0 : undefined}
-          onClick={() => hasKids && setOpen((o) => !o)}
-          onKeyDown={(e) => {
-            if (hasKids && (e.key === 'Enter' || e.key === ' ')) {
-              e.preventDefault();
-              setOpen((o) => !o);
-            }
-          }}
-        >▸</span>
+        {hasKids ? (
+          <button
+            type="button"
+            className={`desk-tree-btn desk-tree-chevron${open ? ' open' : ''}`}
+            aria-label={open ? 'Свернуть' : 'Развернуть'}
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+          >▸</button>
+        ) : (
+          <span className="desk-tree-chevron hidden" aria-hidden="true">▸</span>
+        )}
         <span className={`desk-status-dot desk-dot-${kind}`} />
         {c.key && <JiraKey k={c.key} url={c.jira_url} />}
         <span className="desk-child-name">{c.title ?? c.key ?? '—'}</span>
@@ -122,8 +119,7 @@ export function ChildRow({ c, depth = 0 }: { c: ProjectChild; depth?: number }) 
           <span className={`desk-status-badge desk-badge-${kind} desk-child-status`}>{c.status}</span>
         )}
         {c.assignee && <span className="desk-child-assignee">{c.assignee}</span>}
-        <span className="desk-child-hrs mono" title="Оценка и факт по задаче со всеми подзадачами">
-          {c.estimate_hours != null ? `${Math.round(c.estimate_hours)} / ` : '— / '}
+        <span className="desk-child-hrs mono" title="Факт по задаче со всеми подзадачами">
           {Math.round(c.fact_hours)} ч
         </span>
       </div>
@@ -171,6 +167,9 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
           )}
           {activeNow && <span className="desk-now-pill">сейчас</span>}
         </div>
+        {p.tree_truncated && (
+          <div className="desk-tree-truncated">показаны первые {p.tree_limit ?? 500} задач</div>
+        )}
         {open && hasChildren && (
           <div className="desk-child-list">
             {children.map((c, i) => (

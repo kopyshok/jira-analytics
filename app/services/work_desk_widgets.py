@@ -19,9 +19,11 @@ from app.services.plan_common import (
     DISPLAY_ROLES as _DISPLAY_ROLES,
     PHASE_LABEL as _PHASE_LABEL,
     assignment_norm as _assignment_norm,
+    chunked as _chunked,
     find_recent_plan as _find_recent_plan,
     jira_url as _jira_url,
     member_windows as _member_windows,
+    own_fact_by_issue as _own_fact_by_issue,
     quarter_bounds as _quarter_bounds,
     role_breakdown as _role_breakdown,
     subtree_ids as _subtree_ids,
@@ -74,23 +76,26 @@ def _worklog_fact_map(
     from app.models import Worklog
 
     emp_ids = {p[0] for p in pairs}
-    issue_ids = {p[1] for p in pairs}
     end_dt = datetime.combine(q_end, time.max)
-    rows = (
-        db.query(
-            Worklog.employee_id,
-            Worklog.issue_id,
-            func.coalesce(func.sum(Worklog.hours), 0.0).label("hours"),
+    result: Dict[tuple[str, str], float] = {}
+    for part in _chunked(sorted({p[1] for p in pairs})):
+        rows = (
+            db.query(
+                Worklog.employee_id,
+                Worklog.issue_id,
+                func.coalesce(func.sum(Worklog.hours), 0.0).label("hours"),
+            )
+            .filter(
+                Worklog.employee_id.in_(emp_ids),
+                Worklog.issue_id.in_(part),
+                Worklog.started_at <= end_dt,
+            )
+            .group_by(Worklog.employee_id, Worklog.issue_id)
+            .all()
         )
-        .filter(
-            Worklog.employee_id.in_(emp_ids),
-            Worklog.issue_id.in_(issue_ids),
-            Worklog.started_at <= end_dt,
-        )
-        .group_by(Worklog.employee_id, Worklog.issue_id)
-        .all()
-    )
-    return {(r.employee_id, r.issue_id): float(r.hours or 0.0) for r in rows}
+        for r in rows:
+            result[(r.employee_id, r.issue_id)] = float(r.hours or 0.0)
+    return result
 
 
 def _assignment_projects(
@@ -158,74 +163,87 @@ def _assignment_projects(
     return projects
 
 
+# Предел размера дерева на один проект: стол — публичная страница, которая
+# обновляется раз в минуту, ответ не должен расти вместе с Jira.
+TREE_NODE_LIMIT = 500
+
+
 def _project_children(
     db: Session,
-    employee_id: str,
     issue_ids: List[str],
-    q_start: date,
     q_end: date,
-) -> Dict[str, List[dict]]:
-    """Полное дерево подчинённых задач проектов + факт сотрудника за квартал.
+    team_ids: set[str],
+    windows: Dict[str, list],
+    node_limit: int = TREE_NODE_LIMIT,
+) -> tuple[Dict[str, List[dict]], set[str]]:
+    """Дерево подчинённых задач проектов до листьев.
 
-    Обход по уровням (запрос на уровень глубины, не на узел) + один
-    сгруппированный запрос факта. У каждого узла: ключ, название, статус и его
-    категория, исполнитель, оценка и факт-часы ВСЕГО поддерева узла, дети.
-    Возвращает {issue_id проекта: [узел, ...]} (без пустых проектов).
-    Циклы в родителях не зацикливают обход: узел раскрывается один раз.
+    Обход вширь по уровням (запрос на уровень, IN порциями по 500, не запрос на
+    узел); на проект берётся не больше ``node_limit`` задач, остальные отсекаются
+    (проект попадает во второй результат — для пометки «показаны первые N»).
+    У узла: ключ, название, статус и его категория, исполнитель и факт-часы
+    всего поддерева — по тем же правилам, что у строки проекта (своя команда,
+    окна участия, до конца квартала). Циклы в родителях не зацикливают обход.
+
+    Возвращает ({issue_id проекта: [узел, ...]}, {issue_id усечённых проектов}).
     """
     from app.models import Issue
 
     roots = [i for i in dict.fromkeys(issue_ids) if i]
     if not roots:
-        return {}
+        return {}, set()
 
     rows_by_id: Dict[str, object] = {}
     kids: Dict[str, List[str]] = {}
-    expanded: set[str] = set()
+    count: Dict[str, int] = {r: 0 for r in roots}
+    root_of: Dict[str, str] = {r: r for r in roots}
+    truncated: set[str] = set()
+    expanded: set[str] = set(roots)
     frontier = list(roots)
     while frontier:
-        expanded.update(frontier)
-        rows = (
-            db.query(
-                Issue.id,
-                Issue.key,
-                Issue.summary,
-                Issue.status,
-                Issue.status_category,
-                Issue.assignee_display_name,
-                Issue.estimated_hours,
-                Issue.parent_id,
+        found = []
+        for part in _chunked(frontier):
+            found.extend(
+                db.query(
+                    Issue.id,
+                    Issue.key,
+                    Issue.summary,
+                    Issue.status,
+                    Issue.status_category,
+                    Issue.assignee_display_name,
+                    Issue.parent_id,
+                )
+                .filter(Issue.parent_id.in_(part))
+                .all()
             )
-            .filter(Issue.parent_id.in_(frontier))
-            .all()
-        )
+        order = {pid: n for n, pid in enumerate(frontier)}
+        found.sort(key=lambda r: (order.get(r.parent_id, 0), r.key or "", r.id))
         frontier = []
-        for r in rows:
+        for r in found:
+            root = root_of.get(r.parent_id)
+            if root is None or r.id in rows_by_id or r.id in count:
+                continue
+            if count[root] >= node_limit:
+                truncated.add(root)
+                continue
+            count[root] += 1
             rows_by_id[r.id] = r
             kids.setdefault(r.parent_id, []).append(r.id)
+            root_of[r.id] = root
             if r.id not in expanded:
+                expanded.add(r.id)
                 frontier.append(r.id)
     if not rows_by_id:
-        return {}
+        return {}, truncated
 
-    fact = _worklog_fact_map(
-        db, [(employee_id, iid) for iid in rows_by_id], q_start, q_end
-    )
+    fact = _own_fact_by_issue(db, list(rows_by_id), q_end, team_ids, windows)
 
     def build(iid: str, path: frozenset) -> dict:
         r = rows_by_id[iid]
         children = [
-            build(cid, path | {iid}) for cid in kids.get(iid, []) if cid not in path and cid != iid
+            build(cid, path | {iid}) for cid in kids.get(iid, []) if cid not in path
         ]
         children.sort(key=lambda c: (-c["fact_hours"], c["key"] or ""))
-        own_fact = fact.get((employee_id, iid), 0.0)
-        child_est = [c["estimate_hours"] for c in children if c["estimate_hours"] is not None]
-        if r.estimated_hours is not None:
-            estimate: Optional[float] = float(r.estimated_hours)
-        elif child_est:
-            estimate = round(sum(child_est), 1)
-        else:
-            estimate = None
         return {
             "key": r.key,
             "title": r.summary,
@@ -233,16 +251,18 @@ def _project_children(
             "status": r.status,
             "status_category": r.status_category,
             "assignee": r.assignee_display_name,
-            "estimate_hours": estimate,
-            "fact_hours": round(own_fact + sum(c["fact_hours"] for c in children), 1),
+            "fact_hours": round(
+                fact.get(iid, 0.0) + sum(c["fact_hours"] for c in children), 1
+            ),
             "children": children,
         }
 
-    return {
-        root: [build(cid, frozenset({root})) for cid in kids[root] if cid != root]
+    tree = {
+        root: [build(cid, frozenset({root})) for cid in kids[root]]
         for root in roots
         if kids.get(root)
     }
+    return tree, truncated
 
 
 def _worklog_span_map(
@@ -329,17 +349,17 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
         _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end)
     )
     issue_ids = [p.get("issue_id") for p in projects if p.get("issue_id")]
-    children = _project_children(db, desk.employee_id, issue_ids, q_start, q_end)
 
     # Члены команды стола (+ QA как общий ресурс) — их часы идут в план/факт,
     # часы остальных авторов уходят в «прочее» (внешняя помощь, информационно).
     team_ids = _team_member_ids(db, teams, q_start, q_end)
+    # Часы своих засчитываются только за дни участия в команде стола.
+    windows = _member_windows(db, teams, q_end)
+    children, truncated = _project_children(db, issue_ids, q_end, team_ids, windows)
 
     # Факт проекта — по всему поддереву задачи (списания висят на подзадачах).
     subtree = _subtree_ids(db, issue_ids)
     # План/факт по 4 видам работ (analyst/dev/qa/opo) — как в карточке проекта.
-    # Часы своих засчитываются только за дни участия в команде стола.
-    windows = _member_windows(db, teams, q_end)
     breakdown = _role_breakdown(
         db, [plan.id], issue_ids, subtree, q_end, team_ids,
         member_windows={iid: windows for iid in issue_ids},
@@ -347,6 +367,8 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
     for p in projects:
         iid = p.get("issue_id")
         p["children"] = children.get(iid, [])
+        p["tree_truncated"] = iid in truncated
+        p["tree_limit"] = TREE_NODE_LIMIT
         bd = breakdown.get(iid)
         if bd is None:
             # Нет связанной задачи — разбивку не построить, показываем только

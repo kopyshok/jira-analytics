@@ -88,7 +88,7 @@ export default function DeskPage() {
     );
   };
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, isFetching } = useQuery({
     queryKey: ['desk', token, selected?.year ?? null, selected?.quarter ?? null],
     queryFn: ({ signal }) => fetchDeskMeta(token, selected, signal),
     retry: false,
@@ -96,12 +96,28 @@ export default function DeskPage() {
     placeholderData: keepPreviousData,
   });
 
+  // Часы клиента и сервера могут разойтись на границе квартала — сервер ответит
+  // отказом на «слишком далёкий» квартал. Сбрасываем выбор на текущий квартал.
+  const hasQ = searchParams.has('q');
+  useEffect(() => {
+    if (isError && hasQ) {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete('q');
+          return p;
+        },
+        { replace: true },
+      );
+    }
+  }, [isError, hasQ, setSearchParams]);
+
   const antdConfig = {
     algorithm: deskTheme === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
     token: antdTokensFor(deskTheme),
   };
 
-  if (isLoading) {
+  if (isLoading || (isError && hasQ)) {
     return (
       <ConfigProvider locale={ruRU} theme={antdConfig}>
         <div className="desk-root" data-theme={deskTheme}>
@@ -129,7 +145,7 @@ export default function DeskPage() {
     );
   }
 
-  const { employee, teams, enabled_widgets, period, summary } = data;
+  const { employee, teams, enabled_widgets, summary } = data;
   const widgets = enabled_widgets.filter((k) => WIDGET_REGISTRY[k]);
 
   const toggle = () => setDeskTheme((t) => (t === 'dark' ? 'light' : 'dark'));
@@ -142,8 +158,9 @@ export default function DeskPage() {
           <DeskHeader
             name={employee.display_name}
             teams={teams}
-            year={period.year}
-            quarter={period.quarter}
+            year={shownQuarter.year}
+            quarter={shownQuarter.quarter}
+            loading={isFetching}
             canPrev={quarterOffset(shownQuarter, currentQuarter) > -MAX_QUARTER_SHIFT}
             canNext={quarterOffset(shownQuarter, currentQuarter) < MAX_QUARTER_SHIFT}
             onShiftQuarter={changeQuarter}
@@ -171,6 +188,7 @@ function DeskHeader({
   teams,
   year,
   quarter,
+  loading,
   canPrev,
   canNext,
   onShiftQuarter,
@@ -182,6 +200,7 @@ function DeskHeader({
   teams: string[];
   year: number;
   quarter: number;
+  loading: boolean;
   canPrev: boolean;
   canNext: boolean;
   onShiftQuarter: (delta: number) => void;
@@ -221,6 +240,7 @@ function DeskHeader({
                 onClick={() => onShiftQuarter(-1)}
               >‹</button>
               <span className="desk-quarter">{fmtQuarterShort(year, quarter)}</span>
+              {loading && <span className="desk-quarter-loading" role="status" aria-label="Загрузка" />}
               <button
                 type="button"
                 className="desk-quarter-btn"

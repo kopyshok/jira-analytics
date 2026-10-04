@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { fetchDeskWidget } from '../../api/desk';
 import { useDeskPeriod } from './deskPeriod';
 
@@ -11,5 +11,6 @@ export function useDeskWidget<T>(token: string, key: string) {
     queryFn: ({ signal }) => fetchDeskWidget<T>(token, key, period, signal),
     refetchInterval: 60_000,
     retry: 1,
+    placeholderData: keepPreviousData,
   });
 }

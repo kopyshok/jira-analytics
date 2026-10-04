@@ -37,7 +37,6 @@ export interface ProjectChild {
   status: string | null;
   status_category?: string | null;
   assignee?: string | null;
-  estimate_hours?: number | null;
   fact_hours: number;
   children?: ProjectChild[];
 }
@@ -70,6 +69,9 @@ export interface DeskProject {
   /** Прочие часы (внешняя помощь / без роли) — вне план/факта, информационно. */
   info_hours?: number;
   children?: ProjectChild[];
+  /** Дерево обрезано до tree_limit задач. */
+  tree_truncated?: boolean;
+  tree_limit?: number;
 }
 
 export interface MyTasksData {
