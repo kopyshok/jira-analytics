@@ -613,7 +613,8 @@ function ResourcePlanningPageInner() {
       )}
 
       {gantt?.reserve && gantt.plan.team && viewMode === 'two-level' && (
-        <NormedReserveSummary reserve={gantt.reserve} />
+        // key — план: при открытии другого плана сводка заново решает, развернуться ли.
+        <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} />
       )}
 
       {gantt?.employee_load && gantt.employee_load.length > 0 && viewMode === 'two-level' && (

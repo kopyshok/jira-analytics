@@ -1,9 +1,10 @@
 import { Fragment, useMemo, useState } from 'react';
+import { Tooltip } from 'antd';
 
 import type { AssignmentOut, EmployeeLoadOut, EmployeeQuarterLoad, ExternalBookingOut } from '../../api/resourcePlanning';
 import { dayTooltipLines } from '../../utils/rpBusy';
 import { EXT_LOAD_COLOR, NORMED_WORK_COLOR, splitLoadFill } from '../../utils/heatmapFill';
-import { fmtHours } from '../../utils/normedReserve';
+import { dayReserveTypes, fmtHours, reserveUseLines, type ReserveLine } from '../../utils/normedReserve';
 
 interface Props {
   rows: EmployeeLoadOut[];
@@ -100,15 +101,30 @@ function outOfTeamText(row: EmployeeLoadOut, date: string): string {
   return 'вне команды';
 }
 
-/** Подсказка у имени: разбивка загрузки за квартал. */
-function quarterTooltip(q: EmployeeQuarterLoad): string {
-  const lines = [
+/** Строка подсказки: текст или строка запаса с красной частью «сверх запаса». */
+type TipLine = string | (ReserveLine & { indent?: boolean });
+
+function TipLineView({ line, bold }: { line: TipLine; bold?: boolean }) {
+  if (typeof line === 'string') return <div style={bold ? { fontWeight: 600 } : undefined}>{line}</div>;
+  return (
+    <div style={line.indent ? { paddingLeft: 12 } : undefined}>
+      {line.text}
+      {line.over && <span style={{ color: '#ff7875', fontWeight: 600 }}> {line.over}</span>}
+    </div>
+  );
+}
+
+/** Подсказка у имени: разбивка загрузки за квартал; слой «Другие команды» —
+ *  с запасом основной команды, за счёт которого он идёт. */
+function quarterTooltipLines(q: EmployeeQuarterLoad): TipLine[] {
+  const lines: TipLine[] = [
     `Задачи плана ${fmtHours(q.own_hours)} · Другие команды ${fmtHours(q.other_teams_hours)} · Нормированные работы ${fmtHours(q.normed_hours)}`,
   ];
-  for (const t of q.normed_by_type) lines.push(`  ${t.label} — ${fmtHours(t.hours)}`);
+  for (const l of reserveUseLines(q.reserve_use)) lines.push({ ...l, text: `другие команды ${l.text}`, indent: true });
+  for (const t of q.normed_by_type) lines.push({ text: `${t.label} — ${fmtHours(t.hours)}`, indent: true });
   if (q.unplaced_hours > 0.5) lines.push(`Не вмещается ${fmtHours(q.unplaced_hours)}`);
   lines.push(`Норма квартала ${fmtHours(q.capacity_hours)}`);
-  return lines.join('\n');
+  return lines;
 }
 
 /** Цвет клетки рабочего дня по загрузке. */
@@ -149,7 +165,7 @@ export default function EmployeeLoadHeatmap({
   selectedIds = NO_IDS,
   onEmployeeClick,
 }: Props) {
-  const [tip, setTip] = useState<{ left?: number; right?: number; top: number; lines: string[] } | null>(null);
+  const [tip, setTip] = useState<{ left?: number; right?: number; top: number; lines: TipLine[] } | null>(null);
 
   const data = useMemo(() => {
     if (rows.length === 0) return null;
@@ -239,16 +255,19 @@ export default function EmployeeLoadHeatmap({
   const showTip = (e: React.MouseEvent, row: EmployeeLoadOut, date: string, off: Off) => {
     const dt = isoDate(date);
     const head = `${RU_WD[dt.getDay()]}, ${dt.getDate()} ${RU_MONTHS_SHORT[dt.getMonth()]}`;
-    let body: string[];
+    let body: TipLine[];
     if (off === 'out_of_team') body = [outOfTeamText(row, date)];
     else if (off === 'absence') body = ['отпуск / отсутствие'];
     else if (off === 'holiday') body = ['праздник'];
     else {
       // По строке на этот план и на каждую другую команду: часы и задачи дня.
       const day = row.days.find((d) => d.date === date);
-      const lines = dayTooltipLines(
+      const lines: TipLine[] = dayTooltipLines(
         row.employee_id, date, assignments, bookings, day?.normed_hours ?? 0, day?.blocked,
       );
+      // Часы в других командах — за счёт запаса основной команды: строка на вид задач дня.
+      const types = dayReserveTypes(row.employee_id, date, row.quarter?.reserve_items, assignments, bookings);
+      lines.push(...reserveUseLines(row.quarter?.reserve_use, types));
       body = lines.length > 0 ? lines : ['нет загрузки'];
     }
     // У правого края экрана подсказка раскрывается влево от курсора, иначе уходит за край.
@@ -447,8 +466,15 @@ export default function EmployeeLoadHeatmap({
                     <span style={{ fontSize: 10, color: '#5a8ab8', flexShrink: 0 }}>{row.employee_role}</span>
                   )}
                   {avg > 0 && (
+                    <Tooltip
+                      title={row.quarter ? (
+                        <div style={{ fontSize: 12 }}>
+                          {quarterTooltipLines(row.quarter).map((line, i) => <TipLineView key={i} line={line} />)}
+                        </div>
+                      ) : undefined}
+                      styles={{ root: { maxWidth: TIP_MAX_W } }}
+                    >
                     <span
-                      title={row.quarter ? quarterTooltip(row.quarter) : undefined}
                       style={{
                         marginLeft: 'auto',
                         flexShrink: 0,
@@ -462,6 +488,7 @@ export default function EmployeeLoadHeatmap({
                     >
                       {avg}%
                     </span>
+                    </Tooltip>
                   )}
                 </div>
 
@@ -576,9 +603,7 @@ export default function EmployeeLoadHeatmap({
             boxShadow: '0 4px 14px rgba(0,0,0,0.45)',
           }}
         >
-          {tip.lines.map((line, i) => (
-            <div key={i} style={i === 0 ? { fontWeight: 600 } : undefined}>{line}</div>
-          ))}
+          {tip.lines.map((line, i) => <TipLineView key={i} line={line} bold={i === 0} />)}
         </div>
       )}
     </div>

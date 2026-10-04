@@ -175,6 +175,20 @@ export interface NormedTypeHours {
   hours: number;
 }
 
+/** За счёт какого запаса основной команды идут часы человека в других командах:
+ *  вид работ и его запас на роль человека (как в сводке запаса). */
+export interface ReserveUseOut {
+  team: string;
+  work_type_id: string;
+  label: string;
+  /** Часы этого человека в других командах, списанные на этот вид. */
+  hours: number;
+  planned_hours: number;
+  used_hours: number;
+  remaining_hours: number;
+  overuse_hours: number;
+}
+
 /** Загрузка человека за квартал, часы; одинакова в плане любой команды. */
 export interface EmployeeQuarterLoad {
   capacity_hours: number;
@@ -184,6 +198,10 @@ export interface EmployeeQuarterLoad {
   unplaced_hours: number;
   pct: number;
   normed_by_type: NormedTypeHours[];
+  /** Работа в других командах по видам запаса основной команды. */
+  reserve_use?: ReserveUseOut[];
+  /** Задача другой команды → вид работ, за счёт которого она идёт. */
+  reserve_items?: Record<string, string>;
 }
 
 /** Переход сотрудника на границе участия в команде плана внутри квартала. */
@@ -226,6 +244,8 @@ export interface ExternalBookingOut {
   employee_id: string;
   employee_name: string | null;
   team: string;
+  /** Задача брони — по ней подсказка дня находит вид работ запаса. */
+  backlog_item_id?: string | null;
   issue_key: string | null;
   title: string;
   phase: string;
