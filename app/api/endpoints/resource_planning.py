@@ -1517,9 +1517,9 @@ def _reserve_use(
     uses: List[ReserveUseOut] = []
     items: Dict[str, str] = {}
     for r in reserves.values():
-        person = r.people.get(employee_id) if r is not None else None
-        if person is None:
+        if r is None or employee_id not in r.people:
             continue
+        person = r.people[employee_id]
         role_rows = {x.work_type_id: x for x in r.roles.get(person.role or "", [])}
         for wt, hours in person.other_teams.items():
             row = role_rows.get(wt)
@@ -2493,25 +2493,25 @@ def get_plan_watch(
     }
     months = sorted({date(d.year, d.month, 1) for d in _daterange(q_start, q_end)})
     rows: List[WatchRowOut] = []
-    for e in employees:
+    for emp in employees:
         base = _employee_load_out(
-            e,
+            emp,
             q_start=q_start,
             q_end=q_end,
             avail=occ.avail,
             own=own,
             other=other,
-            load=loads.get(e.id),
+            load=loads.get(emp.id),
             labels=labels,
             reserves=reserves,
             member_iv=member_iv,
-            absences=absences.get(e.id, []),
+            absences=absences.get(emp.id, []),
             cal_map=cal_map,
             membership=membership,
             is_borrowed=False,
             borrowed_from=None,
         )
-        load = loads.get(e.id)
+        load = loads.get(emp.id)
         free = load.free_by_day if load else {}
         by_month = [
             WatchMonthFree(
@@ -2522,14 +2522,14 @@ def get_plan_watch(
             )
             for m in months
         ]
-        home_team, tech = _tech_reserve_row(reserves, e.id)
+        home_team, tech = _tech_reserve_row(reserves, emp.id)
         rows.append(WatchRowOut(
             **base.model_dump(),
-            home_team=home_team or next(iter(sorted(homes[e.id])), None),
+            home_team=home_team or next(iter(sorted(homes[emp.id])), None),
             free_hours=round(sum(free.values()), 1),
             free_by_month=by_month,
             tech_reserve=tech,
-            in_plan=any(h > 0 for h in occ.used.get(e.id, {}).values()),
+            in_plan=any(h > 0 for h in occ.used.get(emp.id, {}).values()),
         ))
     rows.sort(key=lambda r: (-r.free_hours, (r.employee_name or "").lower()))
     names = {e.id: e.display_name for e in employees}
