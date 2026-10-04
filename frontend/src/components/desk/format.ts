@@ -44,6 +44,11 @@ export function fmtQuarter(year: number, quarter: number): string {
   return `${ROMAN[quarter] ?? quarter} квартал ${year}`;
 }
 
+/** Короткая подпись квартала для переключателя: «IV кв. 2026». */
+export function fmtQuarterShort(year: number, quarter: number): string {
+  return `${ROMAN[quarter] ?? quarter} кв. ${year}`;
+}
+
 /** Часы со знаком ±: «+14 ч» / «−8 ч» (минус — типографский). */
 export function fmtSignedHours(h: number): string {
   const r = Math.round(h * 10) / 10;
