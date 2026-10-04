@@ -165,40 +165,84 @@ def _project_children(
     q_start: date,
     q_end: date,
 ) -> Dict[str, List[dict]]:
-    """Подчинённые задачи проектных задач + факт-часы сотрудника за квартал.
+    """Полное дерево подчинённых задач проектов + факт сотрудника за квартал.
 
-    Один запрос на все дочерние Issue + один сгруппированный запрос факта.
-    Возвращает {parent_issue_id: [child dict, ...]} (без пустых родителей).
+    Обход по уровням (запрос на уровень глубины, не на узел) + один
+    сгруппированный запрос факта. У каждого узла: ключ, название, статус и его
+    категория, исполнитель, оценка и факт-часы ВСЕГО поддерева узла, дети.
+    Возвращает {issue_id проекта: [узел, ...]} (без пустых проектов).
+    Циклы в родителях не зацикливают обход: узел раскрывается один раз.
     """
     from app.models import Issue
 
-    ids = [i for i in issue_ids if i]
-    if not ids:
+    roots = [i for i in dict.fromkeys(issue_ids) if i]
+    if not roots:
         return {}
-    rows = (
-        db.query(Issue.id, Issue.key, Issue.summary, Issue.status, Issue.parent_id)
-        .filter(Issue.parent_id.in_(ids))
-        .all()
-    )
-    if not rows:
-        return {}
-    fact = _worklog_fact_map(
-        db, [(employee_id, r.id) for r in rows], q_start, q_end
-    )
-    by_parent: Dict[str, List[dict]] = {}
-    for r in rows:
-        by_parent.setdefault(r.parent_id, []).append(
-            {
-                "key": r.key,
-                "title": r.summary,
-                "jira_url": _jira_url(r.key),
-                "status": r.status,
-                "fact_hours": round(fact.get((employee_id, r.id), 0.0), 1),
-            }
+
+    rows_by_id: Dict[str, object] = {}
+    kids: Dict[str, List[str]] = {}
+    expanded: set[str] = set()
+    frontier = list(roots)
+    while frontier:
+        expanded.update(frontier)
+        rows = (
+            db.query(
+                Issue.id,
+                Issue.key,
+                Issue.summary,
+                Issue.status,
+                Issue.status_category,
+                Issue.assignee_display_name,
+                Issue.estimated_hours,
+                Issue.parent_id,
+            )
+            .filter(Issue.parent_id.in_(frontier))
+            .all()
         )
-    for lst in by_parent.values():
-        lst.sort(key=lambda c: (-c["fact_hours"], c["key"] or ""))
-    return by_parent
+        frontier = []
+        for r in rows:
+            rows_by_id[r.id] = r
+            kids.setdefault(r.parent_id, []).append(r.id)
+            if r.id not in expanded:
+                frontier.append(r.id)
+    if not rows_by_id:
+        return {}
+
+    fact = _worklog_fact_map(
+        db, [(employee_id, iid) for iid in rows_by_id], q_start, q_end
+    )
+
+    def build(iid: str, path: frozenset) -> dict:
+        r = rows_by_id[iid]
+        children = [
+            build(cid, path | {iid}) for cid in kids.get(iid, []) if cid not in path and cid != iid
+        ]
+        children.sort(key=lambda c: (-c["fact_hours"], c["key"] or ""))
+        own_fact = fact.get((employee_id, iid), 0.0)
+        child_est = [c["estimate_hours"] for c in children if c["estimate_hours"] is not None]
+        if r.estimated_hours is not None:
+            estimate: Optional[float] = float(r.estimated_hours)
+        elif child_est:
+            estimate = round(sum(child_est), 1)
+        else:
+            estimate = None
+        return {
+            "key": r.key,
+            "title": r.summary,
+            "jira_url": _jira_url(r.key),
+            "status": r.status,
+            "status_category": r.status_category,
+            "assignee": r.assignee_display_name,
+            "estimate_hours": estimate,
+            "fact_hours": round(own_fact + sum(c["fact_hours"] for c in children), 1),
+            "children": children,
+        }
+
+    return {
+        root: [build(cid, frozenset({root})) for cid in kids[root] if cid != root]
+        for root in roots
+        if kids.get(root)
+    }
 
 
 def _worklog_span_map(
@@ -729,7 +773,8 @@ def _adapter_production_calendar(
     kind_map = {r.date: r.kind for r in kind_rows}
 
     today = date.today()
-    cur_month = today.month if today.year == year else None
+    # Счётчики «месяца» имеют смысл только для квартала, в котором сегодня.
+    cur_month = today.month if q_start <= today <= q_end else None
 
     quarter_workdays = 0
     month_workdays = 0
