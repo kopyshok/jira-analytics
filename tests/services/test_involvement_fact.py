@@ -83,9 +83,11 @@ def _member(db, emp: Employee, team: str, joined: Optional[date] = None,
 
 
 def _log(db, emp: Employee, issue: Issue, day: date, hours: float) -> None:
+    """Списание; ``day`` без времени — 10:00 этого дня."""
+    started = day if isinstance(day, datetime) else datetime(day.year, day.month, day.day, 10, 0)
     db.add(Worklog(
         jira_worklog_id=f"w{next(_seq)}", issue_id=issue.id, employee_id=emp.id,
-        started_at=datetime(day.year, day.month, day.day, 10, 0),
+        started_at=started,
         hours=hours, time_spent_seconds=int(hours * 3600),
     ))
     db.flush()
@@ -232,6 +234,95 @@ def test_member_without_worklogs(db_session, world):
     assert person.total.fact is None
     assert person.total.logged_of_norm == 0.0
     assert _role(team, "dev").total.fact is None
+
+
+def test_deactivated_with_worklogs_excluded(db_session, world):
+    """Выключенный сотрудник не учитывается нигде — даже со списаниями за квартал."""
+    gone = _employee(db_session, "Выключенный", "dev", active=False)
+    stay = _employee(db_session, "Работающий", "dev")
+    for emp in (gone, stay):
+        _member(db_session, emp, "Альфа")
+    _log(db_session, gone, world["support"], date(2026, 7, 6), 40)
+    _log(db_session, stay, world["project"], date(2026, 7, 6), 8)
+    db_session.commit()
+
+    team = _team(team_facts(db_session, ["Альфа"], 2026, 3), "Альфа")
+    assert [p.name for p in team.people] == ["Работающий"]
+    assert _role(team, "dev").people == 1
+    assert _role(team, "dev").total.fact == pytest.approx(1.0)
+
+
+def test_running_quarter_counts_to_today(db_session, world):
+    """Идущий квартал — по сегодня: норма и списания после сегодня не считаются,
+    месяцы целиком в будущем пустые."""
+    dev = _employee(db_session, "Текущий", "dev")
+    _member(db_session, dev, "Альфа")
+    _log(db_session, dev, world["project"], date(2026, 10, 1), 8)
+    _log(db_session, dev, world["support"], date(2026, 10, 2), 8)
+    _log(db_session, dev, world["support"], date(2026, 11, 10), 8)  # будущее
+    db_session.commit()
+
+    person = _person(
+        _team(team_facts(db_session, ["Альфа"], 2026, 4, today=date(2026, 10, 4)), "Альфа"),
+        "Текущий",
+    )
+    oct_, nov, dec = person.months[10], person.months[11], person.months[12]
+    # 1–2 октября — будни, 3–4 — выходные.
+    assert (oct_.norm_hours, oct_.logged_hours) == (16, 16)
+    assert oct_.logged_of_norm == pytest.approx(1.0)
+    assert oct_.fact == pytest.approx(0.5)
+    for m in (nov, dec):
+        assert (m.norm_hours, m.logged_hours) == (0, 0)
+        assert m.fact is None and m.logged_of_norm is None
+    assert person.total.logged_of_norm == pytest.approx(1.0)
+
+
+def test_join_and_leave_day_boundaries(db_session, world):
+    """День выхода (``left_at``) — уже не в старой команде; день входа — в новой."""
+    an = _employee(db_session, "Граница", "analyst")
+    _member(db_session, an, "Альфа", left=date(2026, 8, 3))
+    _member(db_session, an, "Бета", joined=date(2026, 8, 3))
+    _log(db_session, an, world["project"], date(2026, 7, 31), 8)
+    _log(db_session, an, world["support"], datetime(2026, 8, 3, 0, 0), 4)
+    db_session.commit()
+
+    result = team_facts(db_session, ["Альфа", "Бета"], 2026, 3)
+    alpha = _person(_team(result, "Альфа"), "Граница")
+    beta = _person(_team(result, "Бета"), "Граница")
+    assert (alpha.total.logged_hours, alpha.total.project_hours) == (8, 8)
+    assert (beta.total.logged_hours, beta.total.project_hours) == (4, 0)
+
+
+def test_quarter_edge_by_time(db_session, world):
+    """30.09 23:30 — III квартал, 01.10 00:00 — уже IV."""
+    dev = _employee(db_session, "Полуночник", "dev")
+    _member(db_session, dev, "Альфа")
+    _log(db_session, dev, world["project"], datetime(2026, 9, 30, 23, 30), 2)
+    _log(db_session, dev, world["support"], datetime(2026, 10, 1, 0, 0), 3)
+    db_session.commit()
+
+    q3 = _person(_team(team_facts(db_session, ["Альфа"], 2026, 3), "Альфа"), "Полуночник")
+    assert (q3.months[9].logged_hours, q3.total.logged_hours) == (2, 2)
+    q4 = _person(
+        _team(team_facts(db_session, ["Альфа"], 2026, 4, today=date(2026, 12, 31)), "Альфа"),
+        "Полуночник",
+    )
+    assert (q4.months[10].logged_hours, q4.total.logged_hours) == (3, 3)
+
+
+def test_two_teams_same_day(db_session, world):
+    """Состоит в двух командах в один день — списание идёт в обе."""
+    dev = _employee(db_session, "Общий", "dev")
+    _member(db_session, dev, "Альфа")
+    db_session.add(EmployeeTeam(employee_id=dev.id, team="Бета", is_primary=False))
+    _log(db_session, dev, world["project"], date(2026, 7, 6), 8)
+    db_session.commit()
+
+    result = team_facts(db_session, ["Альфа", "Бета"], 2026, 3)
+    for name in ("Альфа", "Бета"):
+        person = _person(_team(result, name), "Общий")
+        assert person.total.logged_hours == 8
+        assert person.total.norm_hours == 528
 
 
 def test_unknown_team_is_empty(db_session, world):

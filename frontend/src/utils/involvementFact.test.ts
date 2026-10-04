@@ -43,8 +43,12 @@ describe('factHint', () => {
     const role = { role: 'dev', people: 3, months: [], total: cell({ fact: 0.43, logged_of_norm: 0.987 }) };
     expect(factHint(role, 2026, 3)).toBe('Q3 2026 · 3 чел. · списано от нормы 99%');
   });
-  it('нет данных', () => {
-    expect(factHint(undefined, 2026, 3)).toBe('За Q3 2026 списаний нет');
+  it('в команде нет людей роли', () => {
+    expect(factHint(undefined, 2026, 3)).toBe('Q3 2026 · нет сотрудников с этой ролью');
+  });
+  it('люди есть, списаний нет', () => {
+    const role = { role: 'dev', people: 2, months: [], total: cell({ logged_of_norm: 0 }) };
+    expect(factHint(role, 2026, 3)).toBe('За Q3 2026 списаний нет · 2 чел.');
   });
 });
 

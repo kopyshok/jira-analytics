@@ -93,3 +93,9 @@ def test_default_is_last_completed_quarter(client, seeded):
 def test_teams_required(client):
     assert client.get(URL).status_code == 422
     assert client.get(URL, params={"teams": " , "}).status_code == 422
+
+
+@pytest.mark.parametrize("params", [{"year": 2026}, {"quarter": 3}])
+def test_year_and_quarter_together(client, params):
+    """Только год или только квартал — ошибка, а не тихая подмена периода."""
+    assert client.get(URL, params={"teams": "Альфа", **params}).status_code == 422

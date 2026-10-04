@@ -11,6 +11,10 @@
 - Команда — по участию на дату списания (``team_membership``); норма — за дни
   участия в команде (``CapacityService.team_quarter_capacity``).
 - Роли — аналитик и разработчик по роли сотрудника; без роли не показываем.
+  Выключенные сотрудники не учитываются, как во всех разрезах сервиса
+  (``team_membership.members_overlapping``).
+- Идущий квартал считается по сегодня включительно: норма и списания после
+  сегодня не учитываются, месяцы целиком в будущем пустые.
 - Итог роли — Σ проектных ÷ Σ всех, не среднее процентов людей.
 
 Чистое чтение. Списания читаются одним запросом на все команды; норма —
@@ -97,16 +101,20 @@ def last_completed_quarter(today: date) -> tuple[int, int]:
 
 def team_facts(
     db: Session, teams: Sequence[str], year: int, quarter: int,
+    today: Optional[date] = None,
 ) -> list[TeamFact]:
     """Фактическая вовлечённость по командам за квартал: люди и итог по ролям."""
     teams = list(dict.fromkeys(teams))
     months = QUARTER_MONTHS[quarter]
     start, end = quarter_bounds(year, quarter)
+    until = min(end, today or date.today())
 
     intervals = tm.intervals_by_team(db, teams, start, end)
     candidate_ids = {eid for by_emp in intervals.values() for eid in by_emp}
     employees = (
-        db.query(Employee).filter(Employee.id.in_(candidate_ids)).all()
+        db.query(Employee)
+        .filter(Employee.id.in_(candidate_ids), Employee.is_active.is_(True))
+        .all()
         if candidate_ids else []
     )
     role_of = {
@@ -134,7 +142,7 @@ def team_facts(
         .filter(
             Worklog.employee_id.in_(list(role_of)),
             Worklog.started_at >= datetime.combine(start, time.min),
-            Worklog.started_at < datetime.combine(end + timedelta(days=1), time.min),
+            Worklog.started_at < datetime.combine(until + timedelta(days=1), time.min),
             Issue.include_in_analysis.is_(True),
         )
         .all()
@@ -146,7 +154,10 @@ def team_facts(
             spans = intervals.get(team, {}).get(emp_id)
             if not spans or not tm.day_in_intervals(day, spans):
                 continue
-            cell = cells[team].setdefault(emp_id, _empty_months(months))[started_at.month]
+            per_month = cells[team].get(emp_id)
+            if per_month is None:
+                per_month = cells[team][emp_id] = _empty_months(months)
+            cell = per_month[started_at.month]
             cell.logged_hours += hours
             if is_project:
                 cell.project_hours += hours
@@ -162,7 +173,7 @@ def team_facts(
         norm = {
             qc.employee_id: {mc.month: mc.available_hours for mc in qc.months}
             for qc in capacity.team_quarter_capacity(
-                year, quarter, employee_ids=member_ids, teams_filter=[team],
+                year, quarter, employee_ids=member_ids, teams_filter=[team], until=until,
             )
         }
         people: list[PersonFact] = []
@@ -176,10 +187,8 @@ def team_facts(
             )
             for c in by_month.values():
                 person.total.add(c)
-            # Ушедший из компании без единого списания — не строка отчёта.
-            if person.total.logged_hours <= 0 and not (
-                by_id[eid].is_active and person.total.norm_hours > 0
-            ):
+            # Ни списаний, ни нормы (например, вошёл в команду после сегодня) — не строка.
+            if person.total.logged_hours <= 0 and person.total.norm_hours <= 0:
                 continue
             people.append(person)
         people.sort(key=lambda p: (FACT_ROLES.index(p.role), p.name))
