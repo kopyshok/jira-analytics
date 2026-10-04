@@ -6,6 +6,7 @@ import { useJiraBaseUrl } from '../../hooks/useSettings';
 import { IssueKey } from '../teamdesk/IssueCells';
 import {
   fmtHours,
+  hasOtherTeamHours,
   itemsForRow,
   overuseLabel,
   resolvedOverrideKeys,
@@ -36,8 +37,9 @@ export default function NormedReserveSummary({ reserve }: Props) {
   const { message } = App.useApp();
   const setOverride = useSetWorkTypeOverride();
   const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
-  // Блок при каждом открытии плана свёрнут заново — состояние намеренно не персистится.
-  const [expanded, setExpanded] = useState(false);
+  // При каждом открытии плана: развёрнут, если у команды есть часы других команд
+  // (видно, сколько запаса они заняли), иначе свёрнут. Состояние не персистится.
+  const [expanded, setExpanded] = useState(() => hasOtherTeamHours(reserve));
   // Раскрытые строки видов работ (задачи других команд) — ключ «роль::вид работ».
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   // Вид работ хранится на сервере per задача (backlog_item_id), а не per задача+роль — задача с

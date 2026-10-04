@@ -6,6 +6,7 @@ from app.services.event_bus import EventBroadcaster, get_event_bus
 
 from app.api.endpoints import admin_db_export as admin_db_export_endpoints
 from app.api.endpoints import admin_errors as admin_errors_endpoints
+from app.api.endpoints import admin_perf as admin_perf_endpoints
 from app.api.endpoints import admin_release_notes as admin_release_notes_endpoints
 from app.api.endpoints import admin_usage as admin_usage_endpoints
 from app.api.endpoints import admin_users as admin_users_endpoints
@@ -296,6 +297,12 @@ api_router.include_router(
     admin_errors_endpoints.router,
     prefix="/admin/errors",
     tags=["admin-errors"],
+    dependencies=_admin_dep,
+)
+api_router.include_router(
+    admin_perf_endpoints.router,
+    prefix="/admin/perf",
+    tags=["admin-perf"],
     dependencies=_admin_dep,
 )
 api_router.include_router(

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, App, Button, DatePicker, Descriptions, Divider, Drawer, InputNumber, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Checkbox, DatePicker, Descriptions, Divider, Drawer, InputNumber, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
 import type { SelectProps } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -498,22 +498,24 @@ function InvolvementEditor({
   const qc = useQueryClient();
   const { data } = useExplainAssignment(planId, assignment.id, true);
   const serverPct = data?.phase_calc?.involvement_pct ?? null;
-  const isPersonal = data?.phase_calc?.involvement_source === 'employee';
+  const source = data?.phase_calc?.involvement_source ?? null;
+  const serverFixed = source === 'task';
   const [pct, setPct] = useState<number | null>(serverPct);
+  const [fixed, setFixed] = useState(serverFixed);
   const [saving, setSaving] = useState(false);
 
-  // Сбросить локальное значение при смене назначения / прихода данных с сервера.
+  // Сбросить локальное состояние при смене назначения / прихода данных с сервера.
   useEffect(() => {
     setPct(serverPct);
-  }, [serverPct, assignment.id]);
+    setFixed(serverFixed);
+  }, [serverPct, serverFixed, assignment.id]);
 
-  const dirty = pct != null && pct !== serverPct;
+  const dirty = fixed && pct != null && (!serverFixed || pct !== serverPct);
 
-  const save = async () => {
-    if (pct == null) return;
+  const submit = async (value: number | null, done: string) => {
     setSaving(true);
     try {
-      await setAssignmentInvolvement(planId, assignment.id, pct);
+      await setAssignmentInvolvement(planId, assignment.id, value);
       // Сначала перечитать план: пересчёт мог пересоздать строку с новым id.
       // Расчёт обновляем только если строка выжила — иначе запрос уйдёт на
       // удалённый id и вернёт 404, а новая строка и так тянет свежие данные.
@@ -522,47 +524,64 @@ function InvolvementEditor({
       if (fresh?.assignments.some(a => a.id === assignment.id)) {
         qc.invalidateQueries({ queryKey: ['assignment-explain', planId, assignment.id] });
       }
-      message.success('Вовлечённость сохранена, план пересчитан');
+      message.success(done);
     } catch (e) {
       message.error((e as Error).message || 'Ошибка сохранения');
+      setFixed(serverFixed);
+      setPct(serverPct);
     } finally {
       setSaving(false);
     }
   };
 
-  if (isPersonal) {
-    return (
-      <Space orientation="vertical" size={2}>
+  const save = () => {
+    if (pct != null) void submit(pct, 'Вовлечённость зафиксирована, план пересчитан');
+  };
+
+  const toggleFixed = (next: boolean) => {
+    setFixed(next);
+    // Снятие фиксации сохраняется сразу: фаза возвращается к личной настройке
+    // или справочнику. Постановка — только открывает поле для правки.
+    if (!next && serverFixed) void submit(null, 'Фиксация снята, план пересчитан');
+    if (!next) setPct(serverPct);
+  };
+
+  const sourceHint = source === 'employee' ? 'личная настройка сотрудника'
+    : source === 'team' ? 'из справочника команды'
+    : source === null && data?.phase_calc ? 'не задана — 100%'
+    : null;
+
+  return (
+    <Space orientation="vertical" size={2}>
+      <Space>
         <InputNumber
           min={0}
           max={100}
           value={pct ?? undefined}
+          onChange={(v) => setPct(typeof v === 'number' ? v : null)}
           suffix="%"
           style={{ width: 110 }}
-          disabled
+          disabled={!fixed || saving}
+          onPressEnter={save}
         />
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Задана личной настройкой сотрудника — меняется в Сценариях, панель «Вовлечённость и нормированные работы»
-        </Typography.Text>
+        <Checkbox
+          checked={fixed}
+          disabled={saving}
+          onChange={(e) => toggleFixed(e.target.checked)}
+        >
+          Зафиксировано
+        </Checkbox>
+        {fixed && (
+          <Button type="primary" size="small" disabled={!dirty || saving} loading={saving} onClick={save}>
+            Сохранить
+          </Button>
+        )}
       </Space>
-    );
-  }
-
-  return (
-    <Space>
-      <InputNumber
-        min={0}
-        max={100}
-        value={pct ?? undefined}
-        onChange={(v) => setPct(typeof v === 'number' ? v : null)}
-        suffix="%"
-        style={{ width: 110 }}
-        disabled={saving}
-        onPressEnter={save}
-      />
-      <Button type="primary" size="small" disabled={!dirty || saving} loading={saving} onClick={save}>
-        Сохранить
-      </Button>
+      {!fixed && sourceHint && (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {sourceHint}
+        </Typography.Text>
+      )}
     </Space>
   );
 }

@@ -11,6 +11,7 @@ import type { BusyGap } from '../../utils/rpBusy';
 import { OTHER_TEAM_HATCH, workdayChecker } from '../../utils/externalBookings';
 import { peopleSections, personLaneRuns } from '../../utils/rpPeople';
 import EmployeeAvatar from './EmployeeAvatar';
+import { splitByExecutor } from '../../utils/phaseExecutors';
 import { usePatchAssignment } from '../../hooks/useResourcePlanning';
 import { useAppearanceSettings } from '../../contexts/AppearanceContext';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
@@ -1083,7 +1084,13 @@ function TwoLevelRows({
                 subgroups.push({ key: phase, roleLabel: null, assignments: phaseAssignments });
               }
 
-              return subgroups.map(sg => {
+              // Части фазы у разных исполнителей — строка на каждого, иначе виден только первый.
+              const rows = subgroups.flatMap(g => splitByExecutor(g.assignments).map((list, i) => ({
+                ...g,
+                assignments: list,
+                rowKey: i === 0 ? g.key : `${g.key}:${list[0].employee_id ?? 'none'}`,
+              })));
+              return rows.map(sg => {
                 const empName = sg.assignments[0].employee_name;
                 const empRole = sg.assignments[0].employee_role;
                 const empId = sg.assignments[0].employee_id;
@@ -1142,7 +1149,7 @@ function TwoLevelRows({
                 );
                 return (
                   <div
-                    key={sg.key}
+                    key={sg.rowKey}
                     data-gantt-row="true"
                     style={{
                       display: 'flex',

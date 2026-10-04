@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -7,7 +7,7 @@ import {
   Alert, App, Badge, Button, Card, Popconfirm, Select, Space, Switch, Tooltip, Typography,
 } from 'antd';
 import {
-  BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined,
+  BarChartOutlined, CaretDownOutlined, CaretUpOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined,
   CodeOutlined, DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined,
   PlusOutlined, RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
@@ -50,6 +50,7 @@ import {
   usePatchBacklogPriority,
 } from '../hooks/usePlanning';
 import SubgroupSectionHeader from '../components/planning/SubgroupSectionHeader';
+import NeighborsTakenBanner from '../components/planning/NeighborsTakenBanner';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useAppearance, useUpdateAppearance } from '../api/appearance';
@@ -64,11 +65,13 @@ import { useRoles } from '../hooks/useRoles';
 import { useJiraBaseUrl } from '../hooks/useSettings';
 import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../utils/planning';
 import { effectiveEstimate } from '../utils/allocationEstimates';
+import { nextPersonSort, sortByPerson, type PersonSort, type PersonSortKey } from '../utils/allocationSort';
+import { neighborsTakenRowIds } from '../utils/multiTeamProgress';
 import type { AllocationResponse } from '../types/api';
 
-const GRID = '24px 36px 48px minmax(220px, 1fr) 130px 130px 180px 260px 90px';
+const GRID = '24px 36px 60px minmax(220px, 1fr) 130px 130px 180px 260px 90px';
 // Та же сетка + колонка «Группа» после разработчика — для команд с делением.
-const GRID_WITH_SUBGROUP = '24px 36px 48px minmax(220px, 1fr) 130px 130px 140px 180px 260px 90px';
+const GRID_WITH_SUBGROUP = '24px 36px 60px minmax(220px, 1fr) 130px 130px 140px 180px 260px 90px';
 const GRID_GAP = 8;
 // Уже этой ширины список прокручивается вбок, а не сжимает «Идею» до нуля:
 // колонки (у «Идеи» — её минимум) + зазоры + поля строки и полоса отметки слева.
@@ -77,6 +80,37 @@ const gridMinWidth = (tpl: string) => {
   return px.reduce((sum, w) => sum + w, 0) + (px.length - 1) * GRID_GAP + 32;
 };
 
+
+/** Заголовок колонки с людьми: щелчок — А→Я, Я→А, сброс. */
+function SortableHeader({
+  sortKey, sort, onSort, children,
+}: {
+  sortKey: PersonSortKey;
+  sort: PersonSort | null;
+  onSort: (key: PersonSortKey) => void;
+  children: ReactNode;
+}) {
+  const dir = sort?.key === sortKey ? sort.dir : null;
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title="Сортировать: А→Я, Я→А, сброс"
+      onClick={() => onSort(sortKey)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSort(sortKey);
+        }
+      }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }}
+    >
+      {children}
+      {dir === 'asc' && <CaretUpOutlined style={{ color: DARK_THEME.cyanPrimary }} />}
+      {dir === 'desc' && <CaretDownOutlined style={{ color: DARK_THEME.cyanPrimary }} />}
+    </span>
+  );
+}
 
 function rolesAffectedByAllocation(
   a: AllocationResponse,
@@ -302,7 +336,7 @@ export default function PlanningPage() {
   const liftIncluded = appearanceValue.scenario_lift_included;
   const { mutate: patchAssignee } = usePatchAllocationAssignee();
   const { mutate: patchDeveloper } = usePatchAllocationDeveloper();
-  const { mutate: patchBacklogPriority } = usePatchBacklogPriority();
+  const { mutateAsync: patchBacklogPriority } = usePatchBacklogPriority();
   const updateScenario = useUpdateScenario();
   const deleteScenario = useDeleteScenario();
   const approve = useApproveScenario();
@@ -407,8 +441,10 @@ export default function PlanningPage() {
   // Стабильные ссылки для мемоизированных строк: новый массив на каждый рендер
   // дёргал бы dnd-контекст и пересобирал выпадающий список в каждой строке.
   const reorderAllocs = useReorderAllocations();
+  // Сортировка по людям — только вид на экране: порядок строк на сервере не меняется.
+  const [personSort, setPersonSort] = useState<PersonSort | null>(null);
   const handleDragEnd = ({ active: dragActive, over }: DragEndEvent) => {
-    if (!scenarioId || !isDraft) return;
+    if (!scenarioId || !isDraft || personSort) return;
     if (!over || dragActive.id === over.id) return;
     const ids = orderedAllocations.map((a) => a.id);
     const oldIndex = ids.indexOf(String(dragActive.id));
@@ -516,7 +552,7 @@ export default function PlanningPage() {
 
   const handlePriorityChange = useCallback(
     (backlogItemId: string, priority: number | null) => {
-      patchBacklogPriority({ backlogItemId, priority });
+      return patchBacklogPriority({ backlogItemId, priority });
     },
     [patchBacklogPriority],
   );
@@ -554,7 +590,7 @@ export default function PlanningPage() {
 
   const sections = useMemo(() => {
     if (!hasSubgroups) {
-      return [{ id: null as string | null, name: '', items: orderedAllocations }];
+      return [{ id: null as string | null, name: '', items: sortByPerson(orderedAllocations, personSort) }];
     }
     const byGroup = new Map<string, AllocationResponse[]>();
     for (const a of orderedAllocations) {
@@ -564,12 +600,33 @@ export default function PlanningPage() {
       else byGroup.set(key, [a]);
     }
     const out = subgroups
-      .map((g) => ({ id: g.id as string | null, name: g.name, items: byGroup.get(g.id) ?? [] }))
+      .map((g) => ({
+        id: g.id as string | null,
+        name: g.name,
+        items: sortByPerson(byGroup.get(g.id) ?? [], personSort),
+      }))
       .filter((sec) => sec.items.length > 0);
     const orphans = byGroup.get('');
-    if (orphans?.length) out.push({ id: '', name: 'Без группы', items: orphans });
+    if (orphans?.length) out.push({ id: '', name: 'Без группы', items: sortByPerson(orphans, personSort) });
     return out;
-  }, [hasSubgroups, subgroups, orderedAllocations, subgroupOfAlloc]);
+  }, [hasSubgroups, subgroups, orderedAllocations, subgroupOfAlloc, personSort]);
+
+  // Мультикомандные RFA: соседние команды уже взяли задачу, а здесь она не
+  // включена. «Показать только их» оставляет в секциях только такие строки.
+  // Только в черновике — в утверждённом отметки не поменять. Переключатель
+  // помнит свой сценарий: другой сценарий открывается без фильтра.
+  const neighborsTakenIds = useMemo(
+    () => (isDraft ? neighborsTakenRowIds(allocations ?? []) : new Set<string>()),
+    [isDraft, allocations],
+  );
+  const [onlyNeighborsFor, setOnlyNeighborsFor] = useState<string | null>(null);
+  const onlyNeighborsTaken = !!scenarioId && onlyNeighborsFor === scenarioId;
+  const shownSections = useMemo(() => {
+    if (!onlyNeighborsTaken || neighborsTakenIds.size === 0) return sections;
+    return sections
+      .map((sec) => ({ ...sec, items: sec.items.filter((a) => neighborsTakenIds.has(a.id)) }))
+      .filter((sec) => sec.items.length > 0);
+  }, [sections, onlyNeighborsTaken, neighborsTakenIds]);
 
   // Свёрнутые секции живут в браузере — у каждого планировщика свои.
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
@@ -964,6 +1021,13 @@ export default function PlanningPage() {
                   </span>
                 }
               >
+                {neighborsTakenIds.size > 0 && (
+                  <NeighborsTakenBanner
+                    count={neighborsTakenIds.size}
+                    onlyThem={onlyNeighborsTaken}
+                    onOnlyThemChange={(on) => setOnlyNeighborsFor(on ? scenarioId : null)}
+                  />
+                )}
                 <div style={{ overflowX: 'auto' }}>
                 <div style={{ minWidth: gridMinWidth(hasSubgroups ? GRID_WITH_SUBGROUP : GRID) }}>
                 <div
@@ -993,14 +1057,22 @@ export default function PlanningPage() {
                     <FlagFilled className="flag-wave" style={{ color: DARK_THEME.cyanPrimary, fontSize: 16 }} />
                   </span>
                   <span>Идея</span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <SortableHeader
+                    sortKey="analyst"
+                    sort={personSort}
+                    onSort={(k) => setPersonSort((s) => nextPersonSort(s, k))}
+                  >
                     <UserOutlined className="icon-bob" style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
                     Аналитик
-                  </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  </SortableHeader>
+                  <SortableHeader
+                    sortKey="developer"
+                    sort={personSort}
+                    onSort={(k) => setPersonSort((s) => nextPersonSort(s, k))}
+                  >
                     <CodeOutlined style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
                     Разработчик
-                  </span>
+                  </SortableHeader>
                   {hasSubgroups && <span>Группа</span>}
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <ShopOutlined className="icon-wiggle" style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
@@ -1022,7 +1094,7 @@ export default function PlanningPage() {
                   onDragEnd={handleDragEnd}
                 >
                   <div>
-                  {sections.map((section) => {
+                  {shownSections.map((section) => {
                     const collapsed = section.id !== null && collapsedSections.has(section.id);
                     return (
                       <div key={section.id ?? '__all__'}>
@@ -1049,6 +1121,7 @@ export default function PlanningPage() {
                                   scenarioId={scenarioId!}
                                   scenarioStatus={(scenario?.status ?? 'draft') as 'draft' | 'approved'}
                                   isDraft={isDraft}
+                                  dragLocked={personSort !== null}
                                   compact={compact}
                                   flashing={flashingIds.has(a.id)}
                                   rowStateClass={rowStateClass(a)}

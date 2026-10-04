@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   computeResourcePlan, createResourcePlan, createScheduledBlock,
   deleteResourcePlan, deleteScheduledBlock, getGanttProjection,
@@ -14,6 +14,7 @@ import {
   type DependencyOut,
   bulkClearAssignments, type BulkClearMode,
   putWorkTypeOverride, type WorkTypeOverrideInput,
+  getPlanWatch, addPlanWatch, removePlanWatch,
 } from '../api/resourcePlanning';
 import { trackAction } from '../lib/usage/track';
 import { candidatesQueryKey, sameCandidatesTarget } from '../utils/rpCandidates';
@@ -61,10 +62,10 @@ export const useDeleteScheduledBlock = () => {
   });
 };
 
-export const useResourcePlans = (team?: string) =>
+export const useResourcePlans = (team?: string, teams?: string) =>
   useQuery({
-    queryKey: ['resource-plans', team],
-    queryFn: () => getResourcePlans(team),
+    queryKey: ['resource-plans', team, teams],
+    queryFn: () => getResourcePlans(team, teams),
     staleTime: 30_000,
   });
 
@@ -102,6 +103,48 @@ export const useGanttProjection = (planId: string | null) =>
     enabled: !!planId,
     staleTime: 60_000,
   });
+
+/**
+ * Ключ списка наблюдения — под ключом диаграммы плана: всё, что перечитывает
+ * диаграмму (событие «план изменился», отсутствия, личные настройки, правка фазы),
+ * перечитывает и наблюдаемых. Признак «диаграмма перечитывается» смотрит точный ключ.
+ */
+export const planWatchKey = (planId: string | null) => ['gantt', planId, 'watch'] as const;
+
+/**
+ * Перечитать диаграмму плана после правки. Список наблюдения перечитывается
+ * следом, но его не ждём: правка фазы и панель ждут только саму диаграмму.
+ */
+export function invalidatePlanGantt(qc: QueryClient, planId: string): Promise<void> {
+  void qc.invalidateQueries({ queryKey: planWatchKey(planId) });
+  return qc.invalidateQueries({ queryKey: ['gantt', planId], exact: true });
+}
+
+export const usePlanWatch = (planId: string | null) =>
+  useQuery({
+    queryKey: planWatchKey(planId),
+    queryFn: () => getPlanWatch(planId!),
+    enabled: !!planId,
+    staleTime: 60_000,
+  });
+
+export function useAddPlanWatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, employeeIds }: { planId: string; employeeIds: string[] }) =>
+      addPlanWatch(planId, employeeIds),
+    onSuccess: (_, { planId }) => qc.invalidateQueries({ queryKey: planWatchKey(planId) }),
+  });
+}
+
+export function useRemovePlanWatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, employeeId }: { planId: string; employeeId: string }) =>
+      removePlanWatch(planId, employeeId),
+    onSuccess: (_, { planId }) => qc.invalidateQueries({ queryKey: planWatchKey(planId) }),
+  });
+}
 
 export function usePatchConflict(planId: string | null) {
   const qc = useQueryClient();
@@ -195,7 +238,7 @@ export function usePatchAssignment() {
     // Пересчёт пересоздаёт незакреплённые строки с новыми id. Мутация остаётся
     // «в работе», пока план не перечитан: до этого id на экране устаревшие.
     // И после отказа — строка могла исчезнуть при чужом пересчёте.
-    onSettled: (_, __, { planId }) => qc.invalidateQueries({ queryKey: ['gantt', planId] }),
+    onSettled: (_, __, { planId }) => invalidatePlanGantt(qc, planId),
   });
 }
 

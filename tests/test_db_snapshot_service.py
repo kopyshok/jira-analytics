@@ -99,3 +99,8 @@ def test_skipped_tables_are_not_copied(db_session, engine):
     assert job.state == "done", job.error
     assert set(job.per_table) & snapshot.SKIP_TABLES == set()
     assert set(job.per_table) <= {t.name for t in Base.metadata.sorted_tables}
+
+
+def test_perf_metrics_are_not_exported():
+    """Замеры быстродействия — про этот сервер; в выгрузку базы не идут."""
+    assert {"perf_minute", "perf_slow_request", "perf_server_snapshot"} <= snapshot.SKIP_TABLES

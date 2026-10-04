@@ -485,6 +485,29 @@ export interface EstimateCandidate {
  *  - by_epics_locked — инициатива нескольких команд: только по эпикам, саму не включить. */
 export type InPlanRole = 'regular' | 'inert' | 'by_epics' | 'by_epics_locked';
 
+/** Статус команды-участницы мультикомандной RFA: эпик команды в утверждённом
+ *  сценарии текущего или будущего квартала / эпик уже выполнен / эпик есть,
+ *  но не взят / эпика нет. «Взят» и «выполнен» засчитываются в K. */
+export type TeamTakeStatus = 'taken' | 'done' | 'not_taken' | 'no_epic';
+
+export interface MultiTeamTeamTake {
+  team: string;
+  status: TeamTakeStatus;
+  /** У «взят» — утверждённые сценарии текущего и будущих кварталов с эпиком;
+   *  у «выполнен» — последний утверждённый, где был эпик (или пусто). */
+  scenarios: { id: string; name: string; quarter_label: string }[];
+}
+
+/** «В работе у K из N» — у строки мультикомандной RFA и строк её эпиков. */
+export interface MultiTeamProgress {
+  taken: number;
+  total: number;
+  /** Команда строки и её статус; null — команда строки не участник. */
+  own_team: string | null;
+  own_status: TeamTakeStatus | null;
+  teams: MultiTeamTeamTake[];
+}
+
 export interface BacklogChild {
   id: string;            // backlog_item.id (нужен для PATCH /included)
   issue_id: string;
@@ -509,6 +532,7 @@ export interface BacklogChild {
   // Спорные оценки: роли, где поля Jira дают разные значения, и варианты по ним.
   disputed_roles?: PlanRole[];
   estimate_candidates?: Partial<Record<PlanRole, EstimateCandidate[]>>;
+  multi_team_progress?: MultiTeamProgress | null;
 }
 
 export interface BacklogItemResponse {
@@ -548,23 +572,21 @@ export interface BacklogItemResponse {
     team: string | null;
     is_multi_team: boolean;
   } | null;
+  /** Мультикомандная RFA или её эпик: сколько команд RFA уже взяли работу. */
+  multi_team_progress?: MultiTeamProgress | null;
   goals: string | null;
   quarter_label: string | null;
-  // Planning parameters — effective values (from Jira or manual override).
-  // Override via PATCH /backlog/{id}; sync no longer wipes manual values when Jira is empty.
+  // Вовлечённость, зафиксированная в фазе ресурсного плана (null — нет фиксации).
   involvement_analyst: number | null;
   involvement_dev: number | null;
   involvement_qa: number | null;
   involvement_launch: number | null;
+  // Длительности фаз — из Jira или ручная правка (PATCH /backlog/{id}).
   duration_analyst_days: number | null;
   duration_dev_days: number | null;
   duration_qa_days: number | null;
   duration_launch_days: number | null;
   // Current Jira values (for badge "from Jira" vs "manual override").
-  involvement_analyst_jira: number | null;
-  involvement_dev_jira: number | null;
-  involvement_qa_jira: number | null;
-  involvement_launch_jira: number | null;
   duration_analyst_days_jira: number | null;
   duration_dev_days_jira: number | null;
   duration_qa_days_jira: number | null;
@@ -634,6 +656,8 @@ export interface ResourceEmployee {
   display_name: string;
   role: string | null;
   total_hours: number;
+  /** Норма до вычета обязательных работ (после отсутствий), личная, не средняя по роли. */
+  gross_hours?: number;
   days: ResourceDayHours[];
   /** Другие команды сотрудника в этом квартале (ресурс не делится). */
   shared_with?: string[];
@@ -747,6 +771,8 @@ export interface AllocationResponse {
   has_children_in_backlog: boolean;
   /** Группа внутри команды. null — деления нет либо группа не определена. */
   subgroup_id?: string | null;
+  /** Эпик мультикомандной RFA: сколько команд RFA уже взяли работу. */
+  multi_team_progress?: MultiTeamProgress | null;
 }
 
 // === Scenario rules ===
@@ -1328,6 +1354,50 @@ export interface InvolvementDefault {
   effective_year: number;
   effective_quarter: number;
   involvement: number;
+}
+
+/** Часы за период и доли: факт — проектные ÷ списанные, списано от нормы — списанные ÷ норма. */
+export interface InvolvementFactCell {
+  project_hours: number;
+  logged_hours: number;
+  norm_hours: number;
+  /** Всё списанное в дни с проектной работой и число таких дней. */
+  project_day_hours: number;
+  project_days: number;
+  fact: number | null;
+  logged_of_norm: number | null;
+}
+
+export interface InvolvementFactMonth extends InvolvementFactCell {
+  month: number;
+}
+
+export interface InvolvementFactPerson {
+  employee_id: string;
+  name: string;
+  role: string;
+  months: InvolvementFactMonth[];
+  total: InvolvementFactCell;
+}
+
+export interface InvolvementFactRole {
+  role: string;
+  people: number;
+  months: InvolvementFactMonth[];
+  total: InvolvementFactCell;
+}
+
+export interface InvolvementFactTeam {
+  team: string;
+  people: InvolvementFactPerson[];
+  roles: InvolvementFactRole[];
+}
+
+export interface InvolvementFactResponse {
+  year: number;
+  quarter: number;
+  months: number[];
+  teams: InvolvementFactTeam[];
 }
 
 export interface PersonalNormedItem {

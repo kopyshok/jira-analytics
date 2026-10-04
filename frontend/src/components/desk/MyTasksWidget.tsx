@@ -87,22 +87,46 @@ function JiraKey({ k, url }: { k: string; url: string | null }) {
   );
 }
 
-function ChildRow({ c }: { c: ProjectChild }) {
+/** Узел дерева задач: каждый уровень свёрнут, раскрывается своей стрелкой. */
+export function ChildRow({ c, depth = 0 }: { c: ProjectChild; depth?: number }) {
+  const [open, setOpen] = useState(false);
   const kind = deskStatusKind(c.status);
+  const kids = c.children ?? [];
+  const hasKids = kids.length > 0;
+  const done = (c.status_category ?? '').toLowerCase() === 'done';
   return (
-    <div className="desk-child-row">
-      <span className={`desk-status-dot desk-dot-${kind}`} />
-      {c.key && <JiraKey k={c.key} url={c.jira_url} />}
-      <span className="desk-child-name">
-        {c.jira_url ? (
-          <a href={c.jira_url} target="_blank" rel="noreferrer">{c.title ?? c.key ?? '—'}</a>
-        ) : (c.title ?? c.key ?? '—')}
-      </span>
-      {c.status && (
-        <span className={`desk-status-badge desk-badge-${kind} desk-child-status`}>{c.status}</span>
-      )}
-      <span className="desk-child-hrs">{Math.round(c.fact_hours)} ч</span>
-    </div>
+    <>
+      <div
+        className={`desk-child-row${done ? ' desk-child-done' : ''}`}
+        style={{ paddingLeft: depth * 18 }}
+        data-testid="desk-tree-row"
+      >
+        {hasKids ? (
+          <button
+            type="button"
+            className={`desk-tree-btn desk-tree-chevron${open ? ' open' : ''}`}
+            aria-label={open ? 'Свернуть' : 'Развернуть'}
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+          >▸</button>
+        ) : (
+          <span className="desk-tree-chevron hidden" aria-hidden="true">▸</span>
+        )}
+        <span className={`desk-status-dot desk-dot-${kind}`} />
+        {c.key && <JiraKey k={c.key} url={c.jira_url} />}
+        <span className="desk-child-name">{c.title ?? c.key ?? '—'}</span>
+        {c.status && (
+          <span className={`desk-status-badge desk-badge-${kind} desk-child-status`}>{c.status}</span>
+        )}
+        {c.assignee && <span className="desk-child-assignee">{c.assignee}</span>}
+        <span className="desk-child-hrs mono" title="Факт по задаче со всеми подзадачами">
+          {Math.round(c.fact_hours)} ч
+        </span>
+      </div>
+      {open && kids.map((k, i) => (
+        <ChildRow key={`${k.key ?? ''}-${i}`} c={k} depth={depth + 1} />
+      ))}
+    </>
   );
 }
 
@@ -117,11 +141,17 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
 
   return (
     <div className={`desk-project-row${activeNow ? ' active-now' : ''}`}>
-      <span
-        className={`desk-tree-chevron${open ? ' open' : ''}${hasChildren ? '' : ' hidden'}`}
-        role={hasChildren ? 'button' : undefined}
-        onClick={() => hasChildren && setOpen((o) => !o)}
-      >▸</span>
+      {hasChildren ? (
+        <button
+          type="button"
+          className={`desk-tree-btn desk-tree-chevron${open ? ' open' : ''}`}
+          aria-label={open ? 'Свернуть' : 'Развернуть'}
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >▸</button>
+      ) : (
+        <span className="desk-tree-chevron hidden" aria-hidden="true">▸</span>
+      )}
       <span className={`desk-status-dot desk-dot-${kind}`} />
       <div className="desk-project-meta">
         <div className="desk-project-name">
@@ -143,6 +173,9 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
           )}
           {activeNow && <span className="desk-now-pill">сейчас</span>}
         </div>
+        {p.tree_truncated && (
+          <div className="desk-tree-truncated">показаны первые {p.tree_limit ?? 500} задач</div>
+        )}
         {open && hasChildren && (
           <div className="desk-child-list">
             {children.map((c, i) => (

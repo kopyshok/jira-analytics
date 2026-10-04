@@ -19,6 +19,8 @@ class CandidateOut(BaseModel):
     # Границы участия в команде внутри квартала; None — край покрыт.
     member_from: Optional[date] = None
     member_to: Optional[date] = None
+    # Свободно в даты фазы, ч (только у кандидатов фазы плана).
+    free_hours: Optional[float] = None
 
 
 class CandidateGroupOut(BaseModel):

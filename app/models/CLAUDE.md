@@ -60,6 +60,9 @@
 - `ScenarioAllocation` — per-scenario галочки на `BacklogItem`
 - `ScenarioRule` — per-scenario правила обязательных работ (копия `RoleCapacityRule` на момент создания)
 - `ScenarioRevision` + `ScenarioRevisionItem` + `ScenarioCapacitySnapshot` — история утверждений сценария: дифф включённых инициатив + снапшот нормы команды
+- `ResourcePlanWatch` (`resource_plan_watch`) — список наблюдения ресурсного плана: люди любых команд, чья загрузка показывается секцией «Наблюдаемые»; unique (`plan_id`, `employee_id`), оба FK — CASCADE (миграция `wl01_plan_watchlist`)
+
+- `PerfMinute` / `PerfSlowRequest` / `PerfServerSnapshot` (`perf_minute`, `perf_slow_request`, `perf_server_snapshot`) — замеры раздела «Быстродействие», хранятся 30 дней, исключены из выгрузки базы (миграция `pf01_perf_metrics`)
 
 ### Team desk (1)
 

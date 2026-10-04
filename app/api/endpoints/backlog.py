@@ -22,6 +22,7 @@ from app.core.auth_deps import get_current_user
 from app.database import get_db
 from app.models import AppSetting, BacklogItem, Employee, Issue, PlanningScenario, ScenarioAllocation
 from app.repositories.base import BaseRepository
+from app.schemas.multi_team_progress import MultiTeamProgressOut
 from app.services import subgroup_filter as sgf
 from app.services.subgroup_resolver import SubgroupResolver
 from app.services.subgroup_filter import parse_subgroups_csv
@@ -44,6 +45,9 @@ from app.services.backlog_service import (
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import is_explicit_leaf, is_service_epic, load_rules
+from app.services.minor_changes import minor_changes_summary
+from app.services.multi_team_progress import RfaProgress, multi_team_progress, row_progress
+from app.utils.period import current_quarter
 from app.services.plan_edit_service import PlanEditService, ROLES as PLAN_ROLES
 from app.services.plan_sources import ROLE_SETTING_KEYS, disputes_for
 from app.services.sync_service import SyncService
@@ -86,10 +90,6 @@ class BacklogItemUpdate(BaseModel):
     parallel_count_analyst: Optional[int] = Field(default=None, ge=1, le=5)
     parallel_count_dev: Optional[int] = Field(default=None, ge=1, le=5)
     parallel_count_qa: Optional[int] = Field(default=None, ge=1, le=5)
-    involvement_analyst: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    involvement_dev: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    involvement_qa: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    involvement_launch: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     duration_analyst_days: Optional[float] = Field(default=None, ge=0)
     duration_dev_days: Optional[float] = Field(default=None, ge=0)
     duration_qa_days: Optional[float] = Field(default=None, ge=0)
@@ -151,6 +151,8 @@ class BacklogChildSchema(BaseModel):
     # и кандидаты для выбора по каждой такой роли.
     disputed_roles: List[str] = []
     estimate_candidates: dict[str, List[EstimateCandidateSchema]] = {}
+    # Эпик мультикомандной RFA: сколько команд RFA уже взяли работу.
+    multi_team_progress: Optional[MultiTeamProgressOut] = None
 
 
 class ParentContextSchema(BaseModel):
@@ -203,6 +205,11 @@ class BacklogItemResponse(BaseModel):
     # Родитель, которого нет в этом списке (обычно чужая команда) — показываем
     # как контекст, чтобы было видно, из какой RFA растёт задача.
     parent_context: Optional["ParentContextSchema"] = None
+    # Мультикомандная RFA или её эпик: сколько команд RFA уже взяли работу
+    # (эпик команды в утверждённом сценарии текущего или будущего квартала
+    # либо уже выполнен).
+    # Только в ответе списка, кроме архива.
+    multi_team_progress: Optional[MultiTeamProgressOut] = None
     # Служебный эпик (Дискавери внутри RFA): часы сверх родителя, в план — по галочке.
     is_service_epic: bool = False
     goals: Optional[str] = None
@@ -211,7 +218,7 @@ class BacklogItemResponse(BaseModel):
     parallel_count_analyst: Optional[int] = None
     parallel_count_dev: Optional[int] = None
     parallel_count_qa: Optional[int] = None
-    # Planning parameters: effective values (from Jira or manual override).
+    # Вовлечённость, зафиксированная в фазе ресурсного плана (None — нет фиксации).
     involvement_analyst: Optional[float] = None
     involvement_dev: Optional[float] = None
     involvement_qa: Optional[float] = None
@@ -221,10 +228,6 @@ class BacklogItemResponse(BaseModel):
     duration_qa_days: Optional[float] = None
     duration_launch_days: Optional[float] = None
     # Current Jira values (for badge "Jira" vs "manual"). May lag local override.
-    involvement_analyst_jira: Optional[float] = None
-    involvement_dev_jira: Optional[float] = None
-    involvement_qa_jira: Optional[float] = None
-    involvement_launch_jira: Optional[float] = None
     duration_analyst_days_jira: Optional[float] = None
     duration_dev_days_jira: Optional[float] = None
     duration_qa_days_jira: Optional[float] = None
@@ -446,6 +449,7 @@ def _to_response(
     is_service_epic: bool = False,
     include_locked: bool = False,
     in_plan_role: InPlanRole = "regular",
+    multi_team_progress: Optional[MultiTeamProgressOut] = None,
 ) -> BacklogItemResponse:
     scenarios = approved_scenarios or []
     issue = item.issue
@@ -491,6 +495,7 @@ def _to_response(
         is_multi_team=is_multi_team,
         planning_mode_locked=is_multi_team and multi_team_lock,
         parent_context=parent_context,
+        multi_team_progress=multi_team_progress,
         is_service_epic=is_service_epic,
         goals=issue.goals if issue else None,
         quarter_label=quarter_label,
@@ -505,10 +510,6 @@ def _to_response(
         duration_dev_days=item.duration_dev_days,
         duration_qa_days=item.duration_qa_days,
         duration_launch_days=item.duration_launch_days,
-        involvement_analyst_jira=issue.involvement_analyst if issue else None,
-        involvement_dev_jira=issue.involvement_dev if issue else None,
-        involvement_qa_jira=issue.involvement_qa if issue else None,
-        involvement_launch_jira=issue.involvement_launch if issue else None,
         duration_analyst_days_jira=issue.duration_analyst_days if issue else None,
         duration_dev_days_jira=issue.duration_dev_days if issue else None,
         duration_qa_days_jira=issue.duration_qa_days if issue else None,
@@ -789,6 +790,26 @@ async def list_backlog_items(
     locked_ids = _include_locked_ids(items, lock_enabled)
     roles = _in_plan_roles(db, items, locked_ids, lock_enabled)
 
+    # «В работе у K из N»: мультикомандные RFA списка и родители эпиков вне
+    # списка — одним расчётом на весь ответ. В архиве плашки нет.
+    progress_by_rfa: dict[str, RfaProgress] = {}
+    if view != "archived":
+        rfa_candidates = {
+            it.issue.id for it in items if it.issue is not None and issue_is_multi_team(it.issue)
+        }
+        rfa_candidates |= {
+            pid for pid in parent_map.values() if pid is not None and pid not in backlog_issue_ids
+        }
+        progress_by_rfa = multi_team_progress(db, rfa_candidates)
+
+    def _progress(item: BacklogItem) -> Optional[MultiTeamProgressOut]:
+        issue = item.issue
+        if issue is None or not progress_by_rfa:
+            return None
+        return MultiTeamProgressOut.from_row(row_progress(
+            progress_by_rfa, issue_id=issue.id, parent_id=issue.parent_id, team=issue.team,
+        ))
+
     # Строим Map: parent_issue_id → List[BacklogChildSchema].
     children_map: dict[str, list[BacklogChildSchema]] = {}
     for iid, pid in parent_map.items():
@@ -815,6 +836,7 @@ async def list_backlog_items(
             estimate_opo_hours=child_bi.estimate_opo_hours,
             disputed_roles=child_disputed,
             estimate_candidates=child_candidates,
+            multi_team_progress=_progress(child_bi),
         )
         children_map.setdefault(pid, []).append(schema)
 
@@ -867,6 +889,7 @@ async def list_backlog_items(
                 is_service_epic=i.id in service_ids,
                 include_locked=i.id in locked_ids,
                 in_plan_role=roles[i.id],
+                multi_team_progress=_progress(i),
             )
             for i in visible_items
         ])
@@ -889,9 +912,23 @@ async def list_backlog_items(
             is_service_epic=i.id in service_ids,
             include_locked=i.id in locked_ids,
             in_plan_role=roles[i.id],
+            multi_team_progress=_progress(i),
         )
         for i in visible_items
     ])
+
+
+@router.get("/minor-changes-summary")
+async def minor_changes_summary_endpoint(
+    teams: Optional[str] = Query(None, description="Команды шапки, через запятую"),
+    db: Session = Depends(get_db),
+):
+    """Минорные изменения по командам: открыто, с оценкой (часы по ролям),
+    без оценки, запас на текущий квартал и список задач. Только чтение."""
+    year, quarter = current_quarter()
+    teams_list = [t.strip() for t in (teams or "").split(",") if t.strip()]
+    blocks = minor_changes_summary(db, teams_list or None, year, quarter)
+    return {"year": year, "quarter": quarter, "teams": blocks}
 
 
 @router.post("", response_model=BacklogItemResponse, status_code=201)

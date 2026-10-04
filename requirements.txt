@@ -22,6 +22,9 @@ python-pptx>=1.0.0
 apscheduler>=3.10,<4.0
 croniter>=2.0,<3.0
 
+# Замеры нагрузки сервера для раздела «Быстродействие»
+psutil>=5.9,<8
+
 # Auth
 python-jose[cryptography]>=3.4.0,<4.0
 passlib[bcrypt]==1.7.4

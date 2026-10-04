@@ -1,4 +1,4 @@
-"""Справочник вовлечённости: поиск действующего значения и запись в задачи."""
+"""Справочник вовлечённости: поиск действующего значения."""
 from typing import Optional
 
 from sqlalchemy import and_, or_
@@ -6,14 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.models import BacklogItem, InvolvementDefault
 from app.models.involvement_default import INVOLVEMENT_ROLES
-
-# role справочника -> поле BacklogItem
-_ROLE_FIELD = {
-    "analyst": "involvement_analyst",
-    "dev": "involvement_dev",
-    "qa": "involvement_qa",
-    "opo": "involvement_launch",
-}
 
 
 def lookup_involvement(
@@ -41,23 +33,6 @@ def lookup_involvement(
         .first()
     )
     return row.involvement if row else None
-
-
-def fill_empty_involvement(
-    db: Session, items: list[BacklogItem], team: str, year: int, quarter: int,
-) -> int:
-    """Заполнить пустые поля вовлечённости целевых задач значениями справочника.
-    Возвращает число заполненных полей. Непустые значения не трогает."""
-    filled = 0
-    for role, field in _ROLE_FIELD.items():
-        val = lookup_involvement(db, team, role, year, quarter)
-        if val is None:
-            continue
-        for item in items:
-            if getattr(item, field) is None:
-                setattr(item, field, val)
-                filled += 1
-    return filled
 
 
 def team_defaults(
@@ -116,12 +91,14 @@ def effective_for_phase(
     defaults: dict[str, float],
     personal: Optional[float] = None,
 ) -> Optional[float]:
-    """Вовлечённость фазы: личная вовлечённость исполнителя на квартал
-    (``personal``), иначе своё значение задачи, иначе значение справочника."""
+    """Вовлечённость фазы: зафиксированная у задачи, иначе личная вовлечённость
+    исполнителя на квартал (``personal``), иначе значение справочника."""
     field = PHASE_FIELD.get(phase)
     if not field:
         return None
+    own = getattr(item, field, None)
+    if own is not None:
+        return own
     if personal is not None:
         return personal
-    own = getattr(item, field, None)
-    return own if own is not None else defaults.get(phase)
+    return defaults.get(phase)

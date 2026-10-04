@@ -172,12 +172,17 @@ def issue_is_multi_team(issue: Optional[Issue]) -> bool:
     """
     if issue is None:
         return False
-    teams = parse_participating_teams(issue.participating_teams)
+    return teams_make_multi_team(issue.team, issue.participating_teams)
+
+
+def teams_make_multi_team(team: Optional[str], participating_raw: Optional[str]) -> bool:
+    """Тот же признак, что ``issue_is_multi_team``, — по полям задачи, без её загрузки."""
+    teams = parse_participating_teams(participating_raw)
     if not teams:
         return False
     if len(teams) > 1:
         return True
-    return bool(issue.team) and teams[0] != issue.team
+    return bool(team) and teams[0] != team
 
 
 def multi_team_lock_enabled(db: Session) -> bool:
@@ -505,11 +510,11 @@ class BacklogService:
             existing.estimate_opo_hours = issue.planned_opo_hours
             existing.impact = issue.impact
             existing.risk = issue.risk
-            # Jira involvement + calendar duration: только заполненные значения из Jira
-            # перетирают локальные. Пустое поле в Jira не сбрасывает ручную правку PM.
-            # Сброс к Jira — через PATCH /backlog/{id} с явным null.
+            # Calendar duration: только заполненные значения из Jira перетирают
+            # локальные. Пустое поле в Jira не сбрасывает ручную правку PM.
+            # Сброс к Jira — через PATCH /backlog/{id} с явным null. Вовлечённость
+            # из Jira не берём — она фиксируется в фазе ресурсного плана.
             for fld in (
-                "involvement_analyst", "involvement_dev", "involvement_qa", "involvement_launch",
                 "duration_analyst_days", "duration_dev_days", "duration_qa_days", "duration_launch_days",
             ):
                 jira_val = getattr(issue, fld, None)

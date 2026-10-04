@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.resource_plan_assignment import ResourcePlanAssignment
     from app.models.plan_item_dependency import PlanItemDependency
     from app.models.plan_conflict import PlanConflict
+    from app.models.resource_plan_watch import ResourcePlanWatch
 
 
 class ResourcePlan(Base, TimestampMixin):
@@ -77,3 +78,5 @@ class ResourcePlan(Base, TimestampMixin):
     conflicts: Mapped[List["PlanConflict"]] = relationship(
         back_populates="plan", cascade="all, delete-orphan"
     )
+    # Список наблюдения уходит вместе с планом и там, где база не каскадит.
+    watch: Mapped[List["ResourcePlanWatch"]] = relationship(cascade="all, delete-orphan")

@@ -35,8 +35,9 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/capacity/role-rules` | `role_capacity_rules.py` | GET + batch PUT (атомарная замена + 422 если Σ ≠ 100% по роли) + copy-to-quarter |
 | `/capacity/employee-overrides` | `employee_capacity_overrides.py` | GET + batch PUT (partial — только упомянутые сотрудники) |
 | `/capacity/absence-reasons` | `absence_reasons.py` | CRUD + reorder |
-| `/backlog` | `backlog.py` | CRUD + refresh-from-jira + link/unlink-jira + archive/restore |
+| `/backlog` | `backlog.py` | CRUD + refresh-from-jira + link/unlink-jira + archive/restore; строки несут прогресс мультикомандной RFA (`multi_team_progress`); `/minor-changes-summary?teams=` — сводка минорных изменений (`minor_changes`) |
 | `/planning` | `planning.py` | scenarios CRUD + allocations + rules + revisions + resource base (см. ниже) |
+| `/resource-planning` | `resource_planning.py` | периоды, планы, диаграмма (`/resource-plans/{id}/gantt`), кандидаты фазы (свободно в даты фазы, загрузка с нормированными работами), список наблюдения `/resource-plans/{id}/watch` (GET — строки «Загрузки по дням» той же формулой, что у людей плана, + свободно по месяцам и остаток «Технических задач» основной команды; POST `{employee_ids}`; DELETE `/{employee_id}`; правки шлют событие `resource_planning`) |
 | `/exports` | `exports.py` | analytics.xlsx\|pdf, scenarios/{id}.xlsx\|pptx, capacity.xlsx |
 | `/settings` | `settings.py` | **admin-only** — `/jira` (GET\|PUT, redacts token) + `/jira/test` + `/generic` (PUT) + `/generic/{key}` (GET) |
 | `/categories` | `categories.py` | CRUD; `PUT /{id}` принимает `work_type_id: str \| null` (валидация: MandatoryWorkType существует и активен) |
@@ -49,6 +50,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/llm` | `llm.py` | AI summary/work_breakdown через Gemini (`/llm/test` + project summaries) |
 | `/kpi` | `kpi.py` | отчёт «Ведомость» + сводка по командам + расшифровка метрики + тренд сотрудника + утверждение квартала (снимок) + `/directions` + `export.xlsx`. Период везде задаётся парой `year`/`month` (последний месяц) + `months` (длина, 1–24): месяц, квартал, произвольный отрезок — см. ниже |
 | `/team-desk` | `team_desk.py` | рабочий стол тимлида: `/overview` (срез задач + сводка по разработчикам, включая `status_counts` — разбивку по статусам, + очередь работы; ростер команд режется по `developer_roles` — в срез идут только разработчики; `only_open` + пара `period_start`/`period_end` дают три режима среза, `show_done_subtasks` добирает закрытую декомпозицию под показанными родителями), `/settings` (GET\|PUT — группы статусов, пороги, типы задач, роли среза), `/flags` (справочник признаков), `POST\|DELETE /issues/{id}/mark` (отметка «просмотрено» на паре задача+признак) |
+| `/admin/perf` | `admin_perf.py` | **admin-only** — «Быстродействие»: `/overview?period=1h\|24h\|7d\|30d`, `/report.md`, `/export.xlsx`. Замеры пишет ASGI-слой `app/core/perf_middleware.py` + фоновый цикл `app/services/perf_writer.py` (минутные агрегаты, медленные запросы, снимки сервера, хранение 30 дней) |
 | `/kpi-settings` | `kpi_settings.py` | **admin-only** — справочники раздела KPI: метрики, профили оценки (список ролей + `/profiles/coverage`), нормативы Cycle Time, общие правила, словарь атрибутов условий, предпросмотр метрики (`POST /metrics/preview`, `POST /metrics/explain-issue`), сравнение способов срока внесения часов (`GET /worklog-deadline/compare`) |
 
 ## Паттерны
