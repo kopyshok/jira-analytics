@@ -164,3 +164,34 @@ export const restoreBacklogItem = (id: string) =>
 
 export const setBacklogIncluded = (id: string, included: boolean) =>
   api.patch<{ id: string; included_in_planning: boolean }>(`/backlog/${id}/included`, { included });
+
+export type MinorRoleHours = Record<'analyst' | 'dev' | 'qa' | 'opo', number | null>;
+
+export interface MinorChangeTask {
+  key: string;
+  title: string;
+  status: string;
+  assignee: string | null;
+  hours: MinorRoleHours;
+  epic_key: string | null;
+  epic_summary: string | null;
+}
+
+export interface MinorChangesTeam {
+  team: string;
+  open_count: number;
+  estimated_count: number;
+  unestimated_count: number;
+  hours: Record<'analyst' | 'dev' | 'qa' | 'opo' | 'total', number>;
+  reserve_hours: number | null;
+  tasks: MinorChangeTask[];
+}
+
+export interface MinorChangesSummary {
+  year: number;
+  quarter: number;
+  teams: MinorChangesTeam[];
+}
+
+export const getMinorChangesSummary = (teams?: string) =>
+  api.get<MinorChangesSummary>('/backlog/minor-changes-summary', { teams });
