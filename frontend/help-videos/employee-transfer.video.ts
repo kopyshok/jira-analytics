@@ -1,14 +1,19 @@
-// Ролик «Как перевести сотрудника в другую группу»: «Команда Эта» (команда с
+// Ролик «Как перевести сотрудника в другую группу или команду»: «Команда Эта» (команда с
 // делением на группы) → карточка сотрудника → блок «Группы» → «Перевести в
 // группу» (новая группа, дата) → история группы обновилась. → Сценарии:
 // ресурс по группам и метка «в группе с …» учли перевод.
+// Вторая часть: «Перевести» в другую команду — дата делит часы, у прежней команды
+// появляется дата ухода «по…». Перевод в Альфа снимается в afterAll.
 import { expect, test } from '@playwright/test';
 import dayjs from 'dayjs';
 import { Director } from './director.ts';
 
 const TEAM = 'Команда Эта';
-const EMPLOYEE_ID = '64deff1a-6423-4d75-a001-0f767d4d3bc0'; // Куликова Галина
-const EMPLOYEE_NAME = 'Куликова Галина';
+const EMPLOYEE_ID = '64deff1a-6423-4d75-a001-0f767d4d3bc0';
+const EMPLOYEE_NAME = 'Быкова Людмила';
+const CURRENT_GROUP = 'Группа 4';
+const NEW_TEAM = 'Команда Альфа';
+const TEAM_TRANSFER_DATE = '2026-12-01';
 const NEW_GROUP = 'Группа 1';
 const TRANSFER_DATE = '2026-11-01';
 
@@ -19,7 +24,7 @@ test('employee-transfer', async ({ page }) => {
   const api = `${String(test.info().config.metadata.backendUrl)}/api/v1`;
   expect((await page.request.put(`${api}/auth/me/teams`, { data: { teams: [TEAM], subgroups: [] } })).ok()).toBeTruthy();
 
-  await d.open('/capacity', 'Как перевести сотрудника в другую группу');
+  await d.open('/capacity', 'Как перевести сотрудника в другую группу или команду');
   const table = page.locator('[data-tour="capacity-team-table"]');
   await expect(table.locator('tbody tr.capacity-emp-row', { hasText: EMPLOYEE_NAME })).toBeVisible();
   await d.pause(800);
@@ -29,10 +34,12 @@ test('employee-transfer', async ({ page }) => {
   await d.click(page.locator('.side-item', { hasText: 'Ресурсы' }), 'Откройте раздел «Ресурсы»');
 
   const departedSwitch = page.locator('[data-tour="capacity-toolbar"]').getByRole('switch').nth(2);
-  await d.caption('Переключатель «Показывать выбывших» — если человек уже ушёл из команды');
-  await d.click(departedSwitch, '');
+  await d.caption('«Показывать выбывших» — вернёт тех, кто уже ушёл из команды');
+  await d.point(departedSwitch);
+  await d.waitVoice();
+  await d.click(departedSwitch);
   await d.pause(500);
-  await d.click(departedSwitch, '');
+  await d.click(departedSwitch);
 
   const row = table.locator('tbody tr.capacity-emp-row', { hasText: EMPLOYEE_NAME });
   await d.click(row.getByText(EMPLOYEE_NAME, { exact: true }), 'Откройте карточку сотрудника');
@@ -42,13 +49,13 @@ test('employee-transfer', async ({ page }) => {
   await expect(drawer.getByText(TEAM).first()).toBeVisible();
 
   const groupsHeading = drawer.getByText('Группы', { exact: true });
-  await d.caption('Блок «Группы» — в какой группе сотрудник работает и с какого числа');
+  await d.caption('Блок «Группы» — в какой группе сотрудник и с какого числа');
   await d.show(groupsHeading);
   await d.pause(1000);
 
   const currentRecord = drawer.getByText(/с начала участия/);
   await expect(currentRecord).toBeVisible();
-  await d.caption('Сейчас весь квартал сотрудник в «Группа 3»');
+  await d.caption(`Сейчас весь квартал сотрудник в «${CURRENT_GROUP}»`);
   await d.show(currentRecord);
   await d.pause(1000);
 
@@ -76,9 +83,42 @@ test('employee-transfer', async ({ page }) => {
 
   const newRecord = drawer.getByText(new RegExp(`с ${target.format('DD.MM.YYYY')}`));
   await expect(newRecord).toBeVisible();
-  await d.caption('С этой даты часы сотрудника идут новой группе, до неё — прежней');
+  await d.caption('С этой даты часы идут новой группе, до неё — прежней');
   await d.show(groupsHeading, newRecord);
-  await d.pause(1400);
+  await d.pause(600);
+
+  // Перевод в другую команду: «Перевести» в блоке «Членство в командах».
+  await d.waitVoice();
+  await d.click(drawer.getByRole('button', { name: /(^|\s)Перевести$/ }), 'А если сотрудник уходит в другую команду — «Перевести»');
+  const teamModal = page.locator('.ant-modal', { hasText: 'Перевести из команды' });
+  await expect(teamModal).toBeVisible();
+  await d.click(teamModal.locator('.ant-select').first(), 'Выберите новую команду');
+  await teamModal.locator('.ant-select input').first().pressSequentially('Альф', { delay: 90 });
+  await d.click(page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: new RegExp(`^${NEW_TEAM}$`) }));
+
+  const teamDate = dayjs(TEAM_TRANSFER_DATE);
+  await d.click(teamModal.locator('.ant-picker-input'), 'Дата делит часы: до неё прежняя команда, с неё — новая');
+  const teamDropdown = page.locator('.ant-picker-dropdown:visible');
+  for (let i = 0; i < 12 && !(await teamDropdown.locator(
+    `td.ant-picker-cell-in-view[title="${teamDate.format('YYYY-MM-DD')}"]`).count()); i++) {
+    await teamDropdown.locator('.ant-picker-header-next-btn').click();
+  }
+  await d.click(teamDropdown.locator(`td.ant-picker-cell-in-view[title="${teamDate.format('YYYY-MM-DD')}"]`));
+  await expect(teamDropdown).toHaveCount(0);
+  await d.show(teamModal.locator('.ant-modal-body'));
+  await d.waitVoice();
+  await d.click(teamModal.locator('.ant-modal-footer .ant-btn-primary'), 'Переведите');
+  await expect(teamModal).toBeHidden();
+  await page.mouse.move(1100, 180);
+
+  const leftAt = drawer.locator(`input[placeholder="по…"][value="${teamDate.format('DD.MM.YYYY')}"]`);
+  await expect(leftAt).toBeVisible();
+  await d.caption('У прежней команды появилась дата ухода, у новой — дата входа');
+  await d.show(leftAt);
+  await d.waitVoice();
+  await d.caption('Часы квартала пересчитались сами — в сценариях и планах тоже');
+  await d.pause(500);
+  await d.waitVoice();
 
   await d.click(drawer.locator('.ant-drawer-close'), 'Закройте карточку');
   await expect(drawer).toBeHidden();
@@ -101,12 +141,18 @@ test('employee-transfer', async ({ page }) => {
   await d.pause(1800);
 
   await d.caption('Готово', 2200);
-  await d.save('employee-transfer');
+  try {
+    await d.save('employee-transfer');
+  } finally {
 
-  // Уборка: снимаем перевод и возвращаем шапку на «Команда Альфа» без групп —
-  // так её ждут остальные ролики.
-  await page.request.delete(
-    `${api}/teams/employees/${EMPLOYEE_ID}/subgroup-shares?team=${encodeURIComponent(TEAM)}&valid_from=${TRANSFER_DATE}`,
-  );
-  await page.request.put(`${api}/auth/me/teams`, { data: { teams: ['Команда Альфа'], subgroups: [] } });
+    // Уборка: снимаем перевод и возвращаем шапку на «Команда Альфа» без групп —
+    // так её ждут остальные ролики.
+    await page.request.delete(`${api}/employees/${EMPLOYEE_ID}/teams/${encodeURIComponent(NEW_TEAM)}`);
+    await page.request.patch(`${api}/employees/${EMPLOYEE_ID}/teams/${encodeURIComponent(TEAM)}/left-at`, { data: { left_at: null } });
+    await page.request.put(`${api}/employees/${EMPLOYEE_ID}/teams/primary`, { data: { team: TEAM } });
+    await page.request.delete(
+      `${api}/teams/employees/${EMPLOYEE_ID}/subgroup-shares?team=${encodeURIComponent(TEAM)}&valid_from=${TRANSFER_DATE}`,
+    );
+    await page.request.put(`${api}/auth/me/teams`, { data: { teams: ['Команда Альфа'], subgroups: [] } });
+  }
 });

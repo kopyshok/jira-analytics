@@ -167,9 +167,11 @@ test('rp-executor', async ({ page }) => {
   await expect(dropdown.locator('.ant-select-item-group', { hasText: 'Моя команда' })).toBeVisible();
   const option = dropdown.locator('.ant-select-item-option', { hasText: nextEmployee.display_name });
   await expect(option).toBeVisible();
-  await d.caption('Люди сгруппированы: из Jira, своя команда, другие команды — у каждого своя загрузка');
+  await d.caption('Кандидаты по группам; у каждого — свободные часы в даты фазы');
   await d.show(dropdown.locator('.rc-virtual-list'));
-  await d.pause(1300);
+  await d.pause(600);
+  await d.caption('Самые свободные стоят выше, рядом — загрузка в процентах');
+  await d.pause(600);
 
   await d.click(option, 'Выберите нового исполнителя');
   const modal = page.getByRole('dialog', { name: /Конфликты/ });
@@ -242,11 +244,18 @@ test('rp-executor', async ({ page }) => {
 
   await d.caption('Вовлечённость — какая доля дня уходит на эту фазу');
   await d.show(involvementField);
-  await d.pause(1000);
+  await d.pause(500);
+  // Под полем без галочки — откуда взят процент (у уже зафиксированной фазы подписи нет).
+  const sourceHint = involvementField.getByText(/личная настройка сотрудника|из справочника команды|не задана/);
+  if (await sourceHint.count()) {
+    await d.caption('Под полем — откуда взят процент: личная настройка или справочник');
+    await d.show(sourceHint);
+    await d.pause(500);
+  }
 
   const fixBox = involvementField.getByRole('checkbox', { name: 'Зафиксировано' });
   if (!(await fixBox.isChecked())) {
-    await d.click(fixBox, 'Отметьте «Зафиксировано» — у фазы будет свой процент, справочник на неё не действует');
+    await d.click(fixBox, '«Зафиксировано» главнее личной настройки и справочника');
   }
   await expect(input).toBeEnabled();
   await d.click(input, `Впишите новое значение — например, ${NEXT}%`);
@@ -262,7 +271,7 @@ test('rp-executor', async ({ page }) => {
   await d.click(involvementField.getByRole('button', { name: 'Сохранить' }), 'Нажмите «Сохранить»');
 
   await expect(endField).not.toHaveText(endBefore);
-  await d.caption('Процент зафиксирован для этой фазы задачи — во всех планах; снять — убрать галочку');
+  await d.caption('Процент закреплён за фазой во всех планах; снять — убрать галочку');
   await d.show(endField);
   await d.pause(1600);
 

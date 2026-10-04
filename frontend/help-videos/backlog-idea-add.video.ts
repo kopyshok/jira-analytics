@@ -1,6 +1,7 @@
 // Ролик «Как завести идею и связать её с Jira»: Целевые задачи → «Идея вручную» →
 // название, команда, оценки по ролям → в строке — заказчик, аналитик, разработчик,
-// приоритет → «Связать с Jira» с уже загруженной задачей → идея стала задачей.
+// приоритет → карандаш (правка часов) → «Связать с Jira» с уже загруженной задачей →
+// идея стала задачей → «Отвязать от Jira» → корзина (идея удалена).
 import { expect, test, type APIRequestContext, type Locator } from '@playwright/test';
 import { Director } from './director.ts';
 
@@ -107,10 +108,10 @@ test('backlog-idea-add', async ({ page }) => {
   await d.click(field('Команда').locator('.ant-select'), 'Выберите команду');
   await d.click(page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: new RegExp(`^${TEAM}$`) }));
   await d.type(field('АН ч').locator('input'), '24', 'Оцените часы по ролям');
-  await d.type(field('ПР ч').locator('input'), '80', 'Разработка');
-  await d.type(field('ТС ч').locator('input'), '16', 'И тестирование');
+  await d.type(field('ПР ч').locator('input'), '80');
+  await d.type(field('ТС ч').locator('input'), '16');
 
-  await d.click(modal.locator('.ant-modal-footer .ant-btn-primary'), 'Сохраните');
+  await d.click(modal.locator('.ant-modal-footer .ant-btn-primary'), 'Сохраните идею');
   await expect(modal).toBeHidden();
 
   const newRow = pane.locator('tbody tr', { hasText: TITLE });
@@ -129,19 +130,29 @@ test('backlog-idea-add', async ({ page }) => {
   const row = pane.locator(`tr[data-row-key="${createdId}"]`);
   const cell = (i: number) => row.locator('td').nth(i);
 
-  await d.type(cell(4).locator('input[placeholder="Заказчик…"]'), 'Заказчик 1', 'В строке — заказчик');
+  await d.type(cell(4).locator('input[placeholder="Заказчик…"]'), 'Заказчик 1', 'В строке — заказчик, аналитик, разработчик и приоритет');
 
   const analystSelect: Locator = cell(2).locator('.ant-select');
-  await d.click(analystSelect, 'Аналитик');
+  await d.click(analystSelect);
   await d.click(page.locator('.ant-select-dropdown:visible .ant-select-item-option').first());
 
   const devSelect: Locator = cell(3).locator('.ant-select');
-  await d.click(devSelect, 'И разработчик');
+  await d.click(devSelect);
   await d.click(page.locator('.ant-select-dropdown:visible .ant-select-item-option').first());
 
   await page.mouse.move(1100, 160);
-  await d.type(cell(0).locator('input'), '3', 'Приоритет — чем меньше число, тем выше идея в списке');
+  await d.type(cell(0).locator('input'), '3');
 
+  await page.mouse.move(1100, 160);
+  await d.click(row.locator('button:has(.anticon-edit)'), 'Карандаш открывает идею на правку — поправьте часы');
+  const editModal = page.locator('.ant-modal', { hasText: 'Редактирование идеи' });
+  await expect(editModal).toBeVisible();
+  const devHours = editModal.locator('.ant-form-item', { hasText: 'ПР ч' }).last().locator('input');
+  await d.click(devHours);
+  await devHours.press('Control+A');
+  await devHours.pressSequentially('96', { delay: 90 });
+  await d.click(editModal.locator('.ant-modal-footer .ant-btn-primary'));
+  await expect(editModal).toBeHidden();
   await page.mouse.move(1100, 160);
   await d.click(row.locator('[data-tour="backlog-link-jira"]'), 'Когда задача появится в Jira — свяжите её с идеей');
   const linkModal = page.locator('.ant-modal', { hasText: 'Связать идею с Jira-задачей' });
@@ -173,7 +184,32 @@ test('backlog-idea-add', async ({ page }) => {
   await page.mouse.move(1100, 160);
   await d.caption('Идея стала задачей Jira — и готова попасть в «Сценарии» квартала');
   await d.show(linkedRow);
-  await d.pause(1600);
+  await d.pause(900);
+
+  await d.waitVoice();
+  await d.click(
+    linkedRow.locator('button:has(.anticon-disconnect)'),
+    'Если связь не нужна — «Отвязать от Jira»: идея останется в бэклоге',
+  );
+  const unlinkConfirm = page.locator('.ant-popconfirm:visible');
+  await expect(unlinkConfirm).toBeVisible();
+  await d.click(unlinkConfirm.getByRole('button', { name: 'OK' }));
+  const idleRow = pane.locator(`tr[data-row-key="${createdId}"]`);
+  await expect(idleRow.locator('button:has(.anticon-link)')).toBeVisible({ timeout: 15_000 });
+  await page.mouse.move(1100, 160);
+
+  await d.click(
+    idleRow.locator('button:has(.anticon-delete)'),
+    'Корзина удаляет идею — она пропадёт и из черновиков сценариев',
+  );
+  const deleteConfirm = page.locator('.ant-popconfirm:visible');
+  await expect(deleteConfirm).toBeVisible();
+  await d.click(deleteConfirm.getByRole('button', { name: 'OK' }));
+  await expect(idleRow).toHaveCount(0, { timeout: 15_000 });
+  createdId = null;
+  await page.mouse.move(1100, 160);
+  await d.show(pane);
+  await d.pause(900);
 
   await d.caption('Готово', 2200);
   await d.save('backlog-idea-add');

@@ -30,7 +30,7 @@ interface KpiReport {
   rows: KpiReportRow[];
 }
 interface KpiBreakdown {
-  table: { problem_count: number };
+  table: { problem_count: number; kind: string; dropped: unknown[] };
 }
 
 function dbPathFromBackendUrl(backendUrl: string): string {
@@ -59,6 +59,7 @@ let anchorMonth = 0;
 let approvalEnabled = false;
 let employeeName = '';
 let metricName = '';
+let hasDropped = false;
 let approvedThisRun = false;
 let dbPath = '';
 
@@ -118,6 +119,7 @@ test.beforeAll(async ({ playwright }, testInfo) => {
 
   const withData = employee.metrics.filter((m) => m.has_data && m.value != null);
   let chosenMetric = withData[0];
+  let bestScore = -1;
   for (const m of withData) {
     const br = await request.get(`${api}/kpi/breakdown`, {
       params: {
@@ -127,7 +129,13 @@ test.beforeAll(async ({ playwright }, testInfo) => {
     });
     if (br.ok()) {
       const data = (await br.json()) as KpiBreakdown;
-      if (data.table.problem_count > 0) { chosenMetric = m; break; }
+      // Лучше всего — метрика и с ошибками, и со списком «Отсеяно до сравнения».
+      const score = (data.table.problem_count > 0 ? 1 : 0)
+        + (data.table.dropped.length > 0 && data.table.kind !== 'worklogs' ? 2 : 0);
+      if (score > bestScore) {
+        bestScore = score; chosenMetric = m; hasDropped = score >= 2;
+      }
+      if (score === 3) break;
     }
   }
   metricName = chosenMetric.name;
@@ -154,9 +162,9 @@ test('kpi-review', async ({ page }) => {
   await expect(ledgerCard).toBeVisible({ timeout: 20_000 });
   await d.pause(1300);
   await d.poster();
-  await d.pause(6200);
+  await d.pause(1500);
 
-  await d.caption('Месяц — обычный вид для контроля в течение периода');
+  await d.caption('Месяц — обычный вид для контроля внутри периода');
   await d.show(page.locator('.ant-segmented').first());
   await d.pause(1900);
 
@@ -188,8 +196,15 @@ test('kpi-review', async ({ page }) => {
   });
   await d.caption('«Из чего сложился итог» — вклад каждой метрики в процентных пунктах');
   await d.show(contribCard);
-  await d.pause(2400);
+  await d.pause(600);
 
+  const trendCard = page.locator('.ant-card', { has: page.locator('.ant-card-head', { hasText: 'Тренд за 12 месяцев' }) });
+  await d.caption('«Тренд за 12 месяцев» — как менялся итог сотрудника');
+  await trendCard.scrollIntoViewIfNeeded();
+  await d.show(trendCard);
+  await d.pause(800);
+
+  await d.waitVoice();
   const metricsCard = page.locator('.ant-card', {
     has: page.locator('.ant-card-head', { hasText: 'Разбор по метрикам' }),
   });
@@ -212,9 +227,15 @@ test('kpi-review', async ({ page }) => {
 
   const firstRow = dock.locator('.ant-table-tbody tr').first();
   if (await firstRow.count()) {
-    await d.caption('Ключ задачи — ссылка в Jira');
+    await d.caption('Номер задачи — ссылка в Jira');
     await d.show(firstRow.locator('td').first());
     await d.pause(2000);
+  }
+
+  const droppedHeader = dock.locator('.ant-collapse-header', { hasText: 'Отсеяно до сравнения' });
+  if (hasDropped && (await droppedHeader.count())) {
+    await d.click(droppedHeader, '«Отсеяно до сравнения» — задачи, которые в расчёт не вошли');
+    await d.pause(900);
   }
 
   const funnelHeader = page.locator('.ant-collapse-header', { hasText: 'Как получилось это число' });
@@ -237,7 +258,7 @@ test('kpi-review', async ({ page }) => {
     );
     await expect(page.getByText(/Утвердил/).first()).toBeVisible({ timeout: 10_000 });
     approvedThisRun = true;
-    await d.caption('Квартал утверждён — числа заморожены снимком');
+    await d.caption('Плашка «Квартал утверждён» — числа заморожены снимком');
     await d.show(page.locator('.ant-alert', { hasText: 'Квартал утверждён' }));
     await d.pause(1900);
   } else {
@@ -249,8 +270,8 @@ test('kpi-review', async ({ page }) => {
   await d.click(page.getByRole('button', { name: 'Выгрузить в Excel' }), 'Выгрузите ведомость в Excel');
   await d.pause(1200);
 
-  await d.caption('Готово', 4200);
   await d.show(ledgerCard);
-  await d.pause(900);
+  await d.caption('Готово', 2200);
+  await d.pause(500);
   await d.save('kpi-review');
 });

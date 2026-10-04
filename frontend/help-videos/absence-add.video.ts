@@ -98,7 +98,38 @@ test('absence-add', async ({ page }) => {
   await expect(tag).toBeVisible();
   await d.caption('Отпуск встал в календарь команды');
   await d.show(tag);
-  await d.pause(1000);
+  await d.pause(600);
+
+  // Те же отпуска — днями на тепловой карте.
+  const heatmap = page.locator('[data-tour="capacity-absence-heatmap"]');
+  await heatmap.scrollIntoViewIfNeeded();
+  await d.caption('Те же отпуска — днями на карте');
+  await d.show(heatmap);
+  await d.pause(600);
+
+  // Массовое добавление: окно только показываем, записи не создаём.
+  await d.waitVoice();
+  await d.click(page.locator('[data-tour="capacity-absence-bulk"]'), 'Нескольким сотрудникам сразу — «Массовое добавление»');
+  const bulk = page.locator('.ant-modal', { hasText: 'Массовое добавление отсутствий' });
+  await expect(bulk).toBeVisible();
+  await page.mouse.move(1100, 180);
+  await d.show(bulk.locator('.ant-modal-body'));
+  await d.waitVoice();
+  await d.click(bulk.getByRole('button', { name: 'Отмена' }));
+  await expect(bulk).toBeHidden();
+
+  // «Только внеплановые» прячет плановые причины — отпуск уходит из строки.
+  const unplanned = page.locator('.ant-tabs-tabpane-active').getByRole('switch').first();
+  await d.caption('«Только внеплановые» прячет плановые причины, например отпуск');
+  await d.point(unplanned);
+  await d.waitVoice();
+  await d.click(unplanned);
+  await expect(tag).toBeHidden();
+  await d.show(row);
+  await d.pause(900);
+  await d.click(unplanned);
+  await expect(tag).toBeVisible();
+  await page.mouse.move(1100, 180);
 
   // Сценарии: утверждённый квартал уже не знает об этом отпуске — полоса
   // «Доступность изменилась» покажет расхождение.

@@ -105,11 +105,11 @@ test('analytics-categorize', async ({ page }) => {
   await expect(table.locator('tbody tr.ant-table-row').first()).toBeVisible({ timeout: 20_000 });
   await d.pause(1000);
   await d.poster();
-  await d.pause(2000);
+  await d.pause(500);
 
   await d.caption('Настройка «По видам работ» держит вид работ вверху дерева');
   await d.show(page.locator('[data-tour="analytics-settings"]'));
-  await d.pause(1600);
+  await d.pause(500);
 
   const orphanRow = table.locator('tr.tree-row-depth-0', { hasText: ORPHAN_LABEL });
   await expect(orphanRow).toBeVisible({ timeout: 15_000 });
@@ -120,52 +120,67 @@ test('analytics-categorize', async ({ page }) => {
   const orphanIssueRow = table.locator('tr.tree-row-depth-2').first();
   await expect(orphanIssueRow).toBeVisible();
   await d.show(orphanIssueRow);
-  await d.pause(1400);
+  await d.pause(500);
 
-  await d.click(orphanIssueRow, 'Откройте задачу');
+  await d.click(orphanIssueRow.locator('span[style*="flex: 1 1 auto"]').first(), 'Откройте задачу');
   const drawer = page.locator('.ant-drawer-open');
   await expect(drawer).toBeVisible({ timeout: 10_000 });
   const contextBlock = drawer.getByText('Контекст', { exact: true });
   await d.caption('Справа — карточка с контекстом задачи');
   await d.show(contextBlock);
-  await d.pause(1600);
+  await d.pause(500);
 
   const categorizeBlock = drawer.locator('[data-tour="analytics-categorize"]');
   await d.caption('Блок «Категория и анализ» — прямо в карточке задачи');
   await d.show(categorizeBlock);
-  await d.pause(1600);
+  await d.pause(500);
+
+  const subtreeCheck = drawer.getByText('Применить ко всему поддереву');
+  if (await subtreeCheck.count()) {
+    await d.caption('Галочка «Применить ко всему поддереву» поставит категорию и подзадачам');
+    await d.show(subtreeCheck);
+    await d.waitVoice();
+  }
 
   await pickCategory(d, page, categorizeBlock.locator('.ant-select'), CATEGORY, 'Выберите категорию');
   await d.click(categorizeBlock.getByRole('button', { name: 'Сохранить' }), 'Сохраните');
   await d.pause(800);
+  await d.waitVoice();
   await page.keyboard.press('Escape');
   await expect(drawer).toBeHidden();
 
   await d.caption('Категория задачи решает, в какой вид работ пойдут часы');
   await expect(table.locator('tbody tr.ant-table-row').first()).toBeVisible({ timeout: 15_000 });
   await d.show(table.locator('tr.tree-row-depth-0').first());
-  await d.pause(2000);
+  await d.pause(500);
+
+  const thematicArrow = table.locator('tr.tree-row-depth-0 .anticon-arrow-right').first();
+  if (await thematicArrow.count()) {
+    await d.caption('Стрелка у вида работ открывает «Тематический отчёт»');
+    await d.show(thematicArrow);
+    await d.pause(300);
+  }
 
   await d.caption('Плитка «Чужих часов» — списания на задачи других команд');
   await d.show(page.locator('[data-tour="analytics-kpi"] > div', { hasText: 'Чужих часов' }));
-  await d.pause(3200);
+  await d.pause(500);
 
   await d.caption('А общий итог по факту и плану — в плитках сверху');
   await d.show(page.locator('[data-tour="analytics-kpi"]'));
-  await d.pause(3600);
+  await d.pause(500);
 
-  await d.caption('«Экспорт XLSX» выгружает тот же срез в файл');
+  await d.caption('Кнопка выгрузки в Эксель сохраняет тот же срез в файл');
   await d.show(page.getByRole('button', { name: 'Экспорт XLSX' }));
-  await d.pause(3600);
+  await d.pause(500);
 
   await d.caption('Переключатель «Иерархия» покажет задачи деревом до родителя');
   await d.show(page.locator('[data-tour="analytics-hierarchy"]'));
-  await d.pause(3600);
+  await d.pause(500);
 
   if (hasForeign) {
     const foreignRow = table.locator('tr.tree-row-depth-0', { hasText: 'Прочие / Чужие задачи' });
     if (await foreignRow.count()) {
-      await d.click(foreignRow, 'Вид работ «Прочие / Чужие задачи» — сюда попадают чужие списания');
+      await d.click(foreignRow, 'Вид работ «Прочие, чужие задачи» — сюда попадают чужие списания');
       const categoryRows = table.locator('tr.tree-row-depth-1');
       const catCount = Math.min(await categoryRows.count(), 4);
       let foreignIssue = table.locator('tr.tree-row-depth-2', { hasText: 'Чужая' }).first();
@@ -176,7 +191,7 @@ test('analytics-categorize', async ({ page }) => {
       if (await foreignIssue.count()) {
         await d.caption('Метка «Чужая» — задача принадлежит другой команде');
         await d.show(foreignIssue);
-        await d.pause(1800);
+        await d.pause(500);
       }
     }
   }

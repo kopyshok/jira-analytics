@@ -146,17 +146,22 @@ test('rp-conflicts', async ({ page }) => {
   await expect(criticalAlert).toBeVisible();
   await expect(warnAlert).toBeVisible();
 
-  await d.click(page.locator('.ant-segmented-item', { hasText: 'По сотрудникам' }), 'Можно сгруппировать по сотрудникам…');
+  await d.click(page.locator('.ant-segmented-item', { hasText: 'По сотрудникам' }), 'Конфликты можно сгруппировать по сотрудникам');
   await d.pause(1300);
-  await d.click(page.locator('.ant-segmented-item', { hasText: 'По типу' }), '…или по типу проблемы');
+  await d.click(page.locator('.ant-segmented-item', { hasText: 'По типу' }), 'А можно — по типу проблемы');
   await d.pause(1300);
   await d.click(page.locator('.ant-segmented-item', { hasText: 'По задачам' }));
 
-  await d.click(criticalAlert.getByText(criticalMessage, { exact: false }), 'Щелчок по конфликту откроет фазу');
+  // Критический конфликт — на всю задачу (часы не поместились в квартал), карточки у него нет;
+  // карточку фазы открывает конфликт-предупреждение.
+  await d.caption('Красный конфликт — часы задачи не поместились в квартал');
+  await d.show(criticalAlert);
+  await d.pause(600);
+  await d.click(warnAlert.getByText(warnMessage, { exact: false }), 'Щелчок по конфликту откроет фазу');
   const drawer = page.locator('.ant-drawer-open .ant-drawer-section');
   await expect(drawer).toBeVisible();
   await page.mouse.move(900, 120);
-  await d.caption('Часы фазы не поместились в план — исполнитель перегружен по срокам');
+  await d.caption('В карточке — расчёт проблем: что нарушено в этой фазе');
   await d.show(drawer.getByText('Расчёт проблем'));
   await d.pause(3000);
   await d.click(drawer.locator('.ant-drawer-close'), 'Закройте карточку');
@@ -212,7 +217,7 @@ test('rp-conflicts', async ({ page }) => {
   await d.pause(2600);
 
   // Второй конфликт: «Принят», затем «Замучен» и «Показать погашенные».
-  await d.click(warnAlert.locator('a:has(.anticon-more)'), 'Конфликт допустим? Откройте меню статуса справа');
+  await d.click(warnAlert.locator('a:has(.anticon-more)'), 'Конфликт допустим? Откройте меню статуса');
   await d.click(page.locator('.ant-dropdown:visible .ant-dropdown-menu-item', { hasText: 'Принят' }), 'Выберите «Принят»');
   await expect(warnAlert.locator('.ant-tag')).toHaveText('Принят');
   await d.caption('Конфликт остаётся на виду, но вы уже приняли решение');
@@ -236,7 +241,7 @@ test('rp-conflicts', async ({ page }) => {
   await load.evaluate((el) => {
     (el as HTMLElement).style.marginBottom = '160px';
   });
-  await d.caption('Внизу — загрузка по дням: где ещё остался перегруз, видно сразу');
+  await d.caption('Внизу по дням видно, где ещё остался перегруз');
   await load.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
   await d.pause(800);
   await d.show(load);

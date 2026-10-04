@@ -183,7 +183,7 @@ test('backlog-planning-params', async ({ page }) => {
   await expect(row).toBeVisible({ timeout: 15_000 });
   await row.scrollIntoViewIfNeeded();
 
-  await d.click(row.locator('[data-tour="backlog-gear"]'), 'У задачи квартала — шестерёнка «Параметры планирования»');
+  await d.click(row.locator('[data-tour="backlog-gear"]'), 'У задачи квартала — шестерёнка параметров');
   const modal = page.locator('.ant-modal', { hasText: 'Параметры планирования' });
   await expect(modal).toBeVisible();
 
@@ -199,7 +199,7 @@ test('backlog-planning-params', async ({ page }) => {
   };
 
   const devBlock = phaseBlock(PHASE_LABELS.dev);
-  await d.caption('По фазам — длительность и параллельность: сколько человек ведут фазу одновременно');
+  await d.caption('Длительность и параллельность фазы — сколько человек ведут её сразу');
   await d.show(devBlock.locator('input').nth(1));
   await d.pause(1200);
 
@@ -213,14 +213,14 @@ test('backlog-planning-params', async ({ page }) => {
     await setNumber(durInput, String(Number(jiraBefore || '0') + 5), 'Длительность тоже можно задать вручную');
     const toJira = durBlock.getByRole('button', { name: 'К Jira' }).last();
     await expect(toJira).toBeVisible();
-    await d.click(toJira, 'Кнопка «К Jira» вернёт значение из Jira, если передумали');
+    await d.click(toJira, '«К Jira» вернёт значение из Jira');
     await expect(toJira).toBeHidden();
   }
 
   await expect(modal.getByText('Часы и иерархия')).toBeVisible({ timeout: 15_000 });
   const hoursTable = modal.locator('table', { hasText: 'Запланировать' });
   await expect(hoursTable).toBeVisible({ timeout: 15_000 });
-  await d.caption('Для задачи из Jira здесь видно факт, утверждённые часы и что ещё можно запланировать');
+  await d.caption('Тут видны факт, утверждённые часы и остаток к планированию');
   await d.show(hoursTable);
   await d.pause(2000);
 
@@ -235,13 +235,13 @@ test('backlog-planning-params', async ({ page }) => {
   await setNumber(
     editInput,
     String(Math.max(1, Number(currentHours || '0') + 10)),
-    'Новое значение — с обязательным комментарием',
+    'Новое значение — с комментарием',
   );
   await d.type(drawer.locator('textarea'), 'После сверки часов с руководителем', 'Комментарий — зачем правка');
   await d.click(drawer.getByRole('button', { name: 'Сохранить' }), 'Сохраните');
   await expect(drawer).toBeHidden();
 
-  await d.click(editBtn, 'Откройте правку ещё раз — посмотреть историю');
+  await d.click(editBtn, 'Откройте правку ещё раз — там история');
   await expect(drawer).toBeVisible();
   await d.click(drawer.getByRole('button', { name: /историю/ }), 'Каждая правка остаётся в истории');
   const historyTable = drawer.locator('table').last();
@@ -275,13 +275,13 @@ test('backlog-planning-params', async ({ page }) => {
     await setNumber(otherDurInput, String(Number(otherJiraBefore || '0') + 5), 'Длительность тоже можно задать вручную');
     const otherToJira = otherPhaseBlock.getByRole('button', { name: 'К Jira' });
     await expect(otherToJira).toBeVisible();
-    await d.click(otherToJira, 'Кнопка «К Jira» вернёт значение из Jira, если передумали');
+    await d.click(otherToJira, '«К Jira» вернёт значение из Jira');
     await expect(otherToJira).toBeHidden();
-    await d.click(otherModal.locator('.ant-modal-close'), 'Ничего менять не нужно — просто закройте окно');
+    await d.click(otherModal.locator('.ant-modal-close'), 'Закройте окно');
     await expect(otherModal).toBeHidden();
   }
 
-  await d.caption('Вовлечённость фазы задаётся в «Ресурс. планир.» — в карточке фазы, галочка «Зафиксировано»', 3200);
+  await d.caption('Вовлечённость фазы задаётся в ресурсном планировании, в карточке фазы', 3200);
   await d.pause(800);
 
   await d.caption('Готово', 2200);

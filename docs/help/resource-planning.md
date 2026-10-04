@@ -32,13 +32,15 @@
 
 [Как видеть группы и людей из других команд](video:rp-groups-cross-team)
 
+[Как подобрать людей под план и увидеть, кто свободен](video:rp-watch-people)
+
+[Как понять, что план зависит от других команд](video:rp-other-teams-signals)
+
 [Как сбросить ручные правки](video:rp-reset)
 
 [Как внести отпуск и увидеть сдвиг плана](video:absence-add)
 
 [Как назначить разработчика в сценарии](video:scenario-developer)
-
-[Как задать параметры планирования](video:backlog-planning-params)
 
 ---
 

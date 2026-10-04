@@ -143,7 +143,6 @@ test('scenario-rules', async ({ page }) => {
   await expect(rulesCard).toBeVisible();
 
   const roleCard = page.locator('.ant-card', { hasText: 'Ресурс по ролям' });
-  await d.caption('Справа — ресурс на инициативы до правки');
   await d.show(roleCard);
   await d.pause(1000);
   const beforeRuleText = await roleCard.innerText();
@@ -171,7 +170,7 @@ test('scenario-rules', async ({ page }) => {
   await d.click(rulesCard.getByRole('button', { name: 'Сохранить' }), 'Сохраните правило');
   await expect(rulesCard.getByRole('button', { name: 'Сбросить' })).toHaveCount(0, { timeout: 10_000 });
 
-  await d.caption('Нормированные работы уменьшают часы на задачи');
+  await d.caption('Нормы уменьшают часы на задачи');
   await d.show(roleCard);
   await d.pause(1200);
   await expect.poll(() => roleCard.innerText()).not.toBe(beforeRuleText);
@@ -183,23 +182,28 @@ test('scenario-rules', async ({ page }) => {
   await expect(drawer).toBeVisible();
   await d.pause(400);
 
-  await d.caption('Справочник вовлечённости по ролям команды');
+  await d.caption('Вовлечённость по ролям задаётся здесь, а не берётся из Jira');
   await d.show(drawer.getByRole('heading', { name: 'По ролям команды' }));
-  await d.pause(1400);
+  await d.pause(600);
 
-  await d.caption('«Сотрудники» — личная настройка, если общее правило не подходит');
+  const factLabel = drawer.locator('[data-testid="involvement-fact"]').first();
+  await expect(factLabel).toBeVisible({ timeout: 15_000 });
+  await d.caption('Рядом с планом — факт за прошлый квартал');
+  await d.show(factLabel);
+  await d.waitVoice();
+
   await d.show(drawer.getByRole('heading', { name: 'Сотрудники' }));
-  await d.pause(1400);
+  await d.pause(300);
 
   const beforeInvolvementText = await roleCard.innerText();
 
-  await d.click(drawer.locator('[data-testid="involvement-employee-add"]'), 'Нажмите «Добавить»');
+  await d.click(drawer.locator('[data-testid="involvement-employee-add"]'), 'Для сотрудника — личная настройка: «Добавить»');
   const empModal = page.locator('.ant-modal', { hasText: 'Добавить сотрудника' });
   await expect(empModal).toBeVisible();
 
   const surname = devEmployee!.display_name.split(' ')[0];
   const employeeSelect = empModal.locator('.ant-select').first();
-  await d.click(employeeSelect, 'Выберите разработчика');
+  await d.click(employeeSelect);
   const dropdown = page.locator('.ant-select-dropdown:visible');
   await expect(dropdown.locator('.ant-select-item-option').first()).toBeVisible();
   await page.keyboard.type(surname, { delay: 100 });
@@ -219,7 +223,7 @@ test('scenario-rules', async ({ page }) => {
   );
 
   const involvementInput = empModal.locator('#personal-setting-involvement');
-  await d.click(involvementInput, 'Задайте вовлечённость и «свои» проценты');
+  await d.click(involvementInput, 'Задайте вовлечённость и свои проценты');
   await involvementInput.pressSequentially('80', { delay: 90 });
 
   await d.click(empModal.getByRole('switch', { name: 'Нормированные работы: по правилам роли или свои' }));
@@ -242,13 +246,12 @@ test('scenario-rules', async ({ page }) => {
   );
   personalSettingId = createdRow?.id ?? null;
 
-  await d.caption('Раскладку нужно пересчитать кнопкой «Распределить» в ресурсном плане', 2400);
 
   await d.click(page.locator('.ant-drawer-close'), 'Закройте панель');
   await expect(drawer).toBeHidden();
   await page.mouse.move(700, 120);
 
-  await d.caption('Вовлечённость удлиняет фазы в ресурсном плане, а ресурс сценария уже пересчитан');
+  await d.caption('Ресурс пересчитан, а сроки фаз обновит «Распределить»');
   await d.show(roleCard);
   await d.pause(1600);
   await expect.poll(() => roleCard.innerText()).not.toBe(beforeInvolvementText);

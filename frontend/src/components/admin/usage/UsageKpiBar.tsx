@@ -10,7 +10,7 @@ export default function UsageKpiBar() {
   });
 
   return (
-    <Row gutter={16}>
+    <Row gutter={16} data-tour="usage-kpi">
       <Col xs={12} sm={12} lg={6}>
         <Card loading={isLoading}>
           <Statistic title="Активных сегодня" value={data?.dau ?? 0} />

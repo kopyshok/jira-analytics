@@ -98,7 +98,12 @@ test.beforeAll(async ({ playwright }, testInfo) => {
     `${api}/issues/tree/roots?teams=${encodeURIComponent(TEAM)}&tab=stack`,
   );
   const eligible = roots.filter((r) => r.is_container && !r.is_context && r.category !== CATEGORY_CODE);
-  candidate = eligible.find((r) => r.descendant_match_count === 0) ?? eligible[0];
+  // Нужна задача с подзадачами (тогда при сохранении появляется выбор «всё поддерево»),
+  // но с небольшим числом неразобранных внутри — чтобы строка после сохранения ушла из списка.
+  candidate =
+    eligible.find((r) => r.has_children && r.descendant_match_count >= 1 && r.descendant_match_count <= 5) ??
+    eligible.find((r) => r.descendant_match_count === 0) ??
+    eligible[0];
   expect(candidate, `В «К разбору» команды ${TEAM} нет подходящей задачи-контейнера`).toBeTruthy();
 
   await request.dispose();
@@ -110,6 +115,12 @@ test.afterAll(async ({ playwright }, testInfo) => {
     storageState: testInfo.project.use.storageState as string,
   });
   if (scenarioId) await request.delete(`${api}/planning/scenarios/${scenarioId}`);
+  // Категорию, поставленную роликом, снимаем вместе с поддеревом.
+  if (candidate) {
+    await request.put(`${api}/issues/batch-category`, {
+      data: { issue_ids: [candidate.id], category_code: null, verify: false, overwrite: true },
+    });
+  }
   await request.dispose();
 });
 
@@ -156,7 +167,10 @@ test('category-to-scenario', async ({ page }) => {
   // У задачи с подзадачами вместо сохранения открывается выбор охвата.
   const scopePopover = page.locator('.ant-popover:visible', { hasText: 'Сохранить категорию' });
   if (await scopePopover.isVisible({ timeout: 1_500 }).catch(() => false)) {
-    await d.click(scopePopover.getByRole('button', { name: 'Только эту задачу' }));
+    await d.caption('Можно сохранить только эту задачу или сразу всё поддерево');
+    await d.show(scopePopover);
+    await d.pause(900);
+    await d.click(scopePopover.getByRole('button', { name: 'И всё поддерево' }));
   }
   // Строка уходит из «К разбору», если у задачи не осталось неподтверждённых
   // потомков; иначе она недолго держится как якорь к оставшемуся потомку —
@@ -190,7 +204,9 @@ test('category-to-scenario', async ({ page }) => {
   await expect(activePane.locator('tbody tr.ant-table-row').first()).toBeVisible({ timeout: 15_000 });
   await d.caption('На «Активных» — задачи уже утверждённого плана квартала');
   await d.show(activePane);
-  await d.pause(1400);
+  await d.pause(900);
+  await d.caption('Задачи категории «Минорные изменения» попадают в сводку на этой же странице');
+  await d.pause(600);
 
   const backlogPane = page.locator('[data-tour="backlog-tabs"] .ant-tabs-tabpane-active');
   await d.click(
@@ -212,7 +228,7 @@ test('category-to-scenario', async ({ page }) => {
   const alloc = allocs.find((a) => a.backlog_item_id === backlogItem!.id);
   expect(alloc, `Нет allocation для ${issue.key} в черновике сценария`).toBeTruthy();
 
-  await d.caption('…и в черновике сценария квартала');
+  await d.caption('А ещё — в черновике сценария квартала');
   await d.click(page.locator('.side-item', { hasText: 'Сценарии' }));
   await pickOption(
     d, page,

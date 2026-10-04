@@ -70,6 +70,7 @@ test('team-member-add', async ({ page }) => {
   await page.keyboard.press('Escape');
 
   await d.click(page.getByRole('button', { name: /Команда Альфа/ }), 'И уберите фильтр команды — новичок в неё ещё не входит');
+  await d.waitVoice();
   await d.click(page.getByRole('button', { name: 'Сбросить' }));
   await d.click(page.getByRole('button', { name: 'Применить' }));
 
@@ -107,12 +108,9 @@ test('team-member-add', async ({ page }) => {
   const joinedInput = drawer.locator('input[placeholder="В команде с…"]');
   await d.click(joinedInput, 'Отметьте дату входа, если не с начала квартала');
   const dropdown = page.locator('.ant-picker-dropdown:visible');
-  // Следующий квартал, 15-е число — без плагина quarterOfYear для dayjs.
+  // Середина текущего квартала, 15-е число: сценарий этого квартала есть всегда.
   const now = dayjs();
-  const curQStartMonth = Math.floor(now.month() / 3) * 3;
-  const nextQStartMonth = (curQStartMonth + 3) % 12;
-  const nextQYear = curQStartMonth + 3 >= 12 ? now.year() + 1 : now.year();
-  const joinDate = dayjs(new Date(nextQYear, nextQStartMonth, 15));
+  const joinDate = dayjs(new Date(now.year(), Math.floor(now.month() / 3) * 3 + 1, 15));
   for (let i = 0; i < 12 && !(await dropdown.locator(
     `td.ant-picker-cell-in-view[title="${joinDate.format('YYYY-MM-DD')}"]`).count()); i++) {
     await dropdown.locator('.ant-picker-header-next-btn').click();

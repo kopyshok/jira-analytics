@@ -131,7 +131,7 @@ test('scenario-approve', async ({ page }) => {
   const statusBadge = page.locator('.ant-badge-status-text', { hasText: 'Утверждён' });
   await expect(statusBadge).toBeVisible();
 
-  await d.caption('Статус сменился, а галочки и исполнители теперь заблокированы');
+  await d.caption('Статус сменился, отметки и исполнители заблокированы');
   await d.show(statusBadge, page.getByText('сценарий утверждён — отметки заблокированы'));
   await d.pause(1800);
 
@@ -158,15 +158,12 @@ test('scenario-approve', async ({ page }) => {
 
   // === Назад к сценарию → «Диаграмма» ===
   await d.caption('Вернёмся в сценарий');
+  await d.waitVoice();
   await page.goBack();
   await expect(page.locator('[data-tour="planning-diagram"]')).toBeVisible({ timeout: 15_000 });
   await d.pause(900);
 
-  await d.caption('Кнопка «Диаграмма» открывает ресурсный план');
-  await d.show(page.locator('[data-tour="planning-diagram"]'));
-  await d.pause(1200);
-
-  await d.click(page.locator('[data-tour="planning-diagram"]'), 'Нажмите «Диаграмма»');
+  await d.click(page.locator('[data-tour="planning-diagram"]'), 'Кнопка «Диаграмма» открывает ресурсный план');
   await expect(page).toHaveURL(/\/resource-planning/);
   await expect(page.locator('[data-tour="rp-gantt"]')).toBeVisible({ timeout: 20_000 });
   await d.pause(900);
@@ -192,15 +189,12 @@ test('scenario-approve', async ({ page }) => {
   await d.pause(1800);
 
   // === Назад к сценарию → «В черновик» ===
+  await d.waitVoice();
   await page.goBack();
   await expect(page.locator('[data-tour="planning-revert"]')).toBeVisible({ timeout: 15_000 });
   await d.pause(900);
 
-  await d.caption('Если нужно что-то поправить — сценарий возвращается в черновик');
-  await d.show(page.locator('[data-tour="planning-revert"]'));
-  await d.pause(1500);
-
-  await d.click(page.locator('[data-tour="planning-revert"]'), 'Нажмите «В черновик»');
+  await d.click(page.locator('[data-tour="planning-revert"]'), 'Если нужно поправить — «В черновик» вернёт сценарий');
   await expect(page.locator('.ant-badge-status-text', { hasText: 'Черновик' })).toBeVisible({ timeout: 15_000 });
   await d.pause(1800);
 

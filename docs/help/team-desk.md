@@ -24,9 +24,15 @@
 
 ## Видео
 
+[Как быстро оценить состояние команды](video:team-desk-overview)
+
 [Как разобрать зависшие задачи](video:team-desk-stuck)
 
 [Как оценить очередь разработчика](video:team-desk-queue)
+
+[Как настроить стол тимлида под себя](video:team-desk-setup)
+
+[Как настроить стол тимлида](video:settings-team-desk)
 
 ---
 

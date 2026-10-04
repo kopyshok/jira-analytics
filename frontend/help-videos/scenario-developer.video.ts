@@ -158,9 +158,10 @@ test('scenario-developer', async ({ page }) => {
   await page.keyboard.type(analystSurname, { delay: 100 });
   const busy = dropdown.locator('.ant-select-item-option-disabled', { hasText: 'уже аналитик этой задачи' });
   await expect(busy).toBeVisible();
-  await d.caption('Тот же человек не может быть и аналитиком, и разработчиком этой задачи');
+  await d.caption('Один человек не может быть и аналитиком, и разработчиком задачи');
   await d.show(busy);
-  await d.pause(2300);
+  await d.pause(600);
+  await d.waitVoice();
   await page.keyboard.press('Control+A');
   await page.keyboard.type(devSurname, { delay: 100 });
   await d.pause(500);
@@ -172,6 +173,19 @@ test('scenario-developer', async ({ page }) => {
   await d.caption('Разработчик задачи назначен');
   await d.show(devSelect);
   await d.pause(1600);
+
+  // Сортировка — только вид на экране: щелчок по заголовку колонки, три щелчка — круг.
+  await d.waitVoice();
+  const sortHeader = page.locator('span[role="button"][title^="Сортировать"]', { hasText: 'Аналитик' });
+  await d.click(sortHeader, 'Щёлкните по заголовку «Аналитик» — список по алфавиту');
+  await page.mouse.move(700, 120);
+  await d.pause(600);
+  await d.click(sortHeader, 'Второй щелчок — в обратном порядке');
+  await page.mouse.move(700, 120);
+  await d.pause(600);
+  await d.click(sortHeader, 'Третий — порядок сбрасывается');
+  await page.mouse.move(700, 120);
+  await d.waitVoice();
 
   const roleCard = page.locator('.ant-card', { hasText: 'Ресурс по ролям' });
   await d.caption('Часы разработки сразу учтены в ресурсе команды');

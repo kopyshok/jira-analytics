@@ -485,6 +485,7 @@ export default function EmployeeLoadHeatmap({
               styles={{ root: { maxWidth: TIP_MAX_W } }}
             >
             <span
+              data-testid={watch ? 'rp-watch-pct' : 'rp-load-pct'}
               style={{
                 marginLeft: 'auto',
                 flexShrink: 0,
@@ -569,6 +570,7 @@ export default function EmployeeLoadHeatmap({
     return (
       <div style={{ ...WATCH_RIGHT, alignItems: 'center', height: '100%', fontSize: 11 }}>
         <span
+          data-testid="rp-watch-free"
           title={`Свободно за квартал ${fmtHours(w.free_hours)}: норма минус задачи всех команд и нормированные работы`}
           style={{ width: FREE_W, color: '#cfe1f5', whiteSpace: 'nowrap' }}
         >
@@ -604,6 +606,7 @@ export default function EmployeeLoadHeatmap({
   const watchHeader = (
     <div style={{ display: 'flex', alignItems: 'flex-end', padding: '10px 0 2px' }}>
       <div
+        data-tour="rp-watch-header"
         title="Люди любых команд, которых рассматриваете для плана. Свой цвет — задачи их основной команды и этого плана, нижний слой — другие команды. Самые свободные — сверху."
         style={{
           width: LABEL_W,
@@ -652,6 +655,7 @@ export default function EmployeeLoadHeatmap({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {onPickPeople && (
             <Button
+              data-tour="rp-pick-people"
               size="small"
               onClick={onPickPeople}
               title="Добавить людей любых команд секцией «Наблюдаемые» — видно, кто свободен"

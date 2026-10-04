@@ -110,7 +110,7 @@ function LoadChart({ data, period }: { data: PerfOverview; period: PerfPeriod })
   const step = data.bucket_minutes >= 60 ? `${data.bucket_minutes / 60} ч` : `${data.bucket_minutes} мин`;
 
   return (
-    <Card size="small" title={`Время ответа и загрузка сервера (одна точка — ${step})`}>
+    <Card size="small" title={`Время ответа и загрузка сервера (одна точка — ${step})`} data-tour="perf-chart">
       <div style={{ width: '100%', height: 300 }}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
@@ -336,6 +336,7 @@ export default function PerformanceTab() {
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <Alert
+        data-tour="perf-about"
         type="info"
         showIcon
         title="Как быстро отвечает сервис"
@@ -352,7 +353,7 @@ export default function PerformanceTab() {
         }
       />
 
-      <Space wrap>
+      <Space wrap data-tour="perf-toolbar">
         <Radio.Group
           value={period}
           onChange={(e) => setPeriod(e.target.value)}
@@ -380,7 +381,7 @@ export default function PerformanceTab() {
         />
       )}
 
-      <Row gutter={[16, 16]}>
+      <Row gutter={[16, 16]} data-tour="perf-tiles">
         <Col xs={12} lg={6}>
           <Card size="small" loading={query.isLoading}>
             <Statistic title="Запросов" value={data?.totals.requests ?? 0} />
@@ -404,7 +405,7 @@ export default function PerformanceTab() {
       </Row>
 
       {data && (
-        <Card size="small" title="Почему были медленные запросы">
+        <Card size="small" title="Почему были медленные запросы" data-tour="perf-verdicts">
           <Space orientation="vertical" size={8} style={{ width: '100%' }}>
             {verdictEntries.length === 0 ? (
               <Text type="secondary">Медленных запросов за период не было.</Text>
@@ -437,7 +438,7 @@ export default function PerformanceTab() {
 
       {data && <LoadChart data={data} period={period} />}
 
-      <Card size="small" title="Узкие места — что сильнее всего заставляет ждать">
+      <Card size="small" title="Узкие места — что сильнее всего заставляет ждать" data-tour="perf-bottlenecks">
         <Table<PerfBottleneck>
           rowKey={(r) => `${r.method} ${r.route}`}
           size="small"
@@ -450,7 +451,7 @@ export default function PerformanceTab() {
         />
       </Card>
 
-      <Card size="small" title="Медленные запросы">
+      <Card size="small" title="Медленные запросы" data-tour="perf-slow">
         <Table<PerfSlowRequest>
           rowKey="id"
           size="small"

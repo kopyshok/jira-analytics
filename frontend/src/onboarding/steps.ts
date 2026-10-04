@@ -31,6 +31,7 @@ export const SETUP_STEPS: SetupStep[] = [
     title: 'Задачи команды загружены из Jira',
     hint: 'Синхронизация общая и идёт по расписанию. Если задач команды нет — обратитесь к администратору.',
     route: '/sync',
+    videoId: 'sync-schedule-history',
   },
   {
     id: 'categorization',
@@ -71,9 +72,9 @@ export const SETUP_STEPS: SetupStep[] = [
     hint: 'Сценарий собирает инициативы квартала под ресурс команды.',
     route: '/planning',
     tourId: 'planning',
-    videoId: 'scenario-create',
+    videoId: 'scenario-approve',
     children: [
-      { id: 'scenario_created', title: 'Сценарий создан', hint: 'Кнопка «Новый сценарий».' },
+      { id: 'scenario_created', title: 'Сценарий создан', hint: 'Кнопка «Новый сценарий».', videoId: 'scenario-create' },
       {
         id: 'scenario_rules',
         title: 'Нормированные работы проверены',
@@ -101,10 +102,10 @@ export const SETUP_STEPS: SetupStep[] = [
 ];
 
 export const INTRO_STEPS: IntroStep[] = [
-  { tourId: 'header', title: 'Шапка: команда, период, справка', hint: 'Что настраивается один раз и действует во всех разделах.' },
-  { tourId: 'dashboard', title: 'Дашборд', hint: 'Сводка команды за период.' },
-  { tourId: 'analytics', title: 'Аналитика', hint: 'Отчёт по часам: команда → роль → сотрудник → категория → задача.' },
-  { tourId: 'team-desk', title: 'Стол тимлида', hint: 'Задачи разработчиков: что зависло, что перерасходовано.' },
+  { tourId: 'header', title: 'Шапка: команда, период, справка', hint: 'Что настраивается один раз и действует во всех разделах.', videoId: 'start-header' },
+  { tourId: 'dashboard', title: 'Дашборд', hint: 'Сводка команды за период.', videoId: 'dashboard-overview' },
+  { tourId: 'analytics', title: 'Аналитика', hint: 'Отчёт по часам: команда → роль → сотрудник → категория → задача.', videoId: 'analytics-employee-hours' },
+  { tourId: 'team-desk', title: 'Стол тимлида', hint: 'Задачи разработчиков: что зависло, что перерасходовано.', videoId: 'team-desk-overview' },
 ];
 
 /** Шаг закрыт: выполнен или пропущен. Группа — когда закрыты все подпункты. */

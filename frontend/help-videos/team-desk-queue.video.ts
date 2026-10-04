@@ -46,7 +46,7 @@ test.beforeAll(async ({ playwright }, testInfo) => {
   expect((await request.put(`${api}/users/me/team-desk-filter`, {
     data: {
       teams: [TEAM], mode: 'open', show_reviewed: false, show_done_subtasks: true,
-      group_by_developer: true, hidden_columns: ['days', 'scale', 'sprint', 'release'],
+      group_by_developer: true, hidden_columns: ['days', 'scale', 'sprint', 'release'], sprints: [], releases: [], developers: [],
     },
   })).ok()).toBeTruthy();
 
@@ -122,7 +122,7 @@ test('team-desk-queue', async ({ page }) => {
   // Подпись «к вып.» рендерится отдельным span внутри кликабельной строки —
   // точный узел вместо родительского div, который делят обе строки очереди.
   const assignedLine = devRow.locator('span.ant-typography', { hasText: 'к вып.' });
-  await d.click(assignedLine, 'Нажмите «к вып.» у перегруженного разработчика');
+  await d.click(assignedLine, 'Нажмите «к выполнению» у перегруженного разработчика');
   const activeFilters = page.locator('[data-tour="desk-flags"]', { hasText: 'ОТОБРАНО' });
   await expect(activeFilters).toBeVisible();
   await d.caption('«Отобрано» — видно, из каких задач сложилась очередь');
@@ -145,7 +145,7 @@ test('team-desk-queue', async ({ page }) => {
   // У команды уже есть резиновые задачи — наша строка добавится ещё одной.
   const rubberCard = page.locator('.ant-card', { has: page.locator('.ant-card-head', { hasText: 'Резиновые задачи' }) });
   await expect(rubberCard).toBeVisible();
-  await d.caption('Задача помечена «резиновая» и попала в карточку «Резиновые задачи»');
+  await d.caption('Задача стала «резиновой» и попала в карточку «Резиновые задачи»');
   await d.show(rubberCard);
   await d.pause(2800);
 
@@ -160,17 +160,33 @@ test('team-desk-queue', async ({ page }) => {
 
   const workloadCard = page.locator('.ant-card', { has: page.locator('.ant-card-head', { hasText: 'Задач в работе одновременно' }) });
   await workloadCard.scrollIntoViewIfNeeded();
-  await d.caption('«Задач в работе одновременно» — сколько человек держит в руках сразу');
+  await d.caption('«Задач в работе одновременно» — сколько человек ведёт сразу');
   await d.show(workloadCard);
   await d.pause(3600);
 
+  await d.click(page.getByRole('button', { name: 'Сбросить', exact: true }), 'Снимите отбор кнопкой «Сбросить»');
+  await d.pause(500);
   const filters = page.locator('[data-tour="desk-filters"]');
   await filters.scrollIntoViewIfNeeded();
   // Четвёртое поле шапки, по порядку: КОМАНДЫ, ОТДЕЛЬНЫЕ ЛЮДИ, СПРИНТ, РЕЛИЗ.
   const sprintSelect = filters.locator('.ant-select').nth(2);
-  await d.click(sprintSelect, 'Можно сузить список одним спринтом');
+  await d.click(sprintSelect, 'Список можно сузить одним спринтом');
   const sprintOption = page.locator('.ant-select-dropdown:visible .ant-select-item-option').first();
   await d.click(sprintOption);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(700, 120);
+  await d.pause(800);
+  // Выбор спринта убираем тихо: иначе вместе с релизом список мог бы опустеть.
+  await sprintSelect.click();
+  await page.locator('.ant-select-dropdown:visible .ant-select-item-option').first().click();
+  await page.keyboard.press('Escape');
+  await page.mouse.move(700, 120);
+
+  // Релиз выбирается так же, как спринт; вариантов в срезе может не быть.
+  const releaseSelect = filters.locator('.ant-select').nth(3);
+  await d.click(releaseSelect, 'Или одним релизом');
+  const releaseOption = page.locator('.ant-select-dropdown:visible .ant-select-item-option').first();
+  if (await releaseOption.count()) await d.click(releaseOption);
   await page.keyboard.press('Escape');
   await page.mouse.move(700, 120);
   await d.pause(800);
@@ -190,11 +206,12 @@ test('team-desk-queue', async ({ page }) => {
 
   const absences = page.locator('.ant-card', { has: page.locator('.ant-card-head', { hasText: 'Отсутствия' }) });
   await absences.scrollIntoViewIfNeeded();
-  await d.caption('Внизу — отсутствия команды: объясняют, почему свободных часов мало');
+  await d.caption('Внизу отсутствия команды — они объясняют, почему свободных часов мало');
   await d.show(absences);
   await d.pause(2200);
 
-  await d.caption('Готово', 4200);
-  await d.pause(1200);
+  await d.show(absences);
+  await d.caption('Готово', 2200);
+  await d.pause(500);
   await d.save('team-desk-queue');
 });
