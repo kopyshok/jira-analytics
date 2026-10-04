@@ -331,6 +331,7 @@ class CapacityService:
         employee_ids: Optional[list[str]] = None,
         teams_filter: Optional[list[str]] = None,
         include_inactive: bool = False,
+        until: Optional[date] = None,
     ) -> list[QuarterCapacity]:
         """Ёмкость по команде за квартал — batch-версия.
 
@@ -338,6 +339,9 @@ class CapacityService:
         отсутствий). Распределение по видам работ применяется отдельно внутри
         каждого сценария. Календарь, отсутствия и ворклоги читаются одним набором
         запросов — чтобы избежать N+1 при 300+ сотрудниках.
+
+        ``until`` — последний учитываемый день (включительно): норма, отсутствия
+        и факт после него не считаются — идущий квартал «по сегодня».
         """
         if quarter not in QUARTER_MONTHS:
             raise ValueError(f"Quarter must be 1..4, got {quarter}")
@@ -433,6 +437,11 @@ class CapacityService:
             q_exclusive_end = datetime(year + 1, 1, 1)
         else:
             q_exclusive_end = datetime(year, months[-1] + 1, 1)
+        if until is not None:
+            q_exclusive_end = min(
+                q_exclusive_end,
+                datetime.combine(until + timedelta(days=1), datetime.min.time()),
+            )
 
         fact_q = (
             self.db.query(
@@ -472,6 +481,8 @@ class CapacityService:
             )
 
         def _in_team(emp_id: str, d: date) -> bool:
+            if until is not None and d > until:
+                return False
             if intervals_by_emp is None:
                 return True
             from app.services import team_membership as _tm4
@@ -504,7 +515,7 @@ class CapacityService:
                             absence_hours += _day_hours(cur)
                         cur += timedelta(days=1)
 
-                if intervals_by_emp is None:
+                if intervals_by_emp is None and until is None:
                     norm_hours = month_norm[m]
                     workdays = month_workdays[m]
                 else:

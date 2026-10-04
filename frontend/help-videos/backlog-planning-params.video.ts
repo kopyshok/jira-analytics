@@ -1,11 +1,10 @@
 // Ролик «Как задать параметры планирования»: у задачи утверждённого сценария Q4 —
-// шестерёнка → вовлечённость, параллельность, длительность («К Jira»), у длинной
-// RFA — таблица «Часы и иерархия», правка плана и история → связь с ресурсным
-// планом: меньшая вовлечённость удлиняет фазу после «Распределить».
+// шестерёнка → параллельность, длительность («К Jira»), у длинной RFA — таблица
+// «Часы и иерархия», правка плана и история. Вовлечённость фиксируется в карточке
+// фазы ресурсного плана (ролик rp-executor).
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import dayjs from 'dayjs';
 import { Director } from './director.ts';
-import { prepareQuarterPlan, phaseBar, TEAM, type Assignment } from './rp-setup.ts';
+import { prepareQuarterPlan, TEAM, type Assignment } from './rp-setup.ts';
 
 type PhaseKey = 'analyst' | 'dev' | 'qa' | 'launch';
 const PHASE_LABELS: Record<PhaseKey, string> = {
@@ -18,8 +17,6 @@ interface BacklogDetail {
   title: string;
   issue_id: string | null;
   has_children_in_backlog: boolean;
-  involvement_dev: number | null;
-  involvement_dev_jira: number | null;
   duration_analyst_days: number | null;
   duration_analyst_days_jira: number | null;
   duration_dev_days: number | null;
@@ -36,8 +33,6 @@ interface Ctx {
   planId: string;
   item: BacklogDetail;
   assignment: Assignment;
-  newInvolvement: number;
-  originalInvolvementDev: number | null;
   // «К Jira» показываем на первой попавшейся задаче квартала с заполненным
   // Jira-значением длительности — это не всегда та же задача, что ведёт
   // фазу разработки (в демо-данных это поле заполнено не у всех).
@@ -80,9 +75,6 @@ test.beforeAll(async ({ playwright }, testInfo) => {
     }
   }
   if (!picked) throw new Error(`В плане команды ${TEAM} нет задач из Jira с фазой разработки`);
-
-  const effective = picked.item.involvement_dev ?? picked.item.involvement_dev_jira ?? 0.8;
-  const newInvolvement = Math.max(0.1, Math.round(effective * 0.4 * 20) / 20);
 
   // Поле «Длительность из Jira» заполнено не у каждой задачи — ищем среди
   // всех задач квартала (не только той, что ведёт фазу разработки).
@@ -144,8 +136,6 @@ test.beforeAll(async ({ playwright }, testInfo) => {
     planId: plan.id,
     item: picked.item,
     assignment: picked.assignment,
-    newInvolvement,
-    originalInvolvementDev: picked.item.involvement_dev,
     durationItemId,
     durationItemView,
     durationItemKey,
@@ -160,12 +150,9 @@ test.afterAll(async ({ playwright }, testInfo) => {
   const request = await playwright.request.newContext({
     storageState: testInfo.project.use.storageState as string,
   });
-  await request.patch(`${ctx.api}/backlog/${ctx.item.id}`, {
-    data: { involvement_dev: ctx.originalInvolvementDev },
-  });
   // Правка длительности могла случиться на другой задаче квартала — сбрасываем
-  // её отдельно, если это не та же строка (иначе «К Jira» в ролике уже вернул
-  // исходное значение сам, но на всякий случай патчим и здесь).
+  // её отдельно («К Jira» в ролике уже вернул исходное значение сам, но на
+  // всякий случай патчим и здесь).
   if (ctx.durationItemId && ctx.durationPhase) {
     await request.patch(`${ctx.api}/backlog/${ctx.durationItemId}`, {
       data: { [`duration_${ctx.durationPhase}_days`]: ctx.originalDuration },
@@ -212,13 +199,8 @@ test('backlog-planning-params', async ({ page }) => {
   };
 
   const devBlock = phaseBlock(PHASE_LABELS.dev);
-  await setNumber(
-    devBlock.locator('input').nth(0),
-    String(c.newInvolvement),
-    'Понизьте вовлечённость на фазе разработки',
-  );
-  await d.caption('Рядом — параллельность: сколько человек ведут фазу одновременно');
-  await d.show(devBlock.locator('input').nth(2));
+  await d.caption('По фазам — длительность и параллельность: сколько человек ведут фазу одновременно');
+  await d.show(devBlock.locator('input').nth(1));
   await d.pause(1200);
 
   // Показать демонстрацию «К Jira» можно прямо здесь, только если поле
@@ -226,10 +208,9 @@ test('backlog-planning-params', async ({ page }) => {
   const demoDurationHere = c.durationPhase && c.durationItemId === c.item.id;
   if (demoDurationHere) {
     const durBlock = phaseBlock(PHASE_LABELS[c.durationPhase!]);
-    const durInput = durBlock.locator('input').nth(1);
+    const durInput = durBlock.locator('input').nth(0);
     const jiraBefore = await durInput.inputValue();
     await setNumber(durInput, String(Number(jiraBefore || '0') + 5), 'Длительность тоже можно задать вручную');
-    // .last() — на фазе разработки уже может быть своя кнопка «К Jira» у вовлечённости.
     const toJira = durBlock.getByRole('button', { name: 'К Jira' }).last();
     await expect(toJira).toBeVisible();
     await d.click(toJira, 'Кнопка «К Jira» вернёт значение из Jira, если передумали');
@@ -289,7 +270,7 @@ test('backlog-planning-params', async ({ page }) => {
     const otherModal = page.locator('.ant-modal', { hasText: 'Параметры планирования' });
     await expect(otherModal).toBeVisible();
     const otherPhaseBlock = otherModal.getByRole('heading', { name: PHASE_LABELS[c.durationPhase], exact: true }).locator('xpath=..');
-    const otherDurInput = otherPhaseBlock.locator('input').nth(1);
+    const otherDurInput = otherPhaseBlock.locator('input').nth(0);
     const otherJiraBefore = await otherDurInput.inputValue();
     await setNumber(otherDurInput, String(Number(otherJiraBefore || '0') + 5), 'Длительность тоже можно задать вручную');
     const otherToJira = otherPhaseBlock.getByRole('button', { name: 'К Jira' });
@@ -300,32 +281,8 @@ test('backlog-planning-params', async ({ page }) => {
     await expect(otherModal).toBeHidden();
   }
 
-  await d.click(page.locator('.side-item', { hasText: 'Ресурс. планир.' }), 'Перейдите в «Ресурс. планир.»');
-  const select = page.locator('[data-tour="rp-scenario-select"]');
-  await expect(select).toBeVisible();
-  await d.click(select);
-  await d.click(page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: c.scenarioLabel }));
-  await expect(page.locator('[data-tour="rp-gantt"]')).toBeVisible({ timeout: 15_000 });
-  await page.mouse.move(900, 120);
-
-  await d.click(page.locator('[data-tour="rp-distribute"]'), 'Нажмите «Распределить»');
-  await expect(page.locator('.ant-tag', { hasText: /^Готово$/ })).toBeVisible({ timeout: 60_000 });
-
-  const gantt = await (await page.request.get(`${c.rp}/resource-plans/${c.planId}/gantt`)).json() as {
-    assignments: Assignment[];
-  };
-  const updated = gantt.assignments.find(
-    (a) => a.backlog_item_id === c.assignment.backlog_item_id && a.phase === 'dev' && a.part_number === c.assignment.part_number,
-  );
-  if (!updated?.end_date || !c.assignment.end_date) throw new Error('Не удалось найти фазу разработки после пересчёта');
-  expect(dayjs(updated.end_date).isAfter(dayjs(c.assignment.end_date))).toBeTruthy();
-
-  const bar = phaseBar(page, updated);
-  await bar.scrollIntoViewIfNeeded();
-  await page.mouse.move(900, 120);
-  await d.caption('Вовлечённость из целевой задачи изменила длительность фазы');
-  await d.show(bar);
-  await d.pause(2000);
+  await d.caption('Вовлечённость фазы задаётся в «Ресурс. планир.» — в карточке фазы, галочка «Зафиксировано»', 3200);
+  await d.pause(800);
 
   await d.caption('Готово', 2200);
   await d.save('backlog-planning-params');

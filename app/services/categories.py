@@ -55,6 +55,23 @@ def get_category_labels(db: Session) -> dict[str, str]:
     return dict(CATEGORY_LABELS)
 
 
+def get_category_work_types(db: Session) -> dict[str, str]:
+    """Код категории → id вида работ; категории без вида работ не попадают.
+
+    Вид работ списания определяется категорией его задачи (``Issue.category`` —
+    уже с наследованием от родителя). Единая карта для дашборда нормированных
+    работ и фактической вовлечённости.
+    """
+    from app.models.category import Category
+
+    rows = (
+        db.query(Category.code, Category.work_type_id)
+        .filter(Category.work_type_id.isnot(None))
+        .all()
+    )
+    return {code: wt_id for code, wt_id in rows}
+
+
 def get_category_colors(db: Session) -> dict[str, str]:
     """Загрузить colors из таблицы categories."""
     from app.models.category import Category

@@ -1,4 +1,5 @@
 import { pushError } from '../utils/errorStore';
+import { filenameFromContentDisposition } from '../utils/contentDisposition';
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 export const BASE_URL = configuredBaseUrl.replace(/\/$/, '');
@@ -154,7 +155,11 @@ export const api = {
     const res = await fetch(url.toString(), { credentials: 'include' });
     if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
     const blob = await res.blob();
-    const filename = filenameOverride || path.split('/').pop() || 'download';
+    const filename =
+      filenameOverride ||
+      filenameFromContentDisposition(res.headers.get('Content-Disposition')) ||
+      path.split('/').pop() ||
+      'download';
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = filename;

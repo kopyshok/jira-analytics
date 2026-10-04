@@ -241,6 +241,33 @@
   color: var(--ink-3);
   margin-top: 1px;
 }
+.desk-quarter-switch { display: flex; align-items: center; gap: 6px; margin-top: 1px; }
+.desk-quarter-switch .desk-quarter { margin-top: 0; font-weight: 600; }
+.desk-quarter-btn {
+  background: none;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  color: var(--ink-2);
+}
+.desk-quarter-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.desk-quarter-btn:disabled { opacity: 0.35; cursor: default; }
+.desk-quarter-loading {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--hair);
+  border-top-color: var(--accent);
+  animation: desk-quarter-spin 0.7s linear infinite;
+}
+@keyframes desk-quarter-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .desk-quarter-loading { animation: none; } }
+.desk-tree-btn { background: none; border: none; padding: 0; font: inherit; cursor: pointer; }
+.desk-tree-truncated { font-size: 11px; color: var(--ink-3); }
 .desk-updated {
   display: flex;
   align-items: center;
@@ -355,7 +382,7 @@
 .desk-project-list { display: flex; flex-direction: column; }
 .desk-project-row {
   display: grid;
-  grid-template-columns: 14px 18px 1fr auto;
+  grid-template-columns: 20px 18px 1fr auto;
   align-items: center;
   gap: 12px;
   padding: 12px 10px;
@@ -436,6 +463,9 @@
 .desk-child-name a { color: var(--ink-2); }
 .desk-child-name a:hover { color: var(--accent); }
 .desk-child-status { flex-shrink: 0; font-size: 11px; }
+.desk-child-done { opacity: 0.5; }
+.desk-child-assignee { color: var(--ink-3); font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+.desk-child-row .desk-tree-chevron { cursor: pointer; }
 .desk-child-hrs { margin-left: auto; color: var(--ink-4); white-space: nowrap; flex-shrink: 0; }
 .desk-project-dates { font-size: 11px; color: var(--ink-3); }
 
@@ -767,13 +797,24 @@
 /* ───────── Work-type drill-down tree ───────── */
 .desk-tree-chevron {
   display: inline-flex;
-  width: 12px;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
-  color: var(--ink-4);
-  font-size: 9px;
-  transition: transform 0.15s;
+  border-radius: 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 0.15s, background 0.15s, color 0.15s;
 }
-.desk-tree-chevron.open { transform: rotate(90deg); }
+.desk-tree-btn.desk-tree-chevron:hover,
+.desk-tree-btn.desk-tree-chevron:focus-visible {
+  background: oklch(0.72 0.13 195 / 0.14);
+  color: var(--accent);
+}
+.desk-tree-btn.desk-tree-chevron:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.desk-tree-chevron.open { transform: rotate(90deg); color: var(--accent); }
 .desk-tree-chevron.hidden { visibility: hidden; }
 
 .desk-wt-head {

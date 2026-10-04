@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dayReserveTypes,
   fmtHours,
+  hasOtherTeamHours,
   itemsForRow,
   overuseCount,
   overuseLabel,
+  reserveUseLines,
   resolvedOverrideKeys,
   usageCaption,
   usagePct,
   usedHours,
   visibleReserveRows,
 } from './normedReserve';
-import type { OtherTeamWorkOut, ReserveOut, ReserveTypeRow } from '../api/resourcePlanning';
+import type { OtherTeamWorkOut, ReserveOut, ReserveTypeRow, ReserveUseOut } from '../api/resourcePlanning';
 
 const otherTeamWork: OtherTeamWorkOut[] = [
   {
@@ -252,5 +255,68 @@ describe('usageCaption', () => {
   });
   it('расхода нет — пустая строка', () => {
     expect(usageCaption(erpReserve.roles[1].rows[0], 0)).toBe('');
+  });
+});
+
+const use = (over: Partial<ReserveUseOut> = {}): ReserveUseOut => ({
+  team: 'Склад', work_type_id: 'wt_tech', label: 'Технические задачи', hours: 80,
+  planned_hours: 100, used_hours: 80, remaining_hours: 20, overuse_hours: 0, ...over,
+});
+
+describe('reserveUseLines', () => {
+  it('пример пользователя: 80 из 100, осталось 20', () => {
+    expect(reserveUseLines([use()])).toEqual([
+      { text: 'за счёт «Технические задачи»: 80 из 100 ч, осталось 20 ч' },
+    ]);
+  });
+  it('сверх запаса — отдельной частью для красного цвета', () => {
+    expect(reserveUseLines([use({ hours: 130, used_hours: 130, remaining_hours: 0, overuse_hours: 30 })])).toEqual([
+      { text: 'за счёт «Технические задачи»: 130 из 100 ч,', over: 'сверх запаса 30 ч' },
+    ]);
+  });
+  it('разные виды — строка на вид; фильтр по видам дня', () => {
+    const uses = [use(), use({ work_type_id: 'wt_sup', label: 'Сопровождение', planned_hours: 50, used_hours: 10, remaining_hours: 40 })];
+    expect(reserveUseLines(uses).map((l) => l.text)).toEqual([
+      'за счёт «Технические задачи»: 80 из 100 ч, осталось 20 ч',
+      'за счёт «Сопровождение»: 10 из 50 ч, осталось 40 ч',
+    ]);
+    expect(reserveUseLines(uses, new Set(['wt_sup'])).map((l) => l.text)).toEqual([
+      'за счёт «Сопровождение»: 10 из 50 ч, осталось 40 ч',
+    ]);
+  });
+  it('основная менялась в квартале — у строки команда', () => {
+    const uses = [use(), use({ team: 'ERP', used_hours: 5, remaining_hours: 95, hours: 5 })];
+    expect(reserveUseLines(uses).map((l) => l.text)).toEqual([
+      'за счёт «Технические задачи» (Склад): 80 из 100 ч, осталось 20 ч',
+      'за счёт «Технические задачи» (ERP): 5 из 100 ч, осталось 95 ч',
+    ]);
+  });
+  it('нет часов в других командах — строк нет', () => {
+    expect(reserveUseLines(undefined)).toEqual([]);
+    expect(reserveUseLines([])).toEqual([]);
+  });
+});
+
+describe('dayReserveTypes', () => {
+  const items = { i_tech: 'wt_tech', i_sup: 'wt_sup' };
+  it('виды задач дня — из фаз этого плана и броней других команд', () => {
+    const assignments = [
+      { employee_id: 'e1', backlog_item_id: 'i_tech', daily_hours: { '2026-01-05': 4 } },
+      { employee_id: 'e1', backlog_item_id: 'i_own', daily_hours: { '2026-01-05': 4 } },
+      { employee_id: 'e2', backlog_item_id: 'i_sup', daily_hours: { '2026-01-05': 4 } },
+    ];
+    const bookings = [
+      { employee_id: 'e1', backlog_item_id: 'i_sup', daily_hours: { '2026-01-06': 3 } },
+    ];
+    expect([...dayReserveTypes('e1', '2026-01-05', items, assignments, bookings)]).toEqual(['wt_tech']);
+    expect([...dayReserveTypes('e1', '2026-01-06', items, assignments, bookings)]).toEqual(['wt_sup']);
+    expect(dayReserveTypes('e1', '2026-01-07', items, assignments, bookings).size).toBe(0);
+  });
+});
+
+describe('hasOtherTeamHours', () => {
+  it('сводка развёрнута, только если у команды есть часы других команд', () => {
+    expect(hasOtherTeamHours(erpReserve)).toBe(true);
+    expect(hasOtherTeamHours({ ...erpReserve, other_team_work: [] })).toBe(false);
   });
 });

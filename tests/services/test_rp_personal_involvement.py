@@ -1,4 +1,4 @@
-"""Личная вовлечённость сотрудника главнее задачи и справочника команды:
+"""Вовлечённость фазы: зафиксированная в фазе → личная сотрудника → справочник команды:
 раскладка фаз, брони в планах других команд, доля прочих работ, расшифровка."""
 
 import json
@@ -58,9 +58,10 @@ def _personal(db, emp, value, year=2026, quarter=1):
                                    effective_quarter=quarter, involvement=value))
 
 
-def _erp_plan(db, personal=None, quarter="Q1"):
-    """Разработчик ERP, задача 16 ч разработки с вовлечённостью 70%, справочник 90%.
+def _erp_plan(db, personal=None, quarter="Q1", task=0.7):
+    """Разработчик ERP, задача 16 ч разработки, справочник 90%.
 
+    ``task`` — вовлечённость, зафиксированная в фазе (None — не зафиксирована).
     ``quarter`` — как хранится у плана («Q1» или «4»); личная запись — с него.
     """
     q = cto.quarter_num(quarter)
@@ -74,7 +75,7 @@ def _erp_plan(db, personal=None, quarter="Q1"):
         db, "ERP", scenario_status="draft", plan_status="draft", quarter=quarter
     )
     item = add_item(db, sc, "Задача ERP", dev=16)
-    item.involvement_dev = 0.7
+    item.involvement_dev = task
     db.commit()
     ResourcePlanningService(db).compute_schedule(plan.id)
     [row] = db.execute(
@@ -90,15 +91,22 @@ def _daily(row):
     return sorted(json.loads(row.daily_hours_json).values(), reverse=True)
 
 
-def test_personal_involvement_wins_over_task_and_team(db_session):
-    """Личные 100% при задаче 70% и справочнике 90% — фаза берёт 8 ч в день."""
+def test_fixed_task_wins_over_personal(db_session):
+    """Зафиксированные в фазе 70% главнее личных 100% и справочника 90%."""
     _, row = _erp_plan(db_session, personal=1.0)
+
+    assert [round(h, 2) for h in _daily(row)] == [5.6, 5.6, 4.8]
+
+
+def test_personal_wins_over_team(db_session):
+    """Без фиксации личные 100% главнее справочника 90%: 8 ч в день."""
+    _, row = _erp_plan(db_session, personal=1.0, task=None)
 
     assert _daily(row) == [8.0, 8.0]
 
 
 def test_without_personal_task_value_as_before(db_session):
-    """Без личной записи — как раньше: значение задачи, 70% от 8 ч."""
+    """Без личной записи — зафиксированное значение задачи, 70% от 8 ч."""
     _, row = _erp_plan(db_session)
 
     assert [round(h, 2) for h in _daily(row)] == [5.6, 5.6, 4.8]
@@ -138,7 +146,7 @@ def test_base_other_share_from_personal_involvement(db_session):
 
 def test_phase_explanation_source_is_employee(client, db_session):
     """Расшифровка фазы: вовлечённость 100%, источник — сотрудник."""
-    plan, row = _erp_plan(db_session, personal=1.0)
+    plan, row = _erp_plan(db_session, personal=1.0, task=None)
 
     r = client.get(
         f"/api/v1/resource-planning/resource-plans/{plan.id}/assignments/{row.id}/explain"
@@ -157,6 +165,15 @@ def _explain(client, plan_id, assignment_id):
     )
     assert r.status_code == 200, r.text
     return r.json()
+
+
+def test_phase_explanation_source_is_task_when_fixed(client, db_session):
+    """Фаза зафиксирована на 70% при личных 100%: расшифровка — 70%, источник «задача»."""
+    plan, row = _erp_plan(db_session, personal=1.0)
+
+    calc = _explain(client, plan.id, row.id)["phase_calc"]
+
+    assert (calc["involvement_source"], calc["involvement_pct"]) == ("task", 70)
 
 
 def test_phase_explanation_zero_involvement_is_not_unset(client, db_session):
@@ -179,7 +196,7 @@ def test_phase_explanation_zero_involvement_is_not_unset(client, db_session):
 def test_phase_explanation_reads_involvement_once(client, db_session, monkeypatch):
     """Вовлечённость фазы в расшифровке считается один раз — и для потолка
     дня, и для блока расчёта фазы."""
-    plan, row = _erp_plan(db_session, personal=1.0)
+    plan, row = _erp_plan(db_session, personal=1.0, task=None)
     calls = []
     original = rp_api._effective_involvement
 
@@ -197,7 +214,7 @@ def test_phase_explanation_reads_involvement_once(client, db_session, monkeypatc
 def test_plan_quarter_without_q_prefix_takes_personal(client, db_session):
     """Квартал плана записан как «4», а не «Q4»: личная вовлечённость всё
     равно действует — в раскладке и в расшифровке."""
-    plan, row = _erp_plan(db_session, personal=1.0, quarter="4")
+    plan, row = _erp_plan(db_session, personal=1.0, quarter="4", task=None)
 
     assert _daily(row) == [8.0, 8.0]
     calc = _explain(client, plan.id, row.id)["phase_calc"]
@@ -212,7 +229,6 @@ def test_previous_quarter_tail_takes_personal_of_that_quarter(db_session):
     _personal(db_session, e, 0.5, quarter=2)
     sc, plan = make_plan(db_session, "B", quarter="Q1")
     item = add_item(db_session, sc, "Работа B", dev=6)
-    item.involvement_dev = 0.7
     book(db_session, plan, item, e, {"2026-04-01": 6.0})
     db_session.commit()
 
@@ -224,11 +240,15 @@ def test_previous_quarter_tail_takes_personal_of_that_quarter(db_session):
     assert b.involvement == 1.0
 
 
-@pytest.mark.parametrize("personal, residue", [(None, 2.4), (1.0, 0.0)])
-def test_daily_load_task_day_residue_uses_personal(client, db_session, personal, residue):
+@pytest.mark.parametrize("fixed, personal, residue", [
+    (0.7, None, 2.4),  # зафиксировано 70%
+    (None, 1.0, 0.0),  # без фиксации — личные 100%
+    (0.7, 1.0, 2.4),   # фиксация главнее личной
+])
+def test_daily_load_task_day_residue_uses_personal(client, db_session, fixed, personal, residue):
     """«Загрузка по дням»: в день задачи с вовлечённостью 70% остаток дня
-    (30% · 8 ч = 2,4 ч) берут нормированные работы; с личными 100% остатка
-    нет — нормированные уходят в дни без задач."""
+    (30% · 8 ч = 2,4 ч) берут нормированные работы; с личными 100% без
+    фиксации остатка нет — нормированные уходят в дни без задач."""
     _types, _p, s, _item = _erp(db_session)
     _calendar(db_session)
     if personal is not None:
@@ -237,7 +257,7 @@ def test_daily_load_task_day_residue_uses_personal(client, db_session, personal,
         select(ResourcePlan).where(ResourcePlan.team == "ERP")
     ).scalar_one()
     task = add_item(db_session, db_session.get(PlanningScenario, plan.scenario_id), "Работа ERP", dev=5.6)
-    task.involvement_dev = 0.7
+    task.involvement_dev = fixed
     book(db_session, plan, task, s, {"2026-01-05": 5.6})
     db_session.commit()
 

@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     auth_cookie_secure: Optional[bool] = None
     auth_cookie_samesite: str = "lax"
 
+    # Быстродействие (раздел админа): замеры запросов и нагрузки сервера.
+    # perf_flush_seconds — как часто сбрасывать замеры в базу и снимать нагрузку.
+    perf_enabled: bool = True
+    perf_slow_ms: int = 2000
+    perf_flush_seconds: float = 60
+    perf_retention_days: int = 30
+
     # Admin seed (used by scripts/create_admin.py)
     admin_email: Optional[str] = None
     admin_password: Optional[str] = None

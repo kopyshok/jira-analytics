@@ -28,6 +28,14 @@ describe('candidateLabel', () => {
     expect(candidateLabel(c({ role: null }), 'other', ROLES)).toBe('Пряничников · Команда 1С · 42%');
     expect(candidateLabel(c({ role: 'RP' }), 'other', ROLES)).toBe('Пряничников · Команда 1С · 42%');
   });
+  it('кандидат фазы — свободные часы в даты фазы перед загрузкой', () => {
+    expect(candidateLabel(c({ free_hours: 34.4, load_pct: 87 }), 'other', ROLES)).toBe(
+      'Пряничников · Программист · Команда 1С · свободно 34 ч в даты фазы · 87%',
+    );
+    expect(candidateLabel(c({ free_hours: 0 }), 'team', ROLES)).toBe(
+      'Пряничников · Программист · свободно 0 ч в даты фазы · 42%',
+    );
+  });
 });
 
 describe('candidateOptions', () => {

@@ -35,11 +35,12 @@ from . import fake_data
 from .leak_check import MIN_EXACT_LEN, exact_key, norm, trie_pattern, word_pattern
 
 # Удаляются целиком: тексты ИИ, обратная связь, статистика использования, история
-# синхронизаций с текстами ошибок, публичные рабочие столы (токены).
+# синхронизаций с текстами ошибок, публичные рабочие столы (токены), замеры быстродействия
+# (адреса и параметры запросов, пользователи).
 DELETE_TABLES = (
     "confluence_page_cache", "feedback_items", "project_ai_summaries", "work_type_report_snapshots",
     "executive_dashboard_snapshots", "issue_classifications", "usage_events", "usage_daily",
-    "sync_run", "work_desks",
+    "sync_run", "work_desks", "perf_minute", "perf_slow_request", "perf_server_snapshot",
 )
 
 # Настройки: значение остаётся только у ключей из белого списка (номера полей Jira, настройки
@@ -157,6 +158,7 @@ COLUMN_POLICY = _parse_policy({
     "projects": "keep: id jira_project_id project_type; rule: key name; clear: description",
     "release_notes": "keep: id version note_type section help_link created_by; final: title description",
     "resource_plan_assignments": "keep: id plan_id backlog_item_id phase employee_id daily_hours_json opo_part",
+    "resource_plan_watch": "keep: id plan_id employee_id",
     "resource_plans": "keep: id scenario_id quarter status parent_plan_id; rule: team external_fingerprint; "
                       "final: label",
     "role_capacity_rules": "keep: id role work_type_id",

@@ -52,6 +52,7 @@ from app.models.scheduled_block_employee import ScheduledBlockEmployee
 from app.models.team_work_type_override import TeamWorkTypeOverride
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
+from app.models.resource_plan_watch import ResourcePlanWatch
 from app.models.release_note import ReleaseNote
 from app.models.plan_item_dependency import PlanItemDependency
 from app.models.plan_conflict import PlanConflict
@@ -72,6 +73,7 @@ from app.models.team_desk_daily_rate import TeamDeskDailyRate  # noqa: F401
 from app.models.team_desk_mark import TeamDeskMark  # noqa: F401
 from app.models.team import Team, TeamSubgroup  # noqa: F401
 from app.models.team_onboarding_mark import TeamOnboardingMark  # noqa: F401
+from app.models.perf import PerfMinute, PerfServerSnapshot, PerfSlowRequest  # noqa: F401
 from app.models.kpi import (
     KpiMetric, KpiProfile, KpiProfileMetric, KpiProfileRole, KpiCycleTimeNorm, KpiApproval,
 )
@@ -133,6 +135,7 @@ __all__ = [
     "TeamWorkTypeOverride",
     "ResourcePlan",
     "ResourcePlanAssignment",
+    "ResourcePlanWatch",
     "ReleaseNote",
     "PlanItemDependency",
     "PlanConflict",
@@ -162,4 +165,7 @@ __all__ = [
     "Team",
     "TeamSubgroup",
     "TeamOnboardingMark",
+    "PerfMinute",
+    "PerfSlowRequest",
+    "PerfServerSnapshot",
 ]

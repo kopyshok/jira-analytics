@@ -157,20 +157,6 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
 
   const includedCount = allocations.filter((a) => a.included).length;
 
-  // Обязательные работы по роли из summary для подписи сотрудников
-  const mandatoryPctByRole: Record<string, number> = {};
-  if (summary) {
-    for (const row of summary.work_type_rows) {
-      if (!row.subtracts_from_pool) continue;
-      for (const role of summary.roles) {
-        const pct = row.by_role_pct[role];
-        if (pct != null) {
-          mandatoryPctByRole[role] = (mandatoryPctByRole[role] ?? 0) + pct;
-        }
-      }
-    }
-  }
-
   // Секции групп: сотрудники группы + её ёмкость по ролям. «Без группы» —
   // последней и только если в ней кто-то есть часами или спросом (иначе
   // спрос без группы пропадал бы из виду — сотрудников там может не быть).
@@ -275,17 +261,22 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
             const knownRole = e.role && roles.some(r => r.code === e.role && r.is_active) ? e.role : null;
             const roleColor = knownRole ? getRoleColor(roles, knownRole) : DARK_THEME.textDim;
             const roleShort = knownRole ? getRoleShort(knownRole) : '—';
-            const mandPct = knownRole ? (mandatoryPctByRole[knownRole] ?? 0) : 0;
 
             // В секции группы — только часы сотрудника в этой группе (по доле и дням).
             const hours = sectionId !== undefined
               ? (e.subgroup_hours?.[sectionId] ?? e.total_hours)
               : e.total_hours;
 
-            // Норма-часы (до вычета обяз. работ). Если mandPct=0 — норма равна часам.
-            const normHours = mandPct > 0 && hours > 0
-              ? Math.round(hours / (1 - mandPct / 100))
-              : Math.round(hours);
+            // Норма-часы до вычета обязательных работ — личная, не средняя по
+            // роли (у человека может быть свой процент обязательных работ).
+            // В секции группы норму делим в той же пропорции, что и часы.
+            const grossHours = sectionId !== undefined && e.total_hours > 0
+              ? (e.gross_hours ?? 0) * (hours / e.total_hours)
+              : (e.gross_hours ?? 0);
+            const mandPct = grossHours > 0 && hours >= 0
+              ? Math.max(0, Math.round((1 - hours / grossHours) * 100))
+              : 0;
+            const normHours = grossHours > 0 ? Math.round(grossHours) : Math.round(hours);
 
             return (
               <div key={e.employee_id}>

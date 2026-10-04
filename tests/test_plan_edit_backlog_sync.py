@@ -228,19 +228,19 @@ def test_backlog_response_carries_jira_hours(client, testclient_db_session):
 
 
 def test_inline_estimate_with_other_fields_keeps_them(client, testclient_db_session):
-    """Часы и вовлечённость одним запросом: выравнивание по задаче не затирает
-    вовлечённость, пришедшую в этом же запросе."""
+    """Часы и длительность одним запросом: выравнивание по задаче не затирает
+    длительность, пришедшую в этом же запросе."""
     db = testclient_db_session
-    _, item_id = _seed(db, key="PS-9", planned_dev_hours_jira=500, involvement_dev=0.5)
+    _, item_id = _seed(db, key="PS-9", planned_dev_hours_jira=500, duration_dev_days=5.0)
 
     r = client.patch(
         f"/api/v1/backlog/{item_id}",
-        json={"estimate_dev_hours": 700, "involvement_dev": 0.8},
+        json={"estimate_dev_hours": 700, "duration_dev_days": 8.0},
     )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["estimate_dev_hours"] == 700
-    assert body["involvement_dev"] == 0.8
+    assert body["duration_dev_days"] == 8.0
 
 
 def test_inline_estimate_on_manual_idea_publishes_backlog_only(client, testclient_db_session, bus):

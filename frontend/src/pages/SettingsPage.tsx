@@ -46,6 +46,7 @@ import UsageTab from '../components/admin/usage/UsageTab';
 import ReleaseNotesAdminTab from '../components/settings/ReleaseNotesAdminTab';
 import DbExportTab from '../components/settings/DbExportTab';
 import ServerErrorsTab from '../components/settings/ServerErrorsTab';
+import PerformanceTab from '../components/settings/PerformanceTab';
 import {
   useProductionCalendarYear,
   useSyncProductionCalendarYear,
@@ -96,6 +97,7 @@ const GROUPS: SectionGroup[] = [
       { key: 'whats-new', label: 'Что нового', adminOnly: true, render: () => <ReleaseNotesAdminTab /> },
       { key: 'db-export', label: 'Выгрузка базы', adminOnly: true, render: () => <DbExportTab /> },
       { key: 'errors', label: 'Ошибки сервиса', adminOnly: true, render: () => <ServerErrorsTab /> },
+      { key: 'perf', label: 'Быстродействие', adminOnly: true, render: () => <PerformanceTab /> },
     ],
   },
 ];

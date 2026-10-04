@@ -139,11 +139,7 @@ class Issue(Base, SyncedMixin):
         """Ручной override имеет приоритет над значением из Jira."""
         return self.planned_opo_hours_manual if self.planned_opo_hours_manual is not None else self.planned_opo_hours_jira
 
-    # Involvement fractions / durations — synced, reserved for future calendar planning.
-    involvement_analyst: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    involvement_dev: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    involvement_qa: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    involvement_launch: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Phase durations (days) — synced from Jira.
     duration_analyst_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     duration_dev_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     duration_qa_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
