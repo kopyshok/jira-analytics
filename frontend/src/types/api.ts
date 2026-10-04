@@ -1328,6 +1328,47 @@ export interface InvolvementDefault {
   involvement: number;
 }
 
+/** Часы за период и доли: факт — проектные ÷ списанные, списано от нормы — списанные ÷ норма. */
+export interface InvolvementFactCell {
+  project_hours: number;
+  logged_hours: number;
+  norm_hours: number;
+  fact: number | null;
+  logged_of_norm: number | null;
+}
+
+export interface InvolvementFactMonth extends InvolvementFactCell {
+  month: number;
+}
+
+export interface InvolvementFactPerson {
+  employee_id: string;
+  name: string;
+  role: string;
+  months: InvolvementFactMonth[];
+  total: InvolvementFactCell;
+}
+
+export interface InvolvementFactRole {
+  role: string;
+  people: number;
+  months: InvolvementFactMonth[];
+  total: InvolvementFactCell;
+}
+
+export interface InvolvementFactTeam {
+  team: string;
+  people: InvolvementFactPerson[];
+  roles: InvolvementFactRole[];
+}
+
+export interface InvolvementFactResponse {
+  year: number;
+  quarter: number;
+  months: number[];
+  teams: InvolvementFactTeam[];
+}
+
 export interface PersonalNormedItem {
   work_type_id: string;
   label: string;

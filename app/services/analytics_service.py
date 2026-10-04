@@ -24,7 +24,7 @@ from app.models.absence_reason import AbsenceReason
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
 from app.services import subgroup_filter as sgf
 from app.services import team_membership as tm
-from app.services.categories import UNFILLED_WORKLOG_CODE
+from app.services.categories import UNFILLED_WORKLOG_CODE, get_category_work_types
 from app.schemas.dashboard import (
     DashboardProjectsResponse,
     DashboardNormWorkResponse,
@@ -940,12 +940,7 @@ class AnalyticsService:
         )
 
         # 2. Категории → work_type
-        cat_rows = (
-            self.db.query(Category.code, Category.work_type_id)
-            .filter(Category.work_type_id.isnot(None))
-            .all()
-        )
-        code_to_wt: dict[str, str] = {code: wt_id for code, wt_id in cat_rows}
+        code_to_wt: dict[str, str] = get_category_work_types(self.db)
 
         # 3. Активные сотрудники в командах
         employees_q = self.db.query(Employee).filter(Employee.is_active.is_(True))
