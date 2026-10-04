@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
-  App, Button, Drawer, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Typography,
+  App, Button, Drawer, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tooltip, Typography,
 } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { BarChartOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   useInvolvementDefaults,
   useCreateInvolvementDefault,
@@ -16,6 +16,9 @@ import {
   useDeletePersonalSetting,
 } from '../../hooks/usePersonalSettings';
 import { useOpoCutoff } from '../../hooks/useOpoCutoff';
+import { useInvolvementFact } from '../../hooks/useInvolvementFact';
+import InvolvementFactReport from './InvolvementFactReport';
+import { FACT_FORMULA, factHint } from '../../utils/involvementFact';
 import { useScenarioResource, useScenarioRules } from '../../hooks/usePlanning';
 import { useMandatoryWorkTypes } from '../../hooks/useCapacity';
 import {
@@ -274,6 +277,11 @@ export default function InvolvementDefaultsDrawer({
   const update = useUpdateInvolvementDefault();
   const del = useDeleteInvolvementDefault();
 
+  // «Факт» у строк аналитиков и разработчиков — за последний завершённый квартал.
+  const { data: fact } = useInvolvementFact(team ? [team] : [], null, open);
+  const factRoles = fact?.teams[0]?.roles ?? [];
+  const [factReportOpen, setFactReportOpen] = useState(false);
+
   const now = new Date();
   const [editingRow, setEditingRow] = useState<InvolvementDefault | null>(null);
   const [role, setRole] = useState('analyst');
@@ -341,7 +349,27 @@ export default function InvolvementDefaultsDrawer({
     {
       title: 'Вовлечённость',
       dataIndex: 'involvement',
-      render: (v: number) => formatInvolvement(v),
+      render: (v: number, row: InvolvementDefault) => {
+        if (!fact || (row.role !== 'analyst' && row.role !== 'dev')) return formatInvolvement(v);
+        const roleFact = factRoles.find((r) => r.role === row.role);
+        return (
+          <Space size={8}>
+            <span>{formatInvolvement(v)}</span>
+            <Tooltip
+              title={(
+                <>
+                  <div>{factHint(roleFact, fact.year, fact.quarter)}</div>
+                  <div>{FACT_FORMULA}</div>
+                </>
+              )}
+            >
+              <Typography.Text type="secondary" style={{ fontSize: 12 }} data-testid="involvement-fact">
+                факт {formatInvolvement(roleFact?.total.fact ?? null)}
+              </Typography.Text>
+            </Tooltip>
+          </Space>
+        );
+      },
     },
     {
       title: '',
@@ -466,7 +494,17 @@ export default function InvolvementDefaultsDrawer({
       ) : (
         <Space orientation="vertical" size={24} style={{ width: '100%' }}>
           <div>
-            <Typography.Title level={5}>По ролям команды</Typography.Title>
+            <Space style={{ width: '100%', justifyContent: 'space-between' }} align="baseline">
+              <Typography.Title level={5}>По ролям команды</Typography.Title>
+              <Button
+                size="small"
+                icon={<BarChartOutlined />}
+                onClick={() => setFactReportOpen(true)}
+                data-testid="involvement-fact-report"
+              >
+                Фактическая вовлечённость
+              </Button>
+            </Space>
             <Space orientation="vertical" size={16} style={{ width: '100%' }}>
               <Space wrap>
                 <Select style={{ width: 150 }} value={role} onChange={setRole} options={roleOptions} />
@@ -526,6 +564,9 @@ export default function InvolvementDefaultsDrawer({
             </Space>
           </div>
         </Space>
+      )}
+      {factReportOpen && (
+        <InvolvementFactReport team={team} onClose={() => setFactReportOpen(false)} />
       )}
       {modalRow && (
         <PersonalSettingModal
