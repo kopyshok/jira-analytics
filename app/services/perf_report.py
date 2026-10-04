@@ -320,10 +320,10 @@ def overview(
         .all()
     )
     verdicts: Counter = Counter()
-    for s in slow_cols:
-        v = _verdict_for(s, index.find(s.at))
+    for row in slow_cols:
+        v = _verdict_for(row, index.find(row.at))
         verdicts[v] += 1
-        p = point(s.at)
+        p = point(row.at)
         if p is not None:
             p["slow"][v] += 1
 
@@ -392,5 +392,250 @@ def overview(
         "series": series,
         "bottlenecks": bottlenecks,
         "slow": slow,
-        "snapshots_count": len(snaps),
+        "load": _load_summary(snaps),
     }
+
+
+def _load_summary(snaps: list[PerfServerSnapshot]) -> Optional[dict[str, Any]]:
+    """Нагрузка сервера за период: средние, пики и «тяжёлые» снимки."""
+    if not snaps:
+        return None
+    host = [s.host_cpu_percent for s in snaps]
+    share = [_share(s) for s in snaps]
+    pool_sizes = [s.db_pool_size for s in snaps if s.db_pool_size is not None]
+    pool_used = [s.db_pool_in_use for s in snaps if s.db_pool_in_use is not None]
+    return {
+        "snapshots": len(snaps),
+        "host_cpu_avg": sum(host) / len(host),
+        "host_cpu_max": max(host),
+        "process_cpu_avg": sum(share) / len(share),
+        "process_cpu_max": max(share),
+        "host_memory_max": max(s.host_memory_percent for s in snaps),
+        "process_memory_mb_max": max(s.process_memory_mb for s in snaps),
+        "threads_max": max(s.threads for s in snaps),
+        "db_pool_in_use_max": max(pool_used) if pool_used else None,
+        "db_pool_size": max(pool_sizes) if pool_sizes else None,
+        "requests_in_flight_max": max(s.requests_in_flight for s in snaps),
+        "busy_snapshots": sum(1 for h in host if h >= HOST_BUSY),
+        "busy_by_others_snapshots": sum(
+            1 for h, p in zip(host, share) if h >= HOST_BUSY and p < PROCESS_SMALL_SHARE
+        ),
+    }
+
+
+def snapshots_for(
+    db: Session, period: str, *, now: Optional[datetime] = None,
+) -> list[dict[str, Any]]:
+    """Все снимки сервера за период — для листа Excel."""
+    length, _ = PERIODS[period]
+    start = _floor((now or datetime.utcnow()) - length, 1)
+    return [{"at": iso(s.at), **_load(s)} for s in _snapshots(db, start)]
+
+
+# --- Выгрузки ------------------------------------------------------------------
+
+REPORT_SLOW_LIMIT = 50
+REPORT_BOTTLENECKS_LIMIT = 20
+
+
+def _tz_label(tz_offset_min: int) -> str:
+    sign = "+" if tz_offset_min >= 0 else "-"
+    h, m = divmod(abs(tz_offset_min), 60)
+    return f"UTC{sign}{h:02d}:{m:02d}"
+
+
+def _local(value: str, tz_offset_min: int) -> datetime:
+    """ISO из ответа → наивное местное время (Excel не принимает пояс)."""
+    tz = timezone(timedelta(minutes=tz_offset_min))
+    return datetime.fromisoformat(value).astimezone(tz).replace(tzinfo=None)
+
+
+def _dt(value: str, tz_offset_min: int, seconds: bool = True) -> str:
+    fmt = "%d.%m.%Y %H:%M:%S" if seconds else "%d.%m.%Y %H:%M"
+    return _local(value, tz_offset_min).strftime(fmt)
+
+
+def _n(x: Optional[float]) -> str:
+    return "—" if x is None else f"{round(x):,}".replace(",", " ")
+
+
+def _pct(x: Optional[float]) -> str:
+    return "—" if x is None else f"{round(x)}%"
+
+
+def _load_line(s: dict[str, Any]) -> str:
+    if s.get("host_cpu") is None:
+        return "нет снимка нагрузки рядом с этим моментом"
+    pool = (
+        f"{s['db_pool_in_use']}/{s['db_pool_size']}"
+        if s.get("db_pool_size") is not None else "нет данных"
+    )
+    return (
+        f"процессор сервера {_pct(s['host_cpu'])}, наш процесс {_pct(s['process_cpu_core'])} ядра "
+        f"({_pct(s['process_cpu'])} машины), память сервера {_pct(s['host_memory'])}, "
+        f"память процесса {_n(s['process_memory_mb'])} МБ, потоков {s['threads']}, "
+        f"подключения к базе {pool}, запросов в работе до {s['requests_in_flight']}"
+    )
+
+
+def render_markdown(data: dict[str, Any], *, tz_offset_min: int = 0) -> str:
+    """Отчёт для разработки: итог, узкие места, медленные с деталями, нагрузка сервера."""
+    tz = tz_offset_min
+    totals, load = data["totals"], data["load"]
+    out: list[str] = [
+        "# Быстродействие сервиса — отчёт для разработки",
+        "",
+        f"Период: {data['period_label']} — с {_dt(data['start'], tz, False)} "
+        f"по {_dt(data['end'], tz, False)} ({_tz_label(tz)}).",
+        f"Порог медленного запроса: {_n(data['slow_ms'])} мс.",
+        "",
+        "## Итог",
+        "",
+        f"- Запросов к API: {_n(totals['requests'])}; медленных: {_n(totals['slow'])}; "
+        f"ошибок сервера (5xx): {_n(totals['errors_5xx'])}.",
+        f"- Среднее время ответа: {_n(totals['avg_ms'])} мс; 95-й процентиль: "
+        f"{_n(totals['p95_ms'])} мс; максимум: {_n(totals['max_ms'])} мс.",
+    ]
+    if data["verdicts"]:
+        out.append("- Вероятные причины медленных запросов:")
+        for code, n in sorted(data["verdicts"].items(), key=lambda kv: -kv[1]):
+            out.append(f"  - {VERDICT_LABELS[code]} — {n}")
+
+    out += ["", f"## Узкие места (по суммарному времени, топ {REPORT_BOTTLENECKS_LIMIT})", ""]
+    if data["bottlenecks"]:
+        out += [
+            "| # | Раздел | Запрос | Вызовов | Всего, с | Среднее, мс | p95, мс | Макс, мс "
+            "| Обращений к базе (сред.) | Доля базы | 5xx |",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
+        ]
+        for i, b in enumerate(data["bottlenecks"][:REPORT_BOTTLENECKS_LIMIT], 1):
+            out.append(
+                f"| {i} | {b['section']} | `{b['method']} {b['route']}` | {_n(b['calls'])} "
+                f"| {b['total_ms'] / 1000:.1f} | {_n(b['avg_ms'])} | {_n(b['p95_ms'])} "
+                f"| {_n(b['max_ms'])} | {b['db_avg_count']:.1f} | {_pct(b['db_share'] * 100)} "
+                f"| {b['errors_5xx']} |"
+            )
+    else:
+        out.append("Запросов за период нет.")
+
+    slowest = sorted(data["slow"], key=lambda s: -s["duration_ms"])[:REPORT_SLOW_LIMIT]
+    out += ["", f"## Медленные запросы (самые долгие {len(slowest)} из {totals['slow']})", ""]
+    if not slowest:
+        out.append("Медленных запросов за период нет.")
+    for i, s in enumerate(slowest, 1):
+        address = s["path"] + (f"?{s['query']}" if s["query"] else "")
+        db_share = s["db_ms"] / s["duration_ms"] * 100 if s["duration_ms"] else 0
+        cpu = s["cpu_ms"] / s["duration_ms"] * 100 if s["duration_ms"] else 0
+        out += [
+            f"### {i}. {_dt(s['at'], tz)} — `{s['method']} {s['route']}` — "
+            f"{_n(s['duration_ms'])} мс",
+            "",
+            f"- Раздел: {s['section']}; пользователь: {s['user'] or '—'}; ответ: {s['status_code']}",
+            f"- Адрес: `{address}`",
+            f"- База: обращений {s['db_count']}, {_n(s['db_ms'])} мс ({_pct(db_share)} времени)",
+            f"- Процессор нашего процесса за время запроса: {_pct(cpu)} ядра",
+            f"- Нагрузка сервера в ту минуту: {_load_line(s)}",
+            f"- **Вывод: {s['verdict_label']}**",
+        ]
+        if s["top_queries"]:
+            out += ["", "Самые долгие обращения к базе:", ""]
+            for j, q in enumerate(s["top_queries"], 1):
+                out += [f"{j}. {_n(q['ms'])} мс", "   ```sql", f"   {q['sql']}", "   ```"]
+        out.append("")
+
+    if out[-1]:
+        out.append("")
+    out += ["## Нагрузка сервера", ""]
+    if load is None:
+        out.append("Снимков нагрузки за период нет.")
+    else:
+        pool = (
+            f"{load['db_pool_in_use_max']} из {load['db_pool_size']}"
+            if load["db_pool_size"] is not None else "нет данных"
+        )
+        out += [
+            f"- Процессор сервера: в среднем {_pct(load['host_cpu_avg'])}, "
+            f"пик {_pct(load['host_cpu_max'])}.",
+            f"- Наш процесс (доля машины): в среднем {_pct(load['process_cpu_avg'])}, "
+            f"пик {_pct(load['process_cpu_max'])}.",
+            f"- Память: сервер до {_pct(load['host_memory_max'])}, процесс до "
+            f"{_n(load['process_memory_mb_max'])} МБ; потоков до {load['threads_max']}.",
+            f"- Подключения к базе: занято до {pool}; запросов в работе одновременно до "
+            f"{load['requests_in_flight_max']}.",
+            f"- Снимков с загрузкой сервера от {round(HOST_BUSY)}%: {load['busy_snapshots']} "
+            f"из {load['snapshots']}; из них наш процесс меньше {round(PROCESS_SMALL_SHARE)}% "
+            f"машины (сервер занят не нами): {load['busy_by_others_snapshots']}.",
+        ]
+    return "\n".join(out) + "\n"
+
+
+def render_xlsx(
+    data: dict[str, Any], snapshots: list[dict[str, Any]], *, tz_offset_min: int = 0,
+) -> bytes:
+    """Excel: узкие места, медленные запросы, снимки сервера."""
+    from io import BytesIO
+
+    from openpyxl import Workbook  # type: ignore[import-untyped]
+    from openpyxl.styles import Font  # type: ignore[import-untyped]
+
+    tz = tz_offset_min
+    wb = Workbook()
+
+    def fill(ws: Any, header: list[str], rows: list[list[Any]], widths: list[int]) -> None:
+        ws.append(header)
+        for c in ws[1]:
+            c.font = Font(bold=True)
+        for r in rows:
+            ws.append(r)
+        ws.freeze_panes = "A2"
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+
+    def r0(x: Optional[float]) -> Optional[float]:
+        return None if x is None else round(x, 1)
+
+    ws = wb.active
+    ws.title = "Узкие места"
+    fill(ws, [
+        "Раздел", "Метод", "Путь", "Вызовов", "Всего, с", "Среднее, мс", "95-й процентиль, мс",
+        "Максимум, мс", "Обращений к базе в среднем", "Доля времени в базе, %", "Ошибок 5xx",
+    ], [
+        [b["section"], b["method"], b["route"], b["calls"], round(b["total_ms"] / 1000, 1),
+         round(b["avg_ms"]), round(b["p95_ms"]), round(b["max_ms"]), round(b["db_avg_count"], 1),
+         round(b["db_share"] * 100), b["errors_5xx"]]
+        for b in data["bottlenecks"]
+    ], [24, 8, 50, 10, 10, 12, 14, 12, 14, 14, 10])
+
+    time_header = f"Время ({_tz_label(tz)})"
+    fill(wb.create_sheet("Медленные запросы"), [
+        time_header, "Раздел", "Метод", "Путь", "Адрес", "Параметры", "Пользователь", "Ответ",
+        "Длительность, мс", "Обращений к базе", "Время в базе, мс",
+        "Процессор процесса за запрос, мс", "Процессор сервера, %", "Наш процесс, % машины",
+        "Вывод", "Самые долгие обращения к базе",
+    ], [
+        [_local(s["at"], tz), s["section"], s["method"], s["route"], s["path"], s["query"],
+         s["user"] or "", s["status_code"], round(s["duration_ms"]), s["db_count"],
+         round(s["db_ms"]), round(s["cpu_ms"]), r0(s["host_cpu"]), r0(s["process_cpu"]),
+         s["verdict_label"],
+         "\n\n".join(f"{round(q['ms'])} мс: {q['sql']}" for q in s["top_queries"])]
+        for s in data["slow"]
+    ], [20, 22, 8, 44, 40, 30, 22, 8, 14, 12, 14, 16, 14, 14, 40, 80])
+
+    fill(wb.create_sheet("Снимки сервера"), [
+        time_header, "Процессор сервера, %", "Наш процесс, % машины", "Наш процесс, % ядра",
+        "Память сервера, %", "Память процесса, МБ", "Потоков", "Подключений к базе занято",
+        "Подключений к базе всего", "Запросов в работе (пик)",
+    ], [
+        [_local(s["at"], tz), r0(s["host_cpu"]), r0(s["process_cpu"]), r0(s["process_cpu_core"]),
+         r0(s["host_memory"]), round(s["process_memory_mb"]), s["threads"], s["db_pool_in_use"],
+         s["db_pool_size"], s["requests_in_flight"]]
+        for s in snapshots
+    ], [20, 14, 14, 14, 14, 14, 10, 14, 14, 14])
+
+    for sheet in wb.worksheets[1:]:
+        for (cell,) in sheet.iter_rows(min_row=2, max_col=1):
+            cell.number_format = "DD.MM.YYYY HH:MM:SS"
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

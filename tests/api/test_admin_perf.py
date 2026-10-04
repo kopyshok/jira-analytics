@@ -54,7 +54,7 @@ def test_only_admin(testclient_db_session):
             token = c.post("/api/v1/auth/login",
                            json={"email": email, "password": "pass123"}).json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}
-            for path in ("/overview",):
+            for path in ("/overview", "/report.md", "/export.xlsx"):
                 resp = c.get(f"/api/v1/admin/perf{path}", headers=headers)
                 assert resp.status_code == expected, (path, resp.text)
     finally:
@@ -75,3 +75,30 @@ def test_overview(client, testclient_db_session):
 
 def test_overview_rejects_unknown_period(client):
     assert client.get("/api/v1/admin/perf/overview", params={"period": "2h"}).status_code == 422
+
+
+def test_report_md_download(client, testclient_db_session):
+    _seed(testclient_db_session)
+    resp = client.get("/api/v1/admin/perf/report.md", params={"period": "24h", "tz_offset_min": 180})
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"].startswith("text/markdown")
+    disposition = resp.headers["content-disposition"]
+    assert disposition.startswith("attachment;") and ".md" in disposition
+    assert disposition.isascii()
+    assert "# Быстродействие сервиса" in resp.content.decode("utf-8")
+
+
+def test_xlsx_download(client, testclient_db_session):
+    _seed(testclient_db_session)
+    resp = client.get("/api/v1/admin/perf/export.xlsx", params={"period": "7d"})
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert resp.headers["content-disposition"].isascii()
+    assert resp.content[:2] == b"PK"
+
+
+def test_report_rejects_bad_tz(client):
+    resp = client.get("/api/v1/admin/perf/report.md", params={"tz_offset_min": 5000})
+    assert resp.status_code == 422
