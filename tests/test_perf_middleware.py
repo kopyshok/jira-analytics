@@ -1,6 +1,9 @@
 """Промежуточный слой замеров: что и как попадает в сборщик."""
+import time
+from datetime import datetime
+
 import pytest
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI
 from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, text
@@ -46,10 +49,44 @@ def _app(collector: PerfCollector) -> TestClient:
 
     @app.get("/api/v1/stream")
     def stream() -> StreamingResponse:
-        return StreamingResponse(iter(["data: 1\n\n"]), media_type="text/event-stream")
+        def events():
+            # Заголовки уже ушли — поток не должен числиться «запросом в работе».
+            seen["in_flight_during_stream"] = collector.in_flight
+            yield "data: 1\n\n"
+
+        return StreamingResponse(events(), media_type="text/event-stream")
+
+    @app.get("/api/v1/desk/{token}")
+    def desk(token: str) -> dict:
+        return {}
+
+    @app.get("/api/v1/desk/{token}/widget/{key}")
+    def desk_widget(token: str, key: str) -> dict:
+        return {}
+
+    @app.get("/api/v1/with-background")
+    def with_background(background: BackgroundTasks) -> dict:
+        def slow_tail() -> None:
+            seen["in_flight_during_background"] = collector.in_flight
+            seen["background_started_at"] = datetime.utcnow()
+            time.sleep(0.3)
+
+        background.add_task(slow_tail)
+        return {}
+
+    @app.get("/api/v1/background-boom")
+    def background_boom(background: BackgroundTasks) -> dict:
+        def fail() -> None:
+            raise RuntimeError("сбой фоновой задачи")
+
+        background.add_task(fail)
+        return {}
 
     app.add_middleware(PerfMiddleware, collector=collector)
     return TestClient(app, raise_server_exceptions=False)
+
+
+seen: dict = {}
 
 
 def test_records_route_template_not_concrete_path():
@@ -121,6 +158,59 @@ def test_sanitize_query_drops_secret_like_params():
     raw = "a=1&access_token=x&Password=y&my_secret=z&session_id=q&b=%D0%AF".encode()
     assert sanitize_query(raw) == "a=1&b=Я"
     assert sanitize_query(b"") == ""
+    assert sanitize_query(b"a=x%00y") == "a=xy"  # NUL ломает запись на PostgreSQL
+
+
+@pytest.mark.parametrize("method", ["UNSUBSCRIBE", "POST", "HEAD"])
+def test_method_outside_route_is_not_recorded(method):
+    """405 на частичном совпадении: метод — произвольная строка, в таблицу не идёт."""
+    c = PerfCollector(enabled=True, slow_ms=0)
+    resp = _app(c).request(method, "/api/v1/items/1")
+    assert resp.status_code == 405
+    assert c.drain() == ({}, [])
+    assert c.in_flight == 0
+
+
+def test_nul_in_path_is_stripped():
+    c = PerfCollector(enabled=True, slow_ms=0)
+    _app(c).get("/api/v1/items/a%00b")
+    [s] = c.drain()[1]
+    assert s["path"] == "/api/v1/items/ab"
+
+
+def test_secret_path_params_are_masked():
+    c = PerfCollector(enabled=True, slow_ms=0)
+    client = _app(c)
+    client.get("/api/v1/desk/s3cr3t-desk-token")
+    client.get("/api/v1/desk/s3cr3t-desk-token/widget/hours")
+    paths = sorted(s["path"] for s in c.drain()[1])
+    assert paths == ["/api/v1/desk/***", "/api/v1/desk/***/widget/hours"]
+
+
+def test_event_stream_leaves_in_flight_at_headers():
+    seen.clear()
+    c = PerfCollector(enabled=True, slow_ms=0)
+    _app(c).get("/api/v1/stream")
+    assert seen["in_flight_during_stream"] == 0
+    assert c.in_flight == 0  # и без двойного вычитания
+
+
+def test_background_task_not_counted_in_time_or_in_flight():
+    seen.clear()
+    c = PerfCollector(enabled=True, slow_ms=0)
+    _app(c).get("/api/v1/with-background")
+    [s] = c.drain()[1]
+    assert seen["in_flight_during_background"] == 0
+    assert s["duration_ms"] < 300  # фоновая задача спит 0,3 с
+    assert s["at"] <= seen["background_started_at"]
+    assert c.in_flight == 0
+
+
+def test_failed_background_task_keeps_sent_status():
+    c = PerfCollector(enabled=True, slow_ms=10 ** 9)
+    _app(c).get("/api/v1/background-boom")
+    [agg] = c.drain()[0].values()
+    assert agg.errors_5xx == 0
 
 
 def test_real_app_measures_api_routes(testclient_db_session):
