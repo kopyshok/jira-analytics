@@ -42,7 +42,7 @@ import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { buildSectionByItem, sortBySection } from '../utils/rpSections';
 import { sortAssignmentsByScenarioAssignee } from '../utils/sortAssignments';
 import { filterByPeople } from '../utils/rpPeople';
-import { groupScenarioOptions, isOutsideHeader, resolvePageTeam } from '../utils/rpTeams';
+import { decideAutoPlan, groupScenarioOptions, isOutsideHeader, resolvePageTeam } from '../utils/rpTeams';
 import { AppearanceProvider, useAppearanceSettings } from '../contexts/AppearanceContext';
 import { DARK_THEME } from '../utils/constants';
 
@@ -111,7 +111,7 @@ function ResourcePlanningPageInner() {
 
   const scenarioId = searchParams.get('scenario_id');
   const { data: plans = [], isLoading: plansLoading } = useResourcePlans(undefined, headerTeams);
-  const { data: approvedScenarios = [] } = useScenarios(undefined, undefined, 'approved', headerTeams);
+  const { data: approvedScenarios = [], isSuccess: scenariosLoaded } = useScenarios(undefined, undefined, 'approved', headerTeams);
   const { data: gantt, isLoading: ganttLoading } = useGanttProjection(planId);
   // Команда страницы — команда выбранного плана (или сценария из адреса);
   // ничего не выбрано — первая команда шапки.
@@ -181,24 +181,30 @@ function ResourcePlanningPageInner() {
   }, [planOutside]);
 
   useEffect(() => {
-    if (!scenarioId || plansLoading || createPlan.isPending) return;
-    const currentPlan = planId ? plans.find(p => p.id === planId) : null;
-    if (currentPlan && currentPlan.scenario_id === scenarioId) return;
-    const existing = plans.find(p => p.scenario_id === scenarioId);
-    if (existing) {
-      setPlanId(existing.id);
+    if (createPlan.isPending) return;
+    const d = decideAutoPlan({
+      scenarioId,
+      plansLoaded: !plansLoading,
+      scenariosLoaded,
+      plans,
+      scenarios: approvedScenarios,
+      currentPlanId: planId,
+    });
+    if (d.action === 'select') {
+      setPlanId(d.planId);
       return;
     }
+    if (d.action !== 'create') return;
     createPlan.mutateAsync({
-      scenario_id: scenarioId,
-      team,
-      quarter: searchParams.get('quarter') ?? 'Q2',
-      year: parseInt(searchParams.get('year') ?? String(new Date().getFullYear())),
+      scenario_id: scenarioId!,
+      team: d.team,
+      quarter: d.quarter,
+      year: d.year,
     }).then(plan => {
       setPlanId(plan.id);
     }).catch(() => message.error('Ошибка создания плана'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenarioId, planId, plansLoading, plans.length, createPlan.isPending]);
+  }, [scenarioId, planId, plansLoading, scenariosLoaded, plans.length, createPlan.isPending]);
 
   const handleCompute = async () => {
     if (!planId) return;

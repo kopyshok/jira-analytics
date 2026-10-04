@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupScenarioOptions, isOutsideHeader, resolvePageTeam } from './rpTeams';
+import { decideAutoPlan, groupScenarioOptions, isOutsideHeader, resolvePageTeam } from './rpTeams';
 
 const sc = (id: string, team: string | null, name = id) => ({
   id, team, name, quarter: 'Q4', year: 2026,
@@ -28,6 +28,32 @@ describe('isOutsideHeader', () => {
     expect(isOutsideHeader(['A'], 'A')).toBe(false);
     expect(isOutsideHeader(['A'], null)).toBe(false);
     expect(isOutsideHeader([], 'B')).toBe(false);
+  });
+});
+
+describe('decideAutoPlan', () => {
+  const base = {
+    scenarioId: 'S',
+    plansLoaded: true,
+    scenariosLoaded: true,
+    plans: [] as { id: string; scenario_id: string | null }[],
+    scenarios: [sc('S', 'B')],
+    currentPlanId: null as string | null,
+  };
+  it('сценарии не загружены — ничего не создаём', () => {
+    expect(decideAutoPlan({ ...base, scenariosLoaded: false })).toEqual({ action: 'none' });
+  });
+  it('сценарий убранной команды — ничего не создаём', () => {
+    expect(decideAutoPlan({ ...base, scenarios: [sc('X', 'A')] })).toEqual({ action: 'none' });
+  });
+  it('сценарий найден — создаём план в его команде', () => {
+    expect(decideAutoPlan(base)).toEqual({ action: 'create', team: 'B', quarter: 'Q4', year: 2026 });
+  });
+  it('готовый план есть — выбираем его', () => {
+    expect(decideAutoPlan({ ...base, plans: [{ id: 'P', scenario_id: 'S' }] })).toEqual({ action: 'select', planId: 'P' });
+  });
+  it('текущий план уже этого сценария — ничего', () => {
+    expect(decideAutoPlan({ ...base, plans: [{ id: 'P', scenario_id: 'S' }], currentPlanId: 'P' })).toEqual({ action: 'none' });
   });
 });
 

@@ -35,6 +35,15 @@ def test_teams_param_returns_plans_of_all_listed_teams(client, db_session):
     assert _teams(resp) == ["A", "B"]
 
 
+def test_teams_param_tolerates_spaces_and_empty(client, db_session):
+    for t in ("A", "B", "C"):
+        make_plan(db_session, t)
+    db_session.commit()
+    assert _teams(client.get(BASE, params={"teams": " A , B "})) == ["A", "B"]
+    assert _teams(client.get(BASE, params={"teams": ""})) == ["A", "B", "C"]
+    assert _teams(client.get(BASE, params={"teams": " , "})) == ["A", "B", "C"]
+
+
 def test_single_team_param_unchanged(client, db_session):
     for t in ("A", "B"):
         make_plan(db_session, t)
