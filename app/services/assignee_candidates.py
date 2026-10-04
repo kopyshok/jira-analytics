@@ -164,6 +164,9 @@ def free_load(
         residue_share=cto.other_work_share(
             (b.employee_id, b.involvement, b.daily_hours) for b in bookings
         ),
+        # Пропущенная фаза не расходует и запас основной команды — иначе
+        # «Технические задачи» уже съедены ею, и люди выглядят свободнее.
+        skip_booking=skip_booking,
     )
     lo, hi = window
     pct = {eid: round(load.pct, 1) for eid, load in loads.items()}

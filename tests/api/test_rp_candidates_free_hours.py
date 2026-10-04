@@ -7,7 +7,7 @@ from sqlalchemy import event, select
 
 from app.database import get_db
 from app.main import app
-from app.models import PlanningScenario, ResourcePlan
+from app.models import PlanningScenario, ResourcePlan, ResourcePlanAssignment
 from tests.api.test_rp_normed_reserve_gantt import _calendar, _gantt, _rows
 from tests.services.normed_factory import _erp, _weekdays
 from tests.services.xteam_factory import add_item, book, join_team, make_employee
@@ -62,6 +62,32 @@ def test_candidate_free_hours_in_phase_dates_and_load_with_normed(client, db_ses
     gantt = _rows(_gantt(client, plan.id))
     assert by_id[s.id]["load_pct"] == gantt[s.id]["quarter"]["pct"] == 45.0
     assert by_id[p.id]["load_pct"] == round((180.0 + 230.4) / 512 * 100, 1)
+
+
+def test_phase_of_other_team_does_not_eat_home_reserve(client, db_session):
+    """Фаза «Блока» у Пряничникова (основная — ERP): для выбора исполнителя её
+    как будто нет — ни в днях, ни в запасе «Технических задач» ERP. Иначе запас
+    уже съеден ею, и Пряничников с Шутовым выглядят свободнее, чем есть."""
+    _types, p, s, _item = _erp(db_session)
+    _calendar(db_session)
+    blok = db_session.execute(select(ResourcePlan).where(ResourcePlan.team == "Блок")).scalar_one()
+    row = db_session.execute(
+        select(ResourcePlanAssignment).where(ResourcePlanAssignment.plan_id == blok.id)
+    ).scalar_one()
+    db_session.commit()
+
+    by_id = {
+        c["employee_id"]: c
+        for g in _candidates(client, blok.id, row.id).values()
+        for c in g
+    }
+
+    # Без этой фазы у обоих нормированные 55% (281,6 ч) по 4,4 ч в каждый из
+    # 64 дней — свободно по 3,6 ч в 25 дней фазы. Будь «Технические задачи»
+    # съедены фазой — было бы по 4,4 ч, 110 ч.
+    for eid in (p.id, s.id):
+        assert by_id[eid]["free_hours"] == 90.0, eid
+        assert by_id[eid]["load_pct"] == 55.0, eid
 
 
 def test_scenario_row_candidates_keep_tasks_only_load(client, db_session):
