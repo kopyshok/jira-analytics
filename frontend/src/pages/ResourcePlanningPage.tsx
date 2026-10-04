@@ -42,6 +42,7 @@ import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { buildSectionByItem, sortBySection } from '../utils/rpSections';
 import { sortAssignmentsByScenarioAssignee } from '../utils/sortAssignments';
 import { filterByPeople } from '../utils/rpPeople';
+import { groupScenarioOptions, isOutsideHeader, resolvePageTeam } from '../utils/rpTeams';
 import { AppearanceProvider, useAppearanceSettings } from '../contexts/AppearanceContext';
 import { DARK_THEME } from '../utils/constants';
 
@@ -49,7 +50,7 @@ function ResourcePlanningPageInner() {
   const { message } = App.useApp();
   const [searchParams] = useSearchParams();
   const { selectedTeams } = useGlobalTeamFilter();
-  const team = selectedTeams[0] ?? '';
+  const headerTeams = selectedTeams.join(',') || undefined;
 
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -109,9 +110,18 @@ function ResourcePlanningPageInner() {
   }, []);
 
   const scenarioId = searchParams.get('scenario_id');
-  const { data: plans = [], isLoading: plansLoading } = useResourcePlans(team || undefined);
-  const { data: approvedScenarios = [] } = useScenarios(undefined, undefined, 'approved', team || undefined);
+  const { data: plans = [], isLoading: plansLoading } = useResourcePlans(undefined, headerTeams);
+  const { data: approvedScenarios = [] } = useScenarios(undefined, undefined, 'approved', headerTeams);
   const { data: gantt, isLoading: ganttLoading } = useGanttProjection(planId);
+  // Команда страницы — команда выбранного плана (или сценария из адреса);
+  // ничего не выбрано — первая команда шапки.
+  const team = resolvePageTeam(
+    selectedTeams,
+    gantt?.plan.team ?? plans.find(p => p.id === planId)?.team,
+    approvedScenarios.find(s => s.id === scenarioId)?.team,
+  );
+  // Команду убрали из шапки — выбранный план ей больше не принадлежит.
+  const planOutside = isOutsideHeader(selectedTeams, gantt?.plan.team);
   const { data: blocks = [] } = useScheduledBlocks(team || undefined);
   const { data: allEmployees = [] } = useEmployees({ isActive: true, withTeams: true });
   const employees = team ? allEmployees.filter(e => e.team === team) : allEmployees;
@@ -166,6 +176,11 @@ function ResourcePlanningPageInner() {
   const createPlan = useCreateResourcePlan();
 
   useEffect(() => {
+    if (planOutside) setPlanId(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planOutside]);
+
+  useEffect(() => {
     if (!scenarioId || plansLoading || createPlan.isPending) return;
     const currentPlan = planId ? plans.find(p => p.id === planId) : null;
     if (currentPlan && currentPlan.scenario_id === scenarioId) return;
@@ -213,7 +228,7 @@ function ResourcePlanningPageInner() {
     try {
       const plan = await createPlan.mutateAsync({
         scenario_id: sid,
-        team,
+        team: sc.team ?? team,
         quarter: sc.quarter,
         year: sc.year,
       });
@@ -315,10 +330,7 @@ function ResourcePlanningPageInner() {
     ? plans.find(p => p.id === planId)?.scenario_id ?? null
     : null;
 
-  const scenarioOptions = approvedScenarios.map(s => ({
-    label: `${s.quarter ?? '—'} ${s.year ?? ''} — ${s.name}`,
-    value: s.id,
-  }));
+  const scenarioOptions = groupScenarioOptions(approvedScenarios, selectedTeams);
 
   return (
     <div ref={pageRef} style={{ padding: '16px 24px', '--rp-anim-speed': `${appearanceSettings.animation_speed_seconds}s` } as React.CSSProperties}>

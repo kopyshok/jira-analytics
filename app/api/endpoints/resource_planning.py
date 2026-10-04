@@ -1194,6 +1194,7 @@ async def put_work_type_override(
 @router.get("/resource-plans", response_model=List[ResourcePlanOut])
 def list_plans(
     team: Optional[str] = Query(None),
+    teams: Optional[str] = Query(None, description="Команды шапки через запятую"),
     include_forks: bool = Query(False),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -1205,6 +1206,9 @@ def list_plans(
     q = select(ResourcePlan).order_by(ResourcePlan.created_at.desc())
     if team:
         q = q.where(ResourcePlan.team == team)
+    teams_list = [t.strip() for t in (teams or "").split(",") if t.strip()]
+    if teams_list:
+        q = q.where(ResourcePlan.team.in_(teams_list))
     if not include_forks:
         q = q.where(ResourcePlan.parent_plan_id.is_(None))
     rows = db.execute(q).scalars().all()
