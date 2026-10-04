@@ -61,10 +61,10 @@ export const useDeleteScheduledBlock = () => {
   });
 };
 
-export const useResourcePlans = (team?: string) =>
+export const useResourcePlans = (team?: string, teams?: string) =>
   useQuery({
-    queryKey: ['resource-plans', team],
-    queryFn: () => getResourcePlans(team),
+    queryKey: ['resource-plans', team, teams],
+    queryFn: () => getResourcePlans(team, teams),
     staleTime: 30_000,
   });
 
