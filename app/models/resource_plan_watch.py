@@ -18,8 +18,9 @@ class ResourcePlanWatch(Base, TimestampMixin):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    # Отдельный индекс по плану не нужен: его покрывает уникальный (план, сотрудник).
     plan_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("resource_plans.id", ondelete="CASCADE"), nullable=False, index=True
+        String(36), ForeignKey("resource_plans.id", ondelete="CASCADE"), nullable=False
     )
     employee_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False

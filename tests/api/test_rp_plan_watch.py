@@ -151,6 +151,29 @@ def test_add_is_idempotent_and_remove(client, db_session):
     assert client.get(f"{BASE}/nope/watch").status_code == 404
 
 
+def test_inactive_employee_is_rejected(client, db_session):
+    _types, p, _s, _erp_plan, sklad = _setup(db_session)
+    gone = make_employee(db_session, "Уволенный", "ERP", role="dev", is_active=False)
+    db_session.commit()
+
+    r = client.post(f"{BASE}/{sklad.id}/watch", json={"employee_ids": [p.id, gone.id]})
+
+    assert r.status_code == 422, r.text
+    assert db_session.execute(select(ResourcePlanWatch)).scalars().all() == []
+
+
+def test_deleting_employee_clears_his_watch_rows(client, db_session):
+    _types, p, s, _erp_plan, sklad = _setup(db_session)
+    x = make_employee(db_session, "Временный", "Склад", role="dev")
+    db_session.commit()
+    _add(client, sklad.id, x.id, s.id)
+
+    db_session.delete(x)
+    db_session.commit()
+
+    assert [w.employee_id for w in db_session.execute(select(ResourcePlanWatch)).scalars()] == [s.id]
+
+
 def test_deleting_plan_clears_its_watch_list(client, db_session):
     _types, p, _s, _erp_plan, sklad = _setup(db_session)
     _add(client, sklad.id, p.id)

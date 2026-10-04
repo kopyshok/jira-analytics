@@ -2465,7 +2465,7 @@ def get_plan_watch(
     # Для показа слоёв брони основной команды — её задачи, свой слой (как у
     # людей плана в плане их команды); остальные — другие команды. Сумма дня
     # и раскладка нормированных работ от этого не меняются.
-    homes = {eid: cto._home_teams(membership.get(eid, ()), q_start, q_end) for eid in eids}
+    homes = {eid: cto.home_teams(membership.get(eid, ()), q_start, q_end) for eid in eids}
     own: Dict[str, Dict[date, float]] = {eid: dict(occ.used.get(eid, {})) for eid in eids}
     other: Dict[str, Dict[date, float]] = {eid: {} for eid in eids}
     for b in occ.bookings:
@@ -2565,30 +2565,39 @@ async def add_plan_watch(
     _: User = Depends(get_current_user),
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    """Добавить людей в список наблюдения плана; уже добавленные — без повтора."""
+    """Добавить людей в список наблюдения плана; уже добавленные — без повтора.
+    Только активные сотрудники: неизвестный — 404, неактивный — 422."""
     from sqlalchemy.exc import IntegrityError
 
     if db.get(ResourcePlan, plan_id) is None:
         raise HTTPException(404, "Plan not found")
     ids = list(dict.fromkeys(data.employee_ids))
-    known = set(db.execute(select(Employee.id).where(Employee.id.in_(ids))).scalars())
-    if len(known) != len(ids):
-        raise HTTPException(404, "Сотрудник не найден")
-    have = set(
-        db.execute(
-            select(ResourcePlanWatch.employee_id).where(
-                ResourcePlanWatch.plan_id == plan_id, ResourcePlanWatch.employee_id.in_(ids)
-            )
-        ).scalars()
+    active = dict(
+        db.execute(select(Employee.id, Employee.is_active).where(Employee.id.in_(ids))).all()
     )
-    for eid in ids:
-        if eid not in have:
-            db.add(ResourcePlanWatch(plan_id=plan_id, employee_id=eid))
-    try:
-        db.commit()
-    except IntegrityError:
-        # Того же человека только что добавил кто-то ещё — список уже такой.
-        db.rollback()
+    if len(active) != len(ids):
+        raise HTTPException(404, "Сотрудник не найден")
+    if not all(active.values()):
+        raise HTTPException(422, "Неактивного сотрудника нельзя добавить в наблюдаемые")
+    # Пара план + сотрудник уникальна. Если того же человека в эту секунду
+    # добавил кто-то ещё, вставка падает целиком — тогда перечитываем, кто уже
+    # есть, и добавляем остальных заново, а не теряем их.
+    for _attempt in range(3):
+        have = set(
+            db.execute(
+                select(ResourcePlanWatch.employee_id).where(
+                    ResourcePlanWatch.plan_id == plan_id, ResourcePlanWatch.employee_id.in_(ids)
+                )
+            ).scalars()
+        )
+        for eid in ids:
+            if eid not in have:
+                db.add(ResourcePlanWatch(plan_id=plan_id, employee_id=eid))
+        try:
+            db.commit()
+            break
+        except IntegrityError:
+            db.rollback()
     await _announce(event_bus, bookings=False)
 
 
