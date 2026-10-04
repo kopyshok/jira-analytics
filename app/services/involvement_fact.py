@@ -1,8 +1,11 @@
 """Фактическая вовлечённость аналитиков и разработчиков команды.
 
-Факт = часы списаний на задачах вида работ «Проекты и развитие» ÷ все
-списанные часы человека за период. Рядом — «списано от нормы» = все списанные
-÷ норма (календарь минус отсутствия): если списано мало, факту верить нельзя.
+Факт — глубина погружения в проектную работу: берутся только дни, когда человек
+хоть раз списал время на задачу вида работ «Проекты и развитие»; факт = проектные
+часы этих дней ÷ всё списанное в эти дни. Дни целиком на нормированных работах в
+факт не входят (день на проекте + день на сопровождении = 100%, не 50%).
+Рядом — «списано от нормы» = все списанные за период ÷ норма (календарь минус
+отсутствия): если списано мало, факту верить нельзя.
 
 - Вид работ задачи — по её категории (``Issue.category`` уже с наследованием
   от родителя) через общую карту ``categories.get_category_work_types`` — та же,
@@ -15,7 +18,7 @@
   (``team_membership.members_overlapping``).
 - Идущий квартал считается по сегодня включительно: норма и списания после
   сегодня не учитываются, месяцы целиком в будущем пустые.
-- Итог роли — Σ проектных ÷ Σ всех, не среднее процентов людей.
+- Итог роли — Σ проектных ÷ Σ списанного в проектные дни, не среднее процентов людей.
 
 Чистое чтение. Списания читаются одним запросом на все команды; норма —
 константа запросов на команду.
@@ -43,16 +46,19 @@ PROJECT_WORK_TYPE = "project"
 
 @dataclass
 class FactCell:
-    """Часы за период: проектные, все списанные и норма."""
+    """Часы за период: проектные, все списанные, норма и дни с проектами."""
 
     project_hours: float = 0.0
     logged_hours: float = 0.0
     norm_hours: float = 0.0
+    # Всё списанное в дни, когда было проектное списание, и число таких дней.
+    project_day_hours: float = 0.0
+    project_days: int = 0
 
     @property
     def fact(self) -> Optional[float]:
-        """Доля проектных часов в списанных; нет списаний — нет факта."""
-        return self.project_hours / self.logged_hours if self.logged_hours > 0 else None
+        """Доля проектных часов в проектные дни; дней с проектами нет — нет факта."""
+        return self.project_hours / self.project_day_hours if self.project_day_hours > 0 else None
 
     @property
     def logged_of_norm(self) -> Optional[float]:
@@ -63,6 +69,8 @@ class FactCell:
         self.project_hours += other.project_hours
         self.logged_hours += other.logged_hours
         self.norm_hours += other.norm_hours
+        self.project_day_hours += other.project_day_hours
+        self.project_days += other.project_days
 
 
 def _empty_months(months: Sequence[int]) -> dict[int, FactCell]:
@@ -126,7 +134,7 @@ def team_facts(
     if not role_of:
         return [TeamFact(team=t) for t in teams]
 
-    # Часы по (команда, сотрудник, месяц) — один проход по списаниям квартала.
+    # Часы по (команда, сотрудник, день) — один проход по списаниям квартала.
     project_wt_ids = {
         wt_id for (wt_id,) in db.query(MandatoryWorkType.id)
         .filter(MandatoryWorkType.code == PROJECT_WORK_TYPE)
@@ -135,7 +143,7 @@ def team_facts(
         code for code, wt_id in get_category_work_types(db).items()
         if wt_id in project_wt_ids
     }
-    cells: dict[str, dict[str, dict[int, FactCell]]] = {t: {} for t in teams}
+    days: dict[tuple[str, str, date], list[float]] = {}  # [проектные, все]
     rows = (
         db.query(Worklog.employee_id, Worklog.started_at, Worklog.hours, Issue.category)
         .join(Issue, Issue.id == Worklog.issue_id)
@@ -154,13 +162,25 @@ def team_facts(
             spans = intervals.get(team, {}).get(emp_id)
             if not spans or not tm.day_in_intervals(day, spans):
                 continue
-            per_month = cells[team].get(emp_id)
-            if per_month is None:
-                per_month = cells[team][emp_id] = _empty_months(months)
-            cell = per_month[started_at.month]
-            cell.logged_hours += hours
+            acc = days.get((team, emp_id, day))
+            if acc is None:
+                acc = days[(team, emp_id, day)] = [0.0, 0.0]
+            acc[1] += hours
             if is_project:
-                cell.project_hours += hours
+                acc[0] += hours
+
+    # Дни → месяцы: в факт идут только дни с проектным списанием.
+    cells: dict[str, dict[str, dict[int, FactCell]]] = {t: {} for t in teams}
+    for (team, emp_id, day), (project, logged) in days.items():
+        per_month = cells[team].get(emp_id)
+        if per_month is None:
+            per_month = cells[team][emp_id] = _empty_months(months)
+        cell = per_month[day.month]
+        cell.logged_hours += logged
+        if project > 0:
+            cell.project_hours += project
+            cell.project_day_hours += logged
+            cell.project_days += 1
 
     capacity = CapacityService(db)
     out: list[TeamFact] = []

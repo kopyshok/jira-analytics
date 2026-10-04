@@ -51,7 +51,8 @@ def seeded(testclient_db_session):
     db.add(EmployeeTeam(employee_id=an.id, team="Альфа", is_primary=True))
     for n, (issue, day, hours) in enumerate([
         (project_issue, date(2026, 7, 6), 30.0),
-        (other_issue, date(2026, 7, 7), 10.0),
+        (other_issue, date(2026, 7, 6), 10.0),
+        (other_issue, date(2026, 7, 7), 8.0),
         (project_issue, date(2026, 9, 1), 20.0),
     ]):
         db.add(Worklog(
@@ -74,14 +75,16 @@ def test_fact_for_quarter(client, seeded):
     assert person["name"] == "Аналитикова" and person["role"] == "analyst"
     assert [m["month"] for m in person["months"]] == [7, 8, 9]
     jul, aug, _ = person["months"]
-    assert jul["fact"] == 0.75 and jul["logged_hours"] == 40.0 and jul["norm_hours"] == 184.0
+    # 6 июля — 30 ч проект + 10 ч прочее; 7 июля без проекта в факт не входит.
+    assert jul["fact"] == 0.75 and jul["logged_hours"] == 48.0 and jul["norm_hours"] == 184.0
+    assert jul["project_days"] == 1 and jul["project_day_hours"] == 40.0
     assert aug["fact"] is None and aug["logged_of_norm"] == 0.0
     assert person["total"]["fact"] == round(50 / 60, 4)
 
     [role] = alpha["roles"]
     assert role["role"] == "analyst" and role["people"] == 1
     assert role["total"]["project_hours"] == 50.0
-    assert role["total"]["logged_of_norm"] == round(60 / 528, 4)
+    assert role["total"]["logged_of_norm"] == round(68 / 528, 4)
 
 
 def test_default_is_last_completed_quarter(client, seeded):
