@@ -121,3 +121,22 @@ def test_sanitize_query_drops_secret_like_params():
     raw = "a=1&access_token=x&Password=y&my_secret=z&session_id=q&b=%D0%AF".encode()
     assert sanitize_query(raw) == "a=1&b=Я"
     assert sanitize_query(b"") == ""
+
+
+def test_real_app_measures_api_routes(testclient_db_session):
+    """Слой подключён к приложению; включается вместе с циклом записи (lifespan)."""
+    from app.config import get_settings
+    from app.database import get_db
+    from app.main import app as real_app, perf_collector
+
+    assert get_settings().perf_enabled is False  # в тестах цикл записи не стартует
+    real_app.dependency_overrides[get_db] = lambda: testclient_db_session
+    perf_collector.drain()
+    perf_collector.enabled = True
+    try:
+        TestClient(real_app).get("/api/v1/admin/errors")
+        aggs, _ = perf_collector.drain()
+    finally:
+        perf_collector.enabled = False
+        real_app.dependency_overrides.pop(get_db, None)
+    assert [k[1:] for k in aggs] == [("GET", "/api/v1/admin/errors")]
