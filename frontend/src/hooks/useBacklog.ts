@@ -12,10 +12,18 @@ import {
   archiveBacklogItem,
   restoreBacklogItem,
   setBacklogIncluded,
+  getMinorChangesSummary,
 } from '../api/backlog';
 import { getProjects } from '../api/projects';
 import { choosePlanSource, type PlanChoiceBody } from '../api/issues';
 import type { BacklogView } from '../types/api';
+
+/** Сводка минорных изменений по командам шапки. */
+export const useMinorChangesSummary = (teams?: string) =>
+  useQuery({
+    queryKey: ['backlog', 'minor-changes', teams],
+    queryFn: () => getMinorChangesSummary(teams),
+  });
 
 export const useProjects = () =>
   useQuery({ queryKey: ['projects'], queryFn: getProjects });
