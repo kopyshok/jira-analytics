@@ -430,8 +430,8 @@ export const updateScheduledBlock = (id: string, data: Partial<ScheduledBlockInp
 export const deleteScheduledBlock = (id: string) =>
   api.del(`/resource-planning/scheduled-blocks/${id}`);
 
-export const getResourcePlans = (team?: string) =>
-  api.get<ResourcePlan[]>('/resource-planning/resource-plans', team ? { team } : undefined);
+export const getResourcePlans = (team?: string, teams?: string) =>
+  api.get<ResourcePlan[]>('/resource-planning/resource-plans', team || teams ? { team, teams } : undefined);
 
 export const createResourcePlan = (data: { scenario_id?: string; team: string; quarter: string; year: number }) =>
   api.post<ResourcePlan>('/resource-planning/resource-plans', data);
