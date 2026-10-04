@@ -1,7 +1,9 @@
 // Общее для глав сводного ролика к релизу.
-import { type Page, test } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { test } from '@playwright/test';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import type { Director } from '../director.ts';
+import { VOICE_ON } from '../voice.ts';
 import { CHAPTERS } from './chapters.ts';
 
 /** Номер версии в заставке и финале. */
@@ -31,11 +33,18 @@ export function chapterTitle(title: string): string {
   return `${n} / ${CHAPTERS.length} · ${title}`;
 }
 
-/** Закрыть окно и сохранить запись главы в data/release-video/clips/<id>.webm. */
-export async function saveClip(page: Page, id: string): Promise<void> {
-  const video = page.video();
+/**
+ * Закрыть окно и сохранить запись главы в data/release-video/clips/<id>.webm, а с диктором
+ * (VOICE=1) — и его фразы в <id>.cues.json: голос накладывает склейка.
+ */
+export async function saveClip(d: Director, id: string): Promise<void> {
+  const video = d.page.video();
   if (!video) throw new Error('Запись видео не включена в конфигурации');
   mkdirSync(CLIPS_DIR, { recursive: true });
-  await page.close();
+  const cues = await d.finishVoice();
+  await d.page.close();
   await video.saveAs(`${CLIPS_DIR}${id}.webm`);
+  // Фразы от прошлой съёмки с диктором к новой записи не подходят.
+  if (VOICE_ON) writeFileSync(`${CLIPS_DIR}${id}.cues.json`, JSON.stringify(cues));
+  else rmSync(`${CLIPS_DIR}${id}.cues.json`, { force: true });
 }

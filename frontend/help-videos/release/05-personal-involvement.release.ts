@@ -180,7 +180,7 @@ test('05-personal-involvement', async ({ page }) => {
   await d.caption('Личная настройка главнее задачи и правил роли');
   await d.show(row);
   await d.pause(3000);
-  await saveClip(page, '05-personal-involvement');
+  await saveClip(d, '05-personal-involvement');
 
   // Запись меняет раскладку и запас сотрудника — следующим главам общего прогона
   // она не нужна: снимаем.

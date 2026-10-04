@@ -240,5 +240,5 @@ test('07-normed-load', async ({ page }) => {
   await d.caption('Видно, сколько времени уходит на нормированные работы');
   await d.show(load.locator(':scope > div'));
   await d.pause(2600);
-  await saveClip(page, '07-normed-load');
+  await saveClip(d, '07-normed-load');
 });
