@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Dict, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -197,12 +197,18 @@ class TeamReserve:
 
 
 def team_reserve(
-    db: Session, team: str, year: int, quarter: int | str
+    db: Session,
+    team: str,
+    year: int,
+    quarter: int | str,
+    skip_booking: Optional[Callable[[cto.ExternalBooking], bool]] = None,
 ) -> Optional[TeamReserve]:
     """Запас нормированных работ команды на квартал; None — у команды нет ни
     правил, ни своих ненулевых процентов у её людей.
 
     Квартал — число или текст («Q4», «4»), как в планах и сценариях.
+    ``skip_booking`` — брони других команд, которые запас не расходуют
+    (кандидаты фазы: сама эта фаза ещё никого не занимает).
     Запросов — константа на команду: сценарий, виды, правила, календарь,
     состав, периоды участия, отсутствия, сотрудники, личные настройки,
     периоды (резолвер), выбор видов, брони других команд.
@@ -321,6 +327,8 @@ def team_reserve(
         db, team=team, year=year, quarter=q,
         employee_ids=list(people), start=q_start, end=q_end,
     ):
+        if skip_booking is not None and skip_booking(b):
+            continue
         days = norm_day.get(b.employee_id, {})
         hours = sum(h for d, h in b.daily_hours.items() if d in days)
         manual = b.backlog_item_id in overrides
@@ -499,6 +507,7 @@ def people_loads(
     other_teams: Dict[str, Dict[date, float]],
     residue_share: Dict[str, Dict[date, float]],
     membership: Optional[Dict[str, list]] = None,
+    skip_booking: Optional[Callable[[cto.ExternalBooking], bool]] = None,
 ) -> tuple[Dict[str, PersonLoad], Dict[str, Optional[TeamReserve]], Dict[str, str]]:
     """Загрузка людей за квартал с нормированными работами — одна формула для
     людей плана, наблюдаемых и кандидатов в исполнители.
@@ -510,6 +519,8 @@ def people_loads(
     вовлечённости) и заблокированным дням периодов основной команды и общих —
     как вне плана: цифры человека не зависят от плана, в котором на него смотрят.
     ``membership`` — уже прочитанные периоды участия (`team_membership.membership_rows`).
+    ``skip_booking`` — брони, которых для этого расчёта нет: не расходуют и
+    запас основной команды (та же выборка, что в ``other_teams``).
     Возвращает загрузки, запасы основных команд и подписи видов работ.
     """
     q_start, q_end = quarter_bounds(year, quarter)
@@ -522,7 +533,9 @@ def people_loads(
         for t, joined, left, primary in membership.get(eid, ())
         if primary and (joined is None or joined <= q_end) and (left is None or left > q_start)
     }
-    reserves = {t: team_reserve(db, t, year, quarter) for t in sorted(home_teams)}
+    reserves = {
+        t: team_reserve(db, t, year, quarter, skip_booking) for t in sorted(home_teams)
+    }
     labels = next((r.labels for r in reserves.values() if r), {}) or {
         w.id: w.label for w in db.execute(select(MandatoryWorkType)).scalars()
     }
