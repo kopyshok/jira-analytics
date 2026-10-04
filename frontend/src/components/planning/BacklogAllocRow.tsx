@@ -1,9 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { App, Checkbox, InputNumber, Select, Spin, Tag } from 'antd';
 import type { SelectProps } from 'antd';
-import { HolderOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { CaretDownOutlined, CaretUpOutlined, HolderOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { createLatestSaver } from '../../utils/latestSaver';
+import { canStepPriority, stepPriority } from '../../utils/priorityStep';
 import { AllocationOverridePopover } from './AllocationOverridePopover';
 import BacklogRoleCell from './BacklogRoleCell';
 import { useScenarioAssigneeCandidates } from '../../hooks/usePlanning';
@@ -38,12 +40,122 @@ export type BacklogAllocRowProps = {
   resourceTotalForBacklog: number;
   registerRef: (id: string, el: HTMLDivElement | null) => void;
   onToggle: (a: AllocationResponse) => void;
-  onPriorityChange: (backlogItemId: string, priority: number | null) => void;
+  onPriorityChange: (backlogItemId: string, priority: number | null) => void | Promise<unknown>;
   onAssigneeChange: (allocId: string, employeeId: string | null) => void;
   onDeveloperChange: (allocId: string, employeeId: string | null) => void;
   onSubgroupChange?: (issueId: string, subgroupId: string | null) => void;
   onOpenBreakdown: (issueId: string, issueKey: string) => void;
 };
+
+type PriorityControlProps = {
+  backlogItemId: string;
+  priority: number | null;
+  cyan: boolean;
+  onChange: (backlogItemId: string, priority: number | null) => void | Promise<unknown>;
+};
+
+/** Приоритет: число (ручной ввод) и кнопки ▲ / ▼. Значение меняется сразу, сохранения идут по одному. */
+function PriorityControl({ backlogItemId, priority, cyan, onChange }: PriorityControlProps) {
+  const [value, setValue] = useState<number | null>(priority);
+  const busyRef = useRef(false);
+  const propRef = useRef(priority);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    propRef.current = priority;
+    onChangeRef.current = onChange;
+  });
+  // Пока сохранение не закончилось, чужое значение из списка не затирает набранное.
+  useEffect(() => {
+    if (!busyRef.current) setValue(priority);
+  }, [priority]);
+  const pushRef = useRef<((v: number | null) => void) | null>(null);
+
+  const commit = (next: number | null) => {
+    if (next === value) return;
+    setValue(next);
+    busyRef.current = true;
+    pushRef.current ??= createLatestSaver<number | null>(
+      (v) => Promise.resolve(onChangeRef.current(backlogItemId, v)),
+      (ok) => {
+        busyRef.current = false;
+        if (!ok) setValue(propRef.current);
+      },
+    );
+    pushRef.current(next);
+  };
+
+  const arrow = (dir: 1 | -1): CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 16,
+    height: 12,
+    padding: 0,
+    border: 'none',
+    background: 'transparent',
+    fontSize: 9,
+    color: DARK_THEME.textMuted,
+    cursor: canStepPriority(value, dir) ? 'pointer' : 'default',
+    opacity: canStepPriority(value, dir) ? 1 : 0.25,
+  });
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <InputNumber
+        min={1}
+        max={10}
+        value={value}
+        variant="borderless"
+        size="small"
+        controls={false}
+        style={{
+          width: 32,
+          height: 24,
+          borderRadius: 4,
+          fontSize: 11,
+          fontWeight: 700,
+          fontFamily: FONTS.mono,
+          color: cyan ? '#003a3a' : DARK_THEME.textMuted,
+          background: cyan ? DARK_THEME.cyanPrimary : DARK_THEME.darkAccent,
+          padding: 0,
+          textAlign: 'center',
+        }}
+        className="backlog-priority-input"
+        placeholder="—"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
+        }}
+        onBlur={(e) => {
+          const raw = e.target.value;
+          const parsed = raw === '' ? null : parseInt(raw, 10);
+          commit(parsed === null || isNaN(parsed) ? null : Math.min(10, Math.max(1, parsed)));
+        }}
+      />
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <button
+          type="button"
+          aria-label="Приоритет: прибавить 1"
+          title="Прибавить 1"
+          disabled={!canStepPriority(value, 1)}
+          style={arrow(1)}
+          onClick={() => commit(stepPriority(value, 1))}
+        >
+          <CaretUpOutlined />
+        </button>
+        <button
+          type="button"
+          aria-label="Приоритет: убавить 1"
+          title="Убавить 1"
+          disabled={!canStepPriority(value, -1)}
+          style={arrow(-1)}
+          onClick={() => commit(stepPriority(value, -1))}
+        >
+          <CaretDownOutlined />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type PersonSelectProps = {
   scenarioId: string;
@@ -246,36 +358,11 @@ function BacklogAllocRowBase({
         onClick={(e) => e.stopPropagation()}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
-        <InputNumber
-          min={1}
-          max={10}
-          value={a.priority}
-          variant="borderless"
-          size="small"
-          controls={false}
-          style={{
-            width: 36,
-            height: 24,
-            borderRadius: 4,
-            fontSize: 11,
-            fontWeight: 700,
-            fontFamily: FONTS.mono,
-            color: priorityCyan ? '#003a3a' : DARK_THEME.textMuted,
-            background: priorityCyan ? DARK_THEME.cyanPrimary : DARK_THEME.darkAccent,
-            padding: 0,
-            textAlign: 'center',
-          }}
-          className="backlog-priority-input"
-          placeholder="—"
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
-          }}
-          onBlur={(e) => {
-            const raw = e.target.value;
-            const parsed = raw === '' ? null : parseInt(raw, 10);
-            const next = parsed === null || isNaN(parsed) ? null : Math.min(10, Math.max(1, parsed));
-            if (next !== a.priority) onPriorityChange(a.backlog_item_id, next);
-          }}
+        <PriorityControl
+          backlogItemId={a.backlog_item_id}
+          priority={a.priority}
+          cyan={priorityCyan}
+          onChange={onPriorityChange}
         />
       </div>
       <div>
