@@ -445,7 +445,7 @@ function ResourcePlanningPageInner() {
               options={peopleOptions}
               maxTagCount="responsive"
               showSearch={{ optionFilterProp: 'label' }}
-              style={{ minWidth: 190, maxWidth: 320 }}
+              style={{ width: 220 }}
             />
           )}
           {viewMode === 'two-level' && (
