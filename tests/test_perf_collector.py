@@ -85,3 +85,18 @@ def test_in_flight_peak_resets_after_read():
     assert c.take_in_flight_peak() == 2
     # после чтения пик начинается с текущего значения
     assert c.take_in_flight_peak() == 1
+
+
+def test_drain_before_keeps_current_minute():
+    """Сбрасываются только закрытые минуты; текущая копится до своего конца."""
+    c = PerfCollector(enabled=True, slow_ms=2000)
+    _record(c, minute=M1, slow={"n": 1})
+    _record(c, minute=M2)
+
+    aggs, slow = c.drain(before=M2)
+    assert [k[0] for k in aggs] == [M1]
+    assert len(slow) == 1
+
+    aggs, slow = c.drain()
+    assert [k[0] for k in aggs] == [M2]
+    assert slow == []

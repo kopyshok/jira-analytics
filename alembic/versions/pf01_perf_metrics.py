@@ -56,7 +56,6 @@ def upgrade() -> None:
             *_timestamps(),
         )
         op.create_index("ix_perf_minute_minute", "perf_minute", ["minute"])
-        op.create_index("ix_perf_minute_route_minute", "perf_minute", ["route", "minute"])
 
     if not _has("perf_slow_request"):
         op.create_table(
@@ -102,6 +101,5 @@ def downgrade() -> None:
     op.drop_table("perf_server_snapshot")
     op.drop_index("ix_perf_slow_request_at", table_name="perf_slow_request")
     op.drop_table("perf_slow_request")
-    op.drop_index("ix_perf_minute_route_minute", table_name="perf_minute")
     op.drop_index("ix_perf_minute_minute", table_name="perf_minute")
     op.drop_table("perf_minute")
