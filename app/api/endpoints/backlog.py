@@ -44,6 +44,8 @@ from app.services.backlog_service import (
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import is_explicit_leaf, is_service_epic, load_rules
+from app.services.minor_changes import minor_changes_summary
+from app.utils.period import current_quarter
 from app.services.plan_edit_service import PlanEditService, ROLES as PLAN_ROLES
 from app.services.plan_sources import ROLE_SETTING_KEYS, disputes_for
 from app.services.sync_service import SyncService
@@ -880,6 +882,19 @@ async def list_backlog_items(
         )
         for i in visible_items
     ])
+
+
+@router.get("/minor-changes-summary")
+async def minor_changes_summary_endpoint(
+    teams: Optional[str] = Query(None, description="Команды шапки, через запятую"),
+    db: Session = Depends(get_db),
+):
+    """Минорные изменения по командам: открыто, с оценкой (часы по ролям),
+    без оценки, запас на текущий квартал и список задач. Только чтение."""
+    year, quarter = current_quarter()
+    teams_list = [t.strip() for t in (teams or "").split(",") if t.strip()]
+    blocks = minor_changes_summary(db, teams_list or None, year, quarter)
+    return {"year": year, "quarter": quarter, "teams": blocks}
 
 
 @router.post("", response_model=BacklogItemResponse, status_code=201)
