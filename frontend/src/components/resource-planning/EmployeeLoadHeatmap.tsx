@@ -177,10 +177,11 @@ function TipLineView({ line, bold }: { line: TipLine; bold?: boolean }) {
 }
 
 /** Подсказка у имени: разбивка загрузки за квартал; слой «Другие команды» —
- *  с запасом основной команды, за счёт которого он идёт. */
-function quarterTooltipLines(q: EmployeeQuarterLoad): TipLine[] {
+ *  с запасом основной команды, за счёт которого он идёт. ``ownLabel`` — чей свой
+ *  слой: у людей плана «Задачи плана», у наблюдаемых — основной команды и плана. */
+function quarterTooltipLines(q: EmployeeQuarterLoad, ownLabel = 'Задачи плана'): TipLine[] {
   const lines: TipLine[] = [
-    `Задачи плана ${fmtHours(q.own_hours)} · Другие команды ${fmtHours(q.other_teams_hours)} · Нормированные работы ${fmtHours(q.normed_hours)}`,
+    `${ownLabel} ${fmtHours(q.own_hours)} · Другие команды ${fmtHours(q.other_teams_hours)} · Нормированные работы ${fmtHours(q.normed_hours)}`,
   ];
   // Часы вне основной команды человека — в плане любой команды одни и те же.
   const uses = q.reserve_use ?? [];
@@ -477,7 +478,8 @@ export default function EmployeeLoadHeatmap({
             <Tooltip
               title={row.quarter ? (
                 <div style={{ fontSize: 12 }}>
-                  {quarterTooltipLines(row.quarter).map((line, i) => <TipLineView key={i} line={line} />)}
+                  {quarterTooltipLines(row.quarter, watch ? 'Задачи основной команды и этого плана' : undefined)
+              .map((line, i) => <TipLineView key={i} line={line} />)}
                 </div>
               ) : undefined}
               styles={{ root: { maxWidth: TIP_MAX_W } }}

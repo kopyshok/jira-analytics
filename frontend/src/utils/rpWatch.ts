@@ -6,14 +6,16 @@ import { fmtHours as fmtNumber } from './rpBusy';
 const RU_MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
 /**
- * «Вся роль в команде»: активные сотрудники роли ``role``, состоящие в команде ``team``
- * на дату ``on`` (ISO). Без списка команд у сотрудника — по его основной команде.
+ * «Вся роль в команде»: активные сотрудники роли ``role``, состоявшие в команде ``team``
+ * хоть день квартала плана ``start`` — ``end`` (ISO, включительно). Без списка команд у
+ * сотрудника — по его основной команде.
  */
 export function roleTeamPicks(
   employees: EmployeeResponse[],
   team: string,
   role: string,
-  on: string,
+  start: string,
+  end: string,
 ): string[] {
   if (!team || !role) return [];
   return employees
@@ -21,7 +23,8 @@ export function roleTeamPicks(
     .filter((e) =>
       e.teams
         ? e.teams.some(
-            (t) => t.team === team && (!t.joined_at || t.joined_at <= on) && (!t.left_at || t.left_at > on),
+            // left_at — первый день вне команды.
+            (t) => t.team === team && (!t.joined_at || t.joined_at <= end) && (!t.left_at || t.left_at > start),
           )
         : e.team === team,
     )

@@ -15,7 +15,13 @@ export default function PlanLoadHeatmap({ planId, ...heatmap }: Props) {
   const { data: watch } = usePlanWatch(planId);
   const remove = useRemovePlanWatch();
   const [pickerOpen, setPickerOpen] = useState(false);
-  const watchedIds = useMemo(() => (watch?.rows ?? []).map((r) => r.employee_id), [watch]);
+  // В выборе нет людей плана и уже наблюдаемых.
+  const excludeIds = useMemo(
+    () => [...heatmap.rows, ...(watch?.rows ?? [])].map((r) => r.employee_id),
+    [heatmap.rows, watch],
+  );
+  // Дни строк — квартал плана: по нему «вся роль в команде» берёт состав.
+  const days = heatmap.rows[0]?.days ?? [];
 
   return (
     <>
@@ -31,12 +37,16 @@ export default function PlanLoadHeatmap({ planId, ...heatmap }: Props) {
         }
         onPickPeople={() => setPickerOpen(true)}
       />
-      <WatchPickerModal
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        planId={planId}
-        watchedIds={watchedIds}
-      />
+      {pickerOpen && days.length > 0 && (
+        <WatchPickerModal
+          open
+          onClose={() => setPickerOpen(false)}
+          planId={planId}
+          excludeIds={excludeIds}
+          quarterStart={days[0].date}
+          quarterEnd={days[days.length - 1].date}
+        />
+      )}
     </>
   );
 }

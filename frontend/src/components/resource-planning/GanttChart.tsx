@@ -144,7 +144,8 @@ export default function GanttChart({
   // Пока перенос фазы сохраняется и план перечитывается, новые переносы ждут:
   // пересчёт пересоздаёт строки с новыми id.
   const patching = useIsMutating({ mutationKey: PATCH_ASSIGNMENT_KEY }) > 0;
-  // Точный ключ: под ['gantt', planId, …] живёт и список наблюдения — его загрузка переносы не держит.
+  // Точный ключ: список наблюдения (['gantt', planId, 'watch']) перечитывается вместе с
+  // диаграммой, но переносы фаз ждут только саму диаграмму.
   const refetching = useIsFetching({ queryKey: ['gantt', planId], exact: true }) > 0;
   const isWorkday = useMemo(() => workdayChecker(calendar), [calendar]);
   const bookings = externalBookings ?? NO_BOOKINGS;

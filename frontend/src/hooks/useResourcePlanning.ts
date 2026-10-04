@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   computeResourcePlan, createResourcePlan, createScheduledBlock,
   deleteResourcePlan, deleteScheduledBlock, getGanttProjection,
@@ -110,6 +110,15 @@ export const useGanttProjection = (planId: string | null) =>
  * перечитывает и наблюдаемых. Признак «диаграмма перечитывается» смотрит точный ключ.
  */
 export const planWatchKey = (planId: string | null) => ['gantt', planId, 'watch'] as const;
+
+/**
+ * Перечитать диаграмму плана после правки. Список наблюдения перечитывается
+ * следом, но его не ждём: правка фазы и панель ждут только саму диаграмму.
+ */
+export function invalidatePlanGantt(qc: QueryClient, planId: string): Promise<void> {
+  void qc.invalidateQueries({ queryKey: planWatchKey(planId) });
+  return qc.invalidateQueries({ queryKey: ['gantt', planId], exact: true });
+}
 
 export const usePlanWatch = (planId: string | null) =>
   useQuery({
@@ -229,7 +238,7 @@ export function usePatchAssignment() {
     // Пересчёт пересоздаёт незакреплённые строки с новыми id. Мутация остаётся
     // «в работе», пока план не перечитан: до этого id на экране устаревшие.
     // И после отказа — строка могла исчезнуть при чужом пересчёте.
-    onSettled: (_, __, { planId }) => qc.invalidateQueries({ queryKey: ['gantt', planId] }),
+    onSettled: (_, __, { planId }) => invalidatePlanGantt(qc, planId),
   });
 }
 
