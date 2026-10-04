@@ -92,11 +92,7 @@ def test_cleanup_drops_rows_older_than_retention(factory, db_session):
     assert [r.at for r in db_session.query(PerfServerSnapshot).all()] == [fresh]
 
 
-def test_run_loop_flushes_and_snapshots_until_cancelled(factory, db_session, engine):
-    c = PerfCollector(enabled=True, slow_ms=2000)
-    c.record(minute=NOW, method="GET", route="/r", duration_ms=1, status=200,
-             db_count=0, db_ms=0, slow=None)
-
+def _run_loop_briefly(c, factory, engine) -> None:
     async def main():
         task = asyncio.create_task(run_loop(
             c, interval=0.05, retention_days=30, session_factory=factory, engine=engine,
@@ -107,6 +103,51 @@ def test_run_loop_flushes_and_snapshots_until_cancelled(factory, db_session, eng
             await task
 
     asyncio.run(main())
+
+
+def _record_at(c, minute, route="/r"):
+    c.record(minute=minute, method="GET", route=route, duration_ms=1, status=200,
+             db_count=0, db_ms=0, slow=None)
+
+
+def test_run_loop_flushes_closed_minutes_and_snapshots(factory, db_session, engine):
+    c = PerfCollector(enabled=True, slow_ms=2000)
+    current = datetime.utcnow().replace(second=0, microsecond=0)
+    _record_at(c, current - timedelta(minutes=2), route="/closed")
+    _record_at(c, current + timedelta(minutes=1), route="/open")  # минута ещё не кончилась
+
+    _run_loop_briefly(c, factory, engine)
+
+    db_session.expire_all()
+    assert [r.route for r in db_session.query(PerfMinute).all()] == ["/closed"]
+    assert db_session.query(PerfServerSnapshot).count() >= 1
+    assert c.enabled is False  # цикл остановлен — сборщик больше не копит
+    aggs, _ = c.drain()
+    assert [k[2] for k in aggs] == ["/open"]  # её допишет сброс на остановке
+
+
+def test_run_loop_without_server_probe_still_flushes(factory, db_session, engine, monkeypatch):
+    def broken_probe():
+        raise RuntimeError("psutil недоступен")
+
+    monkeypatch.setattr(perf_writer, "ServerProbe", broken_probe)
+    c = PerfCollector(enabled=True, slow_ms=2000)
+    _record_at(c, datetime.utcnow().replace(second=0, microsecond=0) - timedelta(minutes=2))
+
+    _run_loop_briefly(c, factory, engine)
+
     db_session.expire_all()
     assert db_session.query(PerfMinute).count() == 1
-    assert db_session.query(PerfServerSnapshot).count() >= 1
+    assert db_session.query(PerfServerSnapshot).count() == 0
+
+
+def test_flush_cuts_values_to_column_length(factory, db_session):
+    c = PerfCollector(enabled=True, slow_ms=2000)
+    c.record(minute=NOW, method="UNSUBSCRIBE", route="/r" * 400, duration_ms=1, status=200,
+             db_count=0, db_ms=0, slow=_slow(method="UNSUBSCRIBE", path="/p" * 400))
+    flush(factory, *c.drain())
+    [row] = db_session.query(PerfMinute).all()
+    assert row.method == "UNSUBSCRIB"
+    assert len(row.route) == 300
+    [s] = db_session.query(PerfSlowRequest).all()
+    assert len(s.method) == 10 and len(s.path) == 500

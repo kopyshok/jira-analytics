@@ -119,11 +119,19 @@ class PerfCollector:
             if slow is not None and len(self._slow) < self.max_slow_buffer:
                 self._slow.append(slow)
 
-    def drain(self) -> tuple[dict[AggKey, MinuteAgg], list[dict[str, Any]]]:
-        """Забрать накопленное и начать с чистого листа."""
+    def drain(
+        self, before: Optional[datetime] = None,
+    ) -> tuple[dict[AggKey, MinuteAgg], list[dict[str, Any]]]:
+        """Забрать накопленное. С `before` — только закрытые минуты (раньше неё);
+        текущая минута копится дальше, чтобы в базе была одна строка на минуту и путь.
+        Медленные забираются все — у каждого своя строка."""
         with self._lock:
-            aggs, slow = self._aggs, self._slow
-            self._aggs, self._slow = {}, []
+            slow, self._slow = self._slow, []
+            if before is None:
+                aggs, self._aggs = self._aggs, {}
+            else:
+                aggs = {k: a for k, a in self._aggs.items() if k[0] < before}
+                self._aggs = {k: a for k, a in self._aggs.items() if k[0] >= before}
         return aggs, slow
 
     def request_started(self) -> None:

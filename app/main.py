@@ -122,7 +122,13 @@ async def lifespan(app: FastAPI):
 
         perf_task.cancel()
         perf_collector.enabled = False
-        flush_collector(perf_collector, SessionLocal)
+        # Дописать текущую минуту; ни сбой, ни зависшая база не должны мешать остановке.
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(flush_collector, perf_collector, SessionLocal), timeout=10,
+            )
+        except Exception as exc:
+            logger.warning("perf: замеры последней минуты не записаны: %s", exc)
     sched_svc.shutdown()
     logger.info("Shutting down...")
 

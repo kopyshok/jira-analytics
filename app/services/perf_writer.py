@@ -30,21 +30,30 @@ def flush(
     aggs: dict[AggKey, MinuteAgg],
     slow: list[dict[str, Any]],
 ) -> None:
-    """Записать агрегаты и медленные запросы одной пачкой."""
+    """Записать агрегаты и медленные запросы одной пачкой.
+
+    Длины обрезаются по колонкам: PostgreSQL, в отличие от SQLite, отвергает
+    длинную строку — и с ней всю пачку.
+    """
     if not aggs and not slow:
         return
     db = session_factory()
     try:
         db.add_all(
             PerfMinute(
-                minute=minute, method=method, route=route[:300],
+                minute=minute, method=method[:10], route=route[:300],
                 count=a.count, total_ms=a.total_ms, max_ms=a.max_ms,
                 errors_5xx=a.errors_5xx, db_count=a.db_count, db_ms=a.db_ms,
                 **{f"h{i}": n for i, n in enumerate(a.hist)},
             )
             for (minute, method, route), a in aggs.items()
         )
-        db.add_all(PerfSlowRequest(**{**s, "route": s["route"][:300]}) for s in slow)
+        db.add_all(
+            PerfSlowRequest(**{
+                **s, "method": s["method"][:10], "route": s["route"][:300], "path": s["path"][:500],
+            })
+            for s in slow
+        )
         db.commit()
     except Exception as exc:
         db.rollback()
@@ -130,8 +139,16 @@ def cleanup(session_factory: SessionFactory, *, retention_days: int, now: dateti
 
 
 def flush_collector(collector: PerfCollector, session_factory: SessionFactory) -> None:
-    """Сбросить накопленное — на остановке сервиса, чтобы не терять последнюю минуту."""
+    """Сбросить всё накопленное, включая текущую минуту, — на остановке сервиса."""
     flush(session_factory, *collector.drain())
+
+
+def _make_probe() -> Optional[ServerProbe]:
+    try:
+        return ServerProbe()
+    except Exception as exc:  # замеры запросов ценны и без снимков сервера
+        logger.warning("perf: нагрузку сервера снимать не получится, пишутся только запросы: %s", exc)
+        return None
 
 
 async def run_loop(
@@ -142,24 +159,34 @@ async def run_loop(
     session_factory: SessionFactory,
     engine: Optional[Engine],
 ) -> None:
-    """Бесконечный цикл записи; останавливается отменой задачи."""
-    probe = await asyncio.to_thread(ServerProbe)
+    """Бесконечный цикл записи; останавливается отменой задачи.
+
+    Пишутся только закрытые минуты — текущая копится до своего конца, так в базе
+    одна строка на минуту и путь. Цикл кончился по любой причине — сборщик
+    выключается, иначе он копил бы замеры в памяти без записи.
+    """
     last_cleanup: Optional[datetime] = None
+    try:
+        probe = await asyncio.to_thread(_make_probe)
 
-    def tick() -> None:
-        nonlocal last_cleanup
-        flush(session_factory, *collector.drain())
-        take_snapshot(
-            session_factory, probe, engine=engine, in_flight=collector.take_in_flight_peak(),
-        )
-        now = datetime.utcnow()
-        if last_cleanup is None or now - last_cleanup >= CLEANUP_EVERY:
-            cleanup(session_factory, retention_days=retention_days, now=now)
-            last_cleanup = now
+        def tick() -> None:
+            nonlocal last_cleanup
+            now = datetime.utcnow()
+            flush(session_factory, *collector.drain(before=now.replace(second=0, microsecond=0)))
+            if probe is not None:
+                take_snapshot(
+                    session_factory, probe, engine=engine,
+                    in_flight=collector.take_in_flight_peak(),
+                )
+            if last_cleanup is None or now - last_cleanup >= CLEANUP_EVERY:
+                cleanup(session_factory, retention_days=retention_days, now=now)
+                last_cleanup = now
 
-    while True:
-        await asyncio.sleep(interval)
-        try:
-            await asyncio.to_thread(tick)
-        except Exception:  # страховка: цикл не должен умирать
-            logger.exception("perf: сбой цикла записи замеров")
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await asyncio.to_thread(tick)
+            except Exception:  # страховка: цикл не должен умирать
+                logger.exception("perf: сбой цикла записи замеров")
+    finally:
+        collector.enabled = False

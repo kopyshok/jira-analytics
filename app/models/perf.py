@@ -48,10 +48,7 @@ class PerfMinute(Base, TimestampMixin):
     h9: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     h10: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    __table_args__ = (
-        Index("ix_perf_minute_minute", "minute"),
-        Index("ix_perf_minute_route_minute", "route", "minute"),
-    )
+    __table_args__ = (Index("ix_perf_minute_minute", "minute"),)
 
 
 #: Имена колонок корзин гистограммы по порядку.
