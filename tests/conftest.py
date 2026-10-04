@@ -6,6 +6,9 @@ import os
 # secret validator raises ValueError when running tests without .env.
 os.environ.setdefault("DEBUG", "true")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-not-for-production")
+# Замеры быстродействия в тестах выключены: фоновый цикл не нужен, лишних
+# слушателей на движках нет. Тесты раздела включают сборщик сами.
+os.environ.setdefault("PERF_ENABLED", "false")
 
 import pytest
 from sqlalchemy import create_engine
