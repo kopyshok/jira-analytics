@@ -46,6 +46,9 @@ class Employee(Base, SyncedMixin):
         back_populates="employee",
         cascade="all, delete-orphan",
     )
+    # Строки списков наблюдения планов уходят вместе с сотрудником и там, где
+    # база не каскадит.
+    plan_watch = relationship("ResourcePlanWatch", cascade="all, delete-orphan")
 
     def primary_team_name(self) -> Optional[str]:
         """Название primary-команды (берётся из teams relationship)."""

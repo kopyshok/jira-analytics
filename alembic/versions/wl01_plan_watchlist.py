@@ -40,13 +40,10 @@ def upgrade() -> None:
         ),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
+        # Покрывает и выборку по плану — отдельный индекс не нужен.
         sa.UniqueConstraint("plan_id", "employee_id", name="uq_resource_plan_watch"),
     )
-    with op.batch_alter_table(TABLE) as batch:
-        batch.create_index("ix_resource_plan_watch_plan_id", ["plan_id"])
 
 
 def downgrade() -> None:
-    with op.batch_alter_table(TABLE) as batch:
-        batch.drop_index("ix_resource_plan_watch_plan_id")
     op.drop_table(TABLE)
