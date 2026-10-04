@@ -62,6 +62,8 @@
 - `ScenarioRevision` + `ScenarioRevisionItem` + `ScenarioCapacitySnapshot` — история утверждений сценария: дифф включённых инициатив + снапшот нормы команды
 - `ResourcePlanWatch` (`resource_plan_watch`) — список наблюдения ресурсного плана: люди любых команд, чья загрузка показывается секцией «Наблюдаемые»; unique (`plan_id`, `employee_id`), оба FK — CASCADE (миграция `wl01_plan_watchlist`)
 
+- `PerfMinute` / `PerfSlowRequest` / `PerfServerSnapshot` (`perf_minute`, `perf_slow_request`, `perf_server_snapshot`) — замеры раздела «Быстродействие», хранятся 30 дней, исключены из выгрузки базы (миграция `pf01_perf_metrics`)
+
 ### Team desk (1)
 
 `TeamDeskMark` — отметка «просмотрено» на паре задача + признак (`uq_team_desk_mark`). `signature` — снимок причины на момент отметки; расходится с текущей — отметка сгорает и удаляется (см. `app/services/team_desk/marks.py`). Настройки раздела живут не тут, а в `AppSetting['team_desk_config']`.
