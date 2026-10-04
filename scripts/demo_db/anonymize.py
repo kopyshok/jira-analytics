@@ -157,6 +157,7 @@ COLUMN_POLICY = _parse_policy({
     "projects": "keep: id jira_project_id project_type; rule: key name; clear: description",
     "release_notes": "keep: id version note_type section help_link created_by; final: title description",
     "resource_plan_assignments": "keep: id plan_id backlog_item_id phase employee_id daily_hours_json opo_part",
+    "resource_plan_watch": "keep: id plan_id employee_id",
     "resource_plans": "keep: id scenario_id quarter status parent_plan_id; rule: team external_fingerprint; "
                       "final: label",
     "role_capacity_rules": "keep: id role work_type_id",
