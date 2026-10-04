@@ -575,8 +575,14 @@ export default function PlanningPage() {
 
   // Мультикомандные RFA: соседние команды уже взяли задачу, а здесь она не
   // включена. «Показать только их» оставляет в секциях только такие строки.
-  const neighborsTakenIds = useMemo(() => neighborsTakenRowIds(allocations ?? []), [allocations]);
-  const [onlyNeighborsTaken, setOnlyNeighborsTaken] = useState(false);
+  // Только в черновике — в утверждённом отметки не поменять. Переключатель
+  // помнит свой сценарий: другой сценарий открывается без фильтра.
+  const neighborsTakenIds = useMemo(
+    () => (isDraft ? neighborsTakenRowIds(allocations ?? []) : new Set<string>()),
+    [isDraft, allocations],
+  );
+  const [onlyNeighborsFor, setOnlyNeighborsFor] = useState<string | null>(null);
+  const onlyNeighborsTaken = !!scenarioId && onlyNeighborsFor === scenarioId;
   const shownSections = useMemo(() => {
     if (!onlyNeighborsTaken || neighborsTakenIds.size === 0) return sections;
     return sections
@@ -981,7 +987,7 @@ export default function PlanningPage() {
                   <NeighborsTakenBanner
                     count={neighborsTakenIds.size}
                     onlyThem={onlyNeighborsTaken}
-                    onOnlyThemChange={setOnlyNeighborsTaken}
+                    onOnlyThemChange={(on) => setOnlyNeighborsFor(on ? scenarioId : null)}
                   />
                 )}
                 <div style={{ overflowX: 'auto' }}>

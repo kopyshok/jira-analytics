@@ -10,7 +10,7 @@ const progress = (
 ): MultiTeamProgress => {
   const teams = Object.entries(statuses).map(([team, status]) => ({ team, status, scenarios: [] }));
   return {
-    taken: teams.filter((t) => t.status === 'taken').length,
+    taken: teams.filter((t) => t.status === 'taken' || t.status === 'done').length,
     total: teams.length,
     own_team: own,
     own_status: own ? statuses[own] ?? null : null,
@@ -34,6 +34,12 @@ describe('progressTone', () => {
     expect(progressTone(progress('А', statuses))).toBe('neutral');
   });
 
+  it('команда строки уже выполнила свой эпик — не жёлтый', () => {
+    expect(progressTone(progress('А', { А: 'done', Б: 'not_taken' }))).toBe('neutral');
+    expect(progressTone(progress('Б', { А: 'done', Б: 'not_taken' }))).toBe('alert');
+    expect(progressTone(progress('А', { А: 'done', Б: 'taken' }))).toBe('done');
+  });
+
   it('команда строки не участник — нейтральный', () => {
     expect(progressTone(progress(null, { А: 'taken', Б: 'not_taken' }))).toBe('neutral');
   });
@@ -42,6 +48,11 @@ describe('progressTone', () => {
 describe('neighborsTaken', () => {
   it('взяла другая команда', () => {
     expect(neighborsTaken(progress('Б', { А: 'taken', Б: 'not_taken' }))).toBe(true);
+  });
+
+  it('соседи уже выполнили свой эпик — тоже взяли', () => {
+    expect(neighborsTaken(progress('Б', { А: 'done', Б: 'not_taken' }))).toBe(true);
+    expect(neighborsTaken(progress('А', { А: 'done', Б: 'not_taken' }))).toBe(false);
   });
 
   it('взяла только своя команда — не соседи', () => {
@@ -65,6 +76,15 @@ describe('teamTakeLine', () => {
         { id: 's2', name: 'План I', quarter_label: '1 кв. 2027' },
       ],
     })).toBe('Команда А — взят в работу: «План IV», 4 кв. 2026; «План I», 1 кв. 2027');
+  });
+
+  it('выполнен — с кварталом последнего плана или без него', () => {
+    expect(teamTakeLine({
+      team: 'Команда А',
+      status: 'done',
+      scenarios: [{ id: 's1', name: 'План III', quarter_label: '3 кв. 2026' }],
+    })).toBe('Команда А — выполнен (3 кв. 2026)');
+    expect(teamTakeLine({ team: 'Б', status: 'done', scenarios: [] })).toBe('Б — выполнен');
   });
 
   it('не взят и нет эпика', () => {

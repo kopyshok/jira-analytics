@@ -486,13 +486,15 @@ export interface EstimateCandidate {
 export type InPlanRole = 'regular' | 'inert' | 'by_epics' | 'by_epics_locked';
 
 /** Статус команды-участницы мультикомандной RFA: эпик команды в утверждённом
- *  сценарии текущего или будущего квартала / эпик есть, но не взят / эпика нет. */
-export type TeamTakeStatus = 'taken' | 'not_taken' | 'no_epic';
+ *  сценарии текущего или будущего квартала / эпик уже выполнен / эпик есть,
+ *  но не взят / эпика нет. «Взят» и «выполнен» засчитываются в K. */
+export type TeamTakeStatus = 'taken' | 'done' | 'not_taken' | 'no_epic';
 
 export interface MultiTeamTeamTake {
   team: string;
   status: TeamTakeStatus;
-  /** Утверждённые сценарии, куда команда включила эпик (только у «взят»). */
+  /** У «взят» — утверждённые сценарии текущего и будущих кварталов с эпиком;
+   *  у «выполнен» — последний утверждённый, где был эпик (или пусто). */
   scenarios: { id: string; name: string; quarter_label: string }[];
 }
 

@@ -1,6 +1,6 @@
 import type { MultiTeamProgress, MultiTeamTeamTake, TeamTakeStatus } from '../types/api';
 
-/** Цвет плашки «в работе у K из N»:
+/** Цвет плашки «в работе у K из N» («взяла» — взяла в работу или уже выполнила):
  *  none — никто не взял (серый), done — взяли все (зелёный),
  *  alert — часть взяла, а команда строки ещё нет (яркий), neutral — часть взяла,
  *  и команда строки среди взявших (или не участник). */
@@ -13,13 +13,16 @@ export function progressTone(p: MultiTeamProgress): ProgressTone {
   return 'neutral';
 }
 
-/** Работу по RFA уже взяла другая команда — не команда строки. */
+/** Работу по RFA уже взяла (или выполнила) другая команда — не команда строки. */
 export function neighborsTaken(p: MultiTeamProgress | null | undefined): boolean {
-  return !!p && p.teams.some((t) => t.status === 'taken' && t.team !== p.own_team);
+  return !!p && p.teams.some(
+    (t) => (t.status === 'taken' || t.status === 'done') && t.team !== p.own_team,
+  );
 }
 
 const STATUS_LABEL: Record<TeamTakeStatus, string> = {
   taken: 'взят в работу',
+  done: 'выполнен',
   not_taken: 'эпик есть, не взят',
   no_epic: 'нет эпика',
 };
@@ -28,6 +31,8 @@ const STATUS_LABEL: Record<TeamTakeStatus, string> = {
 export function teamTakeLine(t: MultiTeamTeamTake): string {
   const head = `${t.team} — ${STATUS_LABEL[t.status]}`;
   if (!t.scenarios.length) return head;
+  // У выполненного — квартал последнего утверждённого плана, где он был.
+  if (t.status === 'done') return `${head} (${t.scenarios[t.scenarios.length - 1].quarter_label})`;
   return `${head}: ${t.scenarios.map((s) => `«${s.name}», ${s.quarter_label}`).join('; ')}`;
 }
 
