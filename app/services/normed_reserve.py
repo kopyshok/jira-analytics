@@ -404,6 +404,8 @@ class PersonLoad:
     normed: float
     unplaced: float
     normed_by_type: Dict[str, float]
+    # Свободно в день: норма − задачи − другие команды − нормированные работы.
+    free_by_day: Dict[date, float] = field(default_factory=dict)
 
     @property
     def pct(self) -> float:
@@ -479,7 +481,65 @@ def place_person(
         normed=sum(capacity[d] for d in blocked if d in capacity) + undated,
         unplaced=remaining,
         normed_by_type=dict(by_type),
+        free_by_day={
+            d: 0.0 if d in blocked else max(0.0, capacity[d] - busy[d] - normed[d])
+            for d in capacity
+        },
     )
+
+
+def people_loads(
+    db: Session,
+    employees: List[Employee],
+    year: int,
+    quarter: int,
+    *,
+    capacity: Dict[str, Dict[date, float]],
+    own: Dict[str, Dict[date, float]],
+    other_teams: Dict[str, Dict[date, float]],
+    residue_share: Dict[str, Dict[date, float]],
+    membership: Optional[Dict[str, list]] = None,
+) -> tuple[Dict[str, PersonLoad], Dict[str, Optional[TeamReserve]], Dict[str, str]]:
+    """Загрузка людей за квартал с нормированными работами — одна формула для
+    людей плана, наблюдаемых и кандидатов в исполнители.
+
+    Нормированные работы человека — из запаса его основных команд квартала
+    (`team_reserve` один раз на команду, `merge_person`), раскладка — `place_person`
+    по ``capacity`` (норма дня: календарь минус отсутствия), ``own``/``other_teams``
+    (часы задач по дням), ``residue_share`` (доля дня вне задачи по
+    вовлечённости) и заблокированным дням периодов основной команды и общих —
+    как вне плана: цифры человека не зависят от плана, в котором на него смотрят.
+    ``membership`` — уже прочитанные периоды участия (`team_membership.membership_rows`).
+    Возвращает загрузки, запасы основных команд и подписи видов работ.
+    """
+    q_start, q_end = quarter_bounds(year, quarter)
+    ids = [e.id for e in employees]
+    if membership is None:
+        membership = tm.membership_rows(db, ids)
+    home_teams = {
+        t
+        for eid in ids
+        for t, joined, left, primary in membership.get(eid, ())
+        if primary and (joined is None or joined <= q_end) and (left is None or left > q_start)
+    }
+    reserves = {t: team_reserve(db, t, year, quarter) for t in sorted(home_teams)}
+    labels = next((r.labels for r in reserves.values() if r), {}) or {
+        w.id: w.label for w in db.execute(select(MandatoryWorkType)).scalars()
+    }
+    hits = sb.resolve_blocked_days(db, employees, q_start, q_end, None) if employees else {}
+    loads = {
+        e.id: place_person(
+            {d: h for d, h in capacity.get(e.id, {}).items() if h > 0},
+            own.get(e.id, {}),
+            other_teams.get(e.id, {}),
+            residue_share.get(e.id, {}),
+            hits.get(e.id, {}),
+            merge_person(reserves.values(), e.id),
+            labels,
+        )
+        for e in employees
+    }
+    return loads, reserves, labels
 
 
 def guest_normed_by_day(
