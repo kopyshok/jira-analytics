@@ -15,6 +15,7 @@ import BacklogManualModal from '../components/backlog/BacklogManualModal';
 import BacklogLinkJiraModal from '../components/backlog/BacklogLinkJiraModal';
 import BacklogPlanningParamsModal from '../components/backlog/BacklogPlanningParamsModal';
 import InPlanSwitch from '../components/backlog/InPlanSwitch';
+import MinorChangesCard from '../components/backlog/MinorChangesCard';
 import EstimateDisputePopover from '../components/backlog/EstimateDisputePopover';
 import {
   countOffPlan, inPlanRole, isOffPlan, type InPlanRow,
@@ -128,6 +129,14 @@ export default function BacklogPage() {
   const includedPending = useBacklogIncludedPending();
   const [onlyOffPlan, setOnlyOffPlan] = useState(false);
   const [onlyDisputed, setOnlyDisputed] = useState(false);
+  // Переключатель «Минорные изменения» живёт в адресе, как вкладка.
+  const showMinor = searchParams.get('minor') === '1';
+  const setShowMinor = (next: boolean) => {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set('minor', '1');
+    else params.delete('minor');
+    setSearchParams(params, { replace: true });
+  };
   const refreshFromJiraMut = useRefreshFromJira();
   const refreshAbortRef = useRef<AbortController | null>(null);
   const [refreshProgress, setRefreshProgress] = useState<BacklogRefreshProgress | null>(null);
@@ -1209,6 +1218,10 @@ export default function BacklogPage() {
         onClose={() => { setParamsOpen(false); setParamsTarget(null); }}
       />
 
+      {showMinor && view !== 'archived' && (
+        <MinorChangesCard teams={queryParams.teams} jiraBaseUrl={jiraBaseUrl} />
+      )}
+
       <Tabs
         data-tour="backlog-tabs"
         activeKey={view}
@@ -1230,6 +1243,9 @@ export default function BacklogPage() {
                   Не в плане · {offPlanCount}
                 </FilterTag>
               )}
+              <FilterTag checked={showMinor} onChange={setShowMinor}>
+                Минорные изменения
+              </FilterTag>
             </Space>
           ) : null
         }
