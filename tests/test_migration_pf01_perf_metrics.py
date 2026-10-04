@@ -46,13 +46,13 @@ def test_upgrade_creates_tables_and_downgrade_drops(tmp_path):
     assert {"minute", "route", "method", "count", "total_ms", "max_ms", "h0", "h10",
             "errors_5xx", "db_count", "db_ms", "created_at", "updated_at"} <= cols
 
-    _alembic(db_path, "downgrade", "iv01_clear_frozen_involvement")
+    _alembic(db_path, "downgrade", "wl01_plan_watchlist")
     assert not (TABLES & _tables(db_path))
 
 
 def test_upgrade_skips_tables_created_by_create_all(tmp_path):
     db_path = tmp_path / "pf01_existing.db"
-    _alembic(db_path, "upgrade", "iv01_clear_frozen_involvement")
+    _alembic(db_path, "upgrade", "wl01_plan_watchlist")
 
     from app.database import Base
     import app.models  # noqa: F401
