@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.models import Category, Issue, MandatoryWorkType
 from app.services.backlog_service import CANCEL_STATUSES
 from app.services.category_resolver import CategoryResolver
+from app.services.hierarchy_rules import _first_match, load_rules
 from app.services.normed_reserve import team_reserve
 
 MINOR_WORK_TYPE_CODE = "minor_change"
@@ -52,6 +53,18 @@ def _prefetch_ancestors(db: Session, issues: Iterable[Issue]) -> None:
             ).scalars().all()
         seen |= frontier
         frontier = {i.parent_id for i in loaded if i.parent_id} - seen
+
+
+def _is_container(rules: list, issue: Issue) -> bool:
+    """Контейнер (эпик и т.п.) — не задача. Решают правила иерархии
+    (проект + тип задачи); если ни одно не подошло — эпик Jira."""
+    rule = _first_match(
+        rules, issue.project.key if issue.project else "", issue.issue_type or "",
+        issue.parent_id is not None,
+    )
+    if rule is not None:
+        return bool(rule.is_container)
+    return (issue.issue_type or "").lower() in _EPIC_TYPES
 
 
 def _role_hours(issue: Issue) -> Dict[str, Optional[float]]:
@@ -102,21 +115,22 @@ def _epic_of(db: Session, issue: Issue) -> Optional[Issue]:
     return None
 
 
-def _reserve_hours(db: Session, team: str, year: int, quarter: int) -> Optional[float]:
+def _reserve_hours(
+    db: Session, team: str, year: int, quarter: int, wt_id: Optional[str]
+) -> Optional[float]:
     """Заложено на квартал на минорные изменения; ``None`` — правил нет."""
     reserve = team_reserve(db, team, year, quarter)
     if reserve is None:
         return None
-    wt_id = db.execute(
-        select(MandatoryWorkType.id).where(MandatoryWorkType.code == MINOR_WORK_TYPE_CODE)
-    ).scalar_one_or_none()
     total = sum(
         row.planned for rows in reserve.roles.values() for row in rows if row.work_type_id == wt_id
     )
     return round(total, 1) if total > 0 else None
 
 
-def _block(db: Session, team: str, units: List[Issue], year: int, quarter: int) -> Dict[str, Any]:
+def _block(
+    db: Session, team: str, units: List[Issue], year: int, quarter: int, wt_id: Optional[str]
+) -> Dict[str, Any]:
     totals = {r: 0.0 for r in ROLES}
     tasks = []
     estimated = 0
@@ -143,7 +157,7 @@ def _block(db: Session, team: str, units: List[Issue], year: int, quarter: int) 
         "estimated_count": estimated,
         "unestimated_count": len(units) - estimated,
         "hours": {**totals, "total": round(sum(totals.values()), 2)},
-        "reserve_hours": _reserve_hours(db, team, year, quarter),
+        "reserve_hours": _reserve_hours(db, team, year, quarter, wt_id),
         "tasks": tasks,
     }
 
@@ -159,14 +173,20 @@ def minor_changes_summary(
         query = select(Issue).where(
             func.coalesce(Issue.status_category, "") != "done",
             Issue.status.notin_(list(CANCEL_STATUSES)),
-            Issue.out_of_scope == False,  # noqa: E712
         )
         query = query.where(Issue.team.in_(teams)) if teams else query.where(Issue.team.isnot(None))
         candidates = db.execute(query).scalars().all()
         _prefetch_ancestors(db, candidates)
         resolver = CategoryResolver(db)
+        rules = load_rules(db)
         for issue in candidates:
-            if resolver.resolve_for_issue(issue).category_code in codes:
+            if (
+                resolver.resolve_for_issue(issue).category_code in codes
+                and not _is_container(rules, issue)
+            ):
                 by_team[issue.team].append(issue)
     names = list(dict.fromkeys(teams)) if teams else sorted(by_team)
-    return [_block(db, t, _units(by_team.get(t, [])), year, quarter) for t in names]
+    wt_id = db.execute(
+        select(MandatoryWorkType.id).where(MandatoryWorkType.code == MINOR_WORK_TYPE_CODE)
+    ).scalar_one_or_none()
+    return [_block(db, t, _units(by_team.get(t, [])), year, quarter, wt_id) for t in names]

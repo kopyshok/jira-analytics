@@ -1,6 +1,8 @@
 """Минорные изменения: сводка по командам для «Целевых задач»."""
 
-from app.models import Category, Issue, MandatoryWorkType, Project, ScenarioRule
+from app.models import (
+    Category, CategoryOverride, HierarchyRule, Issue, MandatoryWorkType, Project, ScenarioRule, ScopeRoot,
+)
 from app.services import minor_changes as mc
 from tests.services.normed_factory import _types
 from tests.services.xteam_factory import make_employee, make_plan
@@ -175,3 +177,80 @@ def test_no_minor_category_gives_empty_blocks(db_session):
          "hours": {"analyst": 0.0, "dev": 0.0, "qa": 0.0, "opo": 0.0, "total": 0.0},
          "reserve_hours": None, "tasks": []}
     ]
+
+
+def test_container_epic_without_open_children_is_not_a_task(db_session):
+    _t, p = _setup(db_session)
+    _issue(db_session, p, "OS-1", issue_type="Эпик", cat="minor_change")
+    _issue(db_session, p, "OS-2", cat="minor_change")
+    db_session.commit()
+
+    b = _block(mc.minor_changes_summary(db_session, [TEAM], *Q))
+
+    assert [t["key"] for t in b["tasks"]] == ["OS-2"]
+
+
+def test_hierarchy_rules_decide_container_over_type_name(db_session):
+    _t, p = _setup(db_session)
+    # Правило: эпики проекта OS — лист (считаем задачей), «Инициатива» — контейнер.
+    db_session.add(HierarchyRule(priority=1, project_key="OS", issue_type="Эпик", is_container=False))
+    db_session.add(HierarchyRule(priority=2, project_key="OS", issue_type="Инициатива", is_container=True))
+    _issue(db_session, p, "OS-1", issue_type="Эпик", cat="minor_change")
+    _issue(db_session, p, "OS-2", issue_type="Инициатива", cat="minor_change")
+    db_session.commit()
+
+    b = _block(mc.minor_changes_summary(db_session, [TEAM], *Q))
+
+    assert [t["key"] for t in b["tasks"]] == ["OS-1"]
+
+
+def test_container_children_are_counted_as_roots(db_session):
+    _t, p = _setup(db_session)
+    epic = _issue(db_session, p, "OS-1", issue_type="Эпик", cat="minor_change", planned_dev_hours_jira=50)
+    _issue(db_session, p, "OS-2", parent=epic)
+    db_session.commit()
+
+    b = _block(mc.minor_changes_summary(db_session, [TEAM], *Q))
+
+    assert [t["key"] for t in b["tasks"]] == ["OS-2"]
+    assert b["hours"]["dev"] == 0.0  # оценка контейнера не в счёт
+
+
+def test_out_of_scope_issue_is_counted_like_in_target_table(db_session):
+    """Таблица целевых задач не режет по «вне охвата» — карточка тоже."""
+    _t, p = _setup(db_session)
+    _issue(db_session, p, "OS-1", cat="minor_change", out_of_scope=True)
+    db_session.commit()
+
+    assert _block(mc.minor_changes_summary(db_session, [TEAM], *Q))["open_count"] == 1
+
+
+def test_category_via_override_and_scope_root_inherited_by_children(db_session):
+    _t, p = _setup(db_session)
+    ov = _issue(db_session, p, "OS-1")
+    _issue(db_session, p, "OS-2", parent=ov)
+    root = _issue(db_session, p, "OS-3")
+    _issue(db_session, p, "OS-4", parent=root)
+    _issue(db_session, p, "OS-5")  # без категории — не минорная
+    db_session.add(CategoryOverride(jira_issue_key="OS-1", category_code="minor_change"))
+    db_session.add(ScopeRoot(jira_issue_key="OS-3", category_code="minor_change", is_enabled=True))
+    db_session.commit()
+
+    b = _block(mc.minor_changes_summary(db_session, [TEAM], *Q))
+
+    assert sorted(t["key"] for t in b["tasks"]) == ["OS-2", "OS-4"]  # OS-1/OS-3 — родители, замещены детьми
+
+
+def test_epic_task_subtask_chain(db_session):
+    _t, p = _setup(db_session)
+    epic = _issue(db_session, p, "OS-1", issue_type="Эпик", cat="minor_change")
+    task = _issue(db_session, p, "OS-2", parent=epic, planned_dev_hours_jira=9)
+    _issue(db_session, p, "OS-3", parent=task, issue_type="Подзадача", planned_dev_hours_jira=3)
+    _issue(db_session, p, "OS-4", parent=task, issue_type="Подзадача", planned_qa_hours_jira=2)
+    db_session.commit()
+
+    b = _block(mc.minor_changes_summary(db_session, [TEAM], *Q))
+
+    assert sorted(t["key"] for t in b["tasks"]) == ["OS-3", "OS-4"]
+    assert b["hours"] == {"analyst": 0.0, "dev": 3.0, "qa": 2.0, "opo": 0.0, "total": 5.0}
+    assert {t["epic_key"] for t in b["tasks"]} == {"OS-1"}
