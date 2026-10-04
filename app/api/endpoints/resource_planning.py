@@ -779,6 +779,20 @@ class NormedTypeHours(BaseModel):
     hours: float
 
 
+class ReserveUseOut(BaseModel):
+    """За счёт какого запаса основной команды идут часы человека в других
+    командах: вид работ и его запас на роль человека (как в сводке запаса)."""
+    team: str
+    work_type_id: str
+    label: str
+    # Часы этого человека в других командах, списанные на этот вид.
+    hours: float
+    planned_hours: float
+    used_hours: float
+    remaining_hours: float
+    overuse_hours: float
+
+
 class EmployeeQuarterLoad(BaseModel):
     """Загрузка человека за квартал, часы; одинакова в плане любой команды."""
     capacity_hours: float
@@ -788,6 +802,10 @@ class EmployeeQuarterLoad(BaseModel):
     unplaced_hours: float
     pct: float
     normed_by_type: List[NormedTypeHours] = []
+    # Работа в других командах по видам запаса основной команды.
+    reserve_use: List[ReserveUseOut] = []
+    # Задача другой команды → вид работ, за счёт которого она идёт.
+    reserve_items: Dict[str, str] = {}
 
 
 class ReserveTypeRow(BaseModel):
@@ -1488,6 +1506,36 @@ def _reserve_out(reserve: nr.TeamReserve, roles: Dict[str, tuple]) -> ReserveOut
     )
 
 
+def _reserve_use(
+    reserves: Dict[str, Optional[nr.TeamReserve]], employee_id: str
+) -> tuple[List[ReserveUseOut], Dict[str, str]]:
+    """Часы человека в других командах по видам запаса его основной команды
+    (основная менялась в квартале — по каждой) и задача → вид."""
+    uses: List[ReserveUseOut] = []
+    items: Dict[str, str] = {}
+    for r in reserves.values():
+        person = r.people.get(employee_id) if r is not None else None
+        if person is None:
+            continue
+        role_rows = {x.work_type_id: x for x in r.roles.get(person.role or "", [])}
+        for wt, hours in person.other_teams.items():
+            row = role_rows.get(wt)
+            if row is None:
+                continue
+            uses.append(ReserveUseOut(
+                team=r.team,
+                work_type_id=wt,
+                label=row.label,
+                hours=round(hours, 1),
+                planned_hours=round(row.planned, 1),
+                used_hours=round(row.used, 1),
+                remaining_hours=round(row.remaining, 1),
+                overuse_hours=round(row.overuse, 1),
+            ))
+        items.update(person.other_items)
+    return uses, items
+
+
 # Меньше получаса — округления, не предупреждение.
 NORMED_WARNING_MIN_HOURS = 0.5
 
@@ -2079,6 +2127,7 @@ def get_gantt(
                         date=member_from,
                         team=tm.team_on_day(emp_rows, member_from - _td(days=1)),
                     )
+                reserve_use, reserve_items = _reserve_use(reserves, e.id)
                 employee_load.append(
                     EmployeeLoadOut(
                         employee_id=e.id,
@@ -2105,6 +2154,8 @@ def get_gantt(
                                         load.normed_by_type.items(), key=lambda kv: -kv[1]
                                     )
                                 ],
+                                reserve_use=reserve_use,
+                                reserve_items=reserve_items,
                             )
                             if load
                             else None
