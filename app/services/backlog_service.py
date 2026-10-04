@@ -172,12 +172,17 @@ def issue_is_multi_team(issue: Optional[Issue]) -> bool:
     """
     if issue is None:
         return False
-    teams = parse_participating_teams(issue.participating_teams)
+    return teams_make_multi_team(issue.team, issue.participating_teams)
+
+
+def teams_make_multi_team(team: Optional[str], participating_raw: Optional[str]) -> bool:
+    """Тот же признак, что ``issue_is_multi_team``, — по полям задачи, без её загрузки."""
+    teams = parse_participating_teams(participating_raw)
     if not teams:
         return False
     if len(teams) > 1:
         return True
-    return bool(issue.team) and teams[0] != issue.team
+    return bool(team) and teams[0] != team
 
 
 def multi_team_lock_enabled(db: Session) -> bool:

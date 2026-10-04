@@ -14,6 +14,7 @@ import { effectiveEstimate } from '../../utils/allocationEstimates';
 import { statusTagColor } from '../../utils/status';
 import { getRoleColor } from '../../utils/roles';
 import { OPO_COLOR, foldOpo } from '../../utils/opo';
+import MultiTeamProgressTag from '../shared/MultiTeamProgressTag';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import type { AllocationResponse, Role } from '../../types/api';
 import type { ContinuationInfoRow } from '../../api/planning';
@@ -383,6 +384,7 @@ function BacklogAllocRowBase({
           }}
         >
           <span style={{ flex: '1 1 auto', minWidth: 0 }}>{a.title}</span>
+          {a.multi_team_progress && <MultiTeamProgressTag progress={a.multi_team_progress} compact />}
           {hasOverride && (
             <Tag color="gold" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>
               переоценка

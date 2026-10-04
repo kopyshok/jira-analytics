@@ -485,6 +485,29 @@ export interface EstimateCandidate {
  *  - by_epics_locked — инициатива нескольких команд: только по эпикам, саму не включить. */
 export type InPlanRole = 'regular' | 'inert' | 'by_epics' | 'by_epics_locked';
 
+/** Статус команды-участницы мультикомандной RFA: эпик команды в утверждённом
+ *  сценарии текущего или будущего квартала / эпик уже выполнен / эпик есть,
+ *  но не взят / эпика нет. «Взят» и «выполнен» засчитываются в K. */
+export type TeamTakeStatus = 'taken' | 'done' | 'not_taken' | 'no_epic';
+
+export interface MultiTeamTeamTake {
+  team: string;
+  status: TeamTakeStatus;
+  /** У «взят» — утверждённые сценарии текущего и будущих кварталов с эпиком;
+   *  у «выполнен» — последний утверждённый, где был эпик (или пусто). */
+  scenarios: { id: string; name: string; quarter_label: string }[];
+}
+
+/** «В работе у K из N» — у строки мультикомандной RFA и строк её эпиков. */
+export interface MultiTeamProgress {
+  taken: number;
+  total: number;
+  /** Команда строки и её статус; null — команда строки не участник. */
+  own_team: string | null;
+  own_status: TeamTakeStatus | null;
+  teams: MultiTeamTeamTake[];
+}
+
 export interface BacklogChild {
   id: string;            // backlog_item.id (нужен для PATCH /included)
   issue_id: string;
@@ -509,6 +532,7 @@ export interface BacklogChild {
   // Спорные оценки: роли, где поля Jira дают разные значения, и варианты по ним.
   disputed_roles?: PlanRole[];
   estimate_candidates?: Partial<Record<PlanRole, EstimateCandidate[]>>;
+  multi_team_progress?: MultiTeamProgress | null;
 }
 
 export interface BacklogItemResponse {
@@ -548,6 +572,8 @@ export interface BacklogItemResponse {
     team: string | null;
     is_multi_team: boolean;
   } | null;
+  /** Мультикомандная RFA или её эпик: сколько команд RFA уже взяли работу. */
+  multi_team_progress?: MultiTeamProgress | null;
   goals: string | null;
   quarter_label: string | null;
   // Вовлечённость, зафиксированная в фазе ресурсного плана (null — нет фиксации).
@@ -745,6 +771,8 @@ export interface AllocationResponse {
   has_children_in_backlog: boolean;
   /** Группа внутри команды. null — деления нет либо группа не определена. */
   subgroup_id?: string | null;
+  /** Эпик мультикомандной RFA: сколько команд RFA уже взяли работу. */
+  multi_team_progress?: MultiTeamProgress | null;
 }
 
 // === Scenario rules ===
