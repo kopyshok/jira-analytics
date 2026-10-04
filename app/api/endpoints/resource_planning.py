@@ -886,6 +886,7 @@ class ExternalBookingOut(BaseModel):
     employee_id: str
     employee_name: Optional[str] = None
     team: str
+    backlog_item_id: Optional[str] = None
     issue_key: Optional[str] = None
     title: str
     phase: str
@@ -2205,6 +2206,7 @@ def get_gantt(
                     employee_id=b.employee_id,
                     employee_name=names.get(b.employee_id),
                     team=b.team,
+                    backlog_item_id=b.backlog_item_id,
                     issue_key=b.issue_key,
                     title=b.title,
                     phase=b.phase,

@@ -160,8 +160,11 @@ def test_other_team_hours_show_which_reserve_they_eat(client, db_session):
         q = rows[p.id]["quarter"]
         assert q["reserve_use"] == expected
         assert q["reserve_items"] == {item.id: tech}
-    q = _rows(_gantt(client, plan.id))[s.id]["quarter"]
+    body = _gantt(client, plan.id)
+    q = _rows(body)[s.id]["quarter"]
     assert (q["reserve_use"], q["reserve_items"]) == ([], {})
+    # Задача брони — по ней подсказка дня находит вид работ.
+    assert {b["backlog_item_id"] for b in body["external_bookings"]} == {item.id}
 
 
 def test_task_day_takes_residue_after_involvement(client, db_session):
