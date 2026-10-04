@@ -7,6 +7,13 @@ export function stepPriority(current: number | null, dir: 1 | -1): number | null
   return Math.min(PRIORITY_MAX, Math.max(PRIORITY_MIN, current + dir));
 }
 
+/** Ввод числа руками: пустое или нечисло — прежнее значение (очистка не поддерживается), иначе в пределах 1..10. */
+export function parsePriorityInput(raw: string, previous: number | null): number | null {
+  const parsed = raw === '' ? NaN : parseInt(raw, 10);
+  if (isNaN(parsed)) return previous;
+  return Math.min(PRIORITY_MAX, Math.max(PRIORITY_MIN, parsed));
+}
+
 export function canStepPriority(current: number | null, dir: 1 | -1): boolean {
   if (current == null) return dir === 1;
   return dir === 1 ? current < PRIORITY_MAX : current > PRIORITY_MIN;

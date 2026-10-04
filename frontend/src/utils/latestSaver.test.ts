@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createLatestSaver } from './latestSaver';
-import { stepPriority, canStepPriority } from './priorityStep';
+import { stepPriority, canStepPriority, parsePriorityInput } from './priorityStep';
 
 const deferred = () => {
   let resolve!: () => void;
@@ -67,6 +67,14 @@ describe('priorityStep', () => {
     expect(stepPriority(null, -1)).toBeNull();
     expect(stepPriority(5, -1)).toBe(4);
     expect(stepPriority(1, -1)).toBe(1);
+  });
+  it('ручной ввод: пустое — прежнее значение, число — в пределах 1..10', () => {
+    expect(parsePriorityInput('', 5)).toBe(5);
+    expect(parsePriorityInput('', null)).toBeNull();
+    expect(parsePriorityInput('abc', 4)).toBe(4);
+    expect(parsePriorityInput('0', 4)).toBe(1);
+    expect(parsePriorityInput('99', 4)).toBe(10);
+    expect(parsePriorityInput('7', 4)).toBe(7);
   });
   it('доступность кнопок', () => {
     expect(canStepPriority(null, 1)).toBe(true);
