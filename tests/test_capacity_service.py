@@ -277,6 +277,41 @@ class TestTeamCapacity:
         assert len(results) == 1
         assert results[0].employee_name == "Bob"
 
+    def test_until_cuts_norm_absence_and_fact(self, db_session, employee, vacation_reason):
+        """``until`` — квартал по этот день: после него ни нормы, ни отсутствий, ни факта."""
+        from datetime import datetime
+
+        from app.models import Issue, Project, Worklog
+
+        db_session.add(Absence(
+            employee_id=employee.id, start_date=date(2026, 1, 8),
+            end_date=date(2026, 1, 14), reason_id=vacation_reason.id,
+        ))
+        project = Project(jira_project_id="p1", key="P", name="P")
+        db_session.add(project)
+        db_session.flush()
+        issue = Issue(
+            jira_issue_id="i1", key="P-1", project_id=project.id, summary="s",
+            issue_type="Task", status="Done",
+        )
+        db_session.add(issue)
+        db_session.flush()
+        for n, day in enumerate((5, 12)):
+            db_session.add(Worklog(
+                jira_worklog_id=f"w{n}", issue_id=issue.id, employee_id=employee.id,
+                started_at=datetime(2026, 1, day, 10), hours=8.0, time_spent_seconds=8 * 3600,
+            ))
+        db_session.flush()
+
+        [qc] = CapacityService(db_session).team_quarter_capacity(
+            2026, 1, employee_ids=[employee.id], until=date(2026, 1, 9),
+        )
+        jan, feb, mar = qc.months
+        # 1–2 и 5–9 января — 7 будней; отпуск 8–9 января — 2 из них.
+        assert (jan.norm_hours, jan.vacation_hours, jan.available_hours) == (56, 16, 40)
+        assert jan.fact_hours == 8
+        assert (feb.norm_hours, mar.norm_hours) == (0, 0)
+
 
 class TestHoursPerDayOverride:
     def test_six_hour_workday(self, db_session, employee):

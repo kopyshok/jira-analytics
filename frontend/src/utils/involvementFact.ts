@@ -53,7 +53,8 @@ export function monthLabel(month: number): string {
 /** Подсказка к «факт N%» в справочнике. */
 export function factHint(role: InvolvementFactRole | undefined, year: number, quarter: number): string {
   const period = formatQuarter(year, quarter);
-  if (!role || role.total.fact == null) return `За ${period} списаний нет`;
+  if (!role) return `${period} · нет сотрудников с этой ролью`;
+  if (role.total.fact == null) return `За ${period} списаний нет · ${role.people} чел.`;
   return `${period} · ${role.people} чел. · списано от нормы ${formatInvolvement(role.total.logged_of_norm)}`;
 }
 

@@ -154,6 +154,8 @@ def involvement_fact(
     team_list = [t.strip() for t in parse_teams_csv(teams) if t.strip()]
     if not team_list:
         raise HTTPException(status_code=422, detail="Не выбрана команда")
+    if (year is None) != (quarter is None):
+        raise HTTPException(status_code=422, detail="Год и квартал задаются вместе")
     if year is None or quarter is None:
         year, quarter = last_completed_quarter(date.today())
     facts = team_facts(db, team_list, year, quarter)
