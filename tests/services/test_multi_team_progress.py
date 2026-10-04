@@ -1,7 +1,9 @@
 """Кто из команд уже взял мультикомандную RFA в работу.
 
-«Взят» — эпик команды под RFA включён в утверждённый сценарий текущего или
-будущего квартала. Черновики, снятые галочки и прошлые кварталы не считаются.
+«Взят» — эпик команды под RFA включён в утверждённый сценарий своей команды
+текущего или будущего квартала. Черновики, снятые галочки, прошлые кварталы и
+сценарии чужой команды не считаются. «Выполнен» — эпик команды закрыт в Jira;
+тоже засчитывается. Листовые задачи (по правилам иерархии) — не эпики.
 """
 import json
 from datetime import date
@@ -9,8 +11,11 @@ from typing import Optional
 
 from sqlalchemy import event
 
-from app.models import BacklogItem, Issue, PlanningScenario, Project, ScenarioAllocation
+from app.models import (
+    BacklogItem, HierarchyRule, Issue, PlanningScenario, Project, ScenarioAllocation,
+)
 from app.services.multi_team_progress import (
+    DONE,
     NO_EPIC,
     NOT_TAKEN,
     TAKEN,
@@ -26,17 +31,19 @@ TODAY = date(2026, 10, 4)  # IV кв. 2026
 
 def _project(db) -> None:
     db.add(Project(id="p-1", key="RFA", jira_project_id="jp-1", name="RFA"))
+    db.add(Project(id="p-os", key="OS", jira_project_id="jp-os", name="OS"))
     db.flush()
 
 
 def _issue(
     db, key: str, *, team: Optional[str], parent: Optional[str] = None,
     participating: Optional[list[str]] = None, status: str = "Backlog",
-    issue_type: str = "Эпик",
+    issue_type: str = "Эпик", status_category: Optional[str] = None, project: str = "p-1",
 ) -> str:
     db.add(Issue(
         id=f"i-{key}", key=key, jira_issue_id=f"j-{key}", summary=key, issue_type=issue_type,
-        status=status, project_id="p-1", parent_id=f"i-{parent}" if parent else None,
+        status=status, status_category=status_category, project_id=project,
+        parent_id=f"i-{parent}" if parent else None,
         team=team, category="initiatives_rfa",
         participating_teams=json.dumps(participating, ensure_ascii=False) if participating else None,
     ))
@@ -66,6 +73,12 @@ def _include(db, sid: str, key: str, included: bool = True) -> None:
         scenario_id=sid, backlog_item_id=f"bi-{key}", included_flag=included, planned_hours=0,
     ))
     db.flush()
+
+
+def _epic(db, key: str, team: str, parent: str = "RFA-1", **kwargs) -> None:
+    """Эпик под RFA с элементом бэклога."""
+    _issue(db, key, team=team, parent=parent, **kwargs)
+    _backlog(db, key)
 
 
 def _rfa(db, key: str = "RFA-1", *, team: str = TEAM_A, participating=None) -> str:
@@ -300,5 +313,123 @@ def test_query_count_does_not_grow_with_rfas(db_session):
     db.commit()
     many = _count_queries(db, lambda: multi_team_progress(db, ids, today=TODAY))
 
-    assert one == many <= 3
+    assert one == many <= 4
     assert all(p.taken == 1 for p in multi_team_progress(db, ids, today=TODAY).values())
+
+
+def test_past_quarter_across_year_boundary(db_session):
+    """I кв. 2027: утверждённый IV кв. 2026 — уже прошлый, эпик не выполнен — не взят."""
+    db = db_session
+    _project(db)
+    rfa = _rfa(db)
+    _epic(db, "OS-A", TEAM_A)
+    _scenario(db, "s-a", team=TEAM_A, year=2026, quarter=4)
+    _include(db, "s-a", "OS-A")
+
+    progress = multi_team_progress(db, [rfa], today=date(2027, 2, 1))[rfa]
+
+    assert _statuses(progress)[TEAM_A] == NOT_TAKEN
+    assert progress.taken == 0
+
+
+def test_done_epic_counts_with_last_approved_quarter(db_session):
+    """Выполненный эпик засчитывается; в подсказке — последний утверждённый квартал,
+    где он был. Без утверждённого сценария — просто «выполнен»."""
+    db = db_session
+    _project(db)
+    rfa = _rfa(db)
+    _epic(db, "OS-A", TEAM_A, status="ГОТОВО", status_category="done")
+    _scenario(db, "s-a-q2", team=TEAM_A, year=2026, quarter=2, name="II кв.")
+    _include(db, "s-a-q2", "OS-A")
+    _scenario(db, "s-a-q3", team=TEAM_A, year=2026, quarter=3, name="III кв.")
+    _include(db, "s-a-q3", "OS-A")
+    _epic(db, "OS-B", TEAM_B, status="ГОТОВО", status_category="done")
+
+    progress = multi_team_progress(db, [rfa], today=TODAY)[rfa]
+
+    assert _statuses(progress) == {TEAM_A: DONE, TEAM_B: DONE, TEAM_C: NO_EPIC}
+    assert (progress.taken, progress.total) == (2, 3)
+    assert [s.label for s in progress.teams[0].scenarios] == ["3 кв. 2026"]
+    assert progress.teams[1].scenarios == []
+
+
+def test_epic_in_current_plan_wins_over_done(db_session):
+    """Один эпик команды выполнен, другой в плане IV кв. — команда «взяла» сейчас."""
+    db = db_session
+    _project(db)
+    rfa = _rfa(db)
+    _epic(db, "OS-A1", TEAM_A, status="ГОТОВО", status_category="done")
+    _epic(db, "OS-A2", TEAM_A)
+    _scenario(db, "s-a", team=TEAM_A, year=2026, quarter=4)
+    _include(db, "s-a", "OS-A2")
+
+    progress = multi_team_progress(db, [rfa], today=TODAY)[rfa]
+
+    assert _statuses(progress)[TEAM_A] == TAKEN
+
+
+def test_cancelled_done_epic_is_not_done(db_session):
+    """Отменённая задача тоже «закрыта» в Jira, но выполненной не считается."""
+    db = db_session
+    _project(db)
+    rfa = _rfa(db, participating=[TEAM_A, TEAM_B])
+    _epic(db, "OS-B", TEAM_B, status="Отменено", status_category="done")
+
+    progress = multi_team_progress(db, [rfa], today=TODAY)[rfa]
+
+    assert _statuses(progress)[TEAM_B] == NO_EPIC
+
+
+def test_done_leaf_task_is_not_an_epic(db_session):
+    """Листовая задача (правило иерархии «не контейнер») под RFA — не эпик:
+    её закрытие команду «выполнившей» не делает. Контейнер другого типа — эпик."""
+    db = db_session
+    _project(db)
+    db.add(HierarchyRule(
+        priority=100, project_key="OS", issue_type="Задача", require_no_parent=False,
+        require_parent=False, is_container=False, is_enabled=True,
+    ))
+    db.flush()
+    rfa = _rfa(db, participating=[TEAM_A, TEAM_B])
+    _epic(db, "OS-1", TEAM_A, project="p-os", issue_type="Задача",
+          status="ГОТОВО", status_category="done")
+    _epic(db, "ITL-1", TEAM_B, issue_type="ИТ-задача", status="Завершен", status_category="done")
+
+    progress = multi_team_progress(db, [rfa], today=TODAY)[rfa]
+
+    assert _statuses(progress) == {TEAM_A: NO_EPIC, TEAM_B: DONE}
+
+
+def test_scenario_of_other_team_does_not_count(db_session):
+    """Эпик переехал в Jira к команде Б, но утверждён в сценарии команды А — у Б не взят."""
+    db = db_session
+    _project(db)
+    rfa = _rfa(db, participating=[TEAM_A, TEAM_B])
+    _epic(db, "OS-B", TEAM_B)
+    _scenario(db, "s-a", team=TEAM_A, year=2026, quarter=4)
+    _include(db, "s-a", "OS-B")
+
+    progress = multi_team_progress(db, [rfa], today=TODAY)[rfa]
+
+    assert _statuses(progress) == {TEAM_A: NO_EPIC, TEAM_B: NOT_TAKEN}
+
+
+def test_nested_multi_team_row_shows_its_own_rfa(db_session):
+    """Мультикомандная задача внутри мультикомандной RFA: для RFA она эпик своей
+    команды, а её строка показывает свою плашку — по её собственным эпикам."""
+    db = db_session
+    _project(db)
+    rfa = _rfa(db, participating=[TEAM_A, TEAM_B])
+    inner = _issue(db, "ITL-1", team=TEAM_B, parent="RFA-1", issue_type="ИТ-задача",
+                   participating=[TEAM_B, TEAM_C])
+    _backlog(db, "ITL-1")
+    _scenario(db, "s-b", team=TEAM_B, year=2026, quarter=4)
+    _include(db, "s-b", "ITL-1")
+    _epic(db, "OS-C", TEAM_C, parent="ITL-1")
+
+    by_rfa = multi_team_progress(db, [rfa, inner], today=TODAY)
+
+    assert _statuses(by_rfa[rfa]) == {TEAM_A: NO_EPIC, TEAM_B: TAKEN}
+    assert _statuses(by_rfa[inner]) == {TEAM_B: NO_EPIC, TEAM_C: NOT_TAKEN}
+    row = row_progress(by_rfa, issue_id=inner, parent_id=rfa, team=TEAM_B)
+    assert row is not None and row.rfa is by_rfa[inner] and row.own_status == NO_EPIC
