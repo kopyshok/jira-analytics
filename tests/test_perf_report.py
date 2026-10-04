@@ -1,0 +1,144 @@
+"""Чтение замеров за период: узкие места, ряд для графика, медленные и вывод."""
+from datetime import datetime, timedelta
+
+import pytest
+
+from app.core.perf import HIST_SIZE, hist_index, p95_from_hist
+from app.models.perf import PerfMinute, PerfServerSnapshot, PerfSlowRequest
+from app.services.perf_report import overview, section_label, verdict
+
+NOW = datetime(2026, 10, 4, 12, 30)
+STUB_USER_ID = "00000000-0000-0000-0000-000000000000"
+
+
+def _minute(db, at, route, durations, *, method="GET", db_count=0, db_ms=0.0, errors=0):
+    hist = [0] * HIST_SIZE
+    for d in durations:
+        hist[hist_index(d)] += 1
+    db.add(PerfMinute(
+        minute=at, method=method, route=route, count=len(durations),
+        total_ms=float(sum(durations)), max_ms=float(max(durations)), errors_5xx=errors,
+        db_count=db_count, db_ms=db_ms, **{f"h{i}": n for i, n in enumerate(hist)},
+    ))
+
+
+def _snap(db, at, host, proc, cpu_count=4):
+    db.add(PerfServerSnapshot(
+        at=at, host_cpu_percent=host, host_memory_percent=50, process_cpu_percent=proc,
+        process_memory_mb=300, cpu_count=cpu_count, threads=20, db_pool_in_use=2,
+        db_pool_size=40, requests_in_flight=3,
+    ))
+
+
+def _slow(db, at, *, duration=3000.0, db_ms=0.0, cpu_ms=0.0, route="/api/v1/backlog/{item_id}",
+          user_id=None):
+    db.add(PerfSlowRequest(
+        at=at, method="GET", route=route, path="/api/v1/backlog/1", query="team=A",
+        status_code=200, duration_ms=duration, db_count=4, db_ms=db_ms, cpu_ms=cpu_ms,
+        user_id=user_id, top_queries=[{"ms": db_ms, "sql": "SELECT * FROM backlog_items"}],
+    ))
+
+
+@pytest.mark.parametrize("kw, expected", [
+    (dict(host_cpu=95, process_share=10, process_core=40, duration_ms=3000, db_ms=0, cpu_ms=0),
+     "other_load"),
+    (dict(host_cpu=40, process_share=10, process_core=40, duration_ms=3000, db_ms=2000, cpu_ms=0),
+     "database"),
+    (dict(host_cpu=40, process_share=10, process_core=40, duration_ms=3000, db_ms=0, cpu_ms=2700),
+     "our_code"),
+    (dict(host_cpu=40, process_share=25, process_core=95, duration_ms=3000, db_ms=0, cpu_ms=0),
+     "our_code"),
+    (dict(host_cpu=40, process_share=5, process_core=20, duration_ms=3000, db_ms=100, cpu_ms=100),
+     "waiting"),
+    (dict(host_cpu=None, process_share=None, process_core=None, duration_ms=3000, db_ms=0,
+          cpu_ms=0), "waiting"),
+])
+def test_verdict(kw, expected):
+    assert verdict(**kw) == expected
+
+
+def test_section_label_by_route():
+    assert section_label("/api/v1/backlog/{item_id}") == "Целевые задачи"
+    assert section_label("/api/v1/resource-planning/plans") == "Ресурсное планирование"
+    assert section_label("/api/v1/whatever") == "whatever"
+
+
+def test_bottlenecks_sum_rows_of_all_flushes_and_sort_by_total_time(db_session):
+    m = NOW - timedelta(minutes=10)
+    # Один шаблон пути, два сброса в одну минуту — строки суммируются.
+    _minute(db_session, m, "/api/v1/backlog/{item_id}", [100] * 10, db_count=20, db_ms=500)
+    _minute(db_session, m, "/api/v1/backlog/{item_id}", [100] * 9 + [900], db_count=20, db_ms=500,
+            errors=1)
+    _minute(db_session, m, "/api/v1/planning/scenarios", [5000])
+    # Вне периода «час» — не считается.
+    _minute(db_session, NOW - timedelta(hours=2), "/api/v1/planning/scenarios", [9000])
+    db_session.commit()
+
+    data = overview(db_session, "1h", now=NOW, slow_ms=2000, flush_seconds=60)
+
+    first, second = data["bottlenecks"]
+    assert first["route"] == "/api/v1/planning/scenarios"
+    assert first["calls"] == 1 and first["total_ms"] == pytest.approx(5000)
+    assert second["route"] == "/api/v1/backlog/{item_id}"
+    assert second["section"] == "Целевые задачи"
+    assert second["calls"] == 20
+    assert second["avg_ms"] == pytest.approx(140)
+    assert second["max_ms"] == pytest.approx(900)
+    assert second["errors_5xx"] == 1
+    assert second["db_avg_count"] == pytest.approx(2)
+    assert second["db_share"] == pytest.approx(1000 / 2800)
+    hist = [0] * HIST_SIZE
+    hist[hist_index(100)] = 19
+    hist[hist_index(900)] = 1
+    assert second["p95_ms"] == pytest.approx(p95_from_hist(hist, 900))
+    assert data["totals"]["requests"] == 21
+    assert data["totals"]["errors_5xx"] == 1
+
+
+def test_series_has_bucket_per_minute_with_load(db_session):
+    m = NOW - timedelta(minutes=5)
+    _minute(db_session, m, "/api/v1/backlog/{item_id}", [100, 200])
+    _snap(db_session, m + timedelta(seconds=30), host=60, proc=80, cpu_count=4)
+    db_session.commit()
+
+    data = overview(db_session, "1h", now=NOW, slow_ms=2000, flush_seconds=60)
+
+    assert data["bucket_minutes"] == 1
+    assert len(data["series"]) == 61
+    point = next(p for p in data["series"] if p["requests"])
+    assert point["t"].startswith("2026-10-04T12:25:00")
+    assert point["requests"] == 2
+    assert point["host_cpu"] == pytest.approx(60)
+    assert point["process_cpu"] == pytest.approx(20)  # 80% ядра из 4 ядер
+    empty = data["series"][0]
+    assert empty["requests"] == 0 and empty["p95_ms"] is None and empty["host_cpu"] is None
+
+
+def test_slow_requests_get_minute_load_and_verdict(db_session):
+    at = NOW - timedelta(minutes=3, seconds=20)
+    _snap(db_session, NOW - timedelta(minutes=3), host=95, proc=20, cpu_count=2)  # доля 10%
+    _slow(db_session, at, user_id=STUB_USER_ID)
+    _slow(db_session, NOW - timedelta(minutes=50), db_ms=2500)  # снимка рядом нет
+    db_session.commit()
+
+    data = overview(db_session, "1h", now=NOW, slow_ms=2000, flush_seconds=60)
+
+    first, second = data["slow"]
+    assert first["user"] == "Test User"
+    assert first["section"] == "Целевые задачи"
+    assert first["host_cpu"] == pytest.approx(95)
+    assert first["process_cpu"] == pytest.approx(10)
+    assert first["verdict"] == "other_load"
+    assert first["verdict_label"]
+    assert first["top_queries"][0]["sql"].startswith("SELECT")
+    assert second["host_cpu"] is None
+    assert second["verdict"] == "database"
+    assert data["verdicts"] == {"other_load": 1, "database": 1}
+    assert data["totals"]["slow"] == 2
+    bucket = next(p for p in data["series"] if p["slow"])
+    assert bucket["verdict"] in {"other_load", "database"}
+
+
+def test_period_validation():
+    with pytest.raises(ValueError):
+        overview(None, "2h", now=NOW, slow_ms=2000, flush_seconds=60)  # type: ignore[arg-type]
