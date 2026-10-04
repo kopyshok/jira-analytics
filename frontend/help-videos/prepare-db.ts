@@ -5,6 +5,8 @@ import { copyFileSync, existsSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+const ADMIN_EMAIL = 'admin@example.com'; // = admin.ts
+
 const dataDir = resolve(import.meta.dirname, '..', '..', 'data');
 const source = resolve(dataDir, 'demo.db');
 const target = resolve(dataDir, process.env.VIDEOS_RUN_DB ?? 'demo_run.db');
@@ -41,6 +43,15 @@ db.exec("DELETE FROM app_settings WHERE key = 'kpi_approval_enabled'");
 db.exec(
   "INSERT INTO app_settings (id, key, value, created_at, updated_at) " +
     "VALUES (lower(hex(randomblob(16))), 'kpi_approval_enabled', 'true', datetime('now'), datetime('now'))",
+);
+// Демо-администратор для роликов по настройкам (раздел виден только администратору):
+// копия демо-пользователя с ролью «администратор» и тем же паролем.
+const cols = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name);
+const pick = (c: string) =>
+  ({ id: 'lower(hex(randomblob(16)))', email: `'${ADMIN_EMAIL}'`, display_name: "'Демо Администратор'", role: "'admin'" })[c] ?? c;
+db.exec(`DELETE FROM users WHERE email = '${ADMIN_EMAIL}'`);
+db.exec(
+  `INSERT INTO users (${cols.join(', ')}) SELECT ${cols.map(pick).join(', ')} FROM users WHERE email = 'demo@example.com'`,
 );
 db.close();
 

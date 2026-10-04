@@ -248,11 +248,20 @@ export class Director {
     const silent = VOICE_ON ? `${OUT_DIR}${id}.silent.webm` : `${OUT_DIR}${id}.webm`;
     await video.saveAs(raw);
     try {
-      execFileSync('ffmpeg', [
-        '-y', '-loglevel', 'error', '-i', raw,
-        '-c:v', 'libvpx-vp9', '-crf', '48', '-b:v', '0', '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1', '-an',
-        silent,
-      ]);
+      // Сразу после записи файл иногда ещё держит система (антивирус, индексатор) — повторяем.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          execFileSync('ffmpeg', [
+            '-y', '-loglevel', 'error', '-i', raw,
+            '-c:v', 'libvpx-vp9', '-crf', '48', '-b:v', '0', '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1', '-an',
+            silent,
+          ]);
+          break;
+        } catch (e) {
+          if (attempt >= 3) throw e;
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      }
       if (VOICE_ON) {
         // Фразы с моментами — рядом с кэшем голоса: музыку и громкость можно пересвести без пересъёмки.
         writeFileSync(`${VOICE_DIR}${id}.cues.json`, JSON.stringify(this.cues, null, 1));
@@ -271,6 +280,15 @@ export class Director {
     await this.waitCaptionMin();
     this.captionAt = Date.now();
     this.voice(text, this.captionAt - this.startedAt);
+  }
+
+  /**
+   * Дождаться, пока диктор договорит текущую фразу (без голоса — пока подпись провисит
+   * минимум). Ставить перед действием, которое уводит кадр от того, о чём говорится:
+   * переход на другую страницу, закрытие окна, смена списка.
+   */
+  async waitVoice(): Promise<void> {
+    await this.waitCaptionMin();
   }
 
   /** Дождаться, пока диктор договорит последнюю фразу, и вернуть все фразы с моментами. */
