@@ -52,12 +52,29 @@ def sanitize_query(raw: bytes) -> str:
     return _no_nul(text)[:QUERY_MAX_CHARS]
 
 
+def _route_template(scope: Scope, route: Any) -> str:
+    """Полный шаблон пути маршрута: `/api/v1/planning/scenarios/{scenario_id}`.
+
+    Старый FastAPI копировал маршруты подключённого роутера с полным путём; новый
+    (0.14x) не копирует — у маршрута путь относительно роутера (у `@router.get("")`
+    пустой), префикс есть только в адресе запроса. Префикс берём из адреса: отрезаем
+    от него относительный путь с подставленными параметрами.
+    """
+    fmt: str = getattr(route, "path_format", None) or getattr(route, "path", None) or ""
+    params = scope.get("path_params") or {}
+    path: str = scope.get("path", "")
+    rendered = _PATH_PARAM.sub(lambda m: str(params.get(m.group(1), m.group(0))), fmt)
+    if path.endswith(rendered):
+        return path[: len(path) - len(rendered)] + fmt
+    return fmt
+
+
 def _safe_path(scope: Scope, route: Any) -> str:
     """Адрес запроса; параметры пути с секретными именами (`/desk/{token}`) — звёздочками."""
     params = scope.get("path_params") or {}
     path = scope.get("path", "")
     if any(_SECRET_PARAM.search(name) for name in params):
-        fmt: str = getattr(route, "path_format", None) or getattr(route, "path", "") or ""
+        fmt = _route_template(scope, route)
         path = _PATH_PARAM.sub(
             lambda m: "***" if _SECRET_PARAM.search(m.group(1))
             else str(params.get(m.group(1), m.group(0))),
@@ -143,7 +160,7 @@ class PerfMiddleware:
         self, scope: Scope, state: dict[str, Any], t0: float, cpu0: float, stats: RequestStats,
     ) -> None:
         route = scope.get("route")
-        template = getattr(route, "path", None)
+        template = _route_template(scope, route) if route is not None else None
         # Метод не из маршрута (405 на частичном совпадении, любые «UNSUBSCRIBE») —
         # не наш запрос, и произвольная строка не должна попасть в таблицу.
         if not template or scope["method"] not in (getattr(route, "methods", None) or ()):

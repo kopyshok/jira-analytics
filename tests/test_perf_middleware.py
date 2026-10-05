@@ -1,6 +1,7 @@
 """Промежуточный слой замеров: что и как попадает в сборщик."""
 import time
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 from fastapi import BackgroundTasks, FastAPI
@@ -11,7 +12,7 @@ from sqlalchemy.engine import Engine
 
 from app.core import perf
 from app.core.perf import PerfCollector, install_query_listeners
-from app.core.perf_middleware import PerfMiddleware, sanitize_query
+from app.core.perf_middleware import PerfMiddleware, _route_template, sanitize_query
 
 
 @pytest.fixture(autouse=True)
@@ -211,6 +212,22 @@ def test_failed_background_task_keeps_sent_status():
     _app(c).get("/api/v1/background-boom")
     [agg] = c.drain()[0].values()
     assert agg.errors_5xx == 0
+
+
+@pytest.mark.parametrize(
+    ("route_path", "path", "params", "expected"),
+    [
+        # Новый FastAPI: путь маршрута — относительно роутера, префикс только в адресе.
+        ("/scenarios/{scenario_id}/resource", "/api/v1/planning/scenarios/abc/resource",
+         {"scenario_id": "abc"}, "/api/v1/planning/scenarios/{scenario_id}/resource"),
+        ("", "/api/v1/admin/errors", {}, "/api/v1/admin/errors"),
+        # Старый FastAPI: у маршрута уже полный путь.
+        ("/api/v1/desk/{token}", "/api/v1/desk/xyz", {"token": "xyz"}, "/api/v1/desk/{token}"),
+    ],
+)
+def test_route_template_full_path_for_relative_routes(route_path, path, params, expected):
+    route = SimpleNamespace(path=route_path, path_format=route_path)
+    assert _route_template({"path": path, "path_params": params}, route) == expected
 
 
 def test_real_app_measures_api_routes(testclient_db_session):
