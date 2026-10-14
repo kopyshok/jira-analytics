@@ -24,6 +24,7 @@ from app.services.subgroup_filter import (
 )
 from app.services.team_membership import members_on
 from app.services.sync_service import SyncService
+from app.services.jira_migration.state import ensure_sync_allowed
 
 router = APIRouter()
 
@@ -249,6 +250,7 @@ async def refresh_issues(
     Полного синка ради десятка строк ждать незачем: тимлид жмёт кнопку и
     видит свежие статусы, оценки, спринт и релиз по видимым задачам.
     """
+    ensure_sync_allowed(db)
     keys = list(dict.fromkeys(k.strip() for k in payload.keys if k.strip()))
     if not keys:
         return {"matched": 0, "total": 0}

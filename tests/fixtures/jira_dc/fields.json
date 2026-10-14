@@ -1,0 +1,4834 @@
+[
+  {
+    "id": "customfield_11040",
+    "name": "Оценка IOS (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11040]",
+      "Оценка IOS (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11040
+    }
+  },
+  {
+    "id": "customfield_11041",
+    "name": "Оценка ML Ops",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11041]",
+      "Оценка ML Ops"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11041
+    }
+  },
+  {
+    "id": "customfield_11162",
+    "name": "Участвующие команды",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11162]",
+      "Участвующие команды"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+      "customId": 11162
+    }
+  },
+  {
+    "id": "customfield_11042",
+    "name": "Оценка QA (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11042]",
+      "Оценка QA (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11042
+    }
+  },
+  {
+    "id": "customfield_11164",
+    "name": "Факт цели, %",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11164]",
+      "Факт цели, %"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11164
+    }
+  },
+  {
+    "id": "customfield_11044",
+    "name": "Оценка SA/PM (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11044]",
+      "Оценка SA/PM (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11044
+    }
+  },
+  {
+    "id": "customfield_11165",
+    "name": "Фактические трудозатраты",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11165]",
+      "Фактические трудозатраты"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11165
+    }
+  },
+  {
+    "id": "customfield_11045",
+    "name": "Оценка Аналитика",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11045]",
+      "Оценка Аналитика"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11045
+    }
+  },
+  {
+    "id": "customfield_11046",
+    "name": "Оценка задачи",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11046]",
+      "Оценка задачи"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11046
+    }
+  },
+  {
+    "id": "resolution",
+    "name": "Решение",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "resolution"
+    ],
+    "schema": {
+      "type": "resolution",
+      "system": "resolution"
+    }
+  },
+  {
+    "id": "customfield_10871",
+    "name": "Анализ (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10871]",
+      "Анализ (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10871
+    }
+  },
+  {
+    "id": "customfield_11047",
+    "name": "Оценка заказчика - качество",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11047]",
+      "Оценка заказчика - качество"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 11047
+    }
+  },
+  {
+    "id": "customfield_11168",
+    "name": "Формат инициативы",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11168]",
+      "Формат инициативы"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11168
+    }
+  },
+  {
+    "id": "customfield_11048",
+    "name": "Оценка заказчика - качество (1-5)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11048]",
+      "Оценка заказчика - качество (1-5)"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11048
+    }
+  },
+  {
+    "id": "customfield_11169",
+    "name": "Формат обучения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11169]",
+      "Формат обучения"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+      "customId": 11169
+    }
+  },
+  {
+    "id": "customfield_10873",
+    "name": "Бизнес-влияние",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10873]",
+      "Бизнес-влияние"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10873
+    }
+  },
+  {
+    "id": "customfield_11049",
+    "name": "Оценка заказчика - результат",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11049]",
+      "Оценка заказчика - результат"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 11049
+    }
+  },
+  {
+    "id": "customfield_10863",
+    "name": "TeamSTE",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10863]",
+      "TeamSTE"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10863
+    }
+  },
+  {
+    "id": "customfield_11039",
+    "name": "Оценка Front (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11039]",
+      "Оценка Front (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11039
+    }
+  },
+  {
+    "id": "customfield_10985",
+    "name": "Метрика",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10985]",
+      "Метрика"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+      "customId": 10985
+    }
+  },
+  {
+    "id": "customfield_10986",
+    "name": "Метрика для оценки эффективности проекта",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10986]",
+      "Метрика для оценки эффективности проекта"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10986
+    }
+  },
+  {
+    "id": "customfield_10866",
+    "name": "Update AQA",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10866]",
+      "Update AQA"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes",
+      "customId": 10866
+    }
+  },
+  {
+    "id": "customfield_10987",
+    "name": "Наблюдатели",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10987]",
+      "Наблюдатели"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker",
+      "customId": 10987
+    }
+  },
+  {
+    "id": "lastViewed",
+    "name": "Последний просмотр",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [
+      "lastViewed"
+    ],
+    "schema": {
+      "type": "datetime",
+      "system": "lastViewed"
+    }
+  },
+  {
+    "id": "customfield_11150",
+    "name": "Тип изменения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11150]",
+      "Тип изменения"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11150
+    }
+  },
+  {
+    "id": "customfield_11030",
+    "name": "Ответственный QA",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11030]",
+      "Ответственный QA"
+    ],
+    "schema": {
+      "type": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:userpicker",
+      "customId": 11030
+    }
+  },
+  {
+    "id": "customfield_11151",
+    "name": "Тип метрики",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11151]",
+      "Тип метрики"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11151
+    }
+  },
+  {
+    "id": "customfield_11152",
+    "name": "Тип обучения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11152]",
+      "Тип обучения"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11152
+    }
+  },
+  {
+    "id": "customfield_11153",
+    "name": "Тип хранения ВМ",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11153]",
+      "Тип хранения ВМ"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11153
+    }
+  },
+  {
+    "id": "customfield_11154",
+    "name": "Требует согласования работ с ТЦ",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11154]",
+      "Требует согласования работ с ТЦ"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11154
+    }
+  },
+  {
+    "id": "customfield_11034",
+    "name": "Оценка 1С (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11034]",
+      "Оценка 1С (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11034
+    }
+  },
+  {
+    "id": "customfield_11155",
+    "name": "Требуется ли создание нового сегмента сети",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11155]",
+      "Требуется ли создание нового сегмента сети"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11155
+    }
+  },
+  {
+    "id": "customfield_11035",
+    "name": "Оценка AND (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11035]",
+      "Оценка AND (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11035
+    }
+  },
+  {
+    "id": "customfield_11156",
+    "name": "Требуются ли доп. ресурсы/новый сервис",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11156]",
+      "Требуются ли доп. ресурсы/новый сервис"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11156
+    }
+  },
+  {
+    "id": "customfield_11036",
+    "name": "Оценка Back (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11036]",
+      "Оценка Back (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11036
+    }
+  },
+  {
+    "id": "customfield_11037",
+    "name": "Оценка DS",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11037]",
+      "Оценка DS"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11037
+    }
+  },
+  {
+    "id": "customfield_10620",
+    "name": "End Date",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10620]",
+      "End Date"
+    ],
+    "schema": {
+      "type": "datetime",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datetime",
+      "customId": 10620
+    }
+  },
+  {
+    "id": "labels",
+    "name": "Метки",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "labels"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "string",
+      "system": "labels"
+    }
+  },
+  {
+    "id": "customfield_11700",
+    "name": "Чеклист",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11700]",
+      "Чеклист"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "checklist-item",
+      "custom": "com.okapya.jira.checklist:checklist",
+      "customId": 11700
+    }
+  },
+  {
+    "id": "customfield_11149",
+    "name": "Тип затрат",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11149]",
+      "Тип затрат"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11149
+    }
+  },
+  {
+    "id": "customfield_10853",
+    "name": "Root cause summary",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10853]",
+      "Root cause summary"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10853
+    }
+  },
+  {
+    "id": "customfield_10854",
+    "name": "SA/PM est (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10854]",
+      "SA/PM est (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10854
+    }
+  },
+  {
+    "id": "customfield_10975",
+    "name": "Корректировка C-time",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10975]",
+      "Корректировка C-time"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10975
+    }
+  },
+  {
+    "id": "customfield_10855",
+    "name": "SA/PM spent (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10855]",
+      "SA/PM spent (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10855
+    }
+  },
+  {
+    "id": "customfield_10976",
+    "name": "Коэффициент",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10976]",
+      "Коэффициент"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10976
+    }
+  },
+  {
+    "id": "aggregatetimeoriginalestimate",
+    "name": "Суммарная первоначальная оценка",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [],
+    "schema": {
+      "type": "number",
+      "system": "aggregatetimeoriginalestimate"
+    }
+  },
+  {
+    "id": "customfield_10856",
+    "name": "Service",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10856]",
+      "Service"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+      "customId": 10856
+    }
+  },
+  {
+    "id": "customfield_10977",
+    "name": "Краткое описание изменений",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10977]",
+      "Краткое описание изменений"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 10977
+    }
+  },
+  {
+    "id": "customfield_10857",
+    "name": "Service closure",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10857]",
+      "Service closure"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10857
+    }
+  },
+  {
+    "id": "customfield_10979",
+    "name": "Критичность",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10979]",
+      "Критичность"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10979
+    }
+  },
+  {
+    "id": "issuelinks",
+    "name": "Связанные задачи",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "array",
+      "items": "issuelinks",
+      "system": "issuelinks"
+    }
+  },
+  {
+    "id": "assignee",
+    "name": "Исполнитель",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "assignee"
+    ],
+    "schema": {
+      "type": "user",
+      "system": "assignee"
+    }
+  },
+  {
+    "id": "components",
+    "name": "Компоненты",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "component"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "component",
+      "system": "components"
+    }
+  },
+  {
+    "id": "customfield_11140",
+    "name": "Тестирование (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11140]",
+      "Тестирование (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11140
+    }
+  },
+  {
+    "id": "customfield_11142",
+    "name": "Тестировщик",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11142]",
+      "Тестировщик"
+    ],
+    "schema": {
+      "type": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:userpicker",
+      "customId": 11142
+    }
+  },
+  {
+    "id": "customfield_11022",
+    "name": "Описание решения (To Be)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11022]",
+      "Описание решения (To Be)"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11022
+    }
+  },
+  {
+    "id": "customfield_11143",
+    "name": "Тестовый стенд",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11143]",
+      "Тестовый стенд"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11143
+    }
+  },
+  {
+    "id": "customfield_11023",
+    "name": "Описание текущего поведения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11023]",
+      "Описание текущего поведения"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11023
+    }
+  },
+  {
+    "id": "customfield_11144",
+    "name": "Технические особенности",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11144]",
+      "Технические особенности"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes",
+      "customId": 11144
+    }
+  },
+  {
+    "id": "customfield_11145",
+    "name": "Тип",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11145]",
+      "Тип"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11145
+    }
+  },
+  {
+    "id": "customfield_10970",
+    "name": "Конверсия",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10970]",
+      "Конверсия"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10970
+    }
+  },
+  {
+    "id": "customfield_11146",
+    "name": "Тип Change",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11146]",
+      "Тип Change"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11146
+    }
+  },
+  {
+    "id": "customfield_11147",
+    "name": "Тип действия с витриной",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11147]",
+      "Тип действия с витриной"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11147
+    }
+  },
+  {
+    "id": "customfield_10851",
+    "name": "ROIxC",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10851]",
+      "ROIxC"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10851
+    }
+  },
+  {
+    "id": "customfield_10972",
+    "name": "Конфигурация 1С",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10972]",
+      "Конфигурация 1С"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes",
+      "customId": 10972
+    }
+  },
+  {
+    "id": "customfield_11027",
+    "name": "Опрос после выполнения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11027]",
+      "Опрос после выполнения"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11027
+    }
+  },
+  {
+    "id": "customfield_11148",
+    "name": "Тип запроса",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11148]",
+      "Тип запроса"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes",
+      "customId": 11148
+    }
+  },
+  {
+    "id": "customfield_10962",
+    "name": "Команда инициатор",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10962]",
+      "Команда инициатор"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10962
+    }
+  },
+  {
+    "id": "customfield_10600",
+    "name": "Account",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "Account",
+      "cf[10600]"
+    ],
+    "schema": {
+      "type": "account",
+      "custom": "com.tempoplugin.tempo-accounts:accounts.customfield",
+      "customId": 10600
+    }
+  },
+  {
+    "id": "customfield_10842",
+    "name": "Production Deploy Time",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10842]",
+      "Production Deploy Time"
+    ],
+    "schema": {
+      "type": "datetime",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datetime",
+      "customId": 10842
+    }
+  },
+  {
+    "id": "customfield_10963",
+    "name": "Команда устранения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10963]",
+      "Команда устранения"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10963
+    }
+  },
+  {
+    "id": "customfield_11018",
+    "name": "Окружение",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11018]",
+      "Окружение"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11018
+    }
+  },
+  {
+    "id": "customfield_10843",
+    "name": "QA est (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10843]",
+      "QA est (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10843
+    }
+  },
+  {
+    "id": "customfield_10601",
+    "name": "Team (Tempo)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10601]",
+      "Team (Tempo)"
+    ],
+    "schema": {
+      "type": "team",
+      "custom": "com.tempoplugin.tempo-teams:team.customfield",
+      "customId": 10601
+    }
+  },
+  {
+    "id": "customfield_10844",
+    "name": "Qa notes",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10844]",
+      "Qa notes"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 10844
+    }
+  },
+  {
+    "id": "customfield_10602",
+    "name": "Роль в команде",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10602]",
+      "Роль в команде"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.tempoplugin.tempo-teams:team.role.customfield",
+      "customId": 10602
+    }
+  },
+  {
+    "id": "customfield_10845",
+    "name": "QA spent (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10845]",
+      "QA spent (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10845
+    }
+  },
+  {
+    "id": "customfield_10603",
+    "name": "Итерация",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10603]",
+      "Итерация"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.tempoplugin.tempo-plan-core:tp.iteration.customfield",
+      "customId": 10603
+    }
+  },
+  {
+    "id": "customfield_10966",
+    "name": "Комментарий к статусу",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10966]",
+      "Комментарий к статусу"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 10966
+    }
+  },
+  {
+    "id": "customfield_10967",
+    "name": "Комментарий от Заказчика",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10967]",
+      "Комментарий от Заказчика"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 10967
+    }
+  },
+  {
+    "id": "customfield_10847",
+    "name": "Release Coordinator",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10847]",
+      "Release Coordinator"
+    ],
+    "schema": {
+      "type": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:userpicker",
+      "customId": 10847
+    }
+  },
+  {
+    "id": "customfield_10848",
+    "name": "Release notes",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10848]",
+      "Release notes"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 10848
+    }
+  },
+  {
+    "id": "customfield_10969",
+    "name": "Компании",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10969]",
+      "Компании"
+    ],
+    "schema": {
+      "type": "option-with-child",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:cascadingselect",
+      "customId": 10969
+    }
+  },
+  {
+    "id": "customfield_10849",
+    "name": "RFC Сategory",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10849]",
+      "RFC Сategory"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10849
+    }
+  },
+  {
+    "id": "subtasks",
+    "name": "Подзадачи",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [
+      "subtasks"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "issuelinks",
+      "system": "subtasks"
+    }
+  },
+  {
+    "id": "customfield_11010",
+    "name": "Обоснование релиза",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11010]",
+      "Обоснование релиза"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11010
+    }
+  },
+  {
+    "id": "reporter",
+    "name": "Автор",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "reporter"
+    ],
+    "schema": {
+      "type": "user",
+      "system": "reporter"
+    }
+  },
+  {
+    "id": "customfield_11012",
+    "name": "Объект метаданных",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11012]",
+      "Объект метаданных"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11012
+    }
+  },
+  {
+    "id": "customfield_11133",
+    "name": "Стейкхолдер",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11133]",
+      "Стейкхолдер"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11133
+    }
+  },
+  {
+    "id": "customfield_11013",
+    "name": "Ожидаемый результат",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11013]",
+      "Ожидаемый результат"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 11013
+    }
+  },
+  {
+    "id": "customfield_11134",
+    "name": "Стейкхолдеры",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11134]",
+      "Стейкхолдеры"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+      "customId": 11134
+    }
+  },
+  {
+    "id": "customfield_10960",
+    "name": "Кол-во ракурсов",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10960]",
+      "Кол-во ракурсов"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 10960
+    }
+  },
+  {
+    "id": "customfield_11136",
+    "name": "Стрим",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11136]",
+      "Стрим"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11136
+    }
+  },
+  {
+    "id": "customfield_11016",
+    "name": "Ожидаемый эффект за год (руб)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11016]",
+      "Ожидаемый эффект за год (руб)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11016
+    }
+  },
+  {
+    "id": "customfield_10951",
+    "name": "Какой уровень подготовки у аудитории по данной теме?",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10951]",
+      "Какой уровень подготовки у аудитории по данной теме?"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10951
+    }
+  },
+  {
+    "id": "customfield_11006",
+    "name": "Номер обращения в 1C",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11006]",
+      "Номер обращения в 1C"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 11006
+    }
+  },
+  {
+    "id": "customfield_10710",
+    "name": "Длительность проекта, дн",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10710
+    }
+  },
+  {
+    "id": "customfield_10832",
+    "name": "Known problems",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10832]",
+      "Known problems"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10832
+    }
+  },
+  {
+    "id": "customfield_10711",
+    "name": "Длительность запуска, дн",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10711
+    }
+  },
+  {
+    "id": "customfield_11008",
+    "name": "Облако",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11008]",
+      "Облако"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11008
+    }
+  },
+  {
+    "id": "customfield_10833",
+    "name": "Migration Required",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10833]",
+      "Migration Required"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10833
+    }
+  },
+  {
+    "id": "customfield_10712",
+    "name": "Длительность проекта, мес",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10712
+    }
+  },
+  {
+    "id": "customfield_10954",
+    "name": "Квартал",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10954]",
+      "Квартал"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10954
+    }
+  },
+  {
+    "id": "customfield_10955",
+    "name": "Квартальный приоритет",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10955]",
+      "Квартальный приоритет"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10955
+    }
+  },
+  {
+    "id": "customfield_10713",
+    "name": "Финансовые риски",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10713
+    }
+  },
+  {
+    "id": "customfield_10956",
+    "name": "Кейс ⮑ 🔀 MAIN FLOW",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10956]",
+      "Кейс ⮑ 🔀 MAIN FLOW"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10956
+    }
+  },
+  {
+    "id": "customfield_10836",
+    "name": "Order delay",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10836]",
+      "Order delay"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10836
+    }
+  },
+  {
+    "id": "customfield_10837",
+    "name": "Order loss",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10837]",
+      "Order loss"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10837
+    }
+  },
+  {
+    "id": "customfield_10958",
+    "name": "Классификация работ",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10958]",
+      "Классификация работ"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10958
+    }
+  },
+  {
+    "id": "customfield_10838",
+    "name": "Platform",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10838]",
+      "Platform"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10838
+    }
+  },
+  {
+    "id": "customfield_10959",
+    "name": "Кол-во переносов срока исполнения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10959]",
+      "Кол-во переносов срока исполнения"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10959
+    }
+  },
+  {
+    "id": "progress",
+    "name": "Прогресс",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [
+      "progress"
+    ],
+    "schema": {
+      "type": "progress",
+      "system": "progress"
+    }
+  },
+  {
+    "id": "votes",
+    "name": "Голоса",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [
+      "votes"
+    ],
+    "schema": {
+      "type": "votes",
+      "system": "votes"
+    }
+  },
+  {
+    "id": "worklog",
+    "name": "Сделать запись о работе",
+    "custom": false,
+    "orderable": true,
+    "navigable": false,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "array",
+      "items": "worklog",
+      "system": "worklog"
+    }
+  },
+  {
+    "id": "archivedby",
+    "name": "Кто добавил в архив",
+    "custom": false,
+    "orderable": true,
+    "navigable": false,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "user",
+      "system": "archivedby"
+    }
+  },
+  {
+    "id": "issuetype",
+    "name": "Тип задачи",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "issuetype",
+      "type"
+    ],
+    "schema": {
+      "type": "issuetype",
+      "system": "issuetype"
+    }
+  },
+  {
+    "id": "project",
+    "name": "Проект",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "project"
+    ],
+    "schema": {
+      "type": "project",
+      "system": "project"
+    }
+  },
+  {
+    "id": "customfield_11120",
+    "name": "Соисполнители",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11120]",
+      "Соисполнители"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker",
+      "customId": 11120
+    }
+  },
+  {
+    "id": "customfield_11000",
+    "name": "Необходима ли постановка на мониторинг",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11000]",
+      "Необходима ли постановка на мониторинг"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11000
+    }
+  },
+  {
+    "id": "customfield_11001",
+    "name": "Необходимо ли резервное копирование",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11001]",
+      "Необходимо ли резервное копирование"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11001
+    }
+  },
+  {
+    "id": "customfield_11003",
+    "name": "Нефинансовые риски",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11003]",
+      "Нефинансовые риски"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+      "customId": 11003
+    }
+  },
+  {
+    "id": "customfield_11125",
+    "name": "Срок исполнения согласован",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11125]",
+      "Срок исполнения согласован"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11125
+    }
+  },
+  {
+    "id": "customfield_11126",
+    "name": "Срок хранения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11126]",
+      "Срок хранения"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11126
+    }
+  },
+  {
+    "id": "customfield_10940",
+    "name": "Источник данных",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10940]",
+      "Источник данных"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10940
+    }
+  },
+  {
+    "id": "customfield_11116",
+    "name": "Системы",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11116]",
+      "Системы"
+    ],
+    "schema": {
+      "type": "option-with-child",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:cascadingselect",
+      "customId": 11116
+    }
+  },
+  {
+    "id": "customfield_10820",
+    "name": "DevOps Responsible",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10820]",
+      "DevOps Responsible"
+    ],
+    "schema": {
+      "type": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:userpicker",
+      "customId": 10820
+    }
+  },
+  {
+    "id": "customfield_10700",
+    "name": "Длительность разработки, дн",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10700
+    }
+  },
+  {
+    "id": "customfield_10942",
+    "name": "Итог KPI, %",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10942]",
+      "Итог KPI, %"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10942
+    }
+  },
+  {
+    "id": "customfield_11118",
+    "name": "Согласование",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11118]",
+      "Согласование"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11118
+    }
+  },
+  {
+    "id": "customfield_10943",
+    "name": "Итоговый результат",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10943]",
+      "Итоговый результат"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10943
+    }
+  },
+  {
+    "id": "customfield_10701",
+    "name": "Окупаемость проекта, год",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10701
+    }
+  },
+  {
+    "id": "customfield_11119",
+    "name": "Согласующие",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11119]",
+      "Согласующие"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker",
+      "customId": 11119
+    }
+  },
+  {
+    "id": "customfield_10944",
+    "name": "Как часто обновлять данные в отчете?",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10944]",
+      "Как часто обновлять данные в отчете?"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10944
+    }
+  },
+  {
+    "id": "customfield_10702",
+    "name": "Экономический эффект, год",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10702
+    }
+  },
+  {
+    "id": "customfield_10703",
+    "name": "Экономия в год",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10703
+    }
+  },
+  {
+    "id": "customfield_10704",
+    "name": "Стоимость разработки",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10704
+    }
+  },
+  {
+    "id": "resolutiondate",
+    "name": "Дата решения",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "resolutiondate",
+      "resolved"
+    ],
+    "schema": {
+      "type": "datetime",
+      "system": "resolutiondate"
+    }
+  },
+  {
+    "id": "customfield_10705",
+    "name": "Длительность анализа, дн",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10705
+    }
+  },
+  {
+    "id": "customfield_10706",
+    "name": "Incident detect duration",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10706]",
+      "Incident detect duration"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10706
+    }
+  },
+  {
+    "id": "customfield_10707",
+    "name": "Итого часов на реализацию",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10707
+    }
+  },
+  {
+    "id": "customfield_10949",
+    "name": "Какие фильтры должны быть доступны в отчете",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10949]",
+      "Какие фильтры должны быть доступны в отчете"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes",
+      "customId": 10949
+    }
+  },
+  {
+    "id": "customfield_10708",
+    "name": "Экономия/перерасход",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10708
+    }
+  },
+  {
+    "id": "customfield_10709",
+    "name": "Длительность тестирования, дн",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:scripted-field",
+      "customId": 10709
+    }
+  },
+  {
+    "id": "watches",
+    "name": "Наблюдатели",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [
+      "watchers"
+    ],
+    "schema": {
+      "type": "watches",
+      "system": "watches"
+    }
+  },
+  {
+    "id": "customfield_11105",
+    "name": "Решение",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11105]",
+      "Решение"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11105
+    }
+  },
+  {
+    "id": "customfield_11106",
+    "name": "Решение STE",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11106]",
+      "Решение STE"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11106
+    }
+  },
+  {
+    "id": "customfield_11107",
+    "name": "Решение заказчика",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11107]",
+      "Решение заказчика"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11107
+    }
+  },
+  {
+    "id": "customfield_10932",
+    "name": "Заказчик (user)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10932]",
+      "Заказчик (user)"
+    ],
+    "schema": {
+      "type": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:userpicker",
+      "customId": 10932
+    }
+  },
+  {
+    "id": "customfield_11109",
+    "name": "Риски и допущения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11109]",
+      "Риски и допущения"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11109
+    }
+  },
+  {
+    "id": "customfield_10934",
+    "name": "Затраты на реализацию",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10934]",
+      "Затраты на реализацию"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10934
+    }
+  },
+  {
+    "id": "customfield_10937",
+    "name": "Инициатор обращения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10937]",
+      "Инициатор обращения"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 10937
+    }
+  },
+  {
+    "id": "customfield_10818",
+    "name": "DEV est (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10818]",
+      "DEV est (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10818
+    }
+  },
+  {
+    "id": "customfield_10939",
+    "name": "Исполнитель_SL",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10939]",
+      "Исполнитель_SL"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10939
+    }
+  },
+  {
+    "id": "customfield_10819",
+    "name": "DEV spent (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10819]",
+      "DEV spent (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10819
+    }
+  },
+  {
+    "id": "updated",
+    "name": "Обновлено",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "updated",
+      "updatedDate"
+    ],
+    "schema": {
+      "type": "datetime",
+      "system": "updated"
+    }
+  },
+  {
+    "id": "timeoriginalestimate",
+    "name": "Первоначальная оценка",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [
+      "originalEstimate",
+      "timeoriginalestimate"
+    ],
+    "schema": {
+      "type": "number",
+      "system": "timeoriginalestimate"
+    }
+  },
+  {
+    "id": "description",
+    "name": "Описание",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "description"
+    ],
+    "schema": {
+      "type": "string",
+      "system": "description"
+    }
+  },
+  {
+    "id": "customfield_11342",
+    "name": "Тип кадрового события",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11342]",
+      "Тип кадрового события"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11342
+    }
+  },
+  {
+    "id": "customfield_11100",
+    "name": "Рассматриваем аналог?",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11100]",
+      "Рассматриваем аналог?"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11100
+    }
+  },
+  {
+    "id": "customfield_11341",
+    "name": "Статус заявки на переработку",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11341]",
+      "Статус заявки на переработку"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11341
+    }
+  },
+  {
+    "id": "customfield_11101",
+    "name": "Реализация проверена руководителем",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11101]",
+      "Реализация проверена руководителем"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11101
+    }
+  },
+  {
+    "id": "customfield_11102",
+    "name": "Результат выполнения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11102]",
+      "Результат выполнения"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11102
+    }
+  },
+  {
+    "id": "customfield_11343",
+    "name": "Тип переработки",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11343]",
+      "Тип переработки"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11343
+    }
+  },
+  {
+    "id": "customfield_11103",
+    "name": "Резюме",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11103]",
+      "Резюме"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11103
+    }
+  },
+  {
+    "id": "timetracking",
+    "name": "Учет времени",
+    "custom": false,
+    "orderable": true,
+    "navigable": false,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "timetracking",
+      "system": "timetracking"
+    }
+  },
+  {
+    "id": "customfield_11104",
+    "name": "Релиз согласовал",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11104]",
+      "Релиз согласовал"
+    ],
+    "schema": {
+      "type": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:userpicker",
+      "customId": 11104
+    }
+  },
+  {
+    "id": "customfield_10920",
+    "name": "Доп к целям",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10920]",
+      "Доп к целям"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10920
+    }
+  },
+  {
+    "id": "customfield_11339",
+    "name": "Способ компенсации переработки",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11339]",
+      "Способ компенсации переработки"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11339
+    }
+  },
+  {
+    "id": "customfield_10800",
+    "name": "% веса от плана",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "% веса от плана",
+      "cf[10800]"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10800
+    }
+  },
+  {
+    "id": "customfield_10802",
+    "name": "Build Link",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "Build Link",
+      "cf[10802]"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 10802
+    }
+  },
+  {
+    "id": "customfield_10803",
+    "name": "Build Tag",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "Build Tag",
+      "cf[10803]"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 10803
+    }
+  },
+  {
+    "id": "customfield_10804",
+    "name": "C-Time",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "C-Time",
+      "cf[10804]"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10804
+    }
+  },
+  {
+    "id": "customfield_10926",
+    "name": "Доступен ли отчет для розницы?",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10926]",
+      "Доступен ли отчет для розницы?"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10926
+    }
+  },
+  {
+    "id": "customfield_10807",
+    "name": "Checklists",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10807]",
+      "Checklists"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 10807
+    }
+  },
+  {
+    "id": "customfield_10928",
+    "name": "Единица измерения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10928]",
+      "Единица измерения"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10928
+    }
+  },
+  {
+    "id": "customfield_10809",
+    "name": "Code Reviewer",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10809]",
+      "Code Reviewer"
+    ],
+    "schema": {
+      "type": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:userpicker",
+      "customId": 10809
+    }
+  },
+  {
+    "id": "summary",
+    "name": "Тема",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "summary"
+    ],
+    "schema": {
+      "type": "string",
+      "system": "summary"
+    }
+  },
+  {
+    "id": "customfield_10000",
+    "name": "Development",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10000]",
+      "Development"
+    ],
+    "schema": {
+      "type": "any",
+      "custom": "com.atlassian.jira.plugins.jira-development-integration-plugin:devsummary",
+      "customId": 10000
+    }
+  },
+  {
+    "id": "customfield_11333",
+    "name": "Почему Вы приняли решение уйти?",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11333]",
+      "Почему Вы приняли решение уйти?"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11333
+    }
+  },
+  {
+    "id": "customfield_11335",
+    "name": "Причина от руководителя",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11335]",
+      "Причина от руководителя"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11335
+    }
+  },
+  {
+    "id": "customfield_11334",
+    "name": "Причина от HR BP",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11334]",
+      "Причина от HR BP"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11334
+    }
+  },
+  {
+    "id": "environment",
+    "name": "Окружение",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "environment"
+    ],
+    "schema": {
+      "type": "string",
+      "system": "environment"
+    }
+  },
+  {
+    "id": "customfield_10910",
+    "name": "Дата решения (дата/время)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10910]",
+      "Дата решения (дата/время)"
+    ],
+    "schema": {
+      "type": "datetime",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datetime",
+      "customId": 10910
+    }
+  },
+  {
+    "id": "customfield_11327",
+    "name": "Необходимость согласования",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11327]",
+      "Необходимость согласования"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11327
+    }
+  },
+  {
+    "id": "customfield_10912",
+    "name": "Действие с группой",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10912]",
+      "Действие с группой"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10912
+    }
+  },
+  {
+    "id": "duedate",
+    "name": "Срок исполнения",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "due",
+      "duedate"
+    ],
+    "schema": {
+      "type": "date",
+      "system": "duedate"
+    }
+  },
+  {
+    "id": "customfield_10914",
+    "name": "Дизайнер",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10914]",
+      "Дизайнер"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker",
+      "customId": 10914
+    }
+  },
+  {
+    "id": "comment",
+    "name": "Комментарий",
+    "custom": false,
+    "orderable": true,
+    "navigable": false,
+    "searchable": true,
+    "clauseNames": [
+      "comment"
+    ],
+    "schema": {
+      "type": "comments-page",
+      "system": "comment"
+    }
+  },
+  {
+    "id": "customfield_10917",
+    "name": "Для кого предназначено обучение?",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10917]",
+      "Для кого предназначено обучение?"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+      "customId": 10917
+    }
+  },
+  {
+    "id": "customfield_10110",
+    "name": "Story Points",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10110]",
+      "Story Points"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10110
+    }
+  },
+  {
+    "id": "fixVersions",
+    "name": "Исправить в версиях",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "fixVersion"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "version",
+      "system": "fixVersions"
+    }
+  },
+  {
+    "id": "customfield_10111",
+    "name": "Team",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10111]",
+      "Team"
+    ],
+    "schema": {
+      "type": "any",
+      "custom": "com.atlassian.teams:rm-teams-custom-field-team",
+      "customId": 10111
+    }
+  },
+  {
+    "id": "customfield_10104",
+    "name": "Имя эпика",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10104]",
+      "Имя эпика"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.pyxis.greenhopper.jira:gh-epic-label",
+      "customId": 10104
+    }
+  },
+  {
+    "id": "customfield_10105",
+    "name": "Epic Status",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10105]",
+      "Epic Status"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.pyxis.greenhopper.jira:gh-epic-status",
+      "customId": 10105
+    }
+  },
+  {
+    "id": "customfield_10106",
+    "name": "Epic Colour",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10106]",
+      "Epic Colour"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.pyxis.greenhopper.jira:gh-epic-color",
+      "customId": 10106
+    }
+  },
+  {
+    "id": "customfield_10107",
+    "name": "Ссылка на эпик",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10107]",
+      "Ссылка на эпик"
+    ],
+    "schema": {
+      "type": "any",
+      "custom": "com.pyxis.greenhopper.jira:gh-epic-link",
+      "customId": 10107
+    }
+  },
+  {
+    "id": "customfield_10108",
+    "name": "Rank",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10108]",
+      "Rank"
+    ],
+    "schema": {
+      "type": "any",
+      "custom": "com.pyxis.greenhopper.jira:gh-lexo-rank",
+      "customId": 10108
+    }
+  },
+  {
+    "id": "customfield_10109",
+    "name": "Спринт",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10109]",
+      "Спринт"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "string",
+      "custom": "com.pyxis.greenhopper.jira:gh-sprint",
+      "customId": 10109
+    }
+  },
+  {
+    "id": "customfield_10905",
+    "name": "Дата начала",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10905]",
+      "Дата начала"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+      "customId": 10905
+    }
+  },
+  {
+    "id": "customfield_10909",
+    "name": "Дата решения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10909]",
+      "Дата решения"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+      "customId": 10909
+    }
+  },
+  {
+    "id": "customfield_10100",
+    "name": "Parent Link",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10100]",
+      "Parent Link"
+    ],
+    "schema": {
+      "type": "any",
+      "custom": "com.atlassian.jpo:jpo-custom-field-parent",
+      "customId": 10100
+    }
+  },
+  {
+    "id": "priority",
+    "name": "Приоритет",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "priority"
+    ],
+    "schema": {
+      "type": "priority",
+      "system": "priority"
+    }
+  },
+  {
+    "id": "customfield_10101",
+    "name": "Target start",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10101]",
+      "Target start"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jpo:jpo-custom-field-baseline-start",
+      "customId": 10101
+    }
+  },
+  {
+    "id": "customfield_10102",
+    "name": "Target end",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10102]",
+      "Target end"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jpo:jpo-custom-field-baseline-end",
+      "customId": 10102
+    }
+  },
+  {
+    "id": "customfield_10103",
+    "name": "Original story points",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10103]",
+      "Original story points"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jpo:jpo-custom-field-original-story-points",
+      "customId": 10103
+    }
+  },
+  {
+    "id": "customfield_11305",
+    "name": "Индикатор срока",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11305]",
+      "Индикатор срока"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11305
+    }
+  },
+  {
+    "id": "timeestimate",
+    "name": "Оценка остатка",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [
+      "remainingEstimate",
+      "timeestimate"
+    ],
+    "schema": {
+      "type": "number",
+      "system": "timeestimate"
+    }
+  },
+  {
+    "id": "versions",
+    "name": "Затронуты версии",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "affectedVersion"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "version",
+      "system": "versions"
+    }
+  },
+  {
+    "id": "status",
+    "name": "Статус",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "status"
+    ],
+    "schema": {
+      "type": "status",
+      "system": "status"
+    }
+  },
+  {
+    "id": "issuekey",
+    "name": "Код",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [
+      "id",
+      "issue",
+      "issuekey",
+      "key"
+    ]
+  },
+  {
+    "id": "customfield_11300",
+    "name": "Готовы ли Вы рекомендовать нашу компанию как работодателя?",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11300]",
+      "Готовы ли Вы рекомендовать нашу компанию как работодателя?"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11300
+    }
+  },
+  {
+    "id": "archiveddate",
+    "name": "Дата добавления в архив",
+    "custom": false,
+    "orderable": true,
+    "navigable": false,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "datetime",
+      "system": "archiveddate"
+    }
+  },
+  {
+    "id": "customfield_10203",
+    "name": "Task mode",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10203]",
+      "Task mode"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10203
+    }
+  },
+  {
+    "id": "customfield_10204",
+    "name": "Task progress",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10204]",
+      "Task progress"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10204
+    }
+  },
+  {
+    "id": "customfield_10205",
+    "name": "Start date",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10205]",
+      "Start date"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+      "customId": 10205
+    }
+  },
+  {
+    "id": "customfield_10206",
+    "name": "Program Increment",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10206]",
+      "Program Increment"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 10206
+    }
+  },
+  {
+    "id": "aggregatetimeestimate",
+    "name": "Суммарная оценка остатка",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [],
+    "schema": {
+      "type": "number",
+      "system": "aggregatetimeestimate"
+    }
+  },
+  {
+    "id": "customfield_10207",
+    "name": "Risk consequence",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10207]",
+      "Risk consequence"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10207
+    }
+  },
+  {
+    "id": "customfield_10208",
+    "name": "Risk probability",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10208]",
+      "Risk probability"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10208
+    }
+  },
+  {
+    "id": "creator",
+    "name": "Создатель",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "creator"
+    ],
+    "schema": {
+      "type": "user",
+      "system": "creator"
+    }
+  },
+  {
+    "id": "customfield_11091",
+    "name": "Прогресс выполнения (%)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11091]",
+      "Прогресс выполнения (%)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11091
+    }
+  },
+  {
+    "id": "customfield_11092",
+    "name": "Продуктовая команда",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11092]",
+      "Продуктовая команда"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11092
+    }
+  },
+  {
+    "id": "customfield_11093",
+    "name": "Продуктовое направление",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11093]",
+      "Продуктовое направление"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11093
+    }
+  },
+  {
+    "id": "customfield_11097",
+    "name": "Разработка (ч)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11097]",
+      "Разработка (ч)"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11097
+    }
+  },
+  {
+    "id": "customfield_11098",
+    "name": "Разработчик",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11098]",
+      "Разработчик"
+    ],
+    "schema": {
+      "type": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:userpicker",
+      "customId": 11098
+    }
+  },
+  {
+    "id": "aggregateprogress",
+    "name": "Суммарный прогресс",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [],
+    "schema": {
+      "type": "progress",
+      "system": "aggregateprogress"
+    }
+  },
+  {
+    "id": "customfield_10200",
+    "name": "End date (BigPicture)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10200]",
+      "End date (BigPicture)"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+      "customId": 10200
+    }
+  },
+  {
+    "id": "customfield_10201",
+    "name": "Baseline start date",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "Baseline start date",
+      "cf[10201]"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+      "customId": 10201
+    }
+  },
+  {
+    "id": "customfield_10202",
+    "name": "Baseline end date",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "Baseline end date",
+      "cf[10202]"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+      "customId": 10202
+    }
+  },
+  {
+    "id": "customfield_11081",
+    "name": "Постановка проверена руководителем",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11081]",
+      "Постановка проверена руководителем"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11081
+    }
+  },
+  {
+    "id": "customfield_11082",
+    "name": "Почта заказчика",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11082]",
+      "Почта заказчика"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 11082
+    }
+  },
+  {
+    "id": "timespent",
+    "name": "Затраченное время",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [
+      "timespent"
+    ],
+    "schema": {
+      "type": "number",
+      "system": "timespent"
+    }
+  },
+  {
+    "id": "customfield_11085",
+    "name": "Причина возникновения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11085]",
+      "Причина возникновения"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+      "customId": 11085
+    }
+  },
+  {
+    "id": "customfield_11086",
+    "name": "Причина изменений",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11086]",
+      "Причина изменений"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11086
+    }
+  },
+  {
+    "id": "customfield_11087",
+    "name": "Проблема",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11087]",
+      "Проблема"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11087
+    }
+  },
+  {
+    "id": "aggregatetimespent",
+    "name": "Суммарное затраченое время",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": [],
+    "schema": {
+      "type": "number",
+      "system": "aggregatetimespent"
+    }
+  },
+  {
+    "id": "customfield_11400",
+    "name": "Оценка по работе с Заказчиком",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11400]",
+      "Оценка по работе с Заказчиком"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11400
+    }
+  },
+  {
+    "id": "customfield_10302",
+    "name": "(Epic Sum Up) Progress Customfield",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "string",
+      "custom": "aptis.plugins.epicSumUp:epic-sum-up-custom-field-progress",
+      "customId": 10302
+    }
+  },
+  {
+    "id": "customfield_10303",
+    "name": "EsuIssueFunction",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10303]",
+      "EsuIssueFunction"
+    ],
+    "schema": {
+      "type": "any",
+      "custom": "aptis.plugins.epicSumUp:epic-sum-up-issue-function",
+      "customId": 10303
+    }
+  },
+  {
+    "id": "customfield_10304",
+    "name": "issueFunction",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10304]",
+      "issueFunction"
+    ],
+    "schema": {
+      "type": "any",
+      "custom": "com.onresolve.jira.groovy.groovyrunner:jqlFunctionsCustomFieldType",
+      "customId": 10304
+    }
+  },
+  {
+    "id": "customfield_10306",
+    "name": "CapEx or OpEx",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "CapEx or OpEx",
+      "cf[10306]"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10306
+    }
+  },
+  {
+    "id": "workratio",
+    "name": "КПД (полезная работа/затраченная работа)",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "workratio"
+    ],
+    "schema": {
+      "type": "number",
+      "system": "workratio"
+    }
+  },
+  {
+    "id": "thumbnail",
+    "name": "Изображения",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": false,
+    "clauseNames": []
+  },
+  {
+    "id": "customfield_11192",
+    "name": "Классификация",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11192]",
+      "Классификация"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11192
+    }
+  },
+  {
+    "id": "customfield_11072",
+    "name": "Поддержали",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11072]",
+      "Поддержали"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 11072
+    }
+  },
+  {
+    "id": "created",
+    "name": "Создано",
+    "custom": false,
+    "orderable": false,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "created",
+      "createdDate"
+    ],
+    "schema": {
+      "type": "datetime",
+      "system": "created"
+    }
+  },
+  {
+    "id": "customfield_11073",
+    "name": "Поддержали (users)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11073]",
+      "Поддержали (users)"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker",
+      "customId": 11073
+    }
+  },
+  {
+    "id": "customfield_11074",
+    "name": "Подразделение",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11074]",
+      "Подразделение"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11074
+    }
+  },
+  {
+    "id": "customfield_11076",
+    "name": "Подтип",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11076]",
+      "Подтип"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11076
+    }
+  },
+  {
+    "id": "customfield_11079",
+    "name": "Пользовательские сценарии",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11079]",
+      "Пользовательские сценарии"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11079
+    }
+  },
+  {
+    "id": "customfield_10300",
+    "name": "Container Link",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10300]",
+      "Container Link"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "aptis.plugins.epicSumUp:epic-sum-up-container-link",
+      "customId": 10300
+    }
+  },
+  {
+    "id": "customfield_10301",
+    "name": "(Epic Sum Up) Allocation Field",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [],
+    "schema": {
+      "type": "string",
+      "custom": "aptis.plugins.epicSumUp:epic-sum-up-custom-field-type-allocation",
+      "customId": 10301
+    }
+  },
+  {
+    "id": "customfield_10896",
+    "name": "Выбор dc",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10896]",
+      "Выбор dc"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10896
+    }
+  },
+  {
+    "id": "customfield_10897",
+    "name": "Выбор ОС",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10897]",
+      "Выбор ОС"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10897
+    }
+  },
+  {
+    "id": "customfield_10898",
+    "name": "Выбор роли",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10898]",
+      "Выбор роли"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10898
+    }
+  },
+  {
+    "id": "customfield_10899",
+    "name": "Выкупаемость  заказов",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10899]",
+      "Выкупаемость  заказов"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10899
+    }
+  },
+  {
+    "id": "customfield_11061",
+    "name": "План внедрения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11061]",
+      "План внедрения"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11061
+    }
+  },
+  {
+    "id": "customfield_11064",
+    "name": "План тестирования",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11064]",
+      "План тестирования"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11064
+    }
+  },
+  {
+    "id": "customfield_11066",
+    "name": "Плановая дата начала",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11066]",
+      "Плановая дата начала"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+      "customId": 11066
+    }
+  },
+  {
+    "id": "customfield_11067",
+    "name": "Плановая дата окончания",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11067]",
+      "Плановая дата окончания"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+      "customId": 11067
+    }
+  },
+  {
+    "id": "customfield_10892",
+    "name": "Воспроизводимость",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10892]",
+      "Воспроизводимость"
+    ],
+    "schema": {
+      "type": "date",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+      "customId": 10892
+    }
+  },
+  {
+    "id": "customfield_11069",
+    "name": "По какому измеримому показателю будет оцениваться успешность обучения?",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11069]",
+      "По какому измеримому показателю будет оцениваться успешность обучения?"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+      "customId": 11069
+    }
+  },
+  {
+    "id": "customfield_11500",
+    "name": "rfWorklog",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11500]",
+      "rfWorklog"
+    ],
+    "schema": {
+      "type": "any",
+      "custom": "com.qotilabs.jira.rich-filters-time-tracking-dashboards:worklog-index-cf-type",
+      "customId": 11500
+    }
+  },
+  {
+    "id": "customfield_10894",
+    "name": "Время обучения",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10894]",
+      "Время обучения"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10894
+    }
+  },
+  {
+    "id": "customfield_10895",
+    "name": "Время проведения работ",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10895]",
+      "Время проведения работ"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 10895
+    }
+  },
+  {
+    "id": "customfield_10885",
+    "name": "Внешний заказчик",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10885]",
+      "Внешний заказчик"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10885
+    }
+  },
+  {
+    "id": "customfield_10886",
+    "name": "Внутренняя DNS запись нужна (internal.local)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10886]",
+      "Внутренняя DNS запись нужна (internal.local)"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10886
+    }
+  },
+  {
+    "id": "security",
+    "name": "Уровень безопасности",
+    "custom": false,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "level"
+    ],
+    "schema": {
+      "type": "securitylevel",
+      "system": "security"
+    }
+  },
+  {
+    "id": "attachment",
+    "name": "Вложение",
+    "custom": false,
+    "orderable": true,
+    "navigable": false,
+    "searchable": true,
+    "clauseNames": [
+      "attachments"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "attachment",
+      "system": "attachment"
+    }
+  },
+  {
+    "id": "customfield_11170",
+    "name": "Формат участия",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11170]",
+      "Формат участия"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11170
+    }
+  },
+  {
+    "id": "customfield_11050",
+    "name": "Оценка заказчика - результат (1-5)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11050]",
+      "Оценка заказчика - результат (1-5)"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11050
+    }
+  },
+  {
+    "id": "customfield_11051",
+    "name": "Оценка заказчика - скорость",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11051]",
+      "Оценка заказчика - скорость"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+      "customId": 11051
+    }
+  },
+  {
+    "id": "customfield_11172",
+    "name": "Функциональная роль",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11172]",
+      "Функциональная роль"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11172
+    }
+  },
+  {
+    "id": "customfield_11052",
+    "name": "Оценка заказчика - скорость (1-5)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11052]",
+      "Оценка заказчика - скорость (1-5)"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11052
+    }
+  },
+  {
+    "id": "customfield_11054",
+    "name": "Оценка риска",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11054]",
+      "Оценка риска"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11054
+    }
+  },
+  {
+    "id": "customfield_11175",
+    "name": "Цели",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11175]",
+      "Цели"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11175
+    }
+  },
+  {
+    "id": "customfield_11176",
+    "name": "Цель задачи",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11176]",
+      "Цель задачи"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11176
+    }
+  },
+  {
+    "id": "customfield_10880",
+    "name": "В каком виде предоставлены исходные материалы для подготовки обучения?",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10880]",
+      "В каком виде предоставлены исходные материалы для подготовки обучения?"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+      "customId": 10880
+    }
+  },
+  {
+    "id": "customfield_11056",
+    "name": "Очередность",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11056]",
+      "Очередность"
+    ],
+    "schema": {
+      "type": "option-with-child",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:cascadingselect",
+      "customId": 11056
+    }
+  },
+  {
+    "id": "customfield_11177",
+    "name": "Цель проекта",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11177]",
+      "Цель проекта"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11177
+    }
+  },
+  {
+    "id": "customfield_11178",
+    "name": "Частота использования",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11178]",
+      "Частота использования"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11178
+    }
+  },
+  {
+    "id": "customfield_10882",
+    "name": "Вес цели, %",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10882]",
+      "Вес цели, %"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10882
+    }
+  },
+  {
+    "id": "customfield_11058",
+    "name": "Периодичность снятия",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11058]",
+      "Периодичность снятия"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 11058
+    }
+  },
+  {
+    "id": "customfield_10400",
+    "name": "Structure Index Monitor",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10400]",
+      "Structure Index Monitor"
+    ],
+    "schema": {
+      "type": "any",
+      "custom": "com.almworks.jira.structure:index-monitor-cf-type",
+      "customId": 10400
+    }
+  },
+  {
+    "id": "customfield_10884",
+    "name": "Влияние релиза",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10884]",
+      "Влияние релиза"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10884
+    }
+  },
+  {
+    "id": "customfield_10995",
+    "name": "Наличие рисков",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10995]",
+      "Наличие рисков"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes",
+      "customId": 10995
+    }
+  },
+  {
+    "id": "customfield_11600",
+    "name": "Ожидаемый результат(полный)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[11600]",
+      "Ожидаемый результат(полный)"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 11600
+    }
+  },
+  {
+    "id": "customfield_10876",
+    "name": "Бизнес-цель",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10876]",
+      "Бизнес-цель"
+    ],
+    "schema": {
+      "type": "string",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+      "customId": 10876
+    }
+  },
+  {
+    "id": "customfield_10998",
+    "name": "Не поддержали",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10998]",
+      "Не поддержали"
+    ],
+    "schema": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10998
+    }
+  },
+  {
+    "id": "customfield_10999",
+    "name": "Не поддержали (users)",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10999]",
+      "Не поддержали (users)"
+    ],
+    "schema": {
+      "type": "array",
+      "items": "user",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker",
+      "customId": 10999
+    }
+  },
+  {
+    "id": "customfield_10879",
+    "name": "В какое время необходимо обновлять данные в отчете?",
+    "custom": true,
+    "orderable": true,
+    "navigable": true,
+    "searchable": true,
+    "clauseNames": [
+      "cf[10879]",
+      "В какое время необходимо обновлять данные в отчете?"
+    ],
+    "schema": {
+      "type": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+      "customId": 10879
+    }
+  }
+]

@@ -19,6 +19,7 @@ from app.core.perf import PerfCollector, install_query_listeners
 from app.core.perf_middleware import PerfMiddleware
 from app.database import SessionLocal, engine
 from app.services.kpi.conditions import ConditionError
+from app.services.jira_migration.state import SyncBlockedError
 from app.repositories.sync_schedule import SyncScheduleRepository
 from app.services.scheduler import SchedulerService, scheduled_pipeline_runner
 from app.jobs.aggregate_usage import aggregate_usage_job
@@ -167,6 +168,12 @@ async def kpi_condition_error_handler(request, exc: ConditionError) -> JSONRespo
     премии, тихо проглатывать такие ошибки нельзя (см. ревью Фазы 3, BLOCKER 2).
     """
     return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(SyncBlockedError)
+async def sync_blocked_handler(request, exc: SyncBlockedError) -> JSONResponse:
+    """Синхронизация остановлена до переезда на новую Jira — 409 с понятным текстом."""
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.exception_handler(Exception)

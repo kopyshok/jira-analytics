@@ -7,8 +7,8 @@ import { statusTagColor } from '../../utils/status';
 import IssueContextBlock from './IssueContextBlock';
 import IssueCategorizer from './IssueCategorizer';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
+import JiraIssueLink from '../shared/JiraIssueLink';
 
-const JIRA_BASE = 'https://example.atlassian.net/browse';
 
 interface Props {
   issueId: string | null;
@@ -134,10 +134,8 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
             ← назад
           </Button>
         )}
-        <a
-          href={`${JIRA_BASE}/${issueKey}`}
-          target="_blank"
-          rel="noreferrer"
+        <JiraIssueLink
+          issueKey={issueKey}
           style={{
             fontFamily: 'monospace',
             fontSize: 13,
@@ -152,7 +150,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
           }}
         >
           {issueKey}
-        </a>
+        </JiraIssueLink>
         {!isLoading && context && (
           <Tag
             color={statusTagColor(context.status, context.status_category)}

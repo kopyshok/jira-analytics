@@ -88,6 +88,7 @@ class EmployeePatchRequest(BaseModel):
 
 class EmployeeFromJiraRequest(BaseModel):
     jira_account_id: str
+    jira_username: Optional[str] = None
     display_name: str
     email: Optional[str] = None
     is_active: bool = True
@@ -156,6 +157,7 @@ def employee_from_jira(
         existing = Employee(
             id=str(uuid.uuid4()),
             jira_account_id=req.jira_account_id,
+            jira_username=req.jira_username,
             display_name=req.display_name,
             email=req.email,
             avatar_url=req.avatar_url,
@@ -165,6 +167,8 @@ def employee_from_jira(
         db.add(existing)
     else:
         existing.display_name = req.display_name
+        if req.jira_username:
+            existing.jira_username = req.jira_username
         existing.email = req.email
         existing.avatar_url = req.avatar_url
         existing.is_active = True

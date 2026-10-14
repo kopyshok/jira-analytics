@@ -27,6 +27,10 @@ class Employee(Base, SyncedMixin):
     jira_account_id: Mapped[str] = mapped_column(
         String(128), unique=True, index=True, nullable=False
     )
+    # Логин Jira DC (``name``, например Lebedev_A_A). Учётку могут
+    # переименовать, поэтому идентичность — ``jira_account_id`` (DC ``key``), а
+    # логин синк обновляет при каждой встрече; по нему JQL ``worklogAuthor``.
+    jira_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

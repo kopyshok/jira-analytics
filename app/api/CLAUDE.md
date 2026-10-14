@@ -26,7 +26,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/employees` | `employees.py` | список + create-from-Jira + recalc-active + auto-detect-teams + M:N teams CRUD |
 | `/projects` | `projects.py` | GET-only список локально известных проектов |
 | `/teams` | `teams.py` | GET local teams (для global team filter) |
-| `/sync` | `sync.py` | sync triggers (full/projects/issues/teams/worklogs) + browse Jira live (`/jira-projects`, `/jira-epics`, `/jira-fields`, `/jira-issuetypes`, `/jira-teams`) + targeted refresh + SSE-стримы worklog reload/update + sync schedule + history |
+| `/sync` | `sync.py` | sync triggers (full/projects/issues/teams/worklogs) + browse Jira live (`/jira-projects`, `/jira-epics`, `/jira-fields`, `/jira-issuetypes`, `/jira-teams`) + targeted refresh + SSE-стримы worklog reload/update + sync schedule + history; пишущие эндпоинты (и `/team-desk/refresh-issues`, `/backlog/refresh-from-jira*`) первой строкой вызывают `ensure_sync_allowed` → 409 до завершения переезда на Jira DC |
 | `/jira` | `sync.jira_router` | алиас для browse Jira (см. выше) |
 | `/scope` | `scope.py` | scope projects + roots + category overrides |
 | `/analytics` | `analytics.py` | dashboard widgets + hours by-{employee\|project\|category\|period} + hierarchical report + context-switching |
@@ -39,7 +39,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/planning` | `planning.py` | scenarios CRUD + allocations + rules + revisions + resource base (см. ниже) |
 | `/resource-planning` | `resource_planning.py` | периоды, планы, диаграмма (`/resource-plans/{id}/gantt`), кандидаты фазы (свободно в даты фазы, загрузка с нормированными работами), список наблюдения `/resource-plans/{id}/watch` (GET — строки «Загрузки по дням» той же формулой, что у людей плана, + свободно по месяцам и остаток «Технических задач» основной команды; POST `{employee_ids}`; DELETE `/{employee_id}`; правки шлют событие `resource_planning`) |
 | `/exports` | `exports.py` | analytics.xlsx\|pdf, scenarios/{id}.xlsx\|pptx, capacity.xlsx |
-| `/settings` | `settings.py` | **admin-only** — `/jira` (GET\|PUT, redacts token) + `/jira/test` + `/generic` (PUT) + `/generic/{key}` (GET) |
+| `/settings` | `settings.py` | **admin-only** — `/jira` (GET\|PUT: адрес + токен, токен не отдаётся) + `/jira/test` + `/confluence` (GET\|PUT) + `/confluence/test` (по сохранённым) + `/generic` (PUT) + `/generic/{key}` (GET) |
 | `/categories` | `categories.py` | CRUD; `PUT /{id}` принимает `work_type_id: str \| null` (валидация: MandatoryWorkType существует и активен) |
 | `/issues` | `issue_config.py` | tree + per-issue category/include + batch-category |
 | `/hierarchy-rules` | `hierarchy_rules.py` | **admin-only** — CRUD + reorder |
@@ -51,6 +51,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/kpi` | `kpi.py` | отчёт «Ведомость» + сводка по командам + расшифровка метрики + тренд сотрудника + утверждение квартала (снимок) + `/directions` + `export.xlsx`. Период везде задаётся парой `year`/`month` (последний месяц) + `months` (длина, 1–24): месяц, квартал, произвольный отрезок — см. ниже |
 | `/team-desk` | `team_desk.py` | рабочий стол тимлида: `/overview` (срез задач + сводка по разработчикам, включая `status_counts` — разбивку по статусам, + очередь работы; ростер команд режется по `developer_roles` — в срез идут только разработчики; `only_open` + пара `period_start`/`period_end` дают три режима среза, `show_done_subtasks` добирает закрытую декомпозицию под показанными родителями), `/settings` (GET\|PUT — группы статусов, пороги, типы задач, роли среза), `/flags` (справочник признаков), `POST\|DELETE /issues/{id}/mark` (отметка «просмотрено» на паре задача+признак) |
 | `/admin/perf` | `admin_perf.py` | **admin-only** — «Быстродействие»: `/overview?period=1h\|24h\|7d\|30d`, `/report.md`, `/export.xlsx`. Замеры пишет ASGI-слой `app/core/perf_middleware.py` + фоновый цикл `app/services/perf_writer.py` (минутные агрегаты, медленные запросы, снимки сервера, хранение 30 дней) |
+| `/admin/jira-migration` | `jira_migration.py` | **admin-only** — переезд на Jira DC: `GET` (состояние, отчёт с решениями, препятствия), `POST /dry-run` (фон, 202), `PUT /decisions` (`{kind: field\|issue\|person, item_key, decision}`), `GET /dc-users?q=`, `POST /apply` (`{backup_confirmed}`; фон, 202; 409 со списком препятствий), `POST /full-sync` (повтор полной синхронизации со всеми ворклогами), `POST /post-check` |
 | `/kpi-settings` | `kpi_settings.py` | **admin-only** — справочники раздела KPI: метрики, профили оценки (список ролей + `/profiles/coverage`), нормативы Cycle Time, общие правила, словарь атрибутов условий, предпросмотр метрики (`POST /metrics/preview`, `POST /metrics/explain-issue`), сравнение способов срока внесения часов (`GET /worklog-deadline/compare`) |
 
 ## Паттерны

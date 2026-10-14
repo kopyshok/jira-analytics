@@ -5,6 +5,8 @@ import { useSyncPipeline, type PipelineStageState } from '../../hooks/useSyncPip
 import type { PipelineMode } from '../../api/syncPipeline';
 import { DARK_THEME } from '../../utils/constants';
 import { trackAction } from '../../lib/usage/track';
+import { useSyncBlocked } from '../../hooks/useSettings';
+import { SYNC_BLOCKED_TEXT } from '../../utils/syncBlocked';
 
 const { Text } = Typography;
 
@@ -45,6 +47,7 @@ type Props = {
 
 export default function PipelineRunner({ teams = [] }: Props) {
   const { state, start, cancel, reset } = useSyncPipeline();
+  const syncBlocked = useSyncBlocked();
   const [mode, setMode] = useState<PipelineMode>('normal');
   const [team, setTeam] = useState<string | undefined>(undefined);
 
@@ -111,7 +114,8 @@ export default function PipelineRunner({ teams = [] }: Props) {
               type="primary"
               icon={<SyncOutlined />}
               onClick={handleStart}
-              disabled={mode === 'team' && !team}
+              disabled={syncBlocked || (mode === 'team' && !team)}
+              title={syncBlocked ? SYNC_BLOCKED_TEXT : undefined}
             >
               Запустить
             </Button>

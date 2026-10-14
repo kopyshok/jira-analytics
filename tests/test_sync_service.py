@@ -56,7 +56,10 @@ class TestSyncServiceUpsert:
     @pytest.fixture
     def mock_db(self):
         """Create mock database session."""
-        return MagicMock()
+        db = MagicMock()
+        # Нет строки состояния переезда — синк разрешён (проверка закрыта по умолчанию).
+        db.query.return_value.filter.return_value.scalar.return_value = None
+        return db
     
     @pytest.fixture
     def mock_jira(self):
@@ -91,7 +94,7 @@ class TestSyncServiceUpsert:
         service = SyncService(mock_db, mock_jira)
         
         jira_user = JiraUserSchema(
-            accountId="user123",
+            key="user123",
             displayName="John Doe",
             emailAddress="john@example.com",
             active=True
@@ -287,8 +290,13 @@ class TestSyncIssuePlannedHoursExtraction:
 
         mock_jira = MagicMock()
 
-        async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+        lenient_flags: list[bool] = []
+        expands: list = []
+
+        async def fake_iter_issues(jql, max_results, fields, expand=None, lenient=False):  # noqa: ARG001
             captured_fields.extend(fields)
+            lenient_flags.append(lenient)
+            expands.append(expand)
             yield refreshed
 
         mock_jira.iter_issues = fake_iter_issues
@@ -299,6 +307,10 @@ class TestSyncIssuePlannedHoursExtraction:
         updated = svc.issue_repo.get_by_field("jira_issue_id", "10004")
         assert matched == 1
         assert total == 1
+        # Поиск по списку ключей из базы — удалённый в Jira ключ не роняет пачку.
+        assert lenient_flags == [True]
+        # История изменений — для «статус изменён».
+        assert expands == ["changelog"]
         assert "duedate" in captured_fields
         assert updated.due_date.isoformat() == "2026-06-30T00:00:00"
 
@@ -328,8 +340,11 @@ class TestSyncIssuePlannedHoursExtraction:
 
         mock_jira = MagicMock()
 
-        async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+        expands: list = []
+
+        async def fake_iter_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
             captured_fields.extend(fields)
+            expands.append(expand)
             yield synced
 
         mock_jira.iter_issues = fake_iter_issues
@@ -339,6 +354,7 @@ class TestSyncIssuePlannedHoursExtraction:
 
         created = svc.issue_repo.get_by_field("jira_issue_id", "10005")
         assert report["Team A"]["matched"] == 1
+        assert expands == ["changelog"]
         assert "duedate" in captured_fields
         assert created.due_date.isoformat() == "2026-07-15T00:00:00"
 
@@ -378,7 +394,7 @@ class TestSyncIssuesParentLinking:
         mock_jira = MagicMock()
 
         # sync_issues теперь использует per-project iter_issues (parallel producers).
-        async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+        async def fake_iter_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
             yield subtask
             yield epic
 

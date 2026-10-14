@@ -16,6 +16,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/resource-planning': 'Планирование ресурсов',
   '/resource-planning/compare': 'Сравнение сценариев',
   '/settings': 'Настройки',
+  '/admin/jira-migration': 'Переезд на новую Jira',
   '/feedback': 'Обратная связь',
   '/login': 'Логин',
 };

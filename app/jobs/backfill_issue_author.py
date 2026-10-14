@@ -24,6 +24,7 @@ from app.database import SessionLocal
 from app.models.app_setting import AppSetting
 from app.models.issue import Issue
 from app.models.project import Project
+from app.services.jira_migration.state import is_sync_blocked
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,10 @@ async def backfill_issue_author_once(
     """
     db = (_session_factory or SessionLocal)()
     try:
+        if is_sync_blocked(db):
+            logger.info("backfill_issue_author: пропуск — синхронизация остановлена "
+                        "до завершения переезда на новую Jira")
+            return 0
         if not _claim(db):
             return 0
 

@@ -1,0 +1,169 @@
+{
+  "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+  "id": "94555",
+  "self": "https://jira.example.test/rest/api/2/issue/94555",
+  "key": "RFA-4610",
+  "fields": {
+    "summary": "Задача RFA-4610",
+    "description": "h2. Описание\nТекст задачи для теста.\n[Страница ТЗ|https://confluence.example.test/x/AbCdE]",
+    "issuetype": {
+      "self": "https://jira.example.test/rest/api/2/issuetype/10404",
+      "id": "10404",
+      "description": "",
+      "iconUrl": "https://jira.example.test/secure/viewavatar?size=xsmall&avatarId=10964&avatarType=issuetype",
+      "name": "Инициатива (Финансы)",
+      "subtask": false,
+      "avatarId": 10964
+    },
+    "status": {
+      "self": "https://jira.example.test/rest/api/2/status/10001",
+      "description": "DONE",
+      "iconUrl": "https://jira.example.test/",
+      "name": "Готово",
+      "id": "10001",
+      "statusCategory": {
+        "self": "https://jira.example.test/rest/api/2/statuscategory/3",
+        "id": 3,
+        "key": "done",
+        "colorName": "success",
+        "name": "Выполнено"
+      }
+    },
+    "priority": {
+      "self": "https://jira.example.test/rest/api/2/priority/3",
+      "iconUrl": "https://jira.example.test/images/icons/priorities/medium_new.svg",
+      "name": "Medium",
+      "id": "3"
+    },
+    "project": {
+      "self": "https://jira.example.test/rest/api/2/project/10910",
+      "id": "10910",
+      "key": "RFA",
+      "name": "Предпроекты",
+      "projectTypeKey": "software",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/projectavatar?pid=10910&avatarId=10640",
+        "24x24": "https://jira.example.test/secure/projectavatar?size=small&pid=10910&avatarId=10640",
+        "16x16": "https://jira.example.test/secure/projectavatar?size=xsmall&pid=10910&avatarId=10640",
+        "32x32": "https://jira.example.test/secure/projectavatar?size=medium&pid=10910&avatarId=10640"
+      }
+    },
+    "creator": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_7",
+      "name": "user_7",
+      "key": "JIRAUSER90007",
+      "emailAddress": "user_7@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 7",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "reporter": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_7",
+      "name": "user_7",
+      "key": "JIRAUSER90007",
+      "emailAddress": "user_7@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 7",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "assignee": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_8",
+      "name": "user_8",
+      "key": "JIRAUSER90008",
+      "emailAddress": "user_8@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 8",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "created": "2025-09-19T11:36:56.061+0000",
+    "updated": "2026-10-12T12:32:15.596+0000",
+    "duedate": null,
+    "resolution": {
+      "self": "https://jira.example.test/rest/api/2/resolution/10000",
+      "id": "10000",
+      "description": "Работа над этим вопросом была завершена.",
+      "name": "Готово"
+    },
+    "resolutiondate": "2026-09-30T11:45:51.141+0000",
+    "issuelinks": [
+      {
+        "id": "196804",
+        "self": "https://jira.example.test/rest/api/2/issueLink/196804",
+        "outwardIssue": {
+          "id": "117251",
+          "key": "GOA-7700",
+          "self": "https://jira.example.test/rest/api/2/issue/117251",
+          "fields": {
+            "summary": "Связанная задача",
+            "status": {
+              "self": "https://jira.example.test/rest/api/2/status/10363",
+              "description": "Результат утвержден",
+              "iconUrl": "https://jira.example.test/images/icons/statuses/closed.png",
+              "name": "Результат утвержден",
+              "id": "10363",
+              "statusCategory": {
+                "self": "https://jira.example.test/rest/api/2/statuscategory/3",
+                "id": 3,
+                "key": "done",
+                "colorName": "success",
+                "name": "Выполнено"
+              }
+            },
+            "priority": {
+              "self": "https://jira.example.test/rest/api/2/priority/3",
+              "iconUrl": "https://jira.example.test/images/icons/priorities/medium_new.svg",
+              "name": "Medium",
+              "id": "3"
+            },
+            "issuetype": {
+              "self": "https://jira.example.test/rest/api/2/issuetype/10429",
+              "id": "10429",
+              "description": "",
+              "iconUrl": "https://jira.example.test/secure/viewavatar?size=xsmall&avatarId=10318&avatarType=issuetype",
+              "name": "Задачи на квартал",
+              "subtask": false,
+              "avatarId": 10318
+            }
+          }
+        },
+        "type": {
+          "id": "10003",
+          "name": "Relates",
+          "inward": "relates to (in)",
+          "outward": "relates to (out)",
+          "self": "https://jira.example.test/rest/api/2/issueLinkType/10003"
+        }
+      }
+    ],
+    "subtasks": [],
+    "fixVersions": [],
+    "customfield_10107": null,
+    "customfield_10100": null,
+    "customfield_10109": null,
+    "customfield_11092": {
+      "self": "https://jira.example.test/rest/api/2/customFieldOption/10654",
+      "value": "Команда 1С (ERP - Товарный учет)",
+      "id": "10654",
+      "disabled": false
+    },
+    "customfield_11098": null
+  }
+}

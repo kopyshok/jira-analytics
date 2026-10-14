@@ -14,6 +14,8 @@
 
 `Employee`, `EmployeeTeam` (M:N), `Project`, `Issue`, `Worklog`, `Comment`, `SyncState`.
 
+**`Employee` и Jira DC:** `jira_account_id` = DC `key` (`JIRAUSER…`, не меняется), `jira_username` = логин DC (`name`), обновляется синком при каждой встрече; по логину ищутся списания (JQL `worklogAuthor`). Сотрудник без логина в поиске списаний по людям не участвует.
+
 **`EmployeeTeam` — периодизованное участие.** Активно в день `d`, если `(joined_at is None or joined_at <= d) and (left_at is None or d < left_at)`; `left_at` — первый день ВНЕ команды. На одну пару сотрудник/команда допустимо несколько непересекающихся периодов (ушёл — вернулся), unique-constraint снят.
 
 Инварианты enforce'ятся в `EmployeeTeamService` (не в БД — SQLite не поддерживает partial unique): периоды одной пары не пересекаются; на любую дату не более одной `is_primary=true` записи. Поле `Employee.team` — derived от основной команды **на сегодня**, обновляется через `_recompute_legacy_team`.
@@ -27,7 +29,7 @@
 - `include_in_analysis` — флаг показа в analytics
 - `out_of_scope` — Bucket B auto-ingest (см. `app/services/CLAUDE.md` Worklog buckets)
 - `status_category` — Jira `new|indeterminate|done` из `status.statusCategory.key`
-- `status_changed_at` — из `statuscategorychangedate`
+- `status_changed_at` — последняя смена категории статуса по истории изменений Jira DC (`expand=changelog` + справочник `GET /status`), иначе дата создания
 - `paused_days` — дни в статусах паузы («Приостановлено»), считаются из истории статусов Jira и вычитаются из факта Cycle Time в KPI
 - `goals` — comma-joined `customfield_11421`
 - `developer_account_id` / `developer_display_name` — кастомное поле Jira «Разработчик» (тип user, `customfield_14052`)
@@ -68,11 +70,17 @@
 
 `TeamDeskMark` — отметка «просмотрено» на паре задача + признак (`uq_team_desk_mark`). `signature` — снимок причины на момент отметки; расходится с текущей — отметка сгорает и удаляется (см. `app/services/team_desk/marks.py`). Настройки раздела живут не тут, а в `AppSetting['team_desk_config']`.
 
+### Jira migration (2)
+
+`JiraMigrationReport` (`jira_migration_reports`) — отчёт пробного прогона (`report_json` — для страницы, `maps_json` — ключ → id DC для применения), итог применения, запуск полной синхронизации, сверка после; новый прогон вытесняет прежний. `JiraMigrationDecision` (`jira_migration_decisions`, unique `kind`+`item_key`) — решения администратора; ключ — облачный id поля / ключ задачи / UUID сотрудника, переживают повторные прогоны (миграция `dc03_jira_migration_tables`). Обе таблицы вычищаются при сборке демо-базы.
+
 ### App state (1)
 
 `AppSetting` — flat key-value store. Helpers `_get_setting` / `_set_setting` в `app/api/endpoints/settings.py` (get-or-insert, commits internally).
 
 **Ключи:**
-- Credentials: `jira_email`, `jira_api_token`, `jira_base_url`
+- Credentials: `jira_base_url`, `jira_api_token` (Bearer); `confluence_base_url`, `confluence_api_token`; `jira_email` — устарела, не читается
+- Переезд на Jira DC: `jira_migration_state` (`pending` | `done`; нет строки = `done`) — пока `pending`, синк запрещён
+- Автопоиск полей по типу: `jira_sprint_field_id`, `jira_epic_link_field_id`, `jira_parent_link_field_id`
 - Jira custom field IDs: `jira_team_field_id`, `jira_participating_teams_field_id`, `jira_goals_field_id` (seeded `customfield_11421` миграцией 012)
 - UI persistence: `ui_team_projects` (TaskSectionsTab single team), `ui_teams_categories` (CategoryConfigTab multi-team, comma-joined)

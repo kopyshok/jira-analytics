@@ -41,6 +41,8 @@ DELETE_TABLES = (
     "confluence_page_cache", "feedback_items", "project_ai_summaries", "work_type_report_snapshots",
     "executive_dashboard_snapshots", "issue_classifications", "usage_events", "usage_daily",
     "sync_run", "work_desks", "perf_minute", "perf_slow_request", "perf_server_snapshot",
+    # Отчёт переезда на Jira DC и решения по нему: ФИО и логины сотрудников.
+    "jira_migration_reports", "jira_migration_decisions",
 )
 
 # Настройки: значение остаётся только у ключей из белого списка (номера полей Jira, настройки
@@ -129,7 +131,8 @@ COLUMN_POLICY = _parse_policy({
     "employee_personal_settings": "keep: id employee_id",
     "employee_subgroup_shares": "keep: id employee_id subgroup_id; rule: team",
     "employee_teams": "keep: id employee_id subgroup_id; rule: team",
-    "employees": "keep: id role; rule: jira_account_id display_name email team; clear: avatar_url department",
+    "employees": "keep: id role; rule: jira_account_id display_name email team; "
+                 "clear: avatar_url department jira_username",
     "hierarchy_rule": "keep: id issue_type; rule: project_key description",
     "involvement_defaults": "keep: id role; rule: team",
     "issue_links": "keep: id source_issue_id target_issue_id link_type",

@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
+from app.models.app_setting import AppSetting
 from app.models import (
     BacklogItem,
     Comment,
@@ -370,6 +371,7 @@ def test_stale_tasks_split_and_filters(db_session, seed_employee):
         project_id="p-pmd", parent_id="i-parent", reporter_account_id="acc-o",
         assignee_account_id="acc-o", status_changed_at=datetime(2026, 1, 6, 9, 0),
     )
+    db_session.add(AppSetting(key="jira_base_url", value="https://jira.example.test"))
     db_session.commit()
 
     desk = _make_desk(db_session, seed_employee.id)
@@ -386,7 +388,7 @@ def test_stale_tasks_split_and_filters(db_session, seed_employee):
 
     row = out["my_tasks"][0]
     assert row["person"]["name"] == "Коллега"
-    assert row["url"].endswith("/browse/PMD-1")
+    assert row["url"] == "https://jira.example.test/browse/PMD-1"
     assert isinstance(row["days_idle"], int) and row["days_idle"] > 0
 
 

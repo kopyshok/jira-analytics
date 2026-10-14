@@ -27,6 +27,7 @@ Routable pages live in `pages/` and are lazy-loaded via [`lazyPages.tsx`](src/pa
 | `/planning` | `PlanningPage` | Сценарии |
 | `/resource-planning` (+ `/compare`) | `ResourcePlanningPage` / `ScenarioComparatorPage` | |
 | `/settings` | `SettingsPage` | admin-only |
+| `/admin/jira-migration` | → `/settings#jira-migration` | переадресация из плашки «синхронизация остановлена» |
 | `/desk/:token` | `DeskPage` | публичный рабочий стол аналитика — без авторизации и вне shell (отдельный top-level route) |
 | `/login` | `LoginPage` | |
 
@@ -60,6 +61,8 @@ Source-of-truth для текущих роутов — [`routes.tsx`](src/routes
 - **«Расписание»** ([`SyncSchedule`](src/components/sync/SyncSchedule.tsx)) — APScheduler-задачи (быстрый авто-синк каждые 2 ч).
 - **«Дополнительно»** ([`SyncAdvanced`](src/components/sync/SyncAdvanced.tsx)) — ручной backfill ворклогов с даты + полная перезагрузка (единственный способ почистить worklog, удалённые в Jira).
 
+Над вкладками — [`SyncBlockedAlert`](src/components/sync/SyncBlockedAlert.tsx): пока переезд на новую Jira не завершён (`useSyncBlocked()`, `GET /ui-config/jira-migration-state`), плашка со ссылкой на `/admin/jira-migration`; кнопки обновления из Jira здесь, в бэклоге и на столе тимлида неактивны.
+
 Кнопки старого `SyncPage` (per-entity sync, scope-projects browser, jira-fields, recalc-mapping) удалены при M10 sync consolidation 2026-04-27. Категоризация задач переехала в `/categories` (`CategoriesEditorPage`). Пересчёт маппинга — **Настройки → Категории работ** (`CategoriesTab`).
 
 ## CategoriesEditorPage (`/categories`)
@@ -83,10 +86,10 @@ Row tint deepens per depth level (`.tree-row-depth-0..5`) and italicizes context
 ## SettingsPage (`/settings`, admin-only)
 
 Навигация — левое `Menu mode="inline"` с группами (не `Tabs`); `Grid.useBreakpoint()` → на `<md` вместо меню `Select`. Рендерится только активная секция (`render()`), состояние неактивных не живёт. Группы и точные ключи — `GROUPS` в [`SettingsPage.tsx`](src/pages/SettingsPage.tsx):
-- **Подключение**: `connection` (`ConnectionCard`) · `scope` (`ScopeAdmin`) · `fields` (`JiraFieldsCard`)
+- **Подключение**: `connection` (`ConnectionCard` — адрес + персональный токен) · `confluence` (`ConfluenceConnectionCard`) · `scope` (`ScopeAdmin`) · `fields` (`JiraFieldsCard`)
 - **Справочники**: `hierarchy` · `reasons` · `categories` (**тут кнопка «Пересчитать маппинг по задачам»**) · `worktypes` · `calendar` (`ProductionCalendarTab`, + синк с RU календарём) · `kpi` (`KpiSettingsTab` — четыре вкладки: профили/конструктор метрики с `MetricPreview`/нормативы Cycle Time/общие правила; admin-only маршруты `/kpi-settings/*`)
 - **Доступ**: `users` (admin) · `visibility`
-- **Администрирование**: `ai` · `feedback` (admin) · `usage` (admin) · `whats-new` (admin) · `db-export` (admin)
+- **Администрирование**: `jira-migration` (admin, [`JiraMigrationTab`](src/components/settings/jiraMigration/JiraMigrationTab.tsx) — пробный прогон, вкладки отчёта с решениями, «Применить», полная синхронизация, сверка) · `ai` · `feedback` (admin) · `usage` (admin) · `whats-new` (admin) · `db-export` (admin)
 
 Активная секция зашита в URL-хеше; `adminOnly`-пункты вырезаются, пустые группы скрываются.
 

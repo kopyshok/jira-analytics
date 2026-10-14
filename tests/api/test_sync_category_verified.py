@@ -56,7 +56,7 @@ def _jira_issue(jira_id: str, key: str):
     ji.fields.status.name = "To Do"
     ji.fields.status.statusCategory = None
     ji.fields.priority = None
-    ji.fields.statuscategorychangedate = None
+    ji.changelog = None
     ji.fields.duedate = None
     ji.fields.resolution = None
     ji.fields.resolutiondate = None

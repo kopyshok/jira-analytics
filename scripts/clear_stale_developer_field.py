@@ -17,12 +17,16 @@ from app.connectors.jira_client import JiraClient
 from app.database import SessionLocal
 from app.models import Issue, Project
 from app.services.stale_field_cleanup import clear_stale_developer_field
+from app.services.jira_migration.state import SYNC_BLOCKED_MESSAGE, is_sync_blocked
 
 
-async def main() -> None:
+async def main() -> int:
     apply = "--apply" in sys.argv
     db = SessionLocal()
     try:
+        if apply and is_sync_blocked(db):
+            print(SYNC_BLOCKED_MESSAGE, file=sys.stderr)
+            return 1
         async with JiraClient.from_db(db) as jira:
             result = await clear_stale_developer_field(db, jira, dry_run=not apply)
         print(
@@ -39,9 +43,10 @@ async def main() -> None:
                 .count()
             )
             print(f"Задач с заполненным полем всего: {left}")
+        return 0
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

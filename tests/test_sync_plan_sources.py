@@ -234,7 +234,7 @@ async def test_sync_issues_end_to_end_multi_fields(db_session):
     }
     captured_fields: list = []
 
-    async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+    async def fake_iter_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
         captured_fields.append(fields)
         yield JiraIssueSchema.model_validate(payload)
 
@@ -285,7 +285,7 @@ async def _sync_while_admin_saves(db, new_value):
     db.add(Project(jira_project_id="10500", key="E2E", name="E2E"))
     db.commit()
 
-    async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+    async def fake_iter_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
         row = db.query(AppSetting).filter_by(key="jira_planned_dev_hours_field_id").one()
         row.value = new_value
         db.commit()

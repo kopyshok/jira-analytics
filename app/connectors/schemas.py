@@ -26,11 +26,17 @@ def _parse_jira_datetime(value: str) -> datetime:
 # === User / Author schemas ===
 
 class JiraUserSchema(BaseModel):
-    """Jira user from API response."""
+    """Пользователь Jira Data Center.
+
+    Идентичность — ``key`` (``JIRAUSER12223``; у старых учёток совпадает с
+    логином): не меняется при переименовании учётки, хранится в ``jira_account_id``. ``name`` — логин (``Lebedev_A_A``):
+    нужен для JQL ``worklogAuthor`` и поиска ``/user/search?username=``.
+    """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    jira_account_id: str = Field(alias="accountId")
+    jira_account_id: str = Field(alias="key")
+    name: Optional[str] = None
     display_name: str = Field(alias="displayName")
     email: Optional[str] = Field(default=None, alias="emailAddress")
     is_active: bool = Field(default=True, alias="active")
@@ -107,7 +113,6 @@ class JiraIssueFieldsSchema(BaseModel):
     assignee: Optional[JiraUserSchema] = None
     created: Optional[str] = None
     updated: Optional[str] = None
-    statuscategorychangedate: Optional[str] = None
     duedate: Optional[str] = None
     # KPI: резолюция задачи («Готово» / «Отменено» / ...) и дата резолюции.
     resolution: Optional[dict] = None
@@ -120,8 +125,7 @@ class JiraIssueFieldsSchema(BaseModel):
         known = {
             "summary", "description", "issuetype", "status", "priority",
             "project", "parent", "creator", "reporter", "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
-            "issuelinks",
+            "duedate", "resolution", "resolutiondate", "issuelinks",
         }
         extra = {k: v for k, v in data.items() if k not in known}
         super().__init__(**{k: v for k, v in data.items() if k in known})
@@ -161,24 +165,24 @@ class JiraIssueFieldsSchema(BaseModel):
 
 
 class JiraIssueSchema(BaseModel):
-    """Jira issue from API response."""
-    
+    """Jira issue from API response.
+
+    ``changelog`` — история изменений, только при ``expand=changelog``.
+    """
+
     id: str
     key: str
     fields: JiraIssueFieldsSchema
-    
+    changelog: Optional[dict] = None
+
     class Config:
         extra = "ignore"
 
 
 # === Worklog schemas ===
 
-class JiraWorklogAuthorSchema(BaseModel):
-    """Worklog author."""
-    
-    accountId: str
-    displayName: str
-    emailAddress: Optional[str] = None
+# Автор ворклога в Jira DC — обычный пользователь (key, name, displayName, …).
+JiraWorklogAuthorSchema = JiraUserSchema
 
 
 class JiraWorklogSchema(BaseModel):
@@ -186,7 +190,7 @@ class JiraWorklogSchema(BaseModel):
     
     id: str
     issueId: str
-    author: JiraWorklogAuthorSchema
+    author: JiraUserSchema
     started: str  # ISO datetime string
     timeSpentSeconds: int
     comment: Optional[Any] = None  # Can be string or ADF
@@ -208,8 +212,8 @@ class JiraWorklogSchema(BaseModel):
         """Распарсить created из Jira — дата внесения записи о трудозатратах.
 
         ВНИМАНИЕ: в отличие от одноимённой функции в ``app/services/sync_service.py``,
-        здесь результат НЕ приводится к UTC — сохраняется локальное время того
-        часового пояса, что прислала Jira (обычно пояс учётной записи автора).
+        здесь пояс не меняется — время такое, как прислала Jira (Jira DC шлёт
+        UTC). В московские часы его переводит ``_drop_tz`` при записи в базу.
         Это осознанное решение, не баг: метрика своевременности сравнивает
         дату внесения с дедлайном «12:00 следующего рабочего дня», который
         сам считается в местном времени. Если когда-нибудь понадобится UTC —
@@ -246,19 +250,16 @@ class JiraWorklogSchema(BaseModel):
 
 # === Comment schemas ===
 
-class JiraCommentAuthorSchema(BaseModel):
-    """Comment author."""
-
-    accountId: str
-    displayName: str
-    emailAddress: Optional[str] = None
+# Автор комментария в Jira DC — обычный пользователь.
+JiraCommentAuthorSchema = JiraUserSchema
 
 
 class JiraCommentSchema(BaseModel):
     """Jira comment from API response."""
 
     id: str
-    author: JiraCommentAuthorSchema
+    # Анонимный комментарий приходит без автора — не роняем из-за него страницу.
+    author: Optional[JiraUserSchema] = None
     body: Optional[Any] = None  # Can be string or ADF
     created: Optional[str] = None
     updated: Optional[str] = None
@@ -311,30 +312,17 @@ class JiraCommentsResponseSchema(BaseModel):
 # === Paginated response schemas ===
 
 class JiraSearchResponseSchema(BaseModel):
-    """Paginated search response for issues.
-
-    New ``GET /search/jql`` is cursor-based: response carries ``nextPageToken``
-    and ``isLast`` instead of ``startAt``/``total``.  Subsequent requests must
-    pass ``nextPageToken``; ``startAt`` is ignored.
-    """
+    """Страница поиска задач Jira DC (``GET /search``): смещение ``startAt`` + ``total``."""
 
     startAt: int = 0
     maxResults: int = 50
-    total: Optional[int] = None
+    total: int = 0
     issues: List[JiraIssueSchema] = Field(default_factory=list)
-    nextPageToken: Optional[str] = None
-    isLast: Optional[bool] = None
 
     @property
     def has_more(self) -> bool:
         """Check if there are more results."""
-        if self.isLast is not None:
-            return not self.isLast
-        if self.nextPageToken is not None:
-            return True
-        if self.total is not None:
-            return self.startAt + len(self.issues) < self.total
-        return len(self.issues) >= self.maxResults
+        return bool(self.issues) and self.startAt + len(self.issues) < self.total
 
 
 class JiraWorklogsResponseSchema(BaseModel):
@@ -348,16 +336,3 @@ class JiraWorklogsResponseSchema(BaseModel):
     @property
     def has_more(self) -> bool:
         return self.startAt + len(self.worklogs) < self.total
-
-
-class JiraProjectsResponseSchema(BaseModel):
-    """Paginated projects response."""
-    
-    startAt: int = 0
-    maxResults: int = 50
-    total: int = 0
-    values: List[JiraProjectSchema] = Field(default_factory=list)
-    
-    @property
-    def has_more(self) -> bool:
-        return self.startAt + len(self.values) < self.total

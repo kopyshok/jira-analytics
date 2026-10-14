@@ -13,21 +13,18 @@ export default function ConnectionCard() {
   const saveMutation = useSaveJiraSettings();
   const testMutation = useTestJiraCredentials();
 
-  const [email, setEmail] = useState('');
   const [token, setToken] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [loaded, setLoaded] = useState(false);
 
   // Populate form from saved settings once
   if (settings.data && !loaded) {
-    if (settings.data.email) setEmail(settings.data.email);
     if (settings.data.base_url) setBaseUrl(settings.data.base_url);
     setLoaded(true);
   }
 
   const handleSave = () => {
-    const body: Record<string, string> = {};
-    if (email) body.email = email;
+    const body: { api_token?: string; base_url?: string } = {};
     if (token) body.api_token = token;
     if (baseUrl) body.base_url = baseUrl;
     saveMutation.mutate(body, {
@@ -37,17 +34,16 @@ export default function ConnectionCard() {
   };
 
   const handleTest = () => {
-    const testEmail = email || settings.data?.email || '';
     const testUrl = baseUrl || settings.data?.base_url || '';
-    if (!testEmail || !testUrl) {
-      message.warning('Укажите Email и Base URL');
+    if (!testUrl) {
+      message.warning('Укажите адрес Jira');
       return;
     }
     if (!token && !settings.data?.has_token) {
-      message.warning('Укажите API Token');
+      message.warning('Укажите персональный токен');
       return;
     }
-    // If no new token, test via old endpoint (credentials are already in DB)
+    // Новый токен не введён — проверяем сохранённые в базе адрес и токен
     if (!token && settings.data?.has_token) {
       testConnection().then((res) => {
         if (res.connected) message.success(`Подключение успешно (${res.user_name})`);
@@ -56,7 +52,7 @@ export default function ConnectionCard() {
       return;
     }
     testMutation.mutate(
-      { email: testEmail, api_token: token, base_url: testUrl },
+      { api_token: token, base_url: testUrl },
       {
         onSuccess: (res) => {
           if (res.connected) message.success(`Подключение успешно (${res.user_name})`);
@@ -72,23 +68,15 @@ export default function ConnectionCard() {
       <Space orientation="vertical" style={{ width: '100%' }}>
         <Space wrap>
           <Input
-            placeholder="Base URL (https://your-domain.atlassian.net)"
+            placeholder="Адрес Jira (https://jira.example.ru)"
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             style={{ width: 360 }}
             autoComplete="off"
             name="jira-base-url"
           />
-          <Input
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ width: 260 }}
-            autoComplete="off"
-            name="jira-email"
-          />
           <Input.Password
-            placeholder={settings.data?.has_token ? 'Токен сохранён (введите новый для замены)' : 'API Token'}
+            placeholder={settings.data?.has_token ? 'Токен сохранён (введите новый для замены)' : 'Персональный токен'}
             value={token}
             onChange={(e) => setToken(e.target.value)}
             style={{ width: 300 }}
@@ -113,9 +101,7 @@ export default function ConnectionCard() {
             Проверить подключение
           </Button>
           {testMutation.data?.connected && (
-            <Text type="success">
-              {testMutation.data.user_name} ({testMutation.data.user_email})
-            </Text>
+            <Text type="success">{testMutation.data.user_name}</Text>
           )}
         </Space>
       </Space>

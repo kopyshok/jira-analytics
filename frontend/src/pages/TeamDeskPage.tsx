@@ -10,7 +10,7 @@ import {
   useDeskFilter, useDeskOverview, useDeskSettings, useRefreshDeskIssues,
   useSaveDailyRate, useSaveDeskFilter,
 } from '../hooks/useTeamDesk';
-import { useJiraBaseUrl } from '../hooks/useSettings';
+import { useJiraBaseUrl, useSyncBlocked } from '../hooks/useSettings';
 import { DeskFilters } from '../components/teamdesk/DeskFilters';
 import { ThresholdsPanel } from '../components/teamdesk/ThresholdsPanel';
 import { DeveloperCards } from '../components/teamdesk/DeveloperCards';
@@ -135,6 +135,7 @@ export default function TeamDeskPage() {
   ).sort((a, b) => a.localeCompare(b, 'ru'));
 
   const refreshIssues = useRefreshDeskIssues();
+  const syncBlocked = useSyncBlocked();
   const refreshVisible = (keys: string[]) => {
     if (keys.length) refreshIssues.mutate(keys);
   };
@@ -152,6 +153,7 @@ export default function TeamDeskPage() {
     onGroupByDeveloperChange: (value: boolean) => change({ group_by_developer: value }),
     onRefreshVisible: refreshVisible,
     refreshing: refreshIssues.isPending,
+    refreshBlocked: syncBlocked,
   };
 
   const pickStatus = (developerId: string, status: string | null) => {

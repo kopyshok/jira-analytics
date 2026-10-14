@@ -5,6 +5,7 @@ import { ArrowRightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
+import JiraIssueLink from '../shared/JiraIssueLink';
 import type { ColumnsType } from 'antd/es/table/interface';
 import type { Key } from 'react';
 import type {
@@ -144,10 +145,8 @@ function buildIssueNode(
             minWidth: 0,
           }}
         >
-          <a
-            href={`https://example.atlassian.net/browse/${i.key}`}
-            target="_blank"
-            rel="noreferrer"
+          <JiraIssueLink
+            issueKey={i.key}
             onClick={(e) => e.stopPropagation()}
             style={{
               color: 'var(--accent-1, #22d3ee)',
@@ -158,7 +157,7 @@ function buildIssueNode(
             }}
           >
             {i.key}
-          </a>
+          </JiraIssueLink>
           <Tag
             color={statusTagColor(i.status, i.status_category)}
             style={{ marginInlineEnd: 0, flexShrink: 0 }}

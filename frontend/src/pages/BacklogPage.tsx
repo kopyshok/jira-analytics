@@ -35,7 +35,8 @@ import {
 } from '../hooks/useBacklog';
 import type { BacklogRefreshProgress } from '../api/backlog';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
-import { useJiraBaseUrl } from '../hooks/useSettings';
+import { useJiraBaseUrl, useSyncBlocked } from '../hooks/useSettings';
+import { SYNC_BLOCKED_TEXT } from '../utils/syncBlocked';
 import { useEmployees } from '../hooks/useCapacity';
 import { useRoles } from '../hooks/useRoles';
 import { getRoleColor } from '../utils/roles';
@@ -139,6 +140,7 @@ export default function BacklogPage() {
     setSearchParams(params, { replace: true });
   };
   const refreshFromJiraMut = useRefreshFromJira();
+  const syncBlocked = useSyncBlocked();
   const refreshAbortRef = useRef<AbortController | null>(null);
   const [refreshProgress, setRefreshProgress] = useState<BacklogRefreshProgress | null>(null);
 
@@ -1172,7 +1174,12 @@ export default function BacklogPage() {
               </Space>
             ) : (
               <Space size="small">
-                <Button icon={<ReloadOutlined />} onClick={() => handleRefreshFromJira()}>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={() => handleRefreshFromJira()}
+                  disabled={syncBlocked}
+                  title={syncBlocked ? SYNC_BLOCKED_TEXT : undefined}
+                >
                   Обновить с Jira
                 </Button>
                 <Button
@@ -1185,7 +1192,8 @@ export default function BacklogPage() {
                     }
                     handleRefreshFromJira(keys);
                   }}
-                  title="Перечитать только задачи открытой вкладки"
+                  disabled={syncBlocked}
+                  title={syncBlocked ? SYNC_BLOCKED_TEXT : 'Перечитать только задачи открытой вкладки'}
                 >
                   Обновить только видимые
                 </Button>

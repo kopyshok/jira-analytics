@@ -10,10 +10,12 @@ async def test_build_epic_data_includes_child_extras_and_confluence(db_session):
     from app.models.project import Project
     from app.models.issue import Issue
     p = Project(jira_project_id="P1", key="PRJ", name="P")
+    from app.models.app_setting import AppSetting
+    db_session.add(AppSetting(key="confluence_base_url", value="https://confluence.example.test"))
     db_session.add(p); db_session.commit()
     epic = Issue(
         jira_issue_id="1", key="PRJ-1", summary="Эпик",
-        description="См ТЗ https://example.atlassian.net/wiki/spaces/X/pages/12345/T",
+        description="См ТЗ https://confluence.example.test/pages/viewpage.action?pageId=12345",
         issue_type="Epic", status="In Progress",
         project_id=p.id, category="initiatives_in_progress",
     )
@@ -28,7 +30,7 @@ async def test_build_epic_data_includes_child_extras_and_confluence(db_session):
 
     fake_pages = [FetchedPage(
         page_id="12345",
-        source_url="https://example.atlassian.net/wiki/spaces/X/pages/12345/T",
+        source_url="https://confluence.example.test/pages/viewpage.action?pageId=12345",
         title="Полное ТЗ", body_text="Контент ТЗ из confluence",
     )]
     with patch(
@@ -44,3 +46,6 @@ async def test_build_epic_data_includes_child_extras_and_confluence(db_session):
     assert any(c.get("current_behavior") == "Сейчас не работает" for c in cs)
     assert data["confluence_pages"][0]["title"] == "Полное ТЗ"
     assert "Контент ТЗ из confluence" in data["confluence_pages"][0]["body_text"]
+    mock_svc.return_value.fetch_pages.assert_awaited_once_with(
+        ["https://confluence.example.test/pages/viewpage.action?pageId=12345"]
+    )

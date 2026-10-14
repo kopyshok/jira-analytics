@@ -1,0 +1,125 @@
+[
+  {
+    "self": "https://jira.example.test/rest/api/2/issue/137052/worklog/850609",
+    "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_14",
+      "name": "user_14",
+      "key": "JIRAUSER90014",
+      "emailAddress": "user_14@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 14",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "updateAuthor": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_14",
+      "name": "user_14",
+      "key": "JIRAUSER90014",
+      "emailAddress": "user_14@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 14",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "comment": "Комментарий к списанию",
+    "created": "2026-10-11T16:23:12.633+0000",
+    "updated": "2026-10-11T16:23:12.633+0000",
+    "started": "2025-08-05T06:00:00.000+0000",
+    "timeSpent": "1d",
+    "timeSpentSeconds": 28800,
+    "id": "850609",
+    "issueId": "137052"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/issue/134573/worklog/844675",
+    "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_15",
+      "name": "user_15",
+      "key": "JIRAUSER90015",
+      "emailAddress": "user_15@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 15",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "updateAuthor": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_15",
+      "name": "user_15",
+      "key": "JIRAUSER90015",
+      "emailAddress": "user_15@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 15",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "comment": "Комментарий к списанию",
+    "created": "2026-10-11T16:22:36.721+0000",
+    "updated": "2026-10-11T16:22:36.721+0000",
+    "started": "2024-12-28T02:03:00.000+0000",
+    "timeSpent": "1d",
+    "timeSpentSeconds": 28800,
+    "id": "844675",
+    "issueId": "134573"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/issue/254824/worklog/767204",
+    "author": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_16",
+      "name": "user_16",
+      "key": "JIRAUSER90016",
+      "emailAddress": "user_16@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 16",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "updateAuthor": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_16",
+      "name": "user_16",
+      "key": "JIRAUSER90016",
+      "emailAddress": "user_16@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 16",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "comment": "Комментарий к списанию",
+    "created": "2026-09-30T07:04:23.152+0000",
+    "updated": "2026-09-30T07:04:23.152+0000",
+    "started": "2026-08-31T12:32:00.000+0000",
+    "timeSpent": "30m",
+    "timeSpentSeconds": 1800,
+    "id": "767204",
+    "issueId": "254824"
+  }
+]

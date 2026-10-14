@@ -16,6 +16,7 @@ from app.core.auth_deps import get_current_user, require_admin
 from app.database import get_db
 from app.models.app_setting import AppSetting
 from app.models.user import User
+from app.services.jira_migration.state import STATE_PENDING, get_migration_state
 
 router = APIRouter()
 
@@ -32,6 +33,11 @@ class JiraBaseUrlResponse(BaseModel):
 
 class HiddenSectionsUpdate(BaseModel):
     keys: list[str]
+
+
+class JiraMigrationStateResponse(BaseModel):
+    state: str
+    sync_blocked: bool
 
 
 def _read(db: Session) -> list[str]:
@@ -75,7 +81,18 @@ def get_jira_base_url(
     здесь отдаётся только несекретный base_url, нужный для deep-link'ов /browse/KEY.
     """
     row = db.query(AppSetting).filter(AppSetting.key == "jira_base_url").first()
-    return JiraBaseUrlResponse(base_url=row.value if row else None)
+    value = (row.value or "").strip().rstrip("/") if row else ""
+    return JiraBaseUrlResponse(base_url=value or None)
+
+
+@router.get("/jira-migration-state", response_model=JiraMigrationStateResponse)
+def get_jira_migration_state(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Состояние переезда на новую Jira: пока ``pending``, синк остановлен."""
+    state = get_migration_state(db)
+    return JiraMigrationStateResponse(state=state, sync_blocked=state == STATE_PENDING)
 
 
 @router.put("/hidden-sections", response_model=HiddenSectionsResponse)

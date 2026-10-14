@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Sequence
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.app_setting import AppSetting
 from app.services import team_membership as tm
 
 if TYPE_CHECKING:
@@ -24,8 +25,6 @@ QUARTER_MONTHS: Dict[int, tuple[int, int, int]] = {
     3: (7, 8, 9),
     4: (10, 11, 12),
 }
-
-JIRA_BROWSE = "https://example.atlassian.net/browse/"
 
 # Все фазы плана.
 ROLES: tuple[str, ...] = ("analyst", "dev", "qa", "opo")
@@ -60,8 +59,20 @@ def quarter_bounds(year: int, quarter: int) -> tuple[date, date]:
     return start, end
 
 
-def jira_url(key: Optional[str]) -> Optional[str]:
-    return f"{JIRA_BROWSE}{key}" if key else None
+def jira_browse_base(db: Session) -> str:
+    """Префикс ссылки на задачу ``<адрес Jira>/browse/`` из настроек; пусто — адрес не задан.
+
+    Читается один раз на расчёт и передаётся в :func:`jira_url`, чтобы не ходить
+    в базу на каждую строку.
+    """
+    value = db.query(AppSetting.value).filter(AppSetting.key == "jira_base_url").scalar()
+    base = (value or "").strip().rstrip("/")
+    return f"{base}/browse/" if base else ""
+
+
+def jira_url(key: Optional[str], base: str) -> Optional[str]:
+    """Ссылка на задачу; без ключа или без адреса Jira — ``None``."""
+    return f"{base}{key}" if key and base else None
 
 
 def find_recent_plan(db: Session, teams: List[str], year: int, quarter: int):

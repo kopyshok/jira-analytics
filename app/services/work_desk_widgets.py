@@ -21,6 +21,7 @@ from app.services.plan_common import (
     assignment_norm as _assignment_norm,
     chunked as _chunked,
     find_recent_plan as _find_recent_plan,
+    jira_browse_base as _jira_browse_base,
     jira_url as _jira_url,
     member_windows as _member_windows,
     own_fact_by_issue as _own_fact_by_issue,
@@ -110,6 +111,7 @@ def _assignment_projects(
     Факт-часы берутся одним сгруппированным запросом по всем задачам
     сотрудника, затем при необходимости пересчитываются по окну назначения.
     """
+    base = _jira_browse_base(db)
     from app.models import ResourcePlanAssignment
 
     rows = (
@@ -151,7 +153,7 @@ def _assignment_projects(
                 "issue_id": getattr(issue, "id", None),
                 "priority": getattr(a.backlog_item, "priority", None) if a.backlog_item is not None else None,
                 "title": a.backlog_item.title if a.backlog_item is not None else None,
-                "jira_url": _jira_url(key),
+                "jira_url": _jira_url(key, base),
                 "status": getattr(issue, "status", None),
                 "start_date": a.start_date.isoformat() if a.start_date else None,
                 "end_date": a.end_date.isoformat() if a.end_date else None,
@@ -187,6 +189,7 @@ def _project_children(
 
     Возвращает ({issue_id проекта: [узел, ...]}, {issue_id усечённых проектов}).
     """
+    base = _jira_browse_base(db)
     from app.models import Issue
 
     roots = [i for i in dict.fromkeys(issue_ids) if i]
@@ -247,7 +250,7 @@ def _project_children(
         return {
             "key": r.key,
             "title": r.summary,
-            "jira_url": _jira_url(r.key),
+            "jira_url": _jira_url(r.key, base),
             "status": r.status,
             "status_category": r.status_category,
             "assignee": r.assignee_display_name,
@@ -418,6 +421,7 @@ def _adapter_my_timeline(db: Session, desk: WorkDesk, year: int, quarter: int) -
     фазы (имя проекта видно в подписи строки слева). Факт-полоса — списания
     сотрудника по поддереву задачи, одинакова для всех фаз проекта.
     """
+    base = _jira_browse_base(db)
     from app.models import ResourcePlanAssignment
 
     q_start, q_end = _quarter_bounds(year, quarter)
@@ -484,6 +488,7 @@ def _adapter_my_timeline(db: Session, desk: WorkDesk, year: int, quarter: int) -
                 bars.append(
                     {
                         "key": getattr(issue, "key", None),
+                        "jira_url": _jira_url(getattr(issue, "key", None), base),
                         "title": a.backlog_item.title if a.backlog_item is not None else None,
                         "phase": a.phase,
                         "phase_label": _PHASE_LABEL.get(a.phase, a.phase or "—"),
@@ -545,6 +550,7 @@ def _adapter_category_breakdown(
     задачами. Плановые часы видов работ накладываем из дашборда «Норма работ»
     (тот же расчёт плана, что на дашборде), сматчив по названию вида.
     """
+    base = _jira_browse_base(db)
     from app.services.analytics_service import AnalyticsService
 
     teams = _desk_teams(desk)
@@ -594,7 +600,7 @@ def _adapter_category_breakdown(
                     {
                         "key": iss.key,
                         "title": iss.summary,
-                        "jira_url": _jira_url(iss.key),
+                        "jira_url": _jira_url(iss.key, base),
                         "status": iss.status,
                         "fact_hours": round(iss.totals.fact_hours, 1),
                     }
@@ -680,6 +686,7 @@ def _adapter_team_availability(
     db: Session, desk: WorkDesk, year: int, quarter: int
 ) -> dict:
     """Занятость команды: проекты каждого коллеги в свежем плане квартала."""
+    base = _jira_browse_base(db)
     from app.models import Employee, ResourcePlanAssignment
 
     teams = _desk_teams(desk)
@@ -752,7 +759,7 @@ def _adapter_team_availability(
             {
                 "key": key,
                 "title": a.backlog_item.title if a.backlog_item is not None else None,
-                "jira_url": _jira_url(key),
+                "jira_url": _jira_url(key, base),
                 "status": getattr(issue, "status", None),
                 "start_date": a.start_date.isoformat() if a.start_date else None,
                 "end_date": a.end_date.isoformat() if a.end_date else None,
@@ -840,6 +847,7 @@ def _adapter_awaiting_reaction(
     сравниваем с Employee.display_name без учёта регистра. Задачи без
     комментариев исключаются — отвечать не на что.
     """
+    base = _jira_browse_base(db)
     from app.models import Comment, Employee, Issue
 
     emp = db.get(Employee, desk.employee_id)
@@ -913,6 +921,7 @@ def _adapter_awaiting_reaction(
         items.append(
             {
                 "key": key,
+                "jira_url": _jira_url(key, base),
                 "title": summary,
                 "status": status,
                 "last_comment_at": c.jira_created_at.isoformat()
@@ -942,6 +951,7 @@ def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -
     не годится — его дёргают скрипты, смена родителя и тех-реквизиты.
     Сортировка по этому «касанию» по возрастанию (самые давние сверху), ТОП-10.
     """
+    link_base = _jira_browse_base(db)
     from app.models import Employee, Issue, Project, Worklog
 
     emp = desk.employee
@@ -1008,7 +1018,7 @@ def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -
     my_top = _top10(my_rows)
     assigned_top = _top10(assigned_rows)
 
-    # Аватарки второго человека по accountId (только для попавших в ТОП-10).
+    # Аватарки второго человека по ключу пользователя Jira (только для попавших в ТОП-10).
     acct_ids = {r.assignee_account_id for _, r in my_top if r.assignee_account_id}
     acct_ids |= {r.reporter_account_id for _, r in assigned_top if r.reporter_account_id}
     avatars: Dict[str, Optional[str]] = {}
@@ -1029,7 +1039,7 @@ def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -
             "status": r.status,
             "status_category": r.status_category,
             "days_idle": (today - last_touch.date()).days,
-            "url": _jira_url(r.key),
+            "url": _jira_url(r.key, link_base),
             "person": {
                 "name": person_name,
                 "avatar_url": avatars.get(person_acct) if person_acct else None,

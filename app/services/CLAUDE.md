@@ -101,22 +101,24 @@ CRUD для периодизованного `employee_teams`. API: `list_teams`
 
 ## SyncService ([sync_service.py](sync_service.py))
 
+Конструктор `SyncService` вызывает `ensure_sync_allowed(db)`: пока `jira_migration_state = pending`, создать сервис нельзя (`SyncBlockedError` → 409).
+
 Dependency order: Projects → Issues (need projects) → Worklogs (need issues + auto-create employees).
 
 Incremental sync через `sync_state.last_sync` per entity; JQL `updated >= "timestamp" ORDER BY updated ASC` для дельт. Rate limiting: 100ms delay между requests + exponential backoff на HTTP 429. Batch size: 100 issues per Jira API request.
 
 **Custom field extraction (`sync_issues`):** читает `jira_team_field_id`, `jira_participating_teams_field_id`, `jira_goals_field_id` из AppSetting, добавляет к `fields=` в каждом Jira request. Values попадают в `JiraIssueFieldsSchema._extra`. Helper `_extract_team_values(extra, field_id)` обрабатывает три формы (`{value: X}`, `[{value: X}, ...]`, plain string), питает team + goals. Пишется в `Issue.team` (первое значение), `Issue.participating_teams` (JSON list), `Issue.goals` (comma-joined). `null` → `team=None`, `participating_teams='[]'`, `goals=None`.
 
-`_upsert_issue` также захватывает `status_category` из `status.statusCategory.key` и `status_changed_at` из `statuscategorychangedate` (parsed `_parse_jira_datetime` → naive UTC).
+`_upsert_issue` также захватывает `status_category` из `status.statusCategory.key` и `status_changed_at` — последнюю смену категории статуса по истории (`expand=changelog`, `app/connectors/changelog.py::category_changed_at`; категории из `GET /status` раз за проход), без неё — дату создания. Родитель — `_parent_key_of`: `fields.parent` → «Ссылка на эпик» → «Parent Link».
 
 **Targeted refresh:** `refresh_issues_by_keys(jira_keys)` перечитывает keys в JQL `key in (...)` батчами по 100 через `iter_issues`, skip unknowns, переиспользует `_upsert_issue`.
 
-**Дни простоя (`sync_paused_days`):** отдельный проход после задач (стадия `paused_days`, non-critical). JQL `status WAS IN (PAUSED_STATUSES)` сужает выборку до задач, которые вообще бывали на паузе (сотни, не сотни тысяч), дальше по каждой — полный changelog (`JiraClient.get_status_changes`; в bulk-поиске Jira отдаёт только последние 40 записей). Результат — `Issue.paused_days`, целые сутки. Свой курсор `sync_state` «paused_days». Разовый пересчёт по всей истории — `scripts/backfill_paused_days.py`.
+**Дни простоя (`sync_paused_days`):** отдельный проход после задач (стадия `paused_days`, non-critical). JQL `status WAS IN (PAUSED_STATUSES)` сужает выборку до задач, которые вообще бывали на паузе; история статусов приходит в том же поиске (`expand=changelog`), неполная дочитывается `JiraClient.get_issue_changelog`. Результат — `Issue.paused_days`, целые сутки. Свой курсор `sync_state` «paused_days». Разовый пересчёт по всей истории — `scripts/backfill_paused_days.py`.
 
 ### Worklog sync — два независимых прохода
 
 - **Bucket A — issue-centric:** JQL `updated >= since`, upsert по локально существующим Issue. Ловит back-dated ворклоги через переход с `worklogDate` на `updated` — Jira двигает `issue.updated` при добавлении любого ворклога, включая записи с прошлым `started`.
-- **Bucket B — employee-centric** (активируется параметром `teams`): для каждого Employee из `employee_teams.team IN teams` запускается JQL `worklogAuthor = <account> AND updated >= since`. Незнакомые Issue создаются с `out_of_scope=True`, их Project тоже автосоздаётся (без scope). Вне-scope задачи не попадают в CategoryConfigTab/дерево, но ворклоги видны в Capacity/Analytics.
+- **Bucket B — employee-centric** (активируется параметром `teams`): для каждого Employee из `employee_teams.team IN teams` запускается JQL `worklogAuthor = "<Employee.jira_username>" AND updated >= since` (сотрудник без логина пропускается). Незнакомые Issue создаются с `out_of_scope=True`, их Project тоже автосоздаётся (без scope). Вне-scope задачи не попадают в CategoryConfigTab/дерево, но ворклоги видны в Capacity/Analytics.
 
 ## SnapshotWriter ([snapshot_writer.py](snapshot_writer.py))
 
@@ -221,3 +223,18 @@ Per-day часы для RU календаря. `POST /production-calendar/sync` 
 ## work_desk_widgets ([work_desk_widgets.py](work_desk_widgets.py))
 
 Диспетчер виджетов публичного рабочего стола аналитика: `dispatch(key)` по `WIDGET_KEYS`, `desk_summary` для hero-шапки. Каждый виджет — тонкий адаптер, использует `plan_common` для план/факт расчётов.
+
+## jira_migration ([jira_migration/](jira_migration/))
+
+Переезд на Jira Data Center (страница `/admin/jira-migration`). `state.py` — блокировка синка (`pending`/`done`, нет строки = `done`), `CLOUD_PREFIX`. Часть C:
+
+- `fields.py` + `cloud_fields.py` — снимок облачных настроек полей (снимается один раз), предложение поля DC по точному названию, перезапись настроек и JSON плановых часов; `remap_plan_sources` сохраняет действующий выбор оценки и возвращает `choice_dropped`. Автокэши без поля DC удаляются.
+- `fingerprints.py` — отпечаток ворклога, смещение «настенного» времени облака (флаг `unexpected`, если не +3 ч), чтение всех ворклогов DC потоком.
+- `people.py` — голосование по совпавшим ворклогам, точное ФИО, `finalize_people` (один пользователь DC на одного сотрудника, «конфликт»), статус «поиск не удался».
+- `issues.py` — `service_data_reasons` (только заведённое человеком), `scan_issue_ids`; `project_not_found` — задачи проектов, которых нет в DC, не трогаются.
+- `probe.py` — проверка возможностей DC; `dry_run.py` → отчёт; `store.py` — таблицы отчёта и решений; `resolution.py` — решения + препятствия к применению.
+- `apply.py` — одна транзакция с захватом `pending`→`applying`; всем id префикс `cloud:`, новые id по ключу; ворклоги/комментарии удаляются у перепривязанных задач (ворклоги вернёт полная синхронизация, комментарии синк не загружает), у оставленных сохраняются; любая ошибка — откат.
+- `runner.py` — прогон, применение и полная синхронизация в фоновых потоках (своя сессия и цикл событий, состояние в памяти); полная синхронизация держит блокировку синка, ворклоги грузит с самой ранней даты в базе. Синк никогда не удаляет строки с `cloud:`-id.
+- Сервис — один процесс (`scripts/entrypoint.sh`, без `--workers`): отчёт «идёт» без пробного прогона в процессе и запуск полной синхронизации без операции в процессе считаются оборванными перезапуском сразу; повтор полной синхронизации забирает блокировку прежнего запуска этого переезда (`SyncLock.acquire(replacing=...)`). Появятся воркеры — состояние операций переносить в базу.
+- Пока `jira_migration_state != done`, `PUT /settings/generic` отказывает (409) в ключах `jira_*_field_id`: поля настраиваются только на странице переезда.
+- Локальная копия прода: после `alembic upgrade head` синк заблокирован до применения переезда — пройти страницу переезда против новой Jira из внутренней сети или взять бэкап, снятый после переезда на проде. Никогда не ставить `jira_migration_state = done` руками в базе с облачными id.

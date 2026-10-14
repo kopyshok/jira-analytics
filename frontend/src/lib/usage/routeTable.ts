@@ -16,6 +16,7 @@ export const KNOWN_ROUTES: string[] = [
   '/resource-planning',
   '/resource-planning/compare',
   '/settings',
+  '/admin/jira-migration',
   '/feedback',
   '/login',
 ];

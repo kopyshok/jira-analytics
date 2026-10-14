@@ -10,6 +10,7 @@ from app.api.endpoints import admin_perf as admin_perf_endpoints
 from app.api.endpoints import admin_release_notes as admin_release_notes_endpoints
 from app.api.endpoints import admin_usage as admin_usage_endpoints
 from app.api.endpoints import admin_users as admin_users_endpoints
+from app.api.endpoints import jira_migration as jira_migration_endpoints
 from app.api.endpoints import ai_status as ai_status_endpoints
 from app.api.endpoints import auth as auth_endpoints
 from app.api.endpoints import llm as llm_endpoints
@@ -303,6 +304,12 @@ api_router.include_router(
     admin_perf_endpoints.router,
     prefix="/admin/perf",
     tags=["admin-perf"],
+    dependencies=_admin_dep,
+)
+api_router.include_router(
+    jira_migration_endpoints.router,
+    prefix="/admin/jira-migration",
+    tags=["admin-jira-migration"],
     dependencies=_admin_dep,
 )
 api_router.include_router(

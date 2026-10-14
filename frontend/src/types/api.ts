@@ -49,6 +49,7 @@ export interface EmployeeResponse {
 
 export interface JiraUserSearchResult {
   jira_account_id: string;
+  jira_username: string | null;
   display_name: string;
   email: string | null;
   is_active: boolean;
@@ -57,6 +58,7 @@ export interface JiraUserSearchResult {
 
 export interface EmployeeFromJiraRequest {
   jira_account_id: string;
+  jira_username?: string | null;
   display_name: string;
   email: string | null;
   is_active: boolean;
@@ -91,7 +93,6 @@ export interface CategoryResponse {
 // === Settings ===
 
 export interface JiraSettingsResponse {
-  email: string | null;
   base_url: string | null;
   has_token: boolean;
 }
@@ -100,6 +101,17 @@ export interface JiraTestResponse {
   connected: boolean;
   user_name: string | null;
   user_email: string | null;
+  error: string | null;
+}
+
+export interface ConfluenceSettingsResponse {
+  base_url: string | null;
+  has_token: boolean;
+}
+
+export interface ConfluenceTestResponse {
+  connected: boolean;
+  user_name: string | null;
   error: string | null;
 }
 

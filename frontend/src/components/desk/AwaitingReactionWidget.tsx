@@ -22,7 +22,7 @@ export default function AwaitingReactionWidget({ token, title }: { token: string
         Задачи, где вы исполнитель и последним ответил кто-то другой.
       </div>
       {items.map((it, i) => {
-        const jiraUrl = it.key ? `https://example.atlassian.net/browse/${it.key}` : null;
+        const jiraUrl = it.jira_url;
         const label = `${it.key ? `${it.key} · ` : ''}${it.title ?? '—'}`;
         return (
           <div className="desk-await-item" key={`${it.key ?? ''}-${i}`}>

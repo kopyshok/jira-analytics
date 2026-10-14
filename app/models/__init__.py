@@ -77,6 +77,7 @@ from app.models.perf import PerfMinute, PerfServerSnapshot, PerfSlowRequest  # n
 from app.models.kpi import (
     KpiMetric, KpiProfile, KpiProfileMetric, KpiProfileRole, KpiCycleTimeNorm, KpiApproval,
 )
+from app.models.jira_migration import JiraMigrationDecision, JiraMigrationReport  # noqa: F401
 
 __all__ = [
     "TimestampMixin",
@@ -168,4 +169,6 @@ __all__ = [
     "PerfMinute",
     "PerfSlowRequest",
     "PerfServerSnapshot",
+    "JiraMigrationReport",
+    "JiraMigrationDecision",
 ]

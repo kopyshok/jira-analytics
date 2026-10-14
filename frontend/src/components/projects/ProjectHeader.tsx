@@ -10,6 +10,7 @@ import type { ProjectDetail, ProjectSummary } from '../../types/projects';
 import { useRegenerateSummary } from '../../hooks/useProjectSummary';
 import { AiGate } from '../shared/AiGate';
 import { trackAction } from '../../lib/usage/track';
+import JiraIssueLink from '../shared/JiraIssueLink';
 
 type ViewMode = 'analysis' | 'presentation' | 'plan';
 
@@ -136,14 +137,12 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
           {detail?.key && (
-            <a
-              href={`https://example.atlassian.net/browse/${detail.key}`}
-              target="_blank"
-              rel="noreferrer"
+            <JiraIssueLink
+              issueKey={detail.key}
               style={{ color: 'var(--accent-1, #00c9c8)', fontSize: 12, textDecoration: 'none' }}
             >
               {detail.key}
-            </a>
+            </JiraIssueLink>
           )}
           {detail?.key && <span style={{ color: 'var(--text-muted, #7e94b8)', fontSize: 12 }}>·</span>}
           {(detail?.period_start || detail?.period_end) && (

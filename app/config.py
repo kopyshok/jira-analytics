@@ -26,9 +26,8 @@ class Settings(BaseSettings):
         "http://localhost:5173",
     ]
 
-    # Jira Cloud credentials
+    # Jira Data Center: адрес и персональный токен (Bearer)
     jira_base_url: Optional[str] = None
-    jira_email: Optional[str] = None
     jira_api_token: Optional[str] = None
     
     # Sync settings

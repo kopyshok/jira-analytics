@@ -3,14 +3,31 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Awaitable, Callable, Optional, List, Tuple, Any
+from typing import (
+    Any, AsyncIterator, Awaitable, Callable, Iterable, Iterator, List, Optional, Tuple,
+)
 import json
 import logging
 import math
 
+from sqlalchemy import ColumnElement
 from sqlalchemy.orm import Session
 
-from app.connectors.jira_client import JiraClient
+from app.connectors.jira_client import (
+    JIRA_WALL_CLOCK_TZ,
+    JiraAuthError,
+    JiraClient,
+    JiraClientError,
+    JiraNetworkError,
+    JiraRateLimitError,
+)
+from app.connectors.changelog import (
+    category_changed_at,
+    is_complete,
+    status_changes,
+    status_only,
+)
+from app.connectors.jql import jql_quote
 from app.connectors.schemas import (
     JiraProjectSchema,
     JiraIssueSchema,
@@ -23,6 +40,7 @@ from app.models import (
     SyncState, ScopeProject,
 )
 from app.models.app_setting import AppSetting
+from app.services.jira_migration.state import CLOUD_PREFIX, ensure_sync_allowed
 from app.services.backlog_service import switch_off_if_became_service_epic
 from app.services.plan_sources import (
     PLAN_HOURS_SETTING_KEYS,
@@ -332,16 +350,18 @@ def paused_days_from_changes(
 
 
 def _drop_tz(dt: Optional[datetime]) -> Optional[datetime]:
-    """Убрать таймзону, сохранив показания часов Jira.
+    """Убрать таймзону, сохранив московские «настенные» часы.
 
-    Колонки времени в схеме — без таймзоны. Значение с зоной каждая БД
-    записывает по-своему: SQLite оставляет часы как есть, PostgreSQL приводит к
-    UTC и сдвигает их на разницу поясов. Приводим к одному виду до записи —
-    иначе те же ворклоги на разных базах лежат с разным временем.
+    Колонки времени в схеме — без таймзоны. Облако присылало время с поясом
+    учётки (+03:00), Jira DC — в UTC; база всегда хранила московские часы,
+    поэтому приводим к ним. Без перевода ворклоги около полуночи уехали бы на
+    соседний день, а срок внесения часов в KPI сдвинулся бы на 3 часа.
+    Значение с зоной каждая БД записывает по-своему (PostgreSQL сдвигает к
+    UTC), поэтому зону снимаем до записи.
     """
     if dt is None or dt.tzinfo is None:
         return dt
-    return dt.replace(tzinfo=None)
+    return dt.astimezone(JIRA_WALL_CLOCK_TZ).replace(tzinfo=None)
 
 
 def _parse_jira_date(raw: Optional[str]) -> Optional[datetime]:
@@ -356,6 +376,19 @@ def _parse_jira_date(raw: Optional[str]) -> Optional[datetime]:
 
 
 logger = logging.getLogger("jira_analytics.sync")
+
+# Ворклогов в одной пачке записи: память не растёт с длиной периода — после
+# переезда полный синк перечитывает сотни тысяч ворклогов.
+WORKLOG_CHUNK = 1000
+# Значений в одном IN (...): у SQLite предел на число параметров запроса.
+IN_CHUNK = 500
+
+
+def _in_chunks(values: Iterable[str], size: int = IN_CHUNK) -> Iterator[list[str]]:
+    """Значения порциями для ``IN (...)``, не больше ``size`` в порции."""
+    items = list(values)
+    for start in range(0, len(items), size):
+        yield items[start:start + size]
 
 
 # Planned-effort custom-field AppSetting keys. Populated by admin in /settings.
@@ -398,13 +431,29 @@ _KPI_FIELD_SETTING_KEYS = [
     "jira_dev_est_field_id",
     "jira_sprint_field_id",
 ]
+# Иерархия Jira DC: задача → эпик («Ссылка на эпик»), эпик → инициатива
+# («Parent Link»). Ключи входят в общий список, чтобы поля запрашивались в
+# каждом чтении задач и попадали в ``_extra``.
+_HIERARCHY_FIELD_SETTING_KEYS = [
+    "jira_epic_link_field_id",
+    "jira_parent_link_field_id",
+]
 _ALL_PLANNED_KEYS = (
     _PLANNED_NUMERIC_SETTING_KEYS
     + _PLANNED_STRING_SETTING_KEYS
     + _RATING_SETTING_KEYS
     + _PLANNED_DATE_SETTING_KEYS
     + _KPI_FIELD_SETTING_KEYS
+    + _HIERARCHY_FIELD_SETTING_KEYS
 )
+
+#: Поля Jira Software / Advanced Roadmaps с фиксированным типом: id находим по
+#: типу и кладём в настройки сами — сопоставлять их вручную не нужно.
+AUTO_FIELD_TYPES: dict[str, str] = {
+    "jira_sprint_field_id": "com.pyxis.greenhopper.jira:gh-sprint",
+    "jira_epic_link_field_id": "com.pyxis.greenhopper.jira:gh-epic-link",
+    "jira_parent_link_field_id": "com.atlassian.jpo:jpo-custom-field-parent",
+}
 
 
 def _to_float(raw: Any) -> Optional[float]:
@@ -463,7 +512,7 @@ def _normalize_level(raw: Any) -> Optional[str]:
 def _extract_user_field(
     extra: dict, field_id: Optional[str]
 ) -> tuple[Optional[str], Optional[str]]:
-    """Достаёт (accountId, displayName) из кастомного поля Jira типа user.
+    """Достаёт (key, displayName) из кастомного поля Jira DC типа user.
 
     Пустое поле, ненастроенный id или чужая форма значения → (None, None).
     """
@@ -472,7 +521,68 @@ def _extract_user_field(
     raw = (extra or {}).get(field_id)
     if not isinstance(raw, dict):
         return None, None
-    return (raw.get("accountId") or None), (raw.get("displayName") or None)
+    return (raw.get("key") or None), (raw.get("displayName") or None)
+
+
+def _author_as_user(author: JiraUserSchema) -> JiraUserSchema:
+    """Автор ворклога/комментария как пользователь Jira для upsert сотрудника.
+
+    Активным считаем всегда, как и раньше: признак активности сотрудника
+    пересчитывается отдельно (``/employees/recalc-active``). Аватар переносим,
+    чтобы проход по ворклогам не стирал его у сотрудника.
+    """
+    return JiraUserSchema(
+        key=author.jira_account_id,
+        name=getattr(author, "name", None),
+        displayName=author.display_name,
+        emailAddress=getattr(author, "email", None),
+        active=True,
+        avatarUrls=getattr(author, "avatar_urls", None),
+    )
+
+
+def _not_cloud_worklog() -> ColumnElement[bool]:
+    """Условие «ворклог не облачный»: синк удаляет только такие.
+
+    Облачные (id «cloud:…», сохранены при переезде у задач без пары в новой
+    Jira) из Jira больше не придут — удаление по окну дат или по «нет в
+    ответе Jira» потеряло бы их навсегда.
+    """
+    return ~Worklog.jira_worklog_id.startswith(CLOUD_PREFIX)
+
+
+def _worklog_data(jira_worklog: JiraWorklogSchema, issue_id: str, employee_id: str) -> dict:
+    """Колонки ворклога в базе по ответу Jira."""
+    return {
+        "jira_worklog_id": jira_worklog.id,
+        "started_at": _drop_tz(jira_worklog.started_datetime),
+        "jira_created_at": _drop_tz(jira_worklog.created_datetime),
+        "hours": jira_worklog.hours,
+        "time_spent_seconds": jira_worklog.timeSpentSeconds,
+        "comment_text": jira_worklog.comment_text,
+        "issue_id": issue_id,
+        "employee_id": employee_id,
+        "synced_at": datetime.utcnow(),
+    }
+
+
+def _parent_key_of(fields: Any, planned_ids: dict[str, Optional[str]]) -> Optional[str]:
+    """Ключ родителя задачи в Jira DC.
+
+    Подзадача ссылается на родителя полем ``parent``; задача на эпик —
+    «Ссылкой на эпик»; эпик на инициативу — «Parent Link». Обе ссылки в DC
+    приходят строкой-ключом. ``planned_ids`` — значения настроек
+    (``_resolve_planned_field_ids``).
+    """
+    if fields.parent_key:
+        return fields.parent_key
+    extra = getattr(fields, "_extra", None) or {}
+    for setting_key in _HIERARCHY_FIELD_SETTING_KEYS:
+        field_id = planned_ids.get(setting_key)
+        value = extra.get(field_id) if field_id else None
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def _apply_plan_sources(
@@ -641,13 +751,22 @@ class SyncService:
     - Dependency ordering (employees -> projects -> issues -> worklogs)
     - Upsert logic for all entities
     """
-    
+
+    #: id статуса → ключ категории (``GET /status``); грузится раз за проход.
+    #: Атрибут класса: часть тестов создаёт сервис через ``__new__``.
+    _status_categories: Optional[dict[str, str]] = None
+    #: Предупреждение «нет „Ссылки на эпик"» уже записано в этом проходе.
+    _epic_link_warned: bool = False
+
     def __init__(
         self,
         db: Session,
         jira_client: JiraClient,
         cancel_check: Optional[Callable[[], Awaitable[bool]]] = None,
     ):
+        # Единая точка: каждый пишущий путь синка создаёт SyncService. Пока
+        # база не переведена на id новой Jira, синк перезаписал бы чужие строки.
+        ensure_sync_allowed(db)
         self.db = db
         self.jira = jira_client
         self.stats = SyncStats()
@@ -732,32 +851,105 @@ class SyncService:
                     seen.add(fid)
         return ids
 
-    async def _ensure_sprint_field_id(self) -> None:
-        """Найти поле «Спринт» в Jira, если админ его ещё не сопоставил.
+    async def _ensure_auto_field_ids(self) -> None:
+        """Найти «Спринт», «Ссылку на эпик» и «Parent Link», если их нет в настройках.
 
-        Поле стандартное для Jira Software, у него фиксированный тип, поэтому
-        ищем по типу и сохраняем — руками настраивать не нужно.
+        Тип у этих полей фиксированный, поэтому ищем по типу и сохраняем;
+        уже заданное значение (в том числе руками) не трогаем.
         """
-        if self._get_setting("jira_sprint_field_id"):
+        missing = {
+            key: field_type for key, field_type in AUTO_FIELD_TYPES.items()
+            if not self._get_setting(key)
+        }
+        if not missing:
             return
         try:
             fields = await self.jira.get_fields()
-        except Exception:  # связь с Jira не настроена — не мешаем синку
-            return
-        for field in fields:
-            schema = field.get("schema") or {}
-            if schema.get("custom") == "com.pyxis.greenhopper.jira:gh-sprint":
-                row = AppSetting(key="jira_sprint_field_id", value=field["id"])
-                self.db.merge(row)
-                self.db.commit()
-                logger.info("Sprint field discovered: %s", field["id"])
-                return
+        except Exception as exc:  # связь с Jira не настроена — не мешаем синку
+            logger.warning(
+                "Не удалось найти поля Jira по типу (%s): %s", ", ".join(missing), exc,
+            )
+            fields = []
+        found: dict[str, str] = {}
+        for field in fields or []:
+            if not isinstance(field, dict):
+                continue
+            field_type = (field.get("schema") or {}).get("custom")
+            for key, wanted in missing.items():
+                if field_type == wanted and key not in found:
+                    found[key] = field["id"]
+        for key, field_id in found.items():
+            row = self.db.query(AppSetting).filter(AppSetting.key == key).first()
+            if row is None:
+                self.db.add(AppSetting(key=key, value=field_id))
+            else:
+                row.value = field_id
+            logger.info("Jira field discovered: %s = %s", key, field_id)
+        if found:
+            self.db.commit()
+        epic_key = "jira_epic_link_field_id"
+        if epic_key in missing and epic_key not in found and not self._epic_link_warned:
+            self._epic_link_warned = True
+            logger.warning(
+                "Поле «Ссылка на эпик» в Jira не найдено — задачи не будут "
+                "привязаны к своим эпикам"
+            )
 
     def _resolve_planned_field_ids(self) -> dict[str, Optional[str]]:
         """Резолвит все planned-effort / impact / risk AppSetting ключи один
         раз в начале sync-run, чтобы передавать в ``_upsert_issue`` без N+1.
         """
         return {k: self._get_setting(k) for k in _ALL_PLANNED_KEYS}
+
+    async def _ensure_status_categories(self) -> None:
+        """Справочник «статус → категория» для расчёта «статус изменён» из истории."""
+        if self._status_categories is not None:
+            return
+        try:
+            statuses = await self.jira.get_statuses()
+        except Exception:
+            logger.warning("Справочник статусов Jira недоступен — любая смена статуса "
+                           "считается сменой категории")
+            statuses = []
+        categories: dict[str, str] = {}
+        for status in statuses or []:
+            if not isinstance(status, dict):
+                continue
+            category = status.get("statusCategory")
+            if status.get("id") and isinstance(category, dict) and category.get("key"):
+                categories[str(status["id"])] = category["key"]
+        self._status_categories = categories
+
+    async def _complete_changelog(self, jira_issue: JiraIssueSchema) -> None:
+        """Оставить в истории задачи только смены статуса и дочитать её, если
+        поиск отдал историю не целиком.
+
+        Сколько записей истории Jira DC кладёт в ответ поиска, не проверено:
+        по обрывку «статус изменён» и дни паузы посчитались бы неверно. Не
+        удалось дочитать — обрывок остаётся, и по нему ``_upsert_issue`` и
+        ``sync_paused_days`` не трогают сохранённые значения. Ошибка Jira по
+        одной задаче (задачи нет, запрос отклонён) — то же самое: этап идёт
+        дальше. Нет доступа, лимит запросов, нет связи — сбой всего этапа.
+        """
+        jira_issue.changelog = status_only(jira_issue.changelog)
+        if is_complete(jira_issue.changelog):
+            return
+        try:
+            full = status_only(await self.jira.get_issue_changelog(jira_issue.key))
+        except (JiraAuthError, JiraRateLimitError, JiraNetworkError):
+            raise
+        except JiraClientError as exc:
+            logger.warning(
+                "Историю изменений задачи %s прочитать не удалось: %s", jira_issue.key, exc,
+            )
+            full = None
+        if isinstance(full, dict) and full.get("histories"):
+            jira_issue.changelog = full
+        if not is_complete(jira_issue.changelog):
+            logger.warning(
+                "История изменений задачи %s получена не целиком — «статус изменён» "
+                "и дни паузы оставлены прежними", jira_issue.key,
+            )
 
     def _update_sync_state(
         self,
@@ -784,7 +976,7 @@ class SyncService:
     # === Employee sync ===
     
     def _upsert_employee(self, jira_user: JiraUserSchema) -> Tuple[Employee, bool]:
-        """Upsert employee from Jira user."""
+        """Upsert employee from Jira user (identity — DC ``key``, login refreshed)."""
         data = {
             "jira_account_id": jira_user.jira_account_id,
             "display_name": jira_user.display_name,
@@ -793,6 +985,8 @@ class SyncService:
             "avatar_url": jira_user.avatar_url,
             "synced_at": datetime.utcnow(),
         }
+        if jira_user.name:
+            data["jira_username"] = jira_user.name
         return self.employee_repo.upsert_by_field(
             "jira_account_id",
             jira_user.jira_account_id,
@@ -824,6 +1018,9 @@ class SyncService:
         eid = jira_user.jira_account_id
         cached = cache.get(eid)
         if cached is not None:
+            # Логин дешевле сверить, чем потерять: по нему ведро B ищет списания.
+            if jira_user.name and cached.jira_username != jira_user.name:
+                cached.jira_username = jira_user.name
             return cached
         employee = self._ensure_employee(jira_user)
         cache[eid] = employee
@@ -945,7 +1142,6 @@ class SyncService:
             "priority": jira_issue.fields.priority.name if jira_issue.fields.priority else None,
             "project_id": project_id,
             "parent_id": parent_id,
-            "status_changed_at": _parse_jira_datetime(jira_issue.fields.statuscategorychangedate),
             "jira_updated_at": _parse_jira_datetime(jira_issue.fields.updated),
             "due_date": _parse_jira_date(jira_issue.fields.duedate),
             "resolution": (
@@ -956,6 +1152,14 @@ class SyncService:
             "jira_created_at": _parse_jira_datetime(jira_issue.fields.created),
             "synced_at": datetime.utcnow(),
         }
+        # В DC нет statuscategorychangedate: последняя смена категории
+        # статуса по истории, а если её не было — дата создания задачи.
+        # Неполная история (дочитать не удалось) — сохранённое значение не трогаем.
+        if is_complete(jira_issue.changelog):
+            data["status_changed_at"] = _parse_jira_datetime(
+                category_changed_at(jira_issue.changelog, self._status_categories)
+                or jira_issue.fields.created
+            )
         if team is not _UNSET:
             data["team"] = team
         if participating_teams is not _UNSET:
@@ -1068,6 +1272,9 @@ class SyncService:
             before = (existing.project_id, existing.issue_type, existing.parent_id is not None)
             issue, created = self.issue_repo.update(existing, data), False
         else:
+            # Новая задача с неполной историей: сохранённого значения нет —
+            # дата создания, а не пусто.
+            data.setdefault("status_changed_at", data["jira_created_at"])
             issue, created = self.issue_repo.create(data), True
         _record_plan_changes(
             self.db, issue, _apply_plan_sources(issue, extra, planned_ids)
@@ -1075,7 +1282,11 @@ class SyncService:
         if before is not None:
             # Родитель может быть ещё не в базе (достраивается вторым проходом) —
             # наличие родителя берём по ключу из Jira.
-            after = (project_id, issue.issue_type, parent_id is not None or bool(jira_issue.fields.parent_key))
+            after = (
+                project_id,
+                issue.issue_type,
+                parent_id is not None or bool(_parent_key_of(jira_issue.fields, planned_ids)),
+            )
             if before != after:
                 self._switch_off_new_service_epic(issue.id, before, after)
         if created:
@@ -1149,7 +1360,8 @@ class SyncService:
                 logger.info(f"Incremental sync since {since}")
 
         # Read team/goals field IDs from AppSetting — if configured, request them from Jira
-        await self._ensure_sprint_field_id()
+        await self._ensure_auto_field_ids()
+        await self._ensure_status_categories()
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
         goals_field_id = self._get_setting("jira_goals_field_id")
@@ -1181,34 +1393,38 @@ class SyncService:
             self.db.query(Issue.key, Issue.id).all()
         )
 
-        # Параллельная выкачка по проектам: cursor pagination Jira
-        # последовательная внутри одного JQL, поэтому общий запрос
+        # Параллельная выкачка по проектам: страницы одного JQL читаются
+        # последовательно (смещение за смещением), поэтому общий запрос
         # `project in (A,B,...)` гонит 1 страницу за раз × 1000+ страниц.
         # Расщепляем на N producer'ов (один на проект) → asyncio.Queue
         # → один consumer пишет в БД (Session не coroutine-safe).
         # На 6 проектах даёт ~5-6× ускорения сетевой части.
-        queue: asyncio.Queue = asyncio.Queue(maxsize=2000)
+        # С историей изменений задача тяжелее — очередь короче (по истории в
+        # очереди держим только смены статуса).
+        queue: asyncio.Queue = asyncio.Queue(maxsize=500)
         producer_errors: list[Exception] = []
         base_request_fields = [
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator", "reporter",
             "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
+            "duedate", "resolution", "resolutiondate",
             "issuelinks",
         ]
         request_fields = base_request_fields + list(extra_fields) if extra_fields else None
 
         async def producer(project_key: str) -> None:
             try:
-                jql = f'project = "{project_key}"'
+                jql = f"project = {jql_quote(project_key)}"
                 if since:
                     jql += f' AND updated >= "{since.strftime("%Y-%m-%d %H:%M")}"'
-                jql += " ORDER BY updated ASC"
+                jql += " ORDER BY key ASC"
                 async for ji in self.jira.iter_issues(
                     jql=jql,
                     max_results=100,
                     fields=request_fields,
+                    expand="changelog",
                 ):
+                    ji.changelog = status_only(ji.changelog)
                     await queue.put(ji)
             except asyncio.CancelledError:
                 raise
@@ -1237,7 +1453,7 @@ class SyncService:
                     continue
 
                 parent_id = None
-                parent_key = jira_issue.fields.parent_key
+                parent_key = _parent_key_of(jira_issue.fields, planned_field_ids)
                 if parent_key:
                     parent_id = issue_id_by_key.get(parent_key)
 
@@ -1262,6 +1478,7 @@ class SyncService:
                     if behavior_field_id:
                         extra_kwargs["current_behavior"] = _extract_text_field(extra, behavior_field_id)
 
+                await self._complete_changelog(jira_issue)
                 issue, created = self._upsert_issue(
                     jira_issue, project.id, parent_id,
                     planned_field_ids=planned_field_ids,
@@ -1365,9 +1582,9 @@ class SyncService:
     ) -> int:
         """Посчитать дни простоя в статусах паузы по истории статусов Jira.
 
-        Отдельный проход после задач: история статусов приходит только
-        поштучно, поэтому сначала JQL сужает выборку до задач, которые вообще
-        бывали на паузе (в тенанте это сотни задач, а не сотня тысяч).
+        Отдельный проход после задач: JQL сужает выборку до задач, которые
+        вообще бывали на паузе, история статусов приходит в том же поиске
+        (``expand=changelog``).
 
         Курсор свой (``sync_state`` «paused_days»): первый запуск проходит по
         всей истории, дальше — только по задачам, изменившимся с прошлого раза.
@@ -1383,35 +1600,39 @@ class SyncService:
             state = self._get_sync_state("paused_days")
             if state and state.last_success_at:
                 since = state.last_success_at
-        projects_jql = ", ".join(f'"{k}"' for k in project_keys)
+        projects_jql = ", ".join(jql_quote(k) for k in project_keys)
         statuses_jql = ", ".join(f'"{s}"' for s in PAUSED_STATUSES)
         jql = f"project in ({projects_jql}) AND status WAS IN ({statuses_jql})"
         if since:
             jql += f' AND updated >= "{since.strftime("%Y-%m-%d %H:%M")}"'
 
-        keys: List[str] = []
+        # История статусов приходит в том же поиске (expand=changelog) — без
+        # отдельного запроса на каждую задачу; неполную историю дочитываем.
+        seen = 0
+        updated = 0
         async for jira_issue in self.jira.iter_issues(
             jql=jql,
             max_results=100,
             fields=["summary", "issuetype", "status", "project"],
+            expand="changelog",
         ):
-            keys.append(jira_issue.key)
-
-        updated = 0
-        for key in keys:
             await self._check_cancelled()
-            issue = self.issue_repo.get_by_field("key", key)
+            seen += 1
+            issue = self.issue_repo.get_by_field("key", jira_issue.key)
             if not issue:
                 continue
-            days = paused_days_from_changes(await self.jira.get_status_changes(key))
+            await self._complete_changelog(jira_issue)
+            if not is_complete(jira_issue.changelog):
+                continue  # по обрывку истории дни паузы не пересчитываем
+            days = paused_days_from_changes(status_changes(jira_issue.changelog))
             if issue.paused_days != days:
                 issue.paused_days = days
                 updated += 1
-            if updated and updated % 100 == 0:
-                self.db.commit()
+                if updated % 100 == 0:
+                    self.db.commit()
         self._update_sync_state("paused_days", started_at)
         self.db.commit()
-        logger.info(f"Paused days: {updated} of {len(keys)} issues updated")
+        logger.info(f"Paused days: {updated} of {seen} issues updated")
         return updated
 
     async def refresh_issues_by_keys(
@@ -1445,7 +1666,8 @@ class SyncService:
         if not jira_keys:
             return 0, 0
 
-        await self._ensure_sprint_field_id()
+        await self._ensure_auto_field_ids()
+        await self._ensure_status_categories()
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
         goals_field_id = self._get_setting("jira_goals_field_id")
@@ -1468,7 +1690,7 @@ class SyncService:
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator", "reporter",
             "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
+            "duedate", "resolution", "resolutiondate",
         ]
         fields = base_fields + list(extra_fields)
 
@@ -1480,13 +1702,17 @@ class SyncService:
         for i in range(0, total, BATCH):
             await self._check_cancelled()
             batch = jira_keys[i:i + BATCH]
-            keys_jql = ", ".join(f'"{k}"' for k in batch)
+            keys_jql = ", ".join(jql_quote(k) for k in batch)
             jql = f"key in ({keys_jql})"
 
+            # lenient: ключ задачи, удалённой в Jira, — предупреждение, а не
+            # ошибка всей пачки.
             async for jira_issue in self.jira.iter_issues(
                 jql=jql,
                 max_results=BATCH,
                 fields=fields,
+                expand="changelog",
+                lenient=True,
             ):
                 existing = self.issue_repo.get_by_field("jira_issue_id", jira_issue.id)
                 if not existing:
@@ -1497,7 +1723,7 @@ class SyncService:
                     continue
 
                 parent_id = None
-                parent_key = jira_issue.fields.parent_key
+                parent_key = _parent_key_of(jira_issue.fields, planned_field_ids)
                 if parent_key:
                     parent = self.issue_repo.get_by_field("key", parent_key)
                     if parent:
@@ -1524,6 +1750,7 @@ class SyncService:
                     if behavior_field_id:
                         extra_kwargs["current_behavior"] = _extract_text_field(extra, behavior_field_id)
 
+                await self._complete_changelog(jira_issue)
                 issue_row, _ = self._upsert_issue(
                     jira_issue, project.id, parent_id,
                     planned_field_ids=planned_field_ids,
@@ -1556,7 +1783,8 @@ class SyncService:
         if not teams:
             return {}
 
-        await self._ensure_sprint_field_id()
+        await self._ensure_auto_field_ids()
+        await self._ensure_status_categories()
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
         goals_field_id = self._get_setting("jira_goals_field_id")
@@ -1593,11 +1821,11 @@ class SyncService:
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator", "reporter",
             "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
+            "duedate", "resolution", "resolutiondate",
         ]
         request_fields = base_fields + list(extra_fields)
 
-        projects_jql = ", ".join(f'"{k}"' for k in scope_keys)
+        projects_jql = ", ".join(jql_quote(k) for k in scope_keys)
 
         report: dict = {}
         for team in teams:
@@ -1606,13 +1834,12 @@ class SyncService:
             since = state.last_success_at if state else None
             run_start = datetime.utcnow()
 
-            team_escaped = team.replace('"', '\\"')
-            cf_clauses = [self._team_jql_clause(fid, team_escaped) for fid in team_field_ids]
+            cf_clauses = [self._team_jql_clause(fid, team) for fid in team_field_ids]
             team_clause = cf_clauses[0] if len(cf_clauses) == 1 else "(" + " OR ".join(cf_clauses) + ")"
             jql = f"project in ({projects_jql}) AND {team_clause}"
             if since:
                 jql += f' AND updated >= "{since.strftime("%Y-%m-%d %H:%M")}"'
-            jql += " ORDER BY updated ASC"
+            jql += " ORDER BY key ASC"
 
             logger.info(f"Team sync [{team}]: JQL={jql!r}")
             matched = 0
@@ -1622,6 +1849,7 @@ class SyncService:
                     jql=jql,
                     max_results=100,
                     fields=request_fields,
+                    expand="changelog",
                 ):
                     await self._check_cancelled()
                     project = self._get_project_by_jira_id(jira_issue.fields.project.id)
@@ -1629,7 +1857,7 @@ class SyncService:
                         continue
 
                     parent_id = None
-                    parent_key = jira_issue.fields.parent_key
+                    parent_key = _parent_key_of(jira_issue.fields, planned_field_ids)
                     if parent_key:
                         parent = self.issue_repo.get_by_field("key", parent_key)
                         if parent:
@@ -1655,6 +1883,7 @@ class SyncService:
                     if behavior_field_id:
                         extra_kwargs["current_behavior"] = _extract_text_field(extra, behavior_field_id)
 
+                    await self._complete_changelog(jira_issue)
                     _, was_created = self._upsert_issue(
                         jira_issue, project.id, parent_id,
                         planned_field_ids=planned_field_ids,
@@ -1708,8 +1937,8 @@ class SyncService:
         """
         numeric = field_id.split("_")[-1]
         if numeric.isdigit():
-            return f'cf[{numeric}] = "{team_value}"'
-        return f'"{field_id}" = "{team_value}"'
+            return f"cf[{numeric}] = {jql_quote(team_value)}"
+        return f'"{field_id}" = {jql_quote(team_value)}'
 
     # === Worklog sync ===
     
@@ -1724,23 +1953,85 @@ class SyncService:
         employee_id: str,
     ) -> Tuple[Worklog, bool]:
         """Upsert worklog from Jira."""
-        data = {
-            "jira_worklog_id": jira_worklog.id,
-            "started_at": _drop_tz(jira_worklog.started_datetime),
-            "jira_created_at": _drop_tz(jira_worklog.created_datetime),
-            "hours": jira_worklog.hours,
-            "time_spent_seconds": jira_worklog.timeSpentSeconds,
-            "comment_text": jira_worklog.comment_text,
-            "issue_id": issue_id,
-            "employee_id": employee_id,
-            "synced_at": datetime.utcnow(),
-        }
         return self.worklog_repo.upsert_by_field(
             "jira_worklog_id",
             jira_worklog.id,
-            data,
+            _worklog_data(jira_worklog, issue_id, employee_id),
         )
-    
+
+    def _known_worklogs(
+        self, worklogs: list[JiraWorklogSchema],
+    ) -> list[Tuple[JiraWorklogSchema, str, str]]:
+        """Ворклоги задач из базы как ``(ворклог, id задачи в базе, ключ задачи)``.
+
+        Задачи ищутся по id в Jira порциями по ``IN_CHUNK`` — только колонки,
+        без объектов. Ворклоги задач, которых нет в базе, отбрасываются:
+        охват не расширяем.
+        """
+        refs: dict[str, Tuple[str, str]] = {}
+        for ids in _in_chunks({wl.issueId for wl in worklogs}):
+            for jira_id, issue_id, key in self.db.query(
+                Issue.jira_issue_id, Issue.id, Issue.key
+            ).filter(Issue.jira_issue_id.in_(ids)):
+                refs[jira_id] = (issue_id, key)
+        return [
+            (wl, *refs[wl.issueId]) for wl in worklogs if wl.issueId in refs
+        ]
+
+    async def _known_worklog_chunks(
+        self, since_dt: datetime,
+    ) -> AsyncIterator[list[Tuple[JiraWorklogSchema, str, str]]]:
+        """Ворклоги, изменённые с ``since_dt``, пачками по ``WORKLOG_CHUNK``.
+
+        Поток из Jira не копится в памяти: каждые ``WORKLOG_CHUNK`` ворклогов
+        сверяются с базой (:meth:`_known_worklogs`) и отдаются вызывающему.
+        """
+        raw: list[JiraWorklogSchema] = []
+        async for wl in self.jira.get_worklogs_updated_since(since_dt):
+            await self._check_cancelled()
+            raw.append(wl)
+            if len(raw) >= WORKLOG_CHUNK:
+                known = self._known_worklogs(raw)
+                raw = []
+                if known:
+                    yield known
+        known = self._known_worklogs(raw)
+        if known:
+            yield known
+
+    def _upsert_worklog_chunk(
+        self,
+        chunk: list[Tuple[JiraWorklogSchema, str]],
+        employee_cache: dict[str, Employee],
+    ) -> int:
+        """Записать пачку ``(ворклог, id задачи в базе)``; вернуть число новых.
+
+        Авторы — через кэш сотрудников, уже записанные ворклоги — одним запросом
+        на каждые ``IN_CHUNK`` id вместо запроса на каждый ворклог.
+        """
+        employee_ids = [
+            self._ensure_employee_cached(_author_as_user(wl.author), employee_cache).id
+            for wl, _ in chunk
+        ]
+        existing: dict[str, Worklog] = {}
+        for ids in _in_chunks({wl.id for wl, _ in chunk}):
+            for found in self.db.query(Worklog).filter(Worklog.jira_worklog_id.in_(ids)):
+                existing[found.jira_worklog_id] = found
+        created = 0
+        for (wl, issue_id), employee_id in zip(chunk, employee_ids):
+            data = _worklog_data(wl, issue_id, employee_id)
+            row = existing.get(wl.id)
+            if row is None:
+                row = Worklog(**data)
+                self.db.add(row)
+                existing[wl.id] = row
+                created += 1
+            else:
+                for field, value in data.items():
+                    setattr(row, field, value)
+        self.db.flush()
+        return created
+
     async def sync_worklogs(
         self,
         issue_keys: Optional[List[str]] = None,
@@ -1779,13 +2070,7 @@ class SyncService:
                     issue_id=issue.jira_issue_id
                 ):
                     # Ensure author exists as employee
-                    author_schema = JiraUserSchema(
-                        accountId=jira_worklog.author.accountId,
-                        displayName=jira_worklog.author.displayName,
-                        emailAddress=jira_worklog.author.emailAddress,
-                        active=True,
-                    )
-                    employee = self._ensure_employee(author_schema)
+                    employee = self._ensure_employee(_author_as_user(jira_worklog.author))
 
                     # Upsert worklog
                     worklog, created = self._upsert_worklog(
@@ -1871,19 +2156,17 @@ class SyncService:
                 async for jira_comment in self.jira.iter_comments_for_issue(
                     issue_id=issue.jira_issue_id
                 ):
-                    # Ensure author exists as employee
-                    author_schema = JiraUserSchema(
-                        accountId=jira_comment.author.accountId,
-                        displayName=jira_comment.author.displayName,
-                        emailAddress=jira_comment.author.emailAddress,
-                        active=True,
+                    # Ensure author exists as employee (анонимный — без автора)
+                    author_id = (
+                        self._ensure_employee(_author_as_user(jira_comment.author)).id
+                        if jira_comment.author is not None
+                        else None
                     )
-                    employee = self._ensure_employee(author_schema)
 
                     comment, created = self._upsert_comment(
                         jira_comment,
                         issue.id,
-                        employee.id,
+                        author_id,
                     )
                     if created:
                         self.stats.comments_created += 1
@@ -1973,10 +2256,9 @@ class SyncService:
         не вызывается.
         """
         since_dt = datetime.combine(since, datetime.min.time())
-        since_dt_aware = since_dt.replace(tzinfo=timezone.utc)
         deleted = (
             self.db.query(Worklog)
-            .filter(Worklog.started_at >= since_dt)
+            .filter(Worklog.started_at >= since_dt, _not_cloud_worklog())
             .delete(synchronize_session=False)
         )
         self.db.commit()
@@ -2001,20 +2283,9 @@ class SyncService:
                 continue
             stats.issues_scanned += 1
             async for wl in self.jira.iter_worklogs_for_issue(jira_issue.id):
-                started = wl.started_datetime
-                if started.tzinfo is None:
-                    started_aware = started.replace(tzinfo=timezone.utc)
-                else:
-                    started_aware = started
-                if started_aware < since_dt_aware:
+                if _drop_tz(wl.started_datetime) < since_dt:
                     continue
-                author_schema = JiraUserSchema(
-                    accountId=wl.author.accountId,
-                    displayName=wl.author.displayName,
-                    emailAddress=wl.author.emailAddress,
-                    active=True,
-                )
-                employee = self._ensure_employee(author_schema)
+                employee = self._ensure_employee(_author_as_user(wl.author))
                 _, created = self._upsert_worklog(wl, local.id, employee.id)
                 if created:
                     stats.worklogs_inserted += 1
@@ -2040,24 +2311,18 @@ class SyncService:
         Алгоритм:
         1. DELETE worklogs WHERE started_at >= since_dt. Commit сразу.
         2. Emit progress с количеством удалённых строк.
-        3. get_worklogs_updated_since(since_dt) — собирает ВСЕ ворклоги,
-           изменённые с since_dt (what is updated >= started, всегда верно).
-        4. Bulk-prefetch локальных Issue по jira_issue_id.
-        5. Employee cache для горячего пути.
-        6. Для каждого worklog:
-           - Пропустить если started_datetime < since_dt (исторический дрейф).
-           - Пропустить если issue не в локальной БД (не расширяем scope).
-           - _upsert_worklog + подсчёт inserted.
-        7. Один commit в конце.
-        8. on_progress каждые ~100 обработанных ворклогов.
+        3. get_worklogs_updated_since(since_dt) читается потоком (what is
+           updated >= started, всегда верно) пачками по ``WORKLOG_CHUNK``;
+           задачи пачки ищутся в базе, ворклоги задач вне базы отбрасываются.
+        4. В пачке пропускаем started_datetime < since_dt (исторический дрейф),
+           пишем остальное, commit и on_progress после каждой пачки.
         """
         since_dt = datetime.combine(since, datetime.min.time())
-        since_dt_aware = since_dt.replace(tzinfo=timezone.utc)
 
-        # Шаг 1: удалить старые строки
+        # Шаг 1: удалить старые строки (облачные — нет: из Jira они не вернутся)
         deleted = (
             self.db.query(Worklog)
-            .filter(Worklog.started_at >= since_dt)
+            .filter(Worklog.started_at >= since_dt, _not_cloud_worklog())
             .delete(synchronize_session=False)
         )
         self.db.commit()
@@ -2068,67 +2333,25 @@ class SyncService:
         if on_progress is not None:
             await on_progress(stats, None)
 
-        # Шаг 3: собрать все изменённые ворклоги через bulk API
-        worklogs_by_issue: dict[str, list] = {}
-        async for wl in self.jira.get_worklogs_updated_since(since_dt):
-            await self._check_cancelled()
-            worklogs_by_issue.setdefault(wl.issueId, []).append(wl)
-
-        # Шаг 4: bulk-prefetch issue
-        if worklogs_by_issue:
-            issue_rows = (
-                self.db.query(Issue)
-                .filter(Issue.jira_issue_id.in_(list(worklogs_by_issue.keys())))
-                .all()
-            )
-            issue_by_jira_id: dict[str, Issue] = {i.jira_issue_id: i for i in issue_rows}
-        else:
-            issue_by_jira_id = {}
-
-        # Шаг 5: employee cache
         employee_cache: dict[str, Employee] = {
             e.jira_account_id: e for e in self.db.query(Employee).all()
         }
-
-        # Шаг 6: upsert
-        processed = 0
-        for jira_issue_id, worklogs in worklogs_by_issue.items():
-            local_issue = issue_by_jira_id.get(jira_issue_id)
-            if local_issue is None:
-                continue
-            stats.issues_scanned += 1
-            for wl in worklogs:
+        scanned: set[str] = set()
+        async for chunk in self._known_worklog_chunks(since_dt):
+            fresh: list[Tuple[JiraWorklogSchema, str]] = []
+            for wl, issue_id, _key in chunk:
+                scanned.add(issue_id)
                 # Фильтрация исторического дрейфа
-                started = wl.started_datetime
-                if started.tzinfo is None:
-                    started_aware = started.replace(tzinfo=timezone.utc)
-                else:
-                    started_aware = started
-                if started_aware < since_dt_aware:
+                if _drop_tz(wl.started_datetime) < since_dt:
                     continue
-
-                author_schema = JiraUserSchema(
-                    accountId=wl.author.accountId,
-                    displayName=wl.author.displayName,
-                    emailAddress=wl.author.emailAddress,
-                    active=True,
-                )
-                employee = self._ensure_employee_cached(author_schema, employee_cache)
-                _, created = self._upsert_worklog(wl, local_issue.id, employee.id)
-                if created:
-                    stats.worklogs_inserted += 1
-
-                processed += 1
-                if processed % 100 == 0:
-                    await self._check_cancelled()
-                    if on_progress is not None:
-                        await on_progress(stats, local_issue.key)
-
+                fresh.append((wl, issue_id))
+            stats.issues_scanned = len(scanned)
+            stats.worklogs_inserted += self._upsert_worklog_chunk(fresh, employee_cache)
+            # Старые строки уже удалены и закоммичены — каждая записанная пачка
+            # сразу сохраняется, обрыв посередине не оставит период пустым.
+            self.db.commit()
             if on_progress is not None:
-                await on_progress(stats, local_issue.key)
-
-        # Шаг 7: единственный commit
-        self.db.commit()
+                await on_progress(stats, chunk[-1][2])
 
         return stats
 
@@ -2147,7 +2370,7 @@ class SyncService:
           upsert'ятся. Ворклоги, отсутствующие в Jira, удаляются из локальной БД.
           Незнакомые issue пропускаются.
         - **Ведро B** (если ``teams`` задан): JQL
-          ``worklogAuthor = <id> AND updated >= since`` по каждому сотруднику
+          ``worklogAuthor = <логин> AND updated >= since`` по каждому сотруднику
           из ``employee_teams.team IN teams``. Незнакомые issue создаются
           с ``out_of_scope=True``. Аналогичный delete diff применяется ко всем
           ворклогам задачи (не только от текущего автора).
@@ -2178,13 +2401,7 @@ class SyncService:
             async for wl in self.jira.iter_worklogs_for_issue(jira_issue.id):
                 await self._check_cancelled()
                 jira_wl_ids.add(wl.id)
-                author_schema = JiraUserSchema(
-                    accountId=wl.author.accountId,
-                    displayName=wl.author.displayName,
-                    emailAddress=wl.author.emailAddress,
-                    active=True,
-                )
-                employee = self._ensure_employee(author_schema)
+                employee = self._ensure_employee(_author_as_user(wl.author))
                 self._upsert_worklog(wl, local.id, employee.id)
                 stats.bucket_a_worklogs_upserted += 1
             # Delete diff: удаляем ворклоги, которых уже нет в Jira
@@ -2202,6 +2419,7 @@ class SyncService:
                         .filter(
                             Worklog.issue_id == local.id,
                             Worklog.jira_worklog_id.in_(stale_ids),
+                            _not_cloud_worklog(),
                         )
                         .delete(synchronize_session=False)
                     )
@@ -2231,65 +2449,44 @@ class SyncService:
 
         Вместо Bucket A per-issue, использует:
         1. GET /worklog/updated — все изменённые worklog ID за период
-        2. POST /worklog/list — батч-загрузка содержимого
-        3. Upsert только для issue которые есть в локальной БД
+        2. POST /worklog/list — батч-загрузка содержимого, читается потоком
+        3. Upsert пачками по ``WORKLOG_CHUNK`` только для issue которые есть
+           в локальной БД; commit после каждой пачки
         4. Удаление ворклогов, удалённых в Jira, через GET /worklog/deleted
            (ловит ВСЕ удалённые ворклоги, не только по touched issues)
         5. Bucket B (если teams задан) — остаётся как есть.
+
+        Курсор ворклогов двигает вызывающий и только после успеха всего
+        прохода; повтор после обрыва перезапишет уже сохранённые пачки.
         """
         stats = UpdateStats()
         since_dt = datetime.combine(since, datetime.min.time())
-
-        # Шаг 1+2: все изменённые ворклоги за период; группируем по issueId
-        worklogs_by_issue: dict[str, list] = {}
-        async for wl in self.jira.get_worklogs_updated_since(since_dt):
-            await self._check_cancelled()
-            worklogs_by_issue.setdefault(wl.issueId, []).append(wl)
-
-        # Bulk-prefetch issue rows для всех затронутых jira_issue_id одним SELECT
-        # вместо N. Worklog от незнакомой задачи отфильтруется по отсутствию в map.
-        if worklogs_by_issue:
-            issue_rows = (
-                self.db.query(Issue)
-                .filter(Issue.jira_issue_id.in_(list(worklogs_by_issue.keys())))
-                .all()
-            )
-            issue_by_jira_id: dict[str, Issue] = {i.jira_issue_id: i for i in issue_rows}
-        else:
-            issue_by_jira_id = {}
 
         # Employee cache — типично 30-50 уникальных авторов на 41k ворклогов.
         employee_cache: dict[str, Employee] = {
             e.jira_account_id: e for e in self.db.query(Employee).all()
         }
 
-        # Шаг 3: upsert для каждой touched issue, присутствующей в нашей БД
-        for jira_issue_id, worklogs in worklogs_by_issue.items():
-            local_issue = issue_by_jira_id.get(jira_issue_id)
-            if local_issue is None:
-                continue
-            for wl in worklogs:
-                author_schema = JiraUserSchema(
-                    accountId=wl.author.accountId,
-                    displayName=wl.author.displayName,
-                    emailAddress=wl.author.emailAddress,
-                    active=True,
-                )
-                employee = self._ensure_employee_cached(author_schema, employee_cache)
-                self._upsert_worklog(wl, local_issue.id, employee.id)
-                stats.bucket_a_worklogs_upserted += 1
-            stats.touched_issue_keys.add(local_issue.key)
+        # Шаг 1-3: каждая пачка сохраняется сразу — без одной долгой транзакции
+        # на весь поток, которая держала бы запись в базу для остальных.
+        async for chunk in self._known_worklog_chunks(since_dt):
+            self._upsert_worklog_chunk(
+                [(wl, issue_id) for wl, issue_id, _key in chunk], employee_cache,
+            )
+            self.db.commit()
+            stats.bucket_a_worklogs_upserted += len(chunk)
+            stats.touched_issue_keys.update(key for _wl, _id, key in chunk)
 
         # Шаг 4: удалить ворклоги удалённые в Jira с момента since.
-        # Собираем все ID и делаем bulk DELETE вместо N SELECT+DELETE.
+        # Собираем все ID и удаляем порциями вместо N SELECT+DELETE.
         deleted_ids: set[str] = set()
         async for wl_id in self.jira.iter_deleted_worklog_ids(since_dt):
             await self._check_cancelled()
             deleted_ids.add(str(wl_id))
-        if deleted_ids:
+        for ids in _in_chunks(deleted_ids):
             removed = (
                 self.db.query(Worklog)
-                .filter(Worklog.jira_worklog_id.in_(deleted_ids))
+                .filter(Worklog.jira_worklog_id.in_(ids))
                 .delete(synchronize_session=False)
             )
             stats.bucket_a_worklogs_deleted += removed
@@ -2334,13 +2531,22 @@ class SyncService:
         # Dedup: одна задача может встретиться у нескольких сотрудников команды.
         # Delete diff применяем только при первом обходе задачи.
         seen_issues: set[str] = set()
+        skipped_no_login = 0
         for emp in emps:
             await self._check_cancelled()
-            jql = f'worklogAuthor = "{emp.jira_account_id}" AND updated >= "{since_iso}"'
+            if not emp.jira_username:
+                # Без логина Jira DC искать списания нечем: сотрудник не привязан
+                # к новой Jira (после переезда — id с префиксом «cloud:»).
+                skipped_no_login += 1
+                continue
+            jql = f'worklogAuthor = {jql_quote(emp.jira_username)} AND updated >= "{since_iso}"'
+            # lenient: логин уволенного или переименованного сотрудника —
+            # предупреждение в журнал, а не остановка обновления для всех.
             async for jira_issue in self.jira.iter_issues(
                 jql,
                 fields=["summary", "issuetype", "status", "project"],
                 max_results=100,
+                lenient=True,
             ):
                 await self._check_cancelled()
                 local = (
@@ -2356,13 +2562,7 @@ class SyncService:
                 async for wl in self.jira.iter_worklogs_for_issue(jira_issue.id):
                     await self._check_cancelled()
                     jira_wl_ids_b.add(wl.id)
-                    author_schema = JiraUserSchema(
-                        accountId=wl.author.accountId,
-                        displayName=wl.author.displayName,
-                        emailAddress=wl.author.emailAddress,
-                        active=True,
-                    )
-                    employee = self._ensure_employee(author_schema)
+                    employee = self._ensure_employee(_author_as_user(wl.author))
                     self._upsert_worklog(wl, local.id, employee.id)
                     stats.bucket_b_worklogs_upserted += 1
                 # Delete diff — только при первом обходе задачи
@@ -2380,6 +2580,7 @@ class SyncService:
                             .filter(
                                 Worklog.issue_id == local.id,
                                 Worklog.jira_worklog_id.in_(stale_ids_b),
+                                _not_cloud_worklog(),
                             )
                             .delete(synchronize_session=False)
                         )
@@ -2389,6 +2590,10 @@ class SyncService:
                 self.db.commit()
                 if on_progress is not None:
                     await on_progress(stats, jira_issue.key)
+        if skipped_no_login:
+            logger.info(
+                "Bucket B: пропущено сотрудников без логина Jira — %d", skipped_no_login,
+            )
 
     def _create_out_of_scope_issue(self, jira_issue) -> "Issue":
         """Создать Issue с ``out_of_scope=True`` + автосоздать Project

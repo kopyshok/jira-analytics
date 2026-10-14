@@ -80,6 +80,7 @@ export interface MyTasksData {
 
 export interface TimelineBar {
   key: string | null;
+  jira_url: string | null;
   title: string | null;
   phase: string | null;
   phase_label: string;
@@ -174,6 +175,7 @@ export interface ProductionCalendarData {
 
 export interface AwaitingItem {
   key: string | null;
+  jira_url: string | null;
   title: string | null;
   status: string | null;
   last_comment_at: string | null;

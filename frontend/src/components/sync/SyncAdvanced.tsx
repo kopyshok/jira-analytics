@@ -9,7 +9,8 @@ import dayjs, { type Dayjs } from 'dayjs';
 import {
   useReloadWorklogs, useUpdateWorklogs, useReloadIssues,
 } from '../../hooks/useSync';
-import { useGenericSetting, useSaveGenericSetting } from '../../hooks/useSettings';
+import { useGenericSetting, useSaveGenericSetting, useSyncBlocked } from '../../hooks/useSettings';
+import { SYNC_BLOCKED_TEXT } from '../../utils/syncBlocked';
 import type { WorklogReloadProgress, WorklogUpdateProgress, IssuesReloadProgress } from '../../api/sync';
 import { DARK_THEME } from '../../utils/constants';
 
@@ -20,6 +21,7 @@ const { Text } = Typography;
  *  перечитывание задач с даты — без удаления, только upsert полей. */
 export default function SyncAdvanced() {
   const { notification } = App.useApp();
+  const syncBlocked = useSyncBlocked();
 
   // ─── Worklogs date ───────────────────────────────────────
   const reloadSince = useGenericSetting('worklog_reload_since_date');
@@ -185,7 +187,8 @@ export default function SyncAdvanced() {
                 type="primary"
                 icon={<ReloadOutlined />}
                 onClick={handleUpdate}
-                disabled={reload.isPending}
+                disabled={syncBlocked || reload.isPending}
+                title={syncBlocked ? SYNC_BLOCKED_TEXT : undefined}
               >
                 Обновить ворклоги с даты
               </Button>
@@ -215,9 +218,14 @@ export default function SyncAdvanced() {
                 cancelText="Отмена"
                 okButtonProps={{ danger: true }}
                 onConfirm={handleReload}
-                disabled={update.isPending}
+                disabled={syncBlocked || update.isPending}
               >
-                <Button danger icon={<ReloadOutlined />} disabled={update.isPending}>
+                <Button
+                  danger
+                  icon={<ReloadOutlined />}
+                  disabled={syncBlocked || update.isPending}
+                  title={syncBlocked ? SYNC_BLOCKED_TEXT : undefined}
+                >
                   Полная перезагрузка (удалить и перечитать)
                 </Button>
               </Popconfirm>
@@ -267,6 +275,8 @@ export default function SyncAdvanced() {
                 type="primary"
                 icon={<ReloadOutlined />}
                 onClick={handleReloadIssues}
+                disabled={syncBlocked}
+                title={syncBlocked ? SYNC_BLOCKED_TEXT : undefined}
               >
                 Перечитать задачи с даты
               </Button>

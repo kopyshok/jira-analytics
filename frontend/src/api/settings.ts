@@ -1,13 +1,15 @@
 import { api } from './client';
-import type { JiraSettingsResponse, JiraTestResponse } from '../types/api';
+import type {
+  ConfluenceSettingsResponse, ConfluenceTestResponse, JiraSettingsResponse, JiraTestResponse,
+} from '../types/api';
 
 export const getJiraSettings = () =>
   api.get<JiraSettingsResponse>('/settings/jira');
 
-export const saveJiraSettings = (body: { email?: string; api_token?: string; base_url?: string }) =>
+export const saveJiraSettings = (body: { api_token?: string; base_url?: string }) =>
   api.put<JiraSettingsResponse>('/settings/jira', body);
 
-export const testJiraCredentials = (body: { email: string; api_token: string; base_url: string }) =>
+export const testJiraCredentials = (body: { api_token: string; base_url: string }) =>
   api.post<JiraTestResponse>('/settings/jira/test', body);
 
 export const saveGenericSetting = (key: string, value: string) =>
@@ -15,3 +17,12 @@ export const saveGenericSetting = (key: string, value: string) =>
 
 export const getGenericSetting = (key: string) =>
   api.get<{ key: string; value: string | null }>(`/settings/generic/${key}`);
+
+export const getConfluenceSettings = () =>
+  api.get<ConfluenceSettingsResponse>('/settings/confluence');
+
+export const saveConfluenceSettings = (body: { api_token?: string; base_url?: string }) =>
+  api.put<ConfluenceSettingsResponse>('/settings/confluence', body);
+
+export const testConfluenceConnection = () =>
+  api.post<ConfluenceTestResponse>('/settings/confluence/test');

@@ -53,7 +53,7 @@ def test_worklog_schema_parses_created_datetime():
         "started": "2026-07-24T10:00:00.000+0300",
         "created": "2026-07-27T09:30:00.000+0300",
         "timeSpentSeconds": 14400,
-        "author": {"accountId": "acc-1", "displayName": "Иванов И."},
+        "author": {"key": "acc-1", "displayName": "Иванов И."},
     })
     assert payload.created_datetime is not None
     # app/connectors/schemas.py::_parse_jira_datetime не конвертирует в UTC
@@ -77,7 +77,7 @@ def test_upsert_worklog_persists_jira_created_at(db_session):
         "started": "2026-07-24T10:00:00.000+0300",
         "created": "2026-07-27T09:30:00.000+0300",
         "timeSpentSeconds": 14400,
-        "author": {"accountId": employee.jira_account_id, "displayName": employee.display_name},
+        "author": {"key": employee.jira_account_id, "displayName": employee.display_name},
     })
     svc._upsert_worklog(payload, issue.id, employee.id)
     db_session.commit()

@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 import pytest
 from sqlalchemy import event
 
+from app.models.app_setting import AppSetting
 from app.models.backlog_item import BacklogItem
 from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
@@ -137,6 +138,8 @@ def test_unknown_key_returns_none(db_session):
 def test_children_include_own_subtree_hours(db_session):
     db = db_session
     _seed_project(db)
+    db.add(AppSetting(key="jira_base_url", value="https://jira.example.test"))
+    db.commit()
 
     plan = ProjectPlanService(db).get_plan("PP-1", year=2026, quarter=3)
 
@@ -145,7 +148,7 @@ def test_children_include_own_subtree_hours(db_session):
     # 12 (свои) + 3 (внучка) + 20 (dev) + 5 (чужой) = 40ч по поддереву PP-2.
     assert children[0]["hours"] == 40.0
     assert children[0]["status"] == "Готово"
-    assert children[0]["jira_url"].endswith("/PP-2")
+    assert children[0]["jira_url"] == "https://jira.example.test/browse/PP-2"
 
 
 def test_timeline_spans_all_quarters_of_the_project(db_session):

@@ -63,6 +63,11 @@ export const router = createBrowserRouter([
           { path: 'resource-planning', element: <ProtectedRoute>{page(<ResourcePlanningPage />)}</ProtectedRoute> },
           { path: 'resource-planning/compare', element: <ProtectedRoute>{page(<ScenarioComparatorPage />)}</ProtectedRoute> },
           { path: 'settings', element: <ProtectedRoute adminOnly>{page(<SettingsPage />)}</ProtectedRoute> },
+          // Ссылка из плашки «синхронизация остановлена» — раздел переезда в настройках.
+          {
+            path: 'admin/jira-migration',
+            element: <ProtectedRoute adminOnly><Navigate to="/settings#jira-migration" replace /></ProtectedRoute>,
+          },
           { path: 'feedback', element: <ProtectedRoute>{page(<FeedbackPage />)}</ProtectedRoute> },
         ],
       },

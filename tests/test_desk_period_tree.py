@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
+from app.models.app_setting import AppSetting
 from app.models import (
     BacklogItem,
     Employee,
@@ -189,6 +190,8 @@ def _my_tasks(db_session, desk, period=None):
 
 def test_full_tree_to_leaves(db_session, emp):
     _seed_tree(db_session, emp.id)
+    db_session.add(AppSetting(key="jira_base_url", value="https://jira.example.test"))
+    db_session.commit()
     top = _my_tasks(db_session, _desk(db_session, emp))["projects"][0]["children"]
     by_key = {c["key"]: c for c in top}
     assert set(by_key) == {"ITL-2", "ITL-5", "ITL-6"}
@@ -196,7 +199,7 @@ def test_full_tree_to_leaves(db_session, emp):
     assert a["fact_hours"] == 4.0  # поддерево A: 1 + 3
     assert "estimate_hours" not in a
     assert a["assignee"] == "Иван"
-    assert a["jira_url"].endswith("ITL-2")
+    assert a["jira_url"] == "https://jira.example.test/browse/ITL-2"
     a1 = a["children"][0]
     assert a1["key"] == "ITL-3" and a1["fact_hours"] == 3.0
     leaf = a1["children"][0]

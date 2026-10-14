@@ -51,6 +51,7 @@ from app.utils.period import current_quarter
 from app.services.plan_edit_service import PlanEditService, ROLES as PLAN_ROLES
 from app.services.plan_sources import ROLE_SETTING_KEYS, disputes_for
 from app.services.sync_service import SyncService
+from app.services.jira_migration.state import ensure_sync_allowed
 
 
 router = APIRouter()
@@ -1159,6 +1160,7 @@ async def refresh_from_jira(
     db: Session = Depends(get_db),
 ):
     """Перечитать с Jira кандидатов в бэклог (блокирующий вариант)."""
+    ensure_sync_allowed(db)
     try:
         return await _perform_refresh(db, http_request)
     except asyncio.CancelledError:
@@ -1185,6 +1187,8 @@ async def refresh_from_jira_stream(
     Jira, ``done`` с финальными счётчиками, ``error`` — ошибка,
     ``cancelled`` — клиент оборвал соединение (кнопка «Прервать»).
     """
+    ensure_sync_allowed(db)
+
     async def event_gen():
         queue: asyncio.Queue = asyncio.Queue()
 

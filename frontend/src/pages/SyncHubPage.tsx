@@ -4,6 +4,7 @@ import PipelineRunner from '../components/sync/PipelineRunner';
 import SyncSchedule from '../components/sync/SyncSchedule';
 import SyncHistory from '../components/sync/SyncHistory';
 import SyncAdvanced from '../components/sync/SyncAdvanced';
+import SyncBlockedAlert from '../components/sync/SyncBlockedAlert';
 import { useJiraTeams } from '../hooks/useSync';
 import syncHelp from '../../../docs/help/sync.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
@@ -14,29 +15,32 @@ export default function SyncHubPage() {
   useRegisterHelp('Синхронизация с Jira', syncHelp);
 
   return (
-    <Tabs
-      items={[
-        {
-          key: 'pipeline',
-          label: 'Синхронизация',
-          children: (
-            <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-              <PipelineRunner teams={teams} />
-              <SyncHistory />
-            </Space>
-          ),
-        },
-        {
-          key: 'schedule',
-          label: 'Расписание',
-          children: <SyncSchedule />,
-        },
-        {
-          key: 'advanced',
-          label: 'Дополнительно',
-          children: <SyncAdvanced />,
-        },
-      ]}
-    />
+    <Space orientation="vertical" style={{ width: '100%' }} size="middle">
+      <SyncBlockedAlert />
+      <Tabs
+        items={[
+          {
+            key: 'pipeline',
+            label: 'Синхронизация',
+            children: (
+              <Space orientation="vertical" style={{ width: '100%' }} size="middle">
+                <PipelineRunner teams={teams} />
+                <SyncHistory />
+              </Space>
+            ),
+          },
+          {
+            key: 'schedule',
+            label: 'Расписание',
+            children: <SyncSchedule />,
+          },
+          {
+            key: 'advanced',
+            label: 'Дополнительно',
+            children: <SyncAdvanced />,
+          },
+        ]}
+      />
+    </Space>
   );
 }

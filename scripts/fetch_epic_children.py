@@ -1,3 +1,4 @@
+# Старый разовый скрипт исследования: ходит в прежний API Jira Cloud (/search/jql), под Data Center не обновлялся.
 """Pull children of PRJ-10685 epic for arch doc."""
 import asyncio
 import json

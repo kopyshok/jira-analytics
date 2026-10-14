@@ -98,6 +98,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
   const handlePick = (user: JiraUserSearchResult) => {
     addMut.mutate({
       jira_account_id: user.jira_account_id,
+      jira_username: user.jira_username,
       display_name: user.display_name,
       email: user.email,
       is_active: true,

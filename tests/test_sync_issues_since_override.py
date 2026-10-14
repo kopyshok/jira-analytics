@@ -23,7 +23,7 @@ async def test_since_override_wins_over_sync_state_and_incremental_flag(db_sessi
 
     captured_jql: list[str] = []
 
-    async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+    async def fake_iter_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
         captured_jql.append(jql)
         return
         yield  # pragma: no cover
@@ -49,7 +49,7 @@ async def test_since_override_does_not_move_sync_cursor_backward(db_session):
     db_session.add(SyncState(entity_name="issues", scope="", last_success_at=datetime(2026, 6, 1)))
     db_session.commit()
 
-    async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+    async def fake_iter_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
         return
         yield  # pragma: no cover
 
@@ -80,7 +80,7 @@ async def test_since_override_none_falls_back_to_normal_incremental_cursor(db_se
 
     captured_jql: list[str] = []
 
-    async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+    async def fake_iter_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
         captured_jql.append(jql)
         return
         yield  # pragma: no cover

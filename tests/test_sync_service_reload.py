@@ -65,7 +65,7 @@ async def test_reload_repulls_and_inserts_new_rows(db_session, sample_data):
     jira_issue_payload = SimpleNamespace(id="1001", key="PRJ-1")
 
     author = JiraWorklogAuthorSchema(
-        accountId="a1",
+        key="a1",
         displayName="Иванов",
         emailAddress="ivanov@example.com",
     )

@@ -26,6 +26,7 @@ import dayjs from 'dayjs';
 import settingsHelp from '../../../docs/help/settings.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
 import ConnectionCard from '../components/ConnectionCard';
+import ConfluenceConnectionCard from '../components/ConfluenceConnectionCard';
 import ScopeAdmin from '../components/ScopeAdmin';
 import JiraFieldsCard from '../components/JiraFieldsCard';
 import HierarchyRulesTab from '../components/HierarchyRulesTab';
@@ -47,6 +48,7 @@ import ReleaseNotesAdminTab from '../components/settings/ReleaseNotesAdminTab';
 import DbExportTab from '../components/settings/DbExportTab';
 import ServerErrorsTab from '../components/settings/ServerErrorsTab';
 import PerformanceTab from '../components/settings/PerformanceTab';
+import JiraMigrationTab from '../components/settings/jiraMigration/JiraMigrationTab';
 import {
   useProductionCalendarYear,
   useSyncProductionCalendarYear,
@@ -63,6 +65,7 @@ const GROUPS: SectionGroup[] = [
     title: 'Подключение',
     items: [
       { key: 'connection', label: 'Подключение к Jira', render: () => <ConnectionCard /> },
+      { key: 'confluence', label: 'Подключение к Confluence', render: () => <ConfluenceConnectionCard /> },
       { key: 'scope', label: 'Проекты в scope', render: () => <ScopeAdmin /> },
       { key: 'fields', label: 'Поля Jira', render: () => <JiraFieldsCard /> },
     ],
@@ -91,6 +94,7 @@ const GROUPS: SectionGroup[] = [
   {
     title: 'Администрирование',
     items: [
+      { key: 'jira-migration', label: 'Переезд на новую Jira', adminOnly: true, render: () => <JiraMigrationTab /> },
       { key: 'ai', label: 'AI', render: () => <AITab /> },
       { key: 'feedback', label: 'Обратная связь', adminOnly: true, render: () => <FeedbackAdminTab /> },
       { key: 'usage', label: 'Использование', adminOnly: true, render: () => <UsageTab /> },

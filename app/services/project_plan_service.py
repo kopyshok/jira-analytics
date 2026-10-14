@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.services.plan_common import (
     DISPLAY_ROLES,
     PHASE_LABEL,
+    jira_browse_base,
     jira_url,
     member_windows,
     member_windows_by_team,
@@ -421,6 +422,7 @@ class ProjectPlanService:
         с размером портфеля — инвариант закреплён тестом на счётчик запросов.
         """
         from app.models import Issue, Worklog
+        base = jira_browse_base(self._db)
 
         rows = (
             self._db.query(Issue.id, Issue.key, Issue.summary, Issue.status,
@@ -452,7 +454,7 @@ class ProjectPlanService:
                     "title": r.summary,
                     "status": r.status,
                     "status_category": r.status_category,
-                    "jira_url": jira_url(r.key),
+                    "jira_url": jira_url(r.key, base),
                     "hours": round(sum(by_issue.get(i, 0.0) for i in sub.get(r.id, ())), 1),
                 }
             )

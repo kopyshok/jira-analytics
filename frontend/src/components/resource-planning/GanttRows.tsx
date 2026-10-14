@@ -16,6 +16,7 @@ import { usePatchAssignment } from '../../hooks/useResourcePlanning';
 import { useAppearanceSettings } from '../../contexts/AppearanceContext';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
 import { computeFillGradientAlphas } from './appearanceGradient';
+import JiraIssueLink from '../shared/JiraIssueLink';
 
 export type ViewMode = 'portfolio' | 'two-level' | 'resource-track' | 'plane';
 
@@ -81,7 +82,6 @@ const trackStyle = (trackWidthPx?: number): React.CSSProperties =>
     : { flex: 1, position: 'relative' };
 
 const ROW_HEIGHT = 36;
-const JIRA_BASE = 'https://example.atlassian.net';
 const ROW_BG = 'transparent';
 const INIT_HEADER_BG = 'rgba(0,201,200,0.20)';
 const INIT_PENDING_BG = 'rgba(255,122,69,0.22)';
@@ -180,15 +180,13 @@ function ItemTitleCell({
                 {priority}
               </span>
             )}
-            <a
-              href={`${JIRA_BASE}/browse/${jiraKey}`}
-              target="_blank"
-              rel="noreferrer"
+            <JiraIssueLink
+              issueKey={jiraKey}
               onClick={e => e.stopPropagation()}
               style={{ fontSize: 10, color: 'var(--text-muted, #7a9ab8)', textDecoration: 'none', letterSpacing: 0.3 }}
             >
               {jiraKey}
-            </a>
+            </JiraIssueLink>
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, overflow: 'hidden' }}>
@@ -251,15 +249,13 @@ function PersonPhaseCell({
     >
       <span style={{ width: 8, height: 8, borderRadius: 2, background: dotColor, flexShrink: 0 }} />
       {jiraKey && (
-        <a
-          href={`${JIRA_BASE}/browse/${jiraKey}`}
-          target="_blank"
-          rel="noreferrer"
+        <JiraIssueLink
+          issueKey={jiraKey}
           onClick={e => e.stopPropagation()}
           style={{ flexShrink: 0, fontSize: 11, color: 'var(--text-muted, #7a9ab8)', textDecoration: 'none' }}
         >
           {jiraKey}
-        </a>
+        </JiraIssueLink>
       )}
       <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
       {hours && <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--text-muted, #8ab0d8)' }}>{hours}</span>}

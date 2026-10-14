@@ -72,9 +72,10 @@ def _fake_worklog(wl_id: str, author_id: str = "acc-1"):
         comment_text=None,
         comment=None,
         author=SimpleNamespace(
-            accountId=author_id,
-            displayName="Author",
-            emailAddress=None,
+            jira_account_id=author_id,
+            name=None,
+            display_name="Author",
+            email=None,
         ),
     )
 

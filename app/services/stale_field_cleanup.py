@@ -45,7 +45,8 @@ async def _field_available(
     """Доступно ли поле на карточках этих задач. ``None`` — выяснить не удалось.
 
     Достаточно одной карточки, где поле есть. Ошибки опроса (нет прав, сеть) не
-    считаются ответом — иначе сбой связи затирал бы данные.
+    считаются ответом — иначе сбой связи затирал бы данные. Пустой список полей
+    тоже не ответ: так Jira отвечает учётке без права правки.
     """
     answers: list[bool] = []
     for key in issue_keys:
@@ -53,6 +54,12 @@ async def _field_available(
             available = await jira.get_editable_field_ids(key)
         except Exception as exc:  # noqa: BLE001 — любой сбой опроса не ответ
             logger.warning("Не удалось получить поля карточки %s: %s", key, exc)
+            continue
+        if not available:
+            logger.warning(
+                "Jira не отдала ни одного поля карточки %s — похоже, нет права "
+                "правки; данные не трогаем", key,
+            )
             continue
         answers.append(field_id in available)
     if not answers:

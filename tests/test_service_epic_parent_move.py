@@ -33,7 +33,7 @@ def _jira(jira_id: str, key: str, issue_type: str, parent_key):
     ji.fields.status.name = "Open"
     ji.fields.status.statusCategory = None
     ji.fields.priority = None
-    ji.fields.statuscategorychangedate = None
+    ji.changelog = None
     ji.fields.updated = None
     ji.fields.duedate = None
     ji.fields.resolution = None

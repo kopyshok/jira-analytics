@@ -161,7 +161,7 @@ def fake_jira(db_session, monkeypatch):
         issues = db_session.query(Issue).filter(Issue.key.in_(keys)).all()
         for issue in issues:
             assignee = (
-                JiraUserSchema(accountId=jira["account"], displayName="x")
+                JiraUserSchema(key=jira["account"], displayName="x")
                 if jira["account"] else None
             )
             fields = SimpleNamespace(assignee=assignee, _extra={})

@@ -170,7 +170,7 @@ export default function MyTimelineWidget({ token, title }: { token: string; titl
   const { data, isLoading, isError } = useDeskWidget<MyTimelineData>(token, 'my_timeline');
   const bars = (data?.bars ?? []).map((b) => ({
     ...b,
-    jira_url_safe: b.key ? `https://example.atlassian.net/browse/${b.key}` : null,
+    jira_url_safe: b.jira_url,
   }));
   const qStart = data?.quarter_start ?? '';
   const qEnd = data?.quarter_end ?? '';

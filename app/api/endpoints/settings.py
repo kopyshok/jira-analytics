@@ -1,6 +1,7 @@
 """Settings API endpoints — manage Jira credentials via UI."""
 
 import re
+import httpx
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,9 +12,14 @@ from app.database import get_db
 from app.models.app_setting import AppSetting
 from app.models.sync_state import SyncState
 from app.connectors.jira_client import JiraClient, JiraClientError, JiraAuthError
+from app.connectors.confluence_client import ConfluenceClient, ConfluenceClientError
 from app.services.plan_sources import PLAN_HOURS_SETTING_KEYS, field_layout, parse_field_setting
+from app.services.jira_migration.fields import FIELD_SETTING_RE
+from app.services.jira_migration.state import STATE_DONE, get_migration_state
 
 router = APIRouter()
+
+FIELDS_LOCKED_MESSAGE = "Поля Jira настраиваются на странице переезда, пока переезд не завершён"
 
 
 def _with_scheme(base_url: str) -> str:
@@ -32,13 +38,11 @@ def _with_scheme(base_url: str) -> str:
 # --- Schemas ---
 
 class JiraSettingsResponse(BaseModel):
-    email: Optional[str] = None
     base_url: Optional[str] = None
     has_token: bool = False
 
 
 class JiraSettingsUpdate(BaseModel):
-    email: Optional[str] = None
     api_token: Optional[str] = None
     base_url: Optional[str] = None
 
@@ -49,7 +53,6 @@ class SettingUpdate(BaseModel):
 
 
 class JiraTestRequest(BaseModel):
-    email: str
     api_token: str
     base_url: str
 
@@ -58,6 +61,22 @@ class JiraTestResponse(BaseModel):
     connected: bool
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+    error: Optional[str] = None
+
+
+class ConfluenceSettingsResponse(BaseModel):
+    base_url: Optional[str] = None
+    has_token: bool = False
+
+
+class ConfluenceSettingsUpdate(BaseModel):
+    base_url: Optional[str] = None
+    api_token: Optional[str] = None
+
+
+class ConfluenceTestResponse(BaseModel):
+    connected: bool
+    user_name: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -109,14 +128,17 @@ def _is_allowed_generic_key(key: str) -> bool:
 
 # --- Endpoints ---
 
-@router.get("/jira", response_model=JiraSettingsResponse)
-async def get_jira_settings(db: Session = Depends(get_db)):
-    """Получить сохранённые Jira-настройки (токен не возвращается)."""
+def _jira_settings(db: Session) -> JiraSettingsResponse:
     return JiraSettingsResponse(
-        email=_get_setting(db, "jira_email"),
         base_url=_get_setting(db, "jira_base_url"),
         has_token=_get_setting(db, "jira_api_token") is not None,
     )
+
+
+@router.get("/jira", response_model=JiraSettingsResponse)
+async def get_jira_settings(db: Session = Depends(get_db)):
+    """Получить сохранённые Jira-настройки (токен не возвращается)."""
+    return _jira_settings(db)
 
 
 @router.put("/jira", response_model=JiraSettingsResponse)
@@ -124,20 +146,13 @@ async def save_jira_settings(
     body: JiraSettingsUpdate,
     db: Session = Depends(get_db),
 ):
-    """Сохранить Jira-настройки в БД."""
-    if body.email is not None:
-        _set_setting(db, "jira_email", body.email)
+    """Сохранить адрес Jira и персональный токен в БД."""
     if body.api_token is not None:
         _set_setting(db, "jira_api_token", body.api_token)
     if body.base_url is not None:
         _set_setting(db, "jira_base_url", _with_scheme(body.base_url))
     db.commit()
-
-    return JiraSettingsResponse(
-        email=_get_setting(db, "jira_email"),
-        base_url=_get_setting(db, "jira_base_url"),
-        has_token=_get_setting(db, "jira_api_token") is not None,
-    )
+    return _jira_settings(db)
 
 
 def _check_plan_hours_fields(db: Session, key: str, value: Optional[str]) -> None:
@@ -163,6 +178,9 @@ async def save_generic_setting(body: SettingUpdate, db: Session = Depends(get_db
     """Сохранить произвольную настройку (key → value)."""
     if not _is_allowed_generic_key(body.key):
         raise HTTPException(status_code=403, detail="Setting key is not allowed")
+    if FIELD_SETTING_RE.match(body.key) and get_migration_state(db) != STATE_DONE:
+        # Применение переезда перепишет поля из снимка облачных настроек: правка здесь потерялась бы.
+        raise HTTPException(status_code=409, detail=FIELDS_LOCKED_MESSAGE)
     if body.key in PLAN_HOURS_SETTING_KEYS:
         _check_plan_hours_fields(db, body.key, body.value)
     _set_setting(db, body.key, body.value)
@@ -181,10 +199,13 @@ async def get_generic_setting(key: str, db: Session = Depends(get_db)):
 @router.post("/jira/test", response_model=JiraTestResponse)
 async def test_jira_credentials(body: JiraTestRequest):
     """Проверить подключение к Jira с указанными credentials (без сохранения)."""
+    # Пустой токен клиент подменил бы токеном из .env и отправил его
+    # на присланный адрес.
+    if not body.api_token.strip():
+        raise HTTPException(status_code=400, detail="Укажите персональный токен Jira")
     try:
         async with JiraClient(
-            base_url=body.base_url,
-            email=body.email,
+            base_url=_with_scheme(body.base_url),
             api_token=body.api_token,
         ) as jira:
             user = await jira.get_myself()
@@ -197,3 +218,46 @@ async def test_jira_credentials(body: JiraTestRequest):
         return JiraTestResponse(connected=False, error=f"Ошибка аутентификации: {e}")
     except JiraClientError as e:
         return JiraTestResponse(connected=False, error=str(e))
+
+
+def _confluence_settings(db: Session) -> ConfluenceSettingsResponse:
+    return ConfluenceSettingsResponse(
+        base_url=_get_setting(db, "confluence_base_url"),
+        has_token=_get_setting(db, "confluence_api_token") is not None,
+    )
+
+
+@router.get("/confluence", response_model=ConfluenceSettingsResponse)
+async def get_confluence_settings(db: Session = Depends(get_db)):
+    """Адрес Confluence и признак сохранённого токена (сам токен не отдаём)."""
+    return _confluence_settings(db)
+
+
+@router.put("/confluence", response_model=ConfluenceSettingsResponse)
+async def save_confluence_settings(
+    body: ConfluenceSettingsUpdate,
+    db: Session = Depends(get_db),
+):
+    """Сохранить адрес Confluence и персональный токен."""
+    if body.base_url is not None:
+        _set_setting(db, "confluence_base_url", _with_scheme(body.base_url))
+    if body.api_token is not None:
+        _set_setting(db, "confluence_api_token", body.api_token)
+    db.commit()
+    return _confluence_settings(db)
+
+
+@router.post("/confluence/test", response_model=ConfluenceTestResponse)
+async def test_confluence_connection(db: Session = Depends(get_db)):
+    """Проверить подключение к Confluence с сохранёнными адресом и токеном."""
+    try:
+        async with ConfluenceClient.from_db(db) as client:
+            user = await client.get_current_user()
+    except ConfluenceClientError as e:
+        return ConfluenceTestResponse(connected=False, error=str(e))
+    except httpx.HTTPError as e:
+        return ConfluenceTestResponse(connected=False, error=f"Нет связи с Confluence: {e}")
+    return ConfluenceTestResponse(
+        connected=True,
+        user_name=user.get("displayName") or user.get("username"),
+    )

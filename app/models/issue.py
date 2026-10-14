@@ -195,7 +195,7 @@ class Issue(Base, SyncedMixin):
 
     # Jira assignee display name (denormalized from Jira, read-only).
     assignee_display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    # Jira assignee/creator как личности (accountId) + имя автора. Нужны для
+    # Jira assignee/creator как личности (ключ пользователя Jira) + имя автора. Нужны для
     # плитки «Залежавшиеся задачи» на рабочем столе (автор=аналитик / исполнитель=аналитик).
     assignee_account_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     reporter_account_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)

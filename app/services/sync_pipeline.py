@@ -10,7 +10,7 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from app.services.event_bus import EventBroadcaster
 
@@ -30,6 +30,10 @@ _STAGE_INVALIDATES_TO_ENTITY: dict[str, str] = {
 }
 
 
+class PipelineAborted(Exception):
+    """Остановить конвейер перед следующей стадией; текст — причина для истории запусков."""
+
+
 class Stage(ABC):
     name: str = ""
     critical: bool = True
@@ -43,10 +47,19 @@ class Stage(ABC):
 
 
 class PipelineOrchestrator:
-    def __init__(self, stages: list[Stage], db, bus: EventBroadcaster) -> None:
+    def __init__(
+        self,
+        stages: list[Stage],
+        db,
+        bus: EventBroadcaster,
+        before_stage: Optional[Callable[[], None]] = None,
+    ) -> None:
         self.stages = stages
         self.db = db
         self.bus = bus
+        # Перед каждой стадией (например, продлить блокировку долгого прогона).
+        # ``PipelineAborted`` из него останавливает конвейер, прочие сбои — нет.
+        self.before_stage = before_stage
 
     async def run(
         self,
@@ -64,6 +77,21 @@ class PipelineOrchestrator:
         await self.bus.publish({"type": "sync_started", "run_id": run_id, "mode": mode, "trigger": trigger})
 
         for stage in self.stages:
+            if self.before_stage is not None:
+                try:
+                    self.before_stage()
+                except PipelineAborted as exc:
+                    logger.warning("Pipeline aborted before stage %s: %s", stage.name, exc)
+                    await self.bus.publish({"type": "pipeline_done", "run_id": run_id, "status": "failed"})
+                    return {"status": "failed", "stages": stages_report, "error": str(exc)}
+                except Exception:
+                    # Предыдущая стадия уже завершилась; откат лишь снимает сломанную
+                    # транзакцию, чтобы следующая стадия могла работать с базой.
+                    logger.exception("Pipeline before_stage hook failed before %s", stage.name)
+                    try:
+                        self.db.rollback()
+                    except Exception:
+                        logger.exception("Pipeline session rollback failed")
             started = datetime.utcnow()
             await self.bus.publish({"type": "stage_start", "stage": stage.name, "run_id": run_id})
             try:

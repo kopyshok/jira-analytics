@@ -16,3 +16,11 @@ export interface JiraBaseUrlResponse {
 
 export const getJiraBaseUrl = (): Promise<JiraBaseUrlResponse> =>
   api.get<JiraBaseUrlResponse>('/ui-config/jira-base-url');
+
+export interface JiraMigrationStateResponse {
+  state: 'pending' | 'done';
+  sync_blocked: boolean;
+}
+
+export const getJiraMigrationState = (): Promise<JiraMigrationStateResponse> =>
+  api.get<JiraMigrationStateResponse>('/ui-config/jira-migration-state');

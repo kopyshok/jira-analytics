@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.connectors.jira_client import JiraClient, JiraClientError, JiraAuthError
+from app.connectors.jql import jql_field_ref, jql_quote
 from app.services.event_bus import get_event_bus
+from app.services.jira_migration.state import ensure_sync_allowed
 from app.services.mapping_service import MappingService
 from app.services.production_calendar_service import ProductionCalendarService
 from app.services.sync_lock import SyncLock
@@ -51,6 +53,7 @@ async def run_pipeline(
     db: Session = Depends(get_db),
 ):
     """Запустить sync pipeline. Возвращает SSE-stream стадий."""
+    ensure_sync_allowed(db)
     lock = SyncLock(db)
     run_repo = SyncRunRepository(db)
 
@@ -265,7 +268,7 @@ async def run_sync_task(
 
 @router.get("/test-connection", response_model=ConnectionTestResponse)
 async def test_jira_connection(db: Session = Depends(get_db)):
-    """Test connection to Jira Cloud.
+    """Проверка подключения к Jira.
 
     Verifies that:
     - Jira credentials are configured
@@ -299,6 +302,7 @@ async def sync_projects(http_request: Request, db: Session = Depends(get_db)):
     This is a lightweight operation that fetches project metadata only.
     Run this first before syncing issues.
     """
+    ensure_sync_allowed(db)
     try:
         async with JiraClient.from_db(db) as jira:
             service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
@@ -331,6 +335,7 @@ async def sync_issues(
         incremental: If true, only sync issues updated since last sync.
     """
     body = body or SyncRequest()
+    ensure_sync_allowed(db)
 
     try:
         async with JiraClient.from_db(db) as jira:
@@ -365,6 +370,7 @@ async def refresh_issues(
     создаёт. Нужно чтобы дотащить новое поле (``status_changed_at`` и т.п.)
     на текущий видимый набор задач без полной пересинхронизации.
     """
+    ensure_sync_allowed(db)
     if not body.jira_keys:
         return SyncResponse(status="noop", message="Список ключей пуст")
 
@@ -411,6 +417,7 @@ async def reload_issues_stream(
     События: ``progress`` после каждой порции задач, ``done`` — финальные
     счётчики, ``error`` — ошибка, ``cancelled`` — клиент отключился.
     """
+    ensure_sync_allowed(db)
     from app.api.endpoints.settings import _set_setting
     from app.services.mapping_service import MappingService
     from app.models import Issue
@@ -497,6 +504,7 @@ async def sync_teams(
     команд (значения team-поля Jira). Курсор двигается только при
     успехе; ошибка по одной команде не ломает остальные.
     """
+    ensure_sync_allowed(db)
     if not body.teams:
         return SyncResponse(status="noop", message="Список команд пуст")
 
@@ -539,6 +547,7 @@ async def sync_worklogs(http_request: Request, db: Session = Depends(get_db)):
     This can be a long-running operation depending on the number of issues.
     Consider running as background task for large datasets.
     """
+    ensure_sync_allowed(db)
     try:
         async with JiraClient.from_db(db) as jira:
             service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
@@ -569,6 +578,7 @@ async def reload_worklogs(
     из Jira через JQL ``worklogDate >= since``. Сохраняет дату в AppSetting
     ``worklog_reload_since_date``.
     """
+    ensure_sync_allowed(db)
     from app.api.endpoints.settings import _set_setting
 
     try:
@@ -610,6 +620,7 @@ async def reload_worklogs_stream(
     Cancel через обрыв HTTP-соединения: ``request.is_disconnected()``
     поднимает ``CancelledError`` внутри SyncService, как и в обычных эндпоинтах.
     """
+    ensure_sync_allowed(db)
     from app.api.endpoints.settings import _set_setting
 
     async def event_gen():
@@ -683,6 +694,7 @@ async def update_worklogs_stream(
     События: ``progress`` после каждого issue, ``done`` — финальные stats,
     ``error`` — ошибка, ``cancelled`` — клиент отключился.
     """
+    ensure_sync_allowed(db)
 
     async def event_gen():
         queue: asyncio.Queue = asyncio.Queue()
@@ -743,6 +755,7 @@ async def update_worklogs_stream(
 @router.post("/comments", response_model=SyncResponse, deprecated=True)
 async def sync_comments(http_request: Request, db: Session = Depends(get_db)):
     """Синхронизация комментариев к задачам из Jira."""
+    ensure_sync_allowed(db)
     try:
         async with JiraClient.from_db(db) as jira:
             service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
@@ -777,6 +790,7 @@ async def full_sync(
         background: If true, run sync as background task.
     """
     body = body or SyncRequest()
+    ensure_sync_allowed(db)
 
     if background and background_tasks:
         background_tasks.add_task(
@@ -822,7 +836,7 @@ async def browse_jira_projects(
     team: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """Список проектов из Jira Cloud для выбора в scope.
+    """Список проектов из Jira для выбора в scope.
 
     Возвращает все проекты с флагом ``in_scope`` — уже добавлен в scope или нет.
     Опциональный ``search`` фильтрует по key/name (case-insensitive).
@@ -851,8 +865,8 @@ async def browse_jira_projects(
             async def project_has_team(project_key: str) -> bool:
                 if not team or not team_field_ids:
                     return True
-                clauses = " OR ".join(f'"{fid}" = "{team}"' for fid in team_field_ids)
-                jql = f'project = "{project_key}" AND ({clauses})'
+                clauses = " OR ".join(f"{jql_field_ref(fid)} = {jql_quote(team)}" for fid in team_field_ids)
+                jql = f"project = {jql_quote(project_key)} AND ({clauses})"
                 response = await jira.search_issues(
                     jql=jql,
                     max_results=1,
@@ -861,7 +875,7 @@ async def browse_jira_projects(
                 return len(response.issues) > 0
 
             projects: list[JiraProjectItem] = []
-            async for p in jira.iter_projects(max_results=50):
+            for p in await jira.get_projects():
                 if search:
                     q = search.lower()
                     if q not in p.key.lower() and q not in p.name.lower():
@@ -896,7 +910,7 @@ async def browse_jira_epics(
     try:
         async with JiraClient.from_db(db) as jira:
             jql = (
-                f'project = "{project_key}" '
+                f"project = {jql_quote(project_key)} "
                 f'AND (issuetype = Epic OR "Parent Link" is EMPTY) '
                 f"ORDER BY key ASC"
             )
@@ -1019,6 +1033,7 @@ async def get_sync_status(db: Session = Depends(get_db)):
 
 class JiraUserResponse(BaseModel):
     jira_account_id: str
+    jira_username: Optional[str] = None
     display_name: str
     email: Optional[str] = None
     is_active: bool
@@ -1193,6 +1208,7 @@ async def search_jira_users(
     return [
         JiraUserResponse(
             jira_account_id=u.jira_account_id,
+            jira_username=u.name,
             display_name=u.display_name,
             email=u.email,
             is_active=u.is_active,

@@ -16,7 +16,7 @@
 
 ## Project Context
 
-Сервис анализа данных Jira Cloud и квартального планирования. MVP на SQLite, ORM-уровневая совместимость с PostgreSQL поддерживается.
+Сервис анализа данных Jira Data Center и квартального планирования. MVP на SQLite, ORM-уровневая совместимость с PostgreSQL поддерживается.
 
 **Целевой режим: многопользовательский.** Сервис будет опубликован для команды компании. Несколько сотрудников работают одновременно, у каждого своя команда (фильтрация по team). Синхронизация с Jira — общая, по расписанию. Все архитектурные решения принимаются исходя из этого режима: server-side push вместо client-only инвалидации, масштабируемость, изоляция данных по команде.
 
@@ -65,19 +65,22 @@ docs/        дизайн-доки, спеки, планы
 ## Runtime Configuration
 
 - Backend settings грузит `app.config.Settings` из `.env`
-- **Jira credentials:** AppSetting (DB) → `.env` fallback. UI пишет креды в AppSetting через `PUT /settings/jira`; `.env` подключается только для dev/CI когда DB пуста
+- **Jira credentials:** AppSetting (DB) → `.env` fallback. UI пишет адрес и персональный токен в AppSetting через `PUT /settings/jira` (Confluence — отдельно, `PUT /settings/confluence`); `.env` подключается только для dev/CI когда DB пуста
 - `DEBUG` prefers boolean; `dev/debug/local` → `true`, `prod/production/release` → `false`
 - `CORS_ORIGINS` принимает JSON array или comma-separated list
 - Frontend API base URL: `VITE_API_BASE_URL`, default `http://localhost:8000/api/v1`
+- **Локальная копия прода и переезд на Jira DC:** после `alembic upgrade head` база с задачами получает `jira_migration_state = pending` — синк заблокирован, пока переезд не применён. Для локальной копии прода: либо пройти страницу переезда (`/admin/jira-migration`) против новой Jira из внутренней сети, либо взять свежий бэкап, снятый после переезда на проде. **Никогда** не ставить `jira_migration_state = done` руками в базе с облачными id — синк перезапишет чужие строки.
 
 Подробности по AppSetting keys — см. [app/models/CLAUDE.md](app/models/CLAUDE.md).
 
-## Jira Cloud
+## Jira Data Center
 
 ```
-Cloud ID: 00000000-0000-0000-0000-000000000000
-Base URL: https://example.atlassian.net
+Base URL: https://jira.example.ru   (только из внутренней сети)
+Версия:   11.3.7, REST API v2, вход по персональному токену (Bearer)
 ```
+
+Пока база не переведена на идентификаторы новой Jira (AppSetting `jira_migration_state = pending`), синхронизация остановлена — см. [app/connectors/CLAUDE.md](app/connectors/CLAUDE.md).
 
 ## Commands
 

@@ -5,7 +5,7 @@ from app.services.sync_service import _extract_user_field, _to_float
 def test_extract_user_field_reads_display_name_and_account_id():
     extra = {
         "customfield_14052": {
-            "accountId": "627b98a119b129006829829d",
+            "key": "627b98a119b129006829829d",
             "displayName": "Пряничников Алексей",
         }
     }
@@ -23,7 +23,7 @@ def test_extract_user_field_handles_empty():
 
 
 def test_extract_user_field_without_configured_id():
-    extra = {"customfield_14052": {"accountId": "a", "displayName": "b"}}
+    extra = {"customfield_14052": {"key": "a", "displayName": "b"}}
     assert _extract_user_field(extra, None) == (None, None)
 
 

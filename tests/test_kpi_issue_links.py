@@ -86,7 +86,7 @@ async def test_sync_issues_removes_link_when_jira_sends_empty_issuelinks(db_sess
 
     mock_jira = MagicMock()
 
-    async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+    async def fake_iter_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
         yield schema
 
     mock_jira.iter_issues = fake_iter_issues
@@ -120,7 +120,7 @@ async def test_sync_issues_dedupes_duplicate_link_pairs(db_session):
 
     mock_jira = MagicMock()
 
-    async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+    async def fake_iter_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
         yield schema
 
     mock_jira.iter_issues = fake_iter_issues
@@ -144,7 +144,7 @@ async def test_sync_issues_sets_jira_created_at(db_session):
 
     mock_jira = MagicMock()
 
-    async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+    async def fake_iter_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
         yield schema
 
     mock_jira.iter_issues = fake_iter_issues

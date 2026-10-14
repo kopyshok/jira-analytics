@@ -9,6 +9,7 @@ import {
   roundHours, type DeskDeveloper, type DeskIssue, type FlagCode,
 } from '../../api/teamDesk';
 import { FlagList } from './FlagChip';
+import { SYNC_BLOCKED_TEXT } from '../../utils/syncBlocked';
 import { HoursScale } from './HoursScale';
 import { IssueKey, StatusTag } from './IssueCells';
 import { StatusCounters } from './StatusCounters';
@@ -67,6 +68,8 @@ interface Props {
   /** Перечитать с Jira задачи, которые сейчас в списке. */
   onRefreshVisible?: (keys: string[]) => void;
   refreshing?: boolean;
+  /** Обновление из Jira запрещено до завершения переезда — кнопка видна, но не нажимается. */
+  refreshBlocked?: boolean;
 }
 
 /** Подписи колонок для настройки видимости. «Задача» не убирается. */
@@ -189,7 +192,7 @@ export function GroupedIssues({
   hiddenColumns = [], groupByDeveloper = true,
   sprintFilter = [], releaseFilter = [],
   columnWidths = {}, onColumnWidthsChange,
-  onHiddenColumnsChange, onGroupByDeveloperChange, onRefreshVisible, refreshing = false,
+  onHiddenColumnsChange, onGroupByDeveloperChange, onRefreshVisible, refreshing = false, refreshBlocked = false,
 }: Props) {
   const [sort, setSort] = useState<SortState>(null);
   // Пока тянут мышкой, ширина живёт на экране; в профиль уходит один раз,
@@ -634,11 +637,12 @@ export function GroupedIssues({
             </Dropdown>
           )}
           {onRefreshVisible && (
-            <Tooltip title="Перечитать с Jira только задачи из этого списка">
+            <Tooltip title={refreshBlocked ? SYNC_BLOCKED_TEXT : 'Перечитать с Jira только задачи из этого списка'}>
               <Button
                 size="small"
                 icon={<ReloadOutlined />}
                 loading={refreshing}
+                disabled={refreshBlocked}
                 onClick={() => onRefreshVisible(visibleKeys)}
               >
                 Обновить видимые

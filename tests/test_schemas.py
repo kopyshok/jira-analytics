@@ -17,7 +17,7 @@ class TestJiraUserSchema:
     def test_basic_user(self):
         """Test parsing basic user data."""
         data = {
-            "accountId": "abc123",
+            "key": "abc123",
             "displayName": "John Doe",
             "emailAddress": "john@example.com",
             "active": True,
@@ -36,7 +36,7 @@ class TestJiraUserSchema:
     def test_user_without_email(self):
         """Test user without email (common for service accounts)."""
         data = {
-            "accountId": "abc123",
+            "key": "abc123",
             "displayName": "Bot User",
             "active": True,
         }
@@ -75,7 +75,7 @@ class TestJiraWorklogSchema:
             "id": "123",
             "issueId": "456",
             "author": {
-                "accountId": "user1",
+                "key": "user1",
                 "displayName": "John"
             },
             "started": "2024-01-15T10:00:00.000+0000",
@@ -92,7 +92,7 @@ class TestJiraWorklogSchema:
             "id": "123",
             "issueId": "456",
             "author": {
-                "accountId": "user1",
+                "key": "user1",
                 "displayName": "John"
             },
             "started": "2024-01-15T10:30:00.000+0000",
@@ -113,7 +113,7 @@ class TestJiraWorklogSchema:
         data = {
             "id": "123",
             "issueId": "456",
-            "author": {"accountId": "user1", "displayName": "John"},
+            "author": {"key": "user1", "displayName": "John"},
             "started": "2024-01-15T10:30:00.000+0300",
             "timeSpentSeconds": 3600,
         }
@@ -129,7 +129,7 @@ class TestJiraWorklogSchema:
         data = {
             "id": "123",
             "issueId": "456",
-            "author": {"accountId": "user1", "displayName": "John"},
+            "author": {"key": "user1", "displayName": "John"},
             "started": "2024-01-15T10:30:00.000-0500",
             "timeSpentSeconds": 3600,
         }
@@ -143,7 +143,7 @@ class TestJiraWorklogSchema:
         data = {
             "id": "123",
             "issueId": "456",
-            "author": {"accountId": "user1", "displayName": "John"},
+            "author": {"key": "user1", "displayName": "John"},
             "started": "2024-01-15T10:30:00Z",
             "timeSpentSeconds": 3600,
         }
@@ -158,7 +158,7 @@ class TestJiraWorklogSchema:
             "id": "123",
             "issueId": "456",
             "author": {
-                "accountId": "user1",
+                "key": "user1",
                 "displayName": "John"
             },
             "started": "2024-01-15T10:00:00.000+0000",
@@ -189,7 +189,7 @@ class TestJiraCommentSchema:
     def test_comment_created_datetime_moscow_offset(self):
         data = {
             "id": "c1",
-            "author": {"accountId": "u1", "displayName": "John"},
+            "author": {"key": "u1", "displayName": "John"},
             "body": "hello",
             "created": "2024-01-15T10:30:00.000+0300",
         }
@@ -203,7 +203,7 @@ class TestJiraCommentSchema:
     def test_comment_created_none(self):
         data = {
             "id": "c1",
-            "author": {"accountId": "u1", "displayName": "John"},
+            "author": {"key": "u1", "displayName": "John"},
             "body": "hello",
         }
         comment = JiraCommentSchema(**data)

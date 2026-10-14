@@ -130,6 +130,26 @@ def test_probe_failure_keeps_data(db_session):
     assert db_session.query(Issue).one().developer_account_id == "acc-1"
 
 
+def test_empty_editmeta_keeps_data(db_session, caplog):
+    """Jira отдала пустой список полей (у учётки нет прав на правку) — это не ответ.
+
+    Пустая карточка не значит, что поля нет: без прав Jira не показывает ни одного
+    поля. Считать проект «мёртвым» нельзя — стёрли бы живых разработчиков.
+    """
+    _configure_field(db_session)
+    jira = FakeJira({"Задача": set()})
+    project = _project(db_session, "OS")
+    _issue(db_session, jira, project, "OS-1")
+    db_session.commit()
+
+    result = asyncio.run(clear_stale_developer_field(db_session, jira))
+
+    assert result["projects_stale"] == 0
+    assert result["issues_cleared"] == 0
+    assert db_session.query(Issue).one().developer_account_id == "acc-1"
+    assert "OS-1" in caplog.text
+
+
 def test_dry_run_changes_nothing(db_session):
     """Режим показа считает, но данные не трогает."""
     _configure_field(db_session)

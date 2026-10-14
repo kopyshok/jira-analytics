@@ -1,0 +1,115 @@
+{
+  "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+  "id": "271270",
+  "self": "https://jira.example.test/rest/api/2/issue/271270",
+  "key": "OS-93622",
+  "fields": {
+    "summary": "Задача OS-93622",
+    "description": "h2. Описание\nТекст задачи для теста.\n[Страница ТЗ|https://confluence.example.test/x/AbCdE]",
+    "issuetype": {
+      "self": "https://jira.example.test/rest/api/2/issuetype/10320",
+      "id": "10320",
+      "description": "",
+      "iconUrl": "https://jira.example.test/secure/viewavatar?size=xsmall&avatarId=10320&avatarType=issuetype",
+      "name": "Research",
+      "subtask": false,
+      "avatarId": 10320
+    },
+    "status": {
+      "self": "https://jira.example.test/rest/api/2/status/10234",
+      "description": "В данный момент по этой проблеме ведется активная работа назначенным лицом.",
+      "iconUrl": "https://jira.example.test/images/icons/statuses/inprogress.png",
+      "name": "В РАБОТЕ",
+      "id": "10234",
+      "statusCategory": {
+        "self": "https://jira.example.test/rest/api/2/statuscategory/4",
+        "id": 4,
+        "key": "indeterminate",
+        "colorName": "inprogress",
+        "name": "В работе"
+      }
+    },
+    "priority": {
+      "self": "https://jira.example.test/rest/api/2/priority/3",
+      "iconUrl": "https://jira.example.test/images/icons/priorities/medium_new.svg",
+      "name": "Medium",
+      "id": "3"
+    },
+    "project": {
+      "self": "https://jira.example.test/rest/api/2/project/10901",
+      "id": "10901",
+      "key": "OS",
+      "name": "1С",
+      "projectTypeKey": "software",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/projectavatar?pid=10901&avatarId=10620",
+        "24x24": "https://jira.example.test/secure/projectavatar?size=small&pid=10901&avatarId=10620",
+        "16x16": "https://jira.example.test/secure/projectavatar?size=xsmall&pid=10901&avatarId=10620",
+        "32x32": "https://jira.example.test/secure/projectavatar?size=medium&pid=10901&avatarId=10620"
+      }
+    },
+    "creator": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_10",
+      "name": "user_10",
+      "key": "JIRAUSER90010",
+      "emailAddress": "user_10@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 10",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "reporter": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_8",
+      "name": "user_8",
+      "key": "JIRAUSER90008",
+      "emailAddress": "user_8@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 8",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "assignee": {
+      "self": "https://jira.example.test/rest/api/2/user?username=user_8",
+      "name": "user_8",
+      "key": "JIRAUSER90008",
+      "emailAddress": "user_8@example.test",
+      "avatarUrls": {
+        "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+        "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+        "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+        "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+      },
+      "displayName": "Сотрудник 8",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "created": "2026-10-08T10:10:26.560+0000",
+    "updated": "2026-10-13T13:18:03.164+0000",
+    "duedate": null,
+    "resolution": null,
+    "resolutiondate": null,
+    "issuelinks": [],
+    "subtasks": [],
+    "fixVersions": [],
+    "customfield_10107": "RFA-5020",
+    "customfield_10100": null,
+    "customfield_10109": null,
+    "customfield_11092": {
+      "self": "https://jira.example.test/rest/api/2/customFieldOption/10654",
+      "value": "Команда 1С (ERP - Товарный учет)",
+      "id": "10654",
+      "disabled": false
+    },
+    "customfield_11098": null
+  }
+}

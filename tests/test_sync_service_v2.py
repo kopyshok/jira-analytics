@@ -50,9 +50,10 @@ def _fake_worklog_schema(wl_id: str, issue_id: str, started_iso: str,
         comment_text=None,
         comment=None,
         author=SimpleNamespace(
-            accountId=author_id,
-            displayName="Author",
-            emailAddress=None,
+            jira_account_id=author_id,
+            name=None,
+            display_name="Author",
+            email=None,
         ),
     )
 

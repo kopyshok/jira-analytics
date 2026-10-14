@@ -60,9 +60,10 @@ def _fake_worklog(wl_id: str, started_iso: str, author_id="acc-1", seconds=3600)
         hours=seconds / 3600,
         comment_text=None,
         author=SimpleNamespace(
-            accountId=author_id,
-            displayName="Author",
-            emailAddress=None,
+            jira_account_id=author_id,
+            name=None,
+            display_name="Author",
+            email=None,
         ),
         comment=None,
     )
@@ -79,7 +80,7 @@ async def test_update_does_not_delete_existing(db_session, issue):
         synced_at=datetime.utcnow(),
     )
     emp = Employee(
-        id="e-1", jira_account_id="acc-1", display_name="A",
+        id="e-1", jira_account_id="acc-1", jira_username="login-1", display_name="A",
         is_active=True, synced_at=datetime.utcnow(),
     )
     db_session.add_all([emp, pre])
@@ -127,7 +128,7 @@ async def test_update_catches_back_dated_via_updated_jql(db_session, issue):
 async def test_update_upserts_changed_started_at(db_session, issue):
     """Повторный upsert с изменённым started_at обновляет запись, не плодит дубль."""
     emp = Employee(
-        id="e-1", jira_account_id="acc-1", display_name="A",
+        id="e-1", jira_account_id="acc-1", jira_username="login-1", display_name="A",
         is_active=True, synced_at=datetime.utcnow(),
     )
     db_session.add(emp)
@@ -164,7 +165,7 @@ async def test_bucket_b_creates_out_of_scope_issue(db_session):
     from app.models import EmployeeTeam
 
     emp = Employee(
-        id="e-1", jira_account_id="acc-1", display_name="A",
+        id="e-1", jira_account_id="acc-1", jira_username="login-1", display_name="A",
         is_active=True, synced_at=datetime.utcnow(),
     )
     db_session.add(emp)
@@ -177,7 +178,7 @@ async def test_bucket_b_creates_out_of_scope_issue(db_session):
     a_calls: list[str] = []
     b_calls: list[str] = []
 
-    async def fake_iter_issues(jql, fields=None, max_results=100):
+    async def fake_iter_issues(jql, fields=None, max_results=100, lenient=False):
         if "worklogAuthor" in jql:
             b_calls.append(jql)
             yield _fake_issue("30000", "OTHER-1")
@@ -210,7 +211,7 @@ async def test_bucket_b_does_not_clobber_in_scope(db_session, issue):
     from app.models import EmployeeTeam
 
     emp = Employee(
-        id="e-1", jira_account_id="acc-1", display_name="A",
+        id="e-1", jira_account_id="acc-1", jira_username="login-1", display_name="A",
         is_active=True, synced_at=datetime.utcnow(),
     )
     db_session.add(emp)
@@ -221,7 +222,7 @@ async def test_bucket_b_does_not_clobber_in_scope(db_session, issue):
 
     jira = MagicMock()
 
-    async def fake_iter_issues(jql, fields=None, max_results=100):
+    async def fake_iter_issues(jql, fields=None, max_results=100, lenient=False):
         if "worklogAuthor" in jql:
             yield _fake_issue("20000", "PRJ-1")  # EXISTS in DB as in-scope
         else:

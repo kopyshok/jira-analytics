@@ -1,0 +1,172 @@
+[
+  {
+    "self": "https://jira.example.test/rest/api/2/user?username=user_17",
+    "key": "JIRAUSER90017",
+    "name": "user_17",
+    "emailAddress": "user_17@example.test",
+    "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+      "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+      "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+      "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+    },
+    "displayName": "Сотрудник 17",
+    "active": true,
+    "deleted": false,
+    "timeZone": "Europe/Moscow",
+    "locale": "ru_RU"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/user?username=user_18",
+    "key": "JIRAUSER90018",
+    "name": "user_18",
+    "emailAddress": "user_18@example.test",
+    "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+      "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+      "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+      "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+    },
+    "displayName": "Сотрудник 18",
+    "active": true,
+    "deleted": false,
+    "timeZone": "Europe/Moscow",
+    "locale": "ru_RU"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/user?username=user_2",
+    "key": "JIRAUSER90002",
+    "name": "user_2",
+    "emailAddress": "user_2@example.test",
+    "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+      "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+      "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+      "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+    },
+    "displayName": "Сотрудник 2",
+    "active": true,
+    "deleted": false,
+    "timeZone": "Europe/Moscow",
+    "locale": "ru_RU"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/user?username=user_19",
+    "key": "JIRAUSER90019",
+    "name": "user_19",
+    "emailAddress": "user_19@example.test",
+    "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+      "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+      "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+      "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+    },
+    "displayName": "Сотрудник 19",
+    "active": true,
+    "deleted": false,
+    "timeZone": "Europe/Moscow",
+    "locale": "ru_RU"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/user?username=user_12",
+    "key": "JIRAUSER90012",
+    "name": "user_12",
+    "emailAddress": "user_12@example.test",
+    "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+      "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+      "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+      "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+    },
+    "displayName": "Сотрудник 12",
+    "active": true,
+    "deleted": false,
+    "timeZone": "Europe/Moscow",
+    "locale": "ru_RU"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/user?username=user_20",
+    "key": "JIRAUSER90020",
+    "name": "user_20",
+    "emailAddress": "user_20@example.test",
+    "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+      "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+      "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+      "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+    },
+    "displayName": "Сотрудник 20",
+    "active": true,
+    "deleted": false,
+    "timeZone": "Europe/Moscow",
+    "locale": "ru_RU"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/user?username=user_21",
+    "key": "JIRAUSER90021",
+    "name": "user_21",
+    "emailAddress": "user_21@example.test",
+    "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+      "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+      "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+      "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+    },
+    "displayName": "Сотрудник 21",
+    "active": true,
+    "deleted": false,
+    "timeZone": "Europe/Moscow",
+    "locale": "ru_RU"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/user?username=user_22",
+    "key": "JIRAUSER90022",
+    "name": "user_22",
+    "emailAddress": "user_22@example.test",
+    "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+      "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+      "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+      "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+    },
+    "displayName": "Сотрудник 22",
+    "active": true,
+    "deleted": false,
+    "timeZone": "Europe/Moscow",
+    "locale": "ru_RU"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/user?username=user_23",
+    "key": "JIRAUSER90023",
+    "name": "user_23",
+    "emailAddress": "user_23@example.test",
+    "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+      "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+      "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+      "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+    },
+    "displayName": "Сотрудник 23",
+    "active": true,
+    "deleted": false,
+    "timeZone": "Europe/Moscow",
+    "locale": "ru_RU"
+  },
+  {
+    "self": "https://jira.example.test/rest/api/2/user?username=user_24",
+    "key": "JIRAUSER90024",
+    "name": "user_24",
+    "emailAddress": "user_24@example.test",
+    "avatarUrls": {
+      "48x48": "https://jira.example.test/secure/useravatar?size=48x48&avatarId=1",
+      "24x24": "https://jira.example.test/secure/useravatar?size=24x24&avatarId=1",
+      "16x16": "https://jira.example.test/secure/useravatar?size=16x16&avatarId=1",
+      "32x32": "https://jira.example.test/secure/useravatar?size=32x32&avatarId=1"
+    },
+    "displayName": "Сотрудник 24",
+    "active": true,
+    "deleted": false,
+    "timeZone": "Europe/Moscow",
+    "locale": "ru_RU"
+  }
+]

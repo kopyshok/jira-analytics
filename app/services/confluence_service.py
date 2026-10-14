@@ -5,12 +5,17 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from typing import Optional
-from urllib.parse import urlparse
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.connectors.confluence_client import ConfluenceClient, ConfluenceClientError
+from app.connectors.confluence_client import (
+    ConfluenceClient,
+    ConfluenceClientError,
+    base_url_pattern,
+    page_id_from_url,
+)
 from app.models.app_setting import AppSetting
 from app.models.confluence_page_cache import ConfluencePageCache
 
@@ -29,22 +34,41 @@ class FetchedPage:
     body_text: str
 
 
-_URL_RE = re.compile(
-    r"https?://[\w\.\-]+\.atlassian\.net/wiki/(?:spaces/[^\s/]+/pages/\d+[^\s)]*|x/[A-Za-z0-9]+)"
+CONFLUENCE_BASE_URL_KEY = "confluence_base_url"
+
+# Хвост ссылки на страницу Confluence DC после адреса сервера: прямой id,
+# /spaces/…/pages/N, «красивая» /display/<пространство>/<название>, короткая
+# /x/…. Описание в Jira DC — wiki-разметка, ссылка часто внутри [текст|адрес]:
+# «|» и «]» завершают адрес. «)» в названии страницы допустима — непарную
+# срезает _trim_url.
+_LINK_TAIL = (
+    r"(?:pages/viewpage\.action\?pageId=\d+"
+    r"|spaces/[^\s/|\]]+/pages/\d+[^\s|\]]*"
+    r"|display/[^\s/|\]]+/[^\s|\]]+"
+    r"|x/[A-Za-z0-9_\-]+)"
 )
 
 
+def _trim_url(url: str) -> str:
+    """Срезать хвостовую пунктуацию текста; «)» — только непарную."""
+    while True:
+        trimmed = url.rstrip(".,;")
+        if trimmed.endswith(")") and trimmed.count("(") < trimmed.count(")"):
+            trimmed = trimmed[:-1]
+        if trimmed == url:
+            return url
+        url = trimmed
+
+
 def extract_confluence_urls(text: Optional[str], base_url: str) -> list[str]:
-    """Достать уникальные Confluence-ссылки на тот же tenant."""
+    """Уникальные ссылки на страницы Confluence с адреса из настроек, в порядке появления."""
     if not text or not base_url:
         return []
-    host = urlparse(base_url).netloc
+    pattern = re.compile(base_url_pattern(base_url) + "/" + _LINK_TAIL)
     seen: set[str] = set()
     out: list[str] = []
-    for m in _URL_RE.finditer(text):
-        url = m.group(0).rstrip(".,);")
-        if urlparse(url).netloc != host:
-            continue
+    for m in pattern.finditer(text):
+        url = _trim_url(m.group(0))
         if url in seen:
             continue
         seen.add(url)
@@ -53,9 +77,8 @@ def extract_confluence_urls(text: Optional[str], base_url: str) -> list[str]:
 
 
 def parse_page_id(url: str) -> Optional[str]:
-    """`/wiki/spaces/.../pages/{id}/...` → id. Tinyurl возвращает None — резолв через client."""
-    m = re.search(r"/pages/(\d+)", url)
-    return m.group(1) if m else None
+    """id из ссылки с прямым id; короткую и «красивую» ссылки разрешает клиент."""
+    return page_id_from_url(url)
 
 
 class _Stripper(HTMLParser):
@@ -85,7 +108,7 @@ class ConfluenceService:
         self.db = db
 
     def _base_url(self) -> Optional[str]:
-        row = self.db.query(AppSetting).filter(AppSetting.key == "jira_base_url").first()
+        row = self.db.query(AppSetting).filter(AppSetting.key == CONFLUENCE_BASE_URL_KEY).first()
         return row.value if row and row.value else None
 
     async def fetch_pages(self, urls: list[str]) -> list[FetchedPage]:
@@ -96,19 +119,18 @@ class ConfluenceService:
         if not base:
             return []
 
-        # 1. Резолвим page_id (tinyurl → fetch redirect, прочее regex)
+        # 1. id страницы: прямой — из ссылки, короткая и «красивая» — через клиента
         url_to_pid: dict[str, Optional[str]] = {u: parse_page_id(u) for u in urls}
         unresolved = [u for u, pid in url_to_pid.items() if pid is None]
 
-        client_cm = ConfluenceClient.from_db(self.db)
         results: list[FetchedPage] = []
         try:
-            async with client_cm as client:
+            async with ConfluenceClient.from_db(self.db) as client:
                 for u in unresolved:
                     try:
-                        url_to_pid[u] = await client.resolve_tinyurl(u)
+                        url_to_pid[u] = await client.resolve_page_id(u)
                     except Exception as e:
-                        logger.warning("tinyurl resolve %s failed: %s", u, e)
+                        logger.warning("Confluence page id resolve %s failed: %s", u, e)
 
                 # 2. Для каждого page_id — кэш или fetch
                 for url, pid in url_to_pid.items():
@@ -150,7 +172,7 @@ class ConfluenceService:
                             page_id=pid, source_url=url,
                             title=page.title, body_text=text,
                         ))
-                    except ConfluenceClientError as e:
+                    except (ConfluenceClientError, httpx.HTTPError) as e:
                         logger.warning("Confluence fetch %s failed: %s", pid, e)
                         if cached:
                             cached.error = str(e)[:512]

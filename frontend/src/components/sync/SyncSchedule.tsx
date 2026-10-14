@@ -10,6 +10,8 @@ import {
 } from '../../api/syncSchedule';
 import type { PipelineMode } from '../../api/syncRuns';
 import ScheduleEditorModal from './ScheduleEditorModal';
+import { useSyncBlocked } from '../../hooks/useSettings';
+import { SYNC_BLOCKED_TEXT } from '../../utils/syncBlocked';
 
 const MODE_LABELS: Record<PipelineMode, string> = {
   quick: 'Быстрый',
@@ -21,6 +23,7 @@ const MODE_LABELS: Record<PipelineMode, string> = {
 export default function SyncSchedule() {
   const { notification } = App.useApp();
   const qc = useQueryClient();
+  const syncBlocked = useSyncBlocked();
   const { data: schedules = [], isLoading } = useQuery({
     queryKey: ['sync', 'schedule'],
     queryFn: getSchedules,
@@ -118,6 +121,8 @@ export default function SyncSchedule() {
             size="small"
             icon={<PlayCircleOutlined />}
             loading={runNowMut.isPending}
+            disabled={syncBlocked}
+            title={syncBlocked ? SYNC_BLOCKED_TEXT : undefined}
             onClick={() => runNowMut.mutate(r.id)}
           >
             Запустить

@@ -238,8 +238,16 @@ async def scheduled_pipeline_runner(*, schedule_id: str, mode: str, team: Option
     from app.repositories.sync_schedule import SyncScheduleRepository
     from app.services.sync_lock import SyncLock
 
+    from app.services.jira_migration.state import is_sync_blocked
+
     db = _get_db_session()
     try:
+        if is_sync_blocked(db):
+            logger.info(
+                "scheduled_pipeline_runner: пропуск — синхронизация остановлена "
+                "до завершения переезда на новую Jira (schedule=%s)", schedule_id,
+            )
+            return
         lock = SyncLock(db)
         run_repo = SyncRunRepository(db)
 

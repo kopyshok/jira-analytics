@@ -14,10 +14,10 @@ import { useIssueContext } from '../../hooks/useIssueContext';
 import { useIssueWorklogs } from '../../hooks/useIssueWorklogs';
 import { useThemeList } from '../../hooks/useThemeDictionary';
 import { useManualClassify } from '../../hooks/useWorkTypeReport';
+import { useJiraBrowseUrl } from '../../hooks/useSettings';
 import { statusTagColor } from '../../utils/status';
 import { DARK_THEME } from '../../utils/constants';
 
-const JIRA_BASE = 'https://example.atlassian.net/browse';
 
 const SECTION_LABEL_STYLE: React.CSSProperties = {
   fontSize: 11,
@@ -186,6 +186,7 @@ function DrawerContent({
   onClose,
 }: Omit<Props, 'open'> & { issueId: string; issueKey: string }) {
   const { data: context, isLoading, isError, refetch } = useIssueContext(issueId);
+  const browseUrl = useJiraBrowseUrl();
 
   if (isLoading) {
     return (
@@ -240,7 +241,8 @@ function DrawerContent({
           type="link"
           size="small"
           icon={<LinkOutlined />}
-          href={`${JIRA_BASE}/${issueKey}`}
+          href={browseUrl(issueKey) ?? undefined}
+          disabled={!browseUrl(issueKey)}
           target="_blank"
           rel="noreferrer"
           style={{ padding: 0, color: DARK_THEME.textMuted, fontSize: 12 }}

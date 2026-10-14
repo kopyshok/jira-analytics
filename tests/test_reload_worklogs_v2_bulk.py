@@ -15,7 +15,7 @@ from app.services.sync_service import SyncService, ReloadStats
 
 def _author(account_id: str = "a1") -> JiraWorklogAuthorSchema:
     return JiraWorklogAuthorSchema(
-        accountId=account_id,
+        key=account_id,
         displayName="Тест",
         emailAddress=f"{account_id}@example.com",
     )
@@ -140,3 +140,21 @@ async def test_reload_v2_filters_started_before_since(db_session, base_data):
     assert stats.deleted == 0
     assert stats.worklogs_inserted == 0
     assert db_session.query(Worklog).count() == 0
+
+
+async def test_reload_v2_boundary_is_moscow_midnight(db_session, base_data):
+    """Ворклог 01:00 по Москве в день перезагрузки (22:00 UTC накануне) удаляется и вставляется заново."""
+    db_session.add(Worklog(
+        id="wb", jira_worklog_id="wb", issue_id=base_data["issue"].id,
+        employee_id=base_data["employee"].id,
+        started_at=datetime(2026, 1, 1, 1, 0), hours=1.0, time_spent_seconds=3600,
+    ))
+    db_session.commit()
+
+    jira_worklogs = [_worklog("wb", "1001", "2025-12-31T22:00:00.000+0000")]
+    service = SyncService(db_session, jira_client=MockJira(jira_worklogs))
+    stats = await service.reload_worklogs_v2_bulk(date(2026, 1, 1))
+
+    assert stats.deleted == 1
+    assert stats.worklogs_inserted == 1
+    assert db_session.query(Worklog).one().started_at == datetime(2026, 1, 1, 1, 0)

@@ -23,7 +23,8 @@ def test_search_returns_users(db_session):
     # are designed for.
     fake = [
         JiraUserSchema(
-            accountId="a1",
+            key="a1",
+            name="ivanov",
             displayName="Иванов",
             emailAddress="i@example.com",
             active=True,
@@ -54,6 +55,7 @@ def test_search_returns_users(db_session):
     body = resp.json()
     assert len(body) == 1
     assert body[0]["jira_account_id"] == "a1"
+    assert body[0]["jira_username"] == "ivanov"
     assert body[0]["display_name"] == "Иванов"
     assert body[0]["email"] == "i@example.com"
     assert body[0]["is_active"] is True

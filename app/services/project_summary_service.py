@@ -121,7 +121,7 @@ class ProjectSummaryService:
 
         # Confluence: ссылки из эпика + всех детей
         base = self.db.query(AppSetting).filter(
-            AppSetting.key == "jira_base_url"
+            AppSetting.key == "confluence_base_url"
         ).first()
         base_url = base.value if base and base.value else ""
         all_urls: list[str] = []

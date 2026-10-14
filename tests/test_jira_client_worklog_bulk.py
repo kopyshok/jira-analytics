@@ -21,17 +21,19 @@ def _make_client() -> JiraClient:
 async def test_get_worklogs_updated_since_paginates():
     """Если lastPage=false — делает второй запрос с since=until из первого ответа."""
     client = _make_client()
+    since = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    since_ms = int(since.timestamp() * 1000)
 
     page1 = {
         "values": [{"worklogId": 1}, {"worklogId": 2}],
-        "since": 1000,
-        "until": 2000,
+        "since": since_ms,
+        "until": since_ms + 1000,
         "lastPage": False,
     }
     page2 = {
         "values": [{"worklogId": 3}],
-        "since": 2000,
-        "until": 3000,
+        "since": since_ms + 1000,
+        "until": since_ms + 2000,
         "lastPage": True,
     }
     # POST /worklog/list возвращает пустой список (не тестируем содержимое здесь)
@@ -47,34 +49,34 @@ async def test_get_worklogs_updated_since_paginates():
 
     client._request = fake_request  # type: ignore[method-assign]
 
-    since = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     results = []
     async for wl in client.get_worklogs_updated_since(since):
         results.append(wl)
 
     assert len(get_call_params) == 2
     # Первый вызов — since из аргумента
-    since_ms = int(since.timestamp() * 1000)
     assert get_call_params[0]["since"] == since_ms
     # Второй вызов — since=until из первой страницы
-    assert get_call_params[1]["since"] == 2000
+    assert get_call_params[1]["since"] == since_ms + 1000
 
 
 @pytest.mark.asyncio
 async def test_iter_deleted_worklog_ids_paginates():
     """Если lastPage=false — делает второй запрос; собирает все worklogId."""
     client = _make_client()
+    since = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    since_ms = int(since.timestamp() * 1000)
 
     page1 = {
         "values": [{"worklogId": 10}, {"worklogId": 20}],
-        "since": 1000,
-        "until": 2000,
+        "since": since_ms,
+        "until": since_ms + 1000,
         "lastPage": False,
     }
     page2 = {
         "values": [{"worklogId": 30}],
-        "since": 2000,
-        "until": 3000,
+        "since": since_ms + 1000,
+        "until": since_ms + 2000,
         "lastPage": True,
     }
 
@@ -86,16 +88,14 @@ async def test_iter_deleted_worklog_ids_paginates():
 
     client._request = fake_request  # type: ignore[method-assign]
 
-    since = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     results: list[int] = []
     async for wl_id in client.iter_deleted_worklog_ids(since):
         results.append(wl_id)
 
     assert results == [10, 20, 30]
     assert len(get_call_params) == 2
-    since_ms = int(since.timestamp() * 1000)
     assert get_call_params[0]["since"] == since_ms
-    assert get_call_params[1]["since"] == 2000
+    assert get_call_params[1]["since"] == since_ms + 1000
 
 
 @pytest.mark.asyncio
@@ -134,3 +134,14 @@ async def test_get_worklogs_updated_since_batches_1000():
     assert len(post_calls[1]) == 1
     assert post_calls[0][0] == 1
     assert post_calls[1][0] == 1001
+
+
+def test_since_ms_naive_is_moscow():
+    """Дата без пояса — московская полночь, независимо от пояса сервера."""
+    from app.connectors.jira_client import _since_ms
+
+    assert _since_ms(datetime(2026, 1, 1)) == int(
+        datetime(2025, 12, 31, 21, 0, tzinfo=timezone.utc).timestamp() * 1000
+    )
+    aware = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert _since_ms(aware) == int(aware.timestamp() * 1000)
