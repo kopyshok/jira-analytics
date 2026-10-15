@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from typing import Optional, List, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 _JIRA_TZ_RE = re.compile(r"([+-])(\d{2})(\d{2})$")
@@ -41,6 +41,17 @@ class JiraUserSchema(BaseModel):
     email: Optional[str] = Field(default=None, alias="emailAddress")
     is_active: bool = Field(default=True, alias="active")
     avatar_urls: Optional[dict] = Field(default=None, alias="avatarUrls")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fill_deleted_user(cls, data: Any) -> Any:
+        """Удалённый в Jira пользователь приходит без ``key`` и ``displayName``
+        (``{"name": "JIRAUSER14008", "active": false}``) — подставляем логин."""
+        if isinstance(data, dict) and data.get("name"):
+            data = {**data}
+            data.setdefault("key", data["name"])
+            data.setdefault("displayName", data["name"])
+        return data
 
     @property
     def avatar_url(self) -> Optional[str]:

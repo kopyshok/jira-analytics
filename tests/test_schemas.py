@@ -249,3 +249,17 @@ class TestJiraIssueSchema:
         
         assert issue.fields.parent_key == "PRJ-123"
         assert issue.fields.issuetype.subtask is True
+
+
+def test_worklog_author_deleted_user_without_key_and_display_name():
+    """Удалённый в Jira автор приходит без key/displayName — не роняет разбор."""
+    from app.connectors.schemas import JiraWorklogSchema
+
+    wl = JiraWorklogSchema.model_validate({
+        "id": "1", "issueId": "2", "started": "2026-01-15T10:30:00.000+0000",
+        "timeSpentSeconds": 3600,
+        "author": {"name": "JIRAUSER14008", "active": False},
+    })
+    assert wl.author.jira_account_id == "JIRAUSER14008"
+    assert wl.author.display_name == "JIRAUSER14008"
+    assert wl.author.is_active is False
