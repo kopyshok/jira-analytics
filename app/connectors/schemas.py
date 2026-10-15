@@ -41,17 +41,26 @@ class JiraUserSchema(BaseModel):
     email: Optional[str] = Field(default=None, alias="emailAddress")
     is_active: bool = Field(default=True, alias="active")
     avatar_urls: Optional[dict] = Field(default=None, alias="avatarUrls")
+    # Удалён в Jira: имени и логина нет, ``display_name`` = ``key``. Синк не
+    # затирает таким пользователем ФИО уже известного сотрудника.
+    deleted: bool = False
 
     @model_validator(mode="before")
     @classmethod
     def _fill_deleted_user(cls, data: Any) -> Any:
-        """Удалённый в Jira пользователь приходит без ``key`` и ``displayName``
-        (``{"name": "JIRAUSER14008", "active": false}``) — подставляем логин."""
-        if isinstance(data, dict) and data.get("name"):
-            data = {**data}
-            data.setdefault("key", data["name"])
-            data.setdefault("displayName", data["name"])
-        return data
+        """Удалённый в Jira пользователь: ``{"name": "JIRAUSER14008", "active": false}``.
+
+        В ``name`` у него лежит ``key``, а не логин, ``displayName`` нет.
+        Логин неизвестен (``None``: искать списания по нему нельзя), имя — ``key``.
+        """
+        if not isinstance(data, dict) or not data.get("name"):
+            return data
+        if data.get("key") or data.get("jira_account_id"):
+            if not (data.get("displayName") or data.get("display_name")):
+                data = {**data, "displayName": data["name"]}
+            return data
+        return {**data, "key": data["name"], "name": None,
+                "displayName": data.get("displayName") or data["name"], "deleted": True}
 
     @property
     def avatar_url(self) -> Optional[str]:

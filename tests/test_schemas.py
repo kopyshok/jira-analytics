@@ -263,3 +263,6 @@ def test_worklog_author_deleted_user_without_key_and_display_name():
     assert wl.author.jira_account_id == "JIRAUSER14008"
     assert wl.author.display_name == "JIRAUSER14008"
     assert wl.author.is_active is False
+    # В name у удалённого — key, не логин: искать списания по нему нельзя.
+    assert wl.author.name is None
+    assert wl.author.deleted is True

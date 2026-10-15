@@ -538,6 +538,7 @@ def _author_as_user(author: JiraUserSchema) -> JiraUserSchema:
         emailAddress=getattr(author, "email", None),
         active=True,
         avatarUrls=getattr(author, "avatar_urls", None),
+        deleted=getattr(author, "deleted", False),
     )
 
 
@@ -977,6 +978,11 @@ class SyncService:
     
     def _upsert_employee(self, jira_user: JiraUserSchema) -> Tuple[Employee, bool]:
         """Upsert employee from Jira user (identity — DC ``key``, login refreshed)."""
+        if jira_user.deleted:
+            # Удалённый в Jira: ни имени, ни почты — у известного сотрудника ничего не затираем.
+            existing = self.employee_repo.get_by_field("jira_account_id", jira_user.jira_account_id)
+            if existing is not None:
+                return existing, False
         data = {
             "jira_account_id": jira_user.jira_account_id,
             "display_name": jira_user.display_name,

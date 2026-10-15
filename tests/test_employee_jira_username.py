@@ -151,3 +151,31 @@ def test_employee_from_jira_update_without_login_keeps_login(db_session):
     emp = db_session.query(Employee).filter_by(jira_account_id="JIRAUSER8").one()
     assert emp.display_name == "Сидоров Сергей"
     assert emp.jira_username == "Sidorov_S_S"
+
+
+def test_deleted_jira_user_keeps_employee_name_and_login(db_session):
+    """Удалённый в Jira автор (без имени) не затирает ФИО и логин сотрудника."""
+    from app.services.sync_service import _author_as_user
+
+    db_session.add(Employee(jira_account_id="JIRAUSER14008", jira_username="Ivanov_I_I",
+                            display_name="Иванов Иван", is_active=False))
+    db_session.commit()
+    author = JiraUserSchema.model_validate({"name": "JIRAUSER14008", "active": False})
+    svc = SyncService(db_session, MagicMock())
+    svc._ensure_employee(_author_as_user(author))
+    svc._ensure_employee_cached(author, {})
+    db_session.commit()
+
+    emp = db_session.query(Employee).filter_by(jira_account_id="JIRAUSER14008").one()
+    assert emp.display_name == "Иванов Иван"
+    assert emp.jira_username == "Ivanov_I_I"
+
+
+def test_deleted_jira_user_unknown_creates_employee_by_key(db_session):
+    author = JiraUserSchema.model_validate({"name": "JIRAUSER14009", "active": False})
+    SyncService(db_session, MagicMock())._ensure_employee(author)
+    db_session.commit()
+
+    emp = db_session.query(Employee).filter_by(jira_account_id="JIRAUSER14009").one()
+    assert emp.display_name == "JIRAUSER14009"
+    assert emp.jira_username is None
