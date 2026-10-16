@@ -55,7 +55,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --pill-border: var(--p-line-strong);
   --track-bg: var(--p-body);
   --good: #237A45;
-  --warn: #8F6400;
+  --warn: #7E5800;
   --bad: #B92E17;
   --modal-tile-bg: var(--p-screen);
   --mini-tile-bg: var(--p-row-alt);
@@ -79,6 +79,22 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --font-display: 'Commissioner', 'Segoe UI', sans-serif;
   --font-body: 'Commissioner', 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+
+  /* вспомогательные переменные компонентов: значения обложки (у Aurora — прежние, в разметке) */
+  --alloc-excluded-opacity: 1;
+  --fc-none-opacity: 1;
+  --fc-none-color: #5C5A55;
+  --rs-hidden-layer: hidden;
+  --hb-avatar-bg: #2B2B29;
+  --hb-avatar-fg: #FFFFFF;
+  --absent-opacity: 1;
+  --absent-chip-bg: #EFE6F7;
+  --absent-chip-fg: #6B3FA0;
+  --bl-customer: #3D3B37;
+  --rs-role-cell: #FFFFFF;
+  --rs-ok-bg: #FFFFFF;
+  --rs-deficit-bg: #FBEAE6;
+  --rs-track: #E7E5E0;
 
   /* классические глобальные переменные index.css (справка, деревья, подсказки графиков) */
   --color-page: var(--p-body);
@@ -525,6 +541,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     font-family: var(--font-mono);
     font-size: 12px;
   }
+  & .ant-select-multiple .ant-select-selection-item-content { color: #FFFFFF !important; }
   & .ant-select-multiple .ant-select-selection-item .ant-select-selection-item-remove,
   & .ant-select-multiple .ant-select-selection-item-remove { color: #E7E5E0 !important; }
 
@@ -718,6 +735,23 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     border: 1px solid var(--p-key) !important;
     color: #FFFFFF !important;
   }
+  /* Цветные метки AntD — светлая подложка и тёмный текст того же оттенка (контраст ≥ 4.5:1) */
+  & .ant-tag.ant-tag-red { color: #C81922 !important; background: #FEE0E2 !important; border-color: #FA9CA0 !important; }
+  & .ant-tag.ant-tag-volcano { color: #B63F16 !important; background: #FEE7DF !important; border-color: #FDB299 !important; }
+  & .ant-tag.ant-tag-orange { color: #9A5913 !important; background: #FEEFDE !important; border-color: #FDCB96 !important; }
+  & .ant-tag.ant-tag-gold { color: #916712 !important; background: #FEF4DE !important; border-color: #FDDA95 !important; }
+  & .ant-tag.ant-tag-yellow { color: #7F7010 !important; background: #FEFADE !important; border-color: #FDEF95 !important; }
+  & .ant-tag.ant-tag-lime { color: #58750F !important; background: #F2FADE !important; border-color: #D4EE94 !important; }
+  & .ant-tag.ant-tag-green { color: #347C10 !important; background: #E7F7DF !important; border-color: #B1E498 !important; }
+  & .ant-tag.ant-tag-blue { color: #1962C8 !important; background: #DEECFF !important; border-color: #96C2FF !important; }
+  & .ant-tag.ant-tag-geekblue { color: #2F54EB !important; background: #E2E7FC !important; border-color: #A1B2F6 !important; }
+  & .ant-tag.ant-tag-purple { color: #722ED1 !important; background: #EBE2F9 !important; border-color: #C0A1EA !important; }
+  & .ant-tag.ant-tag-magenta,
+  & .ant-tag.ant-tag-pink { color: #BF1873 !important; background: #FCE2F0 !important; border-color: #F6A1D0 !important; }
+  & .ant-tag.ant-tag-success { color: #347C10 !important; background: #E7F7DF !important; border-color: #B1E498 !important; }
+  & .ant-tag.ant-tag-processing { color: #1962C8 !important; background: #DEECFF !important; border-color: #96C2FF !important; }
+  & .ant-tag.ant-tag-error { color: #C81922 !important; background: #FEE0E2 !important; border-color: #FA9CA0 !important; }
+  & .ant-tag.ant-tag-warning { color: #916712 !important; background: #FEF4DE !important; border-color: #FDDA95 !important; }
   & .ant-tag:not([class*="ant-tag-"]),
   & .ant-tag.ant-tag-default,
   & .ant-tag-has-color.ant-tag-default {

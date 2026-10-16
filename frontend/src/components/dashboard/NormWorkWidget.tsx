@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
 import { DARK_THEME } from '../../utils/constants';
+import { roleChipPair } from '../../utils/roles';
 import type {
   DashboardNormWorkResponse,
   NormWorkRoleGroup,
@@ -193,8 +194,9 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
           cursor: 'pointer',
         }}>
         <div style={{
-          width: 24, height: 24, borderRadius: '50%', background: role.role_color,
-          color: DARK_THEME.textPrimary, fontSize: 11, fontWeight: 700,
+          width: 24, height: 24, borderRadius: '50%',
+          background: roleChipPair(role.role_color)?.bg ?? role.role_color,
+          color: roleChipPair(role.role_color)?.fg ?? DARK_THEME.textPrimary, fontSize: 11, fontWeight: 700,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>{emp.initials}</div>
         <div style={{ fontSize: 14, color: 'var(--text, #e6edf7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

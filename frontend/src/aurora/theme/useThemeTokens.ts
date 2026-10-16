@@ -26,7 +26,8 @@ export function useThemeTokens() {
       darkAccent: isPult ? '#EFEDE7' : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(60,90,160,0.06)',
       border: 'var(--glass-border)',
       darkRows: isPult ? '#EFEDE7' : isDark ? 'rgba(255,255,255,0.025)' : 'rgba(60,90,160,0.04)',
-      cyanPrimary: 'var(--accent-1)',
+      // «Пульт»: оранжевый как текст на светлом не читается — берём его тёмный вариант.
+      cyanPrimary: isPult ? 'var(--p-accent-text)' : 'var(--accent-1)',
       cyanSecondary: 'var(--accent-2)',
       yellow: 'var(--warn)',
       amber: 'var(--warn)',
