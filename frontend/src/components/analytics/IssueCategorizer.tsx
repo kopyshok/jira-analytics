@@ -136,11 +136,11 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
                 fontWeight: 500,
                 padding: '3px 9px',
                 borderRadius: 10,
-                background: isInherited ? 'rgba(34,211,238,0.08)' : 'rgba(100,116,139,0.12)',
-                color: isInherited ? '#67e8f9' : 'var(--text-muted, #94a3b8)',
+                background: isInherited ? 'var(--icat-inh-bg, rgba(34,211,238,0.08))' : 'var(--icat-bg, rgba(100,116,139,0.12))',
+                color: isInherited ? 'var(--icat-inh-fg, #67e8f9)' : 'var(--text-muted, #94a3b8)',
                 border: isInherited
-                  ? '1px solid rgba(34,211,238,0.25)'
-                  : '1px solid rgba(100,116,139,0.2)',
+                  ? '1px solid var(--icat-inh-line, rgba(34,211,238,0.25))'
+                  : '1px solid var(--icat-line, rgba(100,116,139,0.2))',
                 whiteSpace: 'nowrap',
                 cursor: isInherited ? 'help' : 'default',
               }}
@@ -158,7 +158,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
               )}
               {effectiveLabel}
               {isInherited && (
-                <span style={{ fontSize: 9, opacity: 0.75, marginLeft: 2 }}>унасл.</span>
+                <span style={{ fontSize: 9, opacity: 'var(--icat-inh-opacity, 0.75)', marginLeft: 2 }}>унасл.</span>
               )}
             </span>
           </Tooltip>
@@ -206,7 +206,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
               checked={includeInAnalysis}
               onChange={e => setIncludeInAnalysis(e.target.checked)}
             >
-              <span style={{ fontSize: 12, color: isArchive ? 'var(--text-muted, #475569)' : '#cbd5e1' }}>
+              <span style={{ fontSize: 12, color: isArchive ? 'var(--text-muted, #475569)' : 'var(--ic-text-2, #cbd5e1)' }}>
                 Учитывать в анализе
               </span>
               {isArchive && (

@@ -7,6 +7,14 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --an-foreign-bg: #FBEDE3;
   --an-foreign-fg: #8F4A08;
   --an-foreign-line: #EFB48F;
+  --ic-key: #1C1C1A;
+  --ic-text-2: #3D3B37;
+  --icat-inh-bg: #E6F4F2;
+  --icat-inh-fg: #1F6B63;
+  --icat-inh-line: #9FD3CC;
+  --icat-inh-opacity: 1;
+  --icat-bg: #EFEDE7;
+  --icat-line: #CFCCC4;
 
   /* ---------- панель ---------- */
   & .an-controls { align-items: flex-end; gap: 12px; }
