@@ -81,3 +81,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function useAppTheme(): ThemeContextValue {
   return useContext(ThemeContext);
 }
+
+/** Активная обложка (`'swiss'`) или null у Aurora-тем — по ней страницы выбирают раскладку. */
+export function useSkin(): AppSkin | null {
+  return useContext(ThemeContext).skin;
+}

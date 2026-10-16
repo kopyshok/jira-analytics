@@ -19,27 +19,32 @@ import {
 interface Props {
   /** Запас нормированных работ команды плана на квартал. */
   reserve: ReserveOut;
+  /** Развернуть сразу; по умолчанию — только если часы других команд заняли запас. */
+  defaultExpanded?: boolean;
 }
 
 /** Ключ строки таблицы запаса (React `key`) — уникален по задаче+команде+роли. */
 const itemKey = (item: OtherTeamWorkOut) => `${item.backlog_item_id}::${item.team}::${item.role}`;
 
+const TEXT_3 = 'var(--rp-text-3, #7a9ab8)';
+const OVER = 'var(--rp-over-fg, #ff6b6b)';
+const ROW_LINE = '1px solid var(--rp-line-row, rgba(30,58,95,0.4))';
 const thStyle: React.CSSProperties = {
-  textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#7a9ab8',
-  padding: '4px', borderBottom: '1px solid #1e3a5f',
+  textAlign: 'left', fontSize: 11, fontWeight: 600, color: TEXT_3,
+  padding: '4px', borderBottom: '1px solid var(--rp-th-line, #1e3a5f)',
 };
 const tdStyle: React.CSSProperties = {
-  fontSize: 12, color: '#cfe1f5', padding: '6px 4px', verticalAlign: 'top',
-  borderBottom: '1px solid rgba(30,58,95,0.4)',
+  fontSize: 12, color: 'var(--rp-text-2, #cfe1f5)', padding: '6px 4px', verticalAlign: 'top',
+  borderBottom: ROW_LINE,
 };
 
-export default function NormedReserveSummary({ reserve }: Props) {
+export default function NormedReserveSummary({ reserve, defaultExpanded }: Props) {
   const { message } = App.useApp();
   const setOverride = useSetWorkTypeOverride();
   const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
   // При каждом открытии плана: развёрнут, если у команды есть часы других команд
   // (видно, сколько запаса они заняли), иначе свёрнут. Состояние не персистится.
-  const [expanded, setExpanded] = useState(() => hasOtherTeamHours(reserve));
+  const [expanded, setExpanded] = useState(() => defaultExpanded ?? hasOtherTeamHours(reserve));
   // Раскрытые строки видов работ (задачи других команд) — ключ «роль::вид работ».
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   // Вид работ хранится на сервере per задача (backlog_item_id), а не per задача+роль — задача с
@@ -111,7 +116,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
             ? localOverrides[overrideKey] ?? undefined
             : item.is_manual ? item.work_type_id : undefined;
         return (
-          <div key={itemKey(item)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#cfe1f5' }}>
+          <div key={itemKey(item)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--rp-text-2, #cfe1f5)' }}>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.issue_key && (
                 <>
@@ -121,8 +126,8 @@ export default function NormedReserveSummary({ reserve }: Props) {
               )}
               {item.title}
             </span>
-            <span style={{ color: '#9ab3cc', flexShrink: 0 }}>{item.team}</span>
-            <span style={{ color: '#9ab3cc', flexShrink: 0, width: 56, textAlign: 'right' }}>
+            <span style={{ color: 'var(--rp-text-2, #9ab3cc)', flexShrink: 0 }}>{item.team}</span>
+            <span style={{ color: 'var(--rp-text-2, #9ab3cc)', flexShrink: 0, width: 56, textAlign: 'right' }}>
               {fmtHours(item.hours)}
             </span>
             <Select
@@ -145,12 +150,13 @@ export default function NormedReserveSummary({ reserve }: Props) {
   return (
     <div
       data-testid="rp-reserve-summary"
+      className="rp-reserve"
       style={{
-        background: '#0f2340',
-        border: '1px solid #1e3a5f',
-        borderRadius: 8,
-        padding: 12,
-        marginTop: 16,
+        background: 'var(--rp-card, #0f2340)',
+        border: '1px solid var(--rp-frame, #1e3a5f)',
+        borderRadius: 'var(--rp-radius, 8px)',
+        padding: 'var(--rp-card-pad, 12px)',
+        marginTop: 'var(--rp-card-mt, 16px)',
       }}
     >
       <button
@@ -165,17 +171,17 @@ export default function NormedReserveSummary({ reserve }: Props) {
         }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 11, color: '#7a9ab8' }}>
+          <span aria-hidden className="rp-reserve-caret" style={{ display: 'inline-block', width: 10, fontSize: 11, color: TEXT_3 }}>
             {expanded ? '▾' : '▸'}
           </span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
+          <span className="rp-reserve-title" style={{ fontSize: 13, fontWeight: 600, color: 'var(--rp-text, #fff)' }}>
             Нормированные работы — запас квартала
           </span>
         </span>
         {overuseNote ? (
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#ff6b6b' }}>⚠ {overuseNote}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: OVER }}>⚠ {overuseNote}</span>
         ) : (
-          <span style={{ fontSize: 11, color: '#7a9ab8' }}>перерасхода нет</span>
+          <span style={{ fontSize: 11, color: TEXT_3 }}>перерасхода нет</span>
         )}
       </button>
 
@@ -186,7 +192,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
           </div>
 
           {visibleRoles.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#7a9ab8' }}>
+            <div style={{ fontSize: 12, color: TEXT_3 }}>
               Заблокированных периодов и работы в других командах нет — запас не расходуется
             </div>
           ) : (
@@ -213,7 +219,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
                         colSpan={4}
                         style={{
                           fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-                          color: '#7a9ab8', padding: '8px 4px 4px',
+                          color: TEXT_3, padding: '8px 4px 4px',
                         }}
                       >
                         {r.role_label}
@@ -246,7 +252,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
                                   }}
                                   style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                                 >
-                                  <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 10, color: '#7a9ab8' }}>
+                                  <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 10, color: TEXT_3 }}>
                                     {isOpen ? '▾' : '▸'}
                                   </span>
                                   {row.label}
@@ -258,18 +264,18 @@ export default function NormedReserveSummary({ reserve }: Props) {
                             <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtHours(row.planned_hours)}</td>
                             <td style={tdStyle}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                                  <div style={{ width: `${pct}%`, height: '100%', background: isOveruse ? '#ff6b6b' : '#00c9c8' }} />
+                                <div style={{ flex: 1, height: 6, borderRadius: 'var(--rp-bar-radius, 3px)', background: 'var(--rp-track, rgba(255,255,255,0.08))', overflow: 'hidden' }}>
+                                  <div style={{ width: `${pct}%`, height: '100%', background: isOveruse ? OVER : 'var(--rp-ok-fill, #00c9c8)' }} />
                                 </div>
                                 <span style={{ flexShrink: 0, textAlign: 'right', minWidth: 52 }}>{fmtHours(used)}</span>
                               </div>
                               {caption && (
-                                <div style={{ fontSize: 10, color: '#7a9ab8', marginTop: 2 }}>{caption}</div>
+                                <div style={{ fontSize: 10, color: TEXT_3, marginTop: 2 }}>{caption}</div>
                               )}
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'right' }}>
                               {row.overuse_hours > 0.5 ? (
-                                <span style={{ color: '#ff6b6b', fontWeight: 600 }}>
+                                <span style={{ color: OVER, fontWeight: 600 }}>
                                   −{fmtHours(row.overuse_hours)} <span style={{ fontWeight: 400, fontSize: 10 }}>перерасход</span>
                                 </span>
                               ) : (
@@ -279,7 +285,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
                           </tr>
                           {canExpand && isOpen && (
                             <tr>
-                              <td colSpan={4} style={{ padding: '0 4px 8px 18px', borderBottom: '1px solid rgba(30,58,95,0.4)' }}>
+                              <td colSpan={4} style={{ padding: '0 4px 8px 18px', borderBottom: ROW_LINE }}>
                                 {renderRowItems(r.role, row.work_type_id)}
                               </td>
                             </tr>

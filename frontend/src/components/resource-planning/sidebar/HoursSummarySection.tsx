@@ -32,7 +32,7 @@ export default function HoursSummarySection({ data, collapsed, onToggleCollapse 
                     title="Осталось ч"
                     value={data.remaining}
                     precision={1}
-                    styles={data.remaining > 0 ? { content: { color: '#ef4444' } } : undefined}
+                    styles={data.remaining > 0 ? { content: { color: 'var(--rp-conflict, #ef4444)' } } : undefined}
                   />
                 </Col>
                 <Col span={6}>
@@ -40,7 +40,7 @@ export default function HoursSummarySection({ data, collapsed, onToggleCollapse 
                 </Col>
               </Row>
               {data.blocked_days > 0 && (
-                <Typography.Text style={{ fontSize: 12, color: '#ffb432' }}>
+                <Typography.Text style={{ fontSize: 12, color: 'var(--rp-warn-fg, #ffb432)' }}>
                   Дней заблокировано: {data.blocked_days}
                 </Typography.Text>
               )}

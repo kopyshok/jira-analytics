@@ -1,4 +1,6 @@
 import { Tooltip } from 'antd';
+import { useSkin } from '../../contexts/ThemeContext';
+import { solidFill } from '../../utils/readableColor';
 
 interface Props {
   name: string | null;
@@ -27,11 +29,16 @@ function initials(name: string): string {
 }
 
 export default function EmployeeAvatar({ name, role, size = 22 }: Props) {
+  // В светлой обложке белые инициалы на светлом тоне роли не читаются —
+  // тот же тон затемняется до контраста 4.5:1.
+  const skin = useSkin();
   if (!name) return null;
-  const color = ROLE_COLORS[(role ?? '').toLowerCase()] ?? '#6b7280';
+  const roleColor = ROLE_COLORS[(role ?? '').toLowerCase()] ?? '#6b7280';
+  const color = skin ? solidFill(roleColor) : roleColor;
   return (
     <Tooltip title={name}>
       <span
+        className="rp-avatar"
         style={{
           display: 'inline-flex',
           alignItems: 'center',

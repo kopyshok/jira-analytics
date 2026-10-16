@@ -65,11 +65,11 @@ export default function DailyBreakdownSection({
               rowKey="date"
               onRow={(row) => ({
                 style: row.is_pre_start
-                  ? { background: 'rgba(120,140,180,0.10)', opacity: 0.85 }
+                  ? { background: 'var(--rp-day-off-row, rgba(120,140,180,0.10))', opacity: 0.85 }
                   : row.status === 'blocked_by_other'
-                    ? { background: 'rgba(239,68,68,0.08)' }
+                    ? { background: 'var(--rp-day-over-row, rgba(239,68,68,0.08))' }
                     : row.status !== 'work'
-                      ? { background: 'rgba(255,180,50,0.06)' }
+                      ? { background: 'var(--rp-day-warn-row, rgba(255,180,50,0.06))' }
                       : {},
               })}
               columns={[

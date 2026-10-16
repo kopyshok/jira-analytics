@@ -28,6 +28,10 @@ interface Props {
   scale?: TimelineScale;
   trackWidthPx?: number;
   calendar?: ProductionCalendarDayResponse[];
+  /** Компактные подписи: месяцы без года, недели — датой понедельника, подпись левой колонки. */
+  compact?: boolean;
+  /** Позиция «сегодня» (% шкалы) — метка в строке месяцев. */
+  todayLeftPct?: number;
 }
 
 const MONTH_NAMES = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
@@ -39,7 +43,7 @@ interface CellTint {
 
 function tintForDow(dow: number): CellTint {
   if (dow === 0 || dow === 6) {
-    return { bg: 'rgba(120, 145, 180, 0.10)', fg: '#7a99c4' };
+    return { bg: 'var(--rp-weekend-bg, rgba(120, 145, 180, 0.10))', fg: 'var(--rp-weekend-fg, #7a99c4)' };
   }
   return { bg: null, fg: null };
 }
@@ -47,12 +51,14 @@ function tintForDow(dow: number): CellTint {
 function tintForCalendar(row: ProductionCalendarDayResponse, dow: number): CellTint {
   if (!row.is_workday) {
     if (row.kind === 'holiday' || row.kind === 'preholiday') {
-      return { bg: 'rgba(232, 134, 74, 0.18)', fg: '#f0a075' };
+      return { bg: 'var(--rp-holiday-bg, rgba(232, 134, 74, 0.18))', fg: 'var(--rp-holiday-fg, #f0a075)' };
     }
-    return { bg: 'rgba(120, 145, 180, 0.14)', fg: '#7a99c4' };
+    return { bg: 'var(--rp-dayoff-bg, rgba(120, 145, 180, 0.14))', fg: 'var(--rp-weekend-fg, #7a99c4)' };
   }
   return tintForDow(dow);
 }
+
+const ddmm = (d: Date) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
 
 export default function TimelineHeader({
   timeline,
@@ -60,6 +66,8 @@ export default function TimelineHeader({
   scale = 'week',
   trackWidthPx,
   calendar,
+  compact = false,
+  todayLeftPct,
 }: Props) {
   const calMap = useMemo(() => {
     const m = new Map<string, ProductionCalendarDayResponse>();
@@ -80,12 +88,14 @@ export default function TimelineHeader({
     lower.forEach(w => {
       const approxDate = dateAtLeftPct(timeline, w.leftPct);
       const key = `${approxDate.getFullYear()}-${approxDate.getMonth()}`;
-      const label = `${MONTH_NAMES[approxDate.getMonth()]} ${approxDate.getFullYear()}`;
+      const label = compact
+        ? MONTH_NAMES[approxDate.getMonth()]
+        : `${MONTH_NAMES[approxDate.getMonth()]} ${approxDate.getFullYear()}`;
       if (!map.has(key)) map.set(key, { label, leftPct: w.leftPct, rightPct: w.leftPct + w.widthPct });
       else map.get(key)!.rightPct = w.leftPct + w.widthPct;
     });
     return [...map.values()];
-  }, [lower, timeline]);
+  }, [lower, timeline, compact]);
 
   const years = useMemo(() => {
     if (scale !== 'month') return [];
@@ -100,6 +110,7 @@ export default function TimelineHeader({
   }, [lower, timeline, scale]);
 
   const upperRow = scale === 'month' ? years : months;
+  const fullWeekPct = Math.max(...lower.map(w => w.widthPct), 0);
 
   const weeksWithHoliday = useMemo(() => {
     if (scale !== 'week') return new Set<string>();
@@ -120,13 +131,14 @@ export default function TimelineHeader({
   }, [timeline, scale, calendar, lower]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid #1e3a5f' }}>
-      <div style={{ display: 'flex', height: 28, background: '#091829' }}>
-        <div style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid #1e3a5f', position: 'sticky', left: 0, zIndex: 31, background: '#091829' }} />
+    <div className="rp-th" style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--rp-th-line, #1e3a5f)' }}>
+      <div className="rp-th-upper" style={{ display: 'flex', height: 'var(--rp-th-h1, 28px)', background: 'var(--rp-head-bg, #091829)' }}>
+        <div style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid var(--rp-line, #1e3a5f)', position: 'sticky', left: 0, zIndex: 31, background: 'var(--rp-head-bg, #091829)' }} />
         <div style={{ width: trackWidthPx ?? undefined, flex: trackWidthPx ? '0 0 auto' : 1, position: 'relative' }}>
           {upperRow.map((m, i) => (
             <div
               key={`${m.label}-${i}`}
+              className="rp-th-month"
               style={{
                 position: 'absolute',
                 left: `${m.leftPct}%`,
@@ -137,19 +149,26 @@ export default function TimelineHeader({
                 justifyContent: 'center',
                 fontSize: 11,
                 fontWeight: 700,
-                color: '#5a7aaa',
+                color: 'var(--rp-th-fg, #5a7aaa)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.06em',
-                borderRight: '1px solid #1e3a5f',
+                borderRight: '1px solid var(--rp-line, #1e3a5f)',
               }}
             >
               {m.label}
             </div>
           ))}
+          {todayLeftPct !== undefined && todayLeftPct >= 0 && todayLeftPct <= 100 && (
+            <span className="rp-th-today" style={{ position: 'absolute', left: `${todayLeftPct}%` }}>
+              сегодня
+            </span>
+          )}
         </div>
       </div>
-      <div style={{ display: 'flex', height: 24, background: '#0a1e35' }}>
-        <div style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid #1e3a5f', position: 'sticky', left: 0, zIndex: 31, background: '#0a1e35' }} />
+      <div className="rp-th-lower" style={{ display: 'flex', height: 'var(--rp-th-h2, 24px)', background: 'var(--rp-head-bg-2, #0a1e35)' }}>
+        <div className="rp-th-corner" style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid var(--rp-line, #1e3a5f)', position: 'sticky', left: 0, zIndex: 31, background: 'var(--rp-head-bg-2, #0a1e35)' }}>
+          {compact && 'Инициатива / фаза'}
+        </div>
         <div style={{ width: trackWidthPx ?? undefined, flex: trackWidthPx ? '0 0 auto' : 1, position: 'relative' }}>
           {lower.map((w, i) => {
             let tint: CellTint = { bg: null, fg: null };
@@ -161,6 +180,7 @@ export default function TimelineHeader({
             return (
               <div
                 key={`${w.label}-${i}-${w.leftPct}`}
+                className="rp-th-week"
                 style={{
                   position: 'absolute',
                   left: `${w.leftPct}%`,
@@ -170,18 +190,21 @@ export default function TimelineHeader({
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 10,
-                  color: tint.fg ?? '#4a6a90',
+                  color: tint.fg ?? 'var(--rp-th-fg-2, #4a6a90)',
                   background: tint.bg ?? 'transparent',
-                  borderRight: '1px solid #142a45',
+                  borderRight: '1px solid var(--rp-line-week, #142a45)',
                   overflow: 'hidden',
                   whiteSpace: 'nowrap',
                 }}
               >
-                {w.label}
+                {compact && scale === 'week'
+                  // Неполная неделя на краю квартала узкая — дата в неё не влезает.
+                  ? (w.widthPct >= fullWeekPct * 0.7 ? ddmm(dateAtLeftPct(timeline, w.leftPct)) : '')
+                  : w.label}
                 {scale === 'week' && weeksWithHoliday.has(w.label) && (
                   <span
                     title="В неделе есть праздничный день"
-                    style={{ position: 'absolute', bottom: 1, right: 4, color: '#f0a075', fontSize: 9, lineHeight: 1 }}
+                    style={{ position: 'absolute', bottom: 1, right: 4, color: 'var(--rp-holiday-fg, #f0a075)', fontSize: 9, lineHeight: 1 }}
                   >
                     ●
                   </span>

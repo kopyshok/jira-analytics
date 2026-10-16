@@ -170,6 +170,8 @@ export default function DependencyArrows({
       path.setAttribute('stroke-linejoin', 'round');
       if (dashArray) path.setAttribute('stroke-dasharray', dashArray);
       path.setAttribute('marker-end', `url(#${markerId})`);
+      // Вид связи — для перекраски в обложках (CSS сильнее атрибутов SVG).
+      path.setAttribute('data-kind', markerId);
       // opacity на path применяется к stroke И к marker (head) — иначе
       // голова стрелки остаётся ярко цветной из-за фиксированного fill в defs.
       if (opacity !== undefined && opacity < 1) {
@@ -355,6 +357,7 @@ export default function DependencyArrows({
   return (
     <svg
       ref={svgRef}
+      className="rp-arrows"
       style={{
         position: 'absolute',
         top: 0, left: 0,

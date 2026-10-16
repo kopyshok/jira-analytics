@@ -1,9 +1,9 @@
 /** Цвет часов, занятых планами других команд. */
-export const EXT_LOAD_COLOR = 'hsl(265 55% 62%)';
+export const EXT_LOAD_COLOR = 'var(--rp-load-ext, hsl(265 55% 62%))';
 /** Цвет нормированных работ: заблокированные периоды и запас квартала на свободное время. */
-export const NORMED_WORK_COLOR = 'hsl(210 16% 52%)';
+export const NORMED_WORK_COLOR = 'var(--rp-load-normed, hsl(210 16% 52%))';
 /** Свободная часть дня (как заливка свободного рабочего дня). */
-export const FREE_FILL = 'rgba(255,255,255,0.06)';
+export const FREE_FILL = 'var(--rp-load-free, rgba(255,255,255,0.06))';
 
 /**
  * Заливка клетки дня: снизу — доля других команд, над ней — этот план

@@ -50,6 +50,8 @@ interface Props {
   allAssignments: AssignmentOut[];
   employees: EmployeeCandidate[];
   onChanged?: () => void | Promise<unknown>;
+  /** Панель встроена в раскладку страницы, а не выезжает справа (обложки). */
+  docked?: boolean;
 }
 
 const fmtDay = (iso: string) => dayjs(iso).format('DD.MM');
@@ -70,6 +72,7 @@ export default function AssignmentSidebar({
   allAssignments,
   employees,
   onChanged,
+  docked = false,
 }: Props) {
   const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
@@ -125,6 +128,7 @@ export default function AssignmentSidebar({
   }, [assignment, employees]);
 
   if (!assignment) {
+    if (docked) return null;
     return (
       <Drawer
         open={open}
@@ -237,27 +241,23 @@ export default function AssignmentSidebar({
     }
   };
 
-  return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      styles={{ wrapper: { width: 920 } }}
-      mask={{ closable: true }}
-      title={
-        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-          <Space>
-            <span>{PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
-            {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
-            {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
-            {assignment.out_of_quarter && <Tag color="orange">Вне квартала</Tag>}
-          </Space>
-          <SectionVisibilityPopover
-            visible={prefs.detail_sections_visible}
-            onChange={(next) => patchPrefs({ detail_sections_visible: next })}
-          />
-        </Space>
-      }
-    >
+  const title = (
+    <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+      <Space>
+        <span>{PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
+        {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
+        {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
+        {assignment.out_of_quarter && <Tag color="orange">Вне квартала</Tag>}
+      </Space>
+      <SectionVisibilityPopover
+        visible={prefs.detail_sections_visible}
+        onChange={(next) => patchPrefs({ detail_sections_visible: next })}
+      />
+    </Space>
+  );
+
+  const body = (
+    <>
       <Typography.Title level={5} style={{ marginTop: 0 }}>
         {assignment.backlog_item_title}
       </Typography.Title>
@@ -469,7 +469,7 @@ export default function AssignmentSidebar({
                       dataIndex: 'hours_on_day',
                       width: 110,
                       render: (v: number) => (
-                        <span style={{ color: v > 10 ? '#ef4444' : '#ffb432', fontWeight: 700 }}>
+                        <span style={{ color: v > 10 ? 'var(--rp-conflict, #ef4444)' : 'var(--rp-warn-fg, #ffb432)', fontWeight: 700 }}>
                           {v.toFixed(1)} ч
                         </span>
                       ),
@@ -481,6 +481,31 @@ export default function AssignmentSidebar({
           </Space>
         )}
       </Modal>
+    </>
+  );
+
+  if (docked) {
+    return (
+      <div className="rp-assign-docked">
+        <div className="rp-assign-docked-head">
+          <span className="rp-assign-docked-title">Назначение</span>
+          <button type="button" className="rp-assign-close" aria-label="Закрыть назначение" onClick={onClose}>×</button>
+        </div>
+        <div className="rp-assign-docked-meta">{title}</div>
+        <div className="rp-assign-docked-body">{body}</div>
+      </div>
+    );
+  }
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      styles={{ wrapper: { width: 920 } }}
+      mask={{ closable: true }}
+      title={title}
+    >
+      {body}
     </Drawer>
   );
 }
@@ -600,7 +625,7 @@ function AssignmentExplainSection({ planId, assignmentId }: { planId: string; as
     return (
       <>
         <Divider>Расчёт проблем</Divider>
-        <span style={{ color: '#ef4444', fontSize: 12 }}>Ошибка загрузки расчёта</span>
+        <span style={{ color: 'var(--rp-conflict, #ef4444)', fontSize: 12 }}>Ошибка загрузки расчёта</span>
       </>
     );
   }
@@ -651,7 +676,7 @@ function ConflictBlock({ c }: { c: AssignmentExplainConflict }) {
               <div style={{ marginBottom: 6, color: 'var(--text-2, #cfe1f5)' }}>
                 День <b>{c.date}</b> · Доступно <b>{(c.available_hours ?? 0).toFixed(1)} ч</b> ·
                 Назначено <b>{(c.demand_hours ?? 0).toFixed(1)} ч</b> ·
-                <span style={{ color: (c.overload_pct ?? 0) > 110 ? '#ef4444' : '#ffb432', fontWeight: 700, marginLeft: 4 }}>
+                <span style={{ color: (c.overload_pct ?? 0) > 110 ? 'var(--rp-conflict, #ef4444)' : 'var(--rp-warn-fg, #ffb432)', fontWeight: 700, marginLeft: 4 }}>
                   {(c.overload_pct ?? 0).toFixed(0)}%
                 </span>
               </div>
@@ -670,7 +695,7 @@ function ConflictBlock({ c }: { c: AssignmentExplainConflict }) {
                           gap: 8,
                           fontSize: 11,
                           padding: '2px 0',
-                          borderBottom: '1px dashed rgba(120,150,180,0.15)',
+                          borderBottom: '1px dashed var(--rp-line-row, rgba(120,150,180,0.15))',
                         }}
                       >
                         <span style={{ color: 'var(--text-muted, #7a9ab8)' }}>{co.item_key ?? '—'}</span>

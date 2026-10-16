@@ -23,9 +23,9 @@ export default function BlockedZones({ blocks, timeline }: Props) {
               width: `${width}%`,
               top: 0,
               bottom: 0,
-              background: 'repeating-linear-gradient(45deg, rgba(100,120,150,0.08), rgba(100,120,150,0.08) 4px, transparent 4px, transparent 10px)',
-              borderLeft: '1px dashed rgba(100,150,200,0.3)',
-              borderRight: '1px dashed rgba(100,150,200,0.3)',
+              background: 'var(--rp-block-fill, repeating-linear-gradient(45deg, rgba(100,120,150,0.08), rgba(100,120,150,0.08) 4px, transparent 4px, transparent 10px))',
+              borderLeft: '1px dashed var(--rp-block-line, rgba(100,150,200,0.3))',
+              borderRight: '1px dashed var(--rp-block-line, rgba(100,150,200,0.3))',
               zIndex: 1,
               pointerEvents: 'none',
             }}
@@ -36,7 +36,7 @@ export default function BlockedZones({ blocks, timeline }: Props) {
               left: '50%',
               transform: 'translate(-50%, -50%) rotate(-90deg)',
               fontSize: 9,
-              color: 'rgba(150,180,220,0.5)',
+              color: 'var(--rp-block-fg, rgba(150,180,220,0.5))',
               whiteSpace: 'nowrap',
               letterSpacing: '0.05em',
             }}>

@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState, useEffect } from 'react';
+import { useRef, useMemo, useState, useEffect, useLayoutEffect } from 'react';
 import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 import type { AssignmentOut, DependencyOut, EmployeeLoadOut, ExternalBookingOut, ScheduledBlock } from '../../api/resourcePlanning';
 import type { EmployeeResponse, ProductionCalendarDayResponse } from '../../types/api';
@@ -63,6 +63,14 @@ interface Props {
   employeeLoad?: EmployeeLoadOut[];
   /** Команда плана — подпись своих в виде «Исполнители». */
   planTeam?: string | null;
+  /** Ширина левой колонки подписей; по умолчанию — по виду диаграммы. */
+  leftColWidth?: number;
+  /** Масштаб «Неделя» — по ширине блока: квартал целиком без прокрутки вбок. */
+  fitWeekToWidth?: boolean;
+  /** Компактная шапка: месяцы без года, недели датами начала, метка «сегодня». */
+  compactHeader?: boolean;
+  /** Блоки броней в других командах сначала свёрнуты — на виду задачи плана. */
+  bookingsCollapsed?: boolean;
 }
 
 export default function GanttChart({
@@ -95,13 +103,17 @@ export default function GanttChart({
   layout = 'tasks',
   employeeLoad,
   planTeam,
+  leftColWidth,
+  fitWeekToWidth = false,
+  compactHeader = false,
+  bookingsCollapsed = false,
 }: Props) {
-  const LEFT_COL = viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
+  const LEFT_COL = leftColWidth ?? (viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT);
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
   // Свёрнутость блоков «Привлечённые» / «Наши люди в других командах» — здесь,
   // а не в блоке: строки ниже сдвигаются, и стрелки связей перерисовываются.
-  const [borrowedCollapsed, setBorrowedCollapsed] = useState(false);
-  const [ownPeopleCollapsed, setOwnPeopleCollapsed] = useState(false);
+  const [borrowedCollapsed, setBorrowedCollapsed] = useState(bookingsCollapsed);
+  const [ownPeopleCollapsed, setOwnPeopleCollapsed] = useState(bookingsCollapsed);
   // Приглушать чужие полосы и связи — только при подсветке одного человека
   // без фильтра: с фильтром на экране и так только выбранные люди.
   const fadeOthers = !!highlightedEmployeeId && !selectedEmployeeIds?.length;
@@ -196,7 +208,20 @@ export default function GanttChart({
     return buildTimeline(start, extEnd);
   }, [quarter, year, hideWeekends, calendar, oogMonths]);
 
-  const pxPerDay = PX_PER_DAY[effectiveScale];
+  // Ширина блока — для масштаба «по ширине»; без него шкала стандартная.
+  const [fitWidth, setFitWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = headerScrollRef.current;
+    if (!fitWeekToWidth || !el) return;
+    const apply = () => setFitWidth(el.clientWidth);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fitWeekToWidth]);
+  const pxPerDay = fitWeekToWidth && effectiveScale === 'week' && fitWidth
+    ? Math.max(6, (fitWidth - LEFT_COL - 2) / timeline.totalDays)
+    : PX_PER_DAY[effectiveScale];
   const trackWidthPx = Math.round(timeline.totalDays * pxPerDay);
 
   const todayLeft = useMemo(() => {
@@ -230,11 +255,11 @@ export default function GanttChart({
         position: 'sticky',
         top: 'var(--rp-page-sticky-h, 0px)',
         zIndex: 40,
-        background: '#0a1628',
-        border: '1px solid #1e3a5f',
+        background: 'var(--rp-surface, #0a1628)',
+        border: '1px solid var(--rp-frame, #1e3a5f)',
         borderBottom: 'none',
-        borderTopLeftRadius: 8,
-        borderTopRightRadius: 8,
+        borderTopLeftRadius: 'var(--rp-radius, 8px)',
+        borderTopRightRadius: 'var(--rp-radius, 8px)',
         overflowX: 'auto',
         overflowY: 'hidden',
       }}
@@ -246,17 +271,20 @@ export default function GanttChart({
           scale={effectiveScale}
           trackWidthPx={trackWidthPx}
           calendar={calendar}
+          compact={compactHeader}
+          todayLeftPct={compactHeader ? todayLeft : undefined}
         />
       </div>
     </div>
     <div
       data-tour="rp-gantt"
+      className="rp-gantt-body"
       style={{
-        background: '#0a1628',
-        border: '1px solid #1e3a5f',
+        background: 'var(--rp-surface, #0a1628)',
+        border: '1px solid var(--rp-frame, #1e3a5f)',
         borderTop: 'none',
-        borderBottomLeftRadius: 8,
-        borderBottomRightRadius: 8,
+        borderBottomLeftRadius: 'var(--rp-radius, 8px)',
+        borderBottomRightRadius: 'var(--rp-radius, 8px)',
         overflow: 'hidden',
         position: 'relative',
       }}
@@ -264,9 +292,9 @@ export default function GanttChart({
       {depDrawMode && (
         <div style={{
           padding: '6px 12px',
-          background: 'rgba(255,122,69,0.12)',
-          borderBottom: '1px solid rgba(255,122,69,0.4)',
-          color: '#ff7a45',
+          background: 'var(--rp-draw-bg, rgba(255,122,69,0.12))',
+          borderBottom: '1px solid var(--rp-draw-line, rgba(255,122,69,0.4))',
+          color: 'var(--rp-draw-fg, #ff7a45)',
           fontSize: 12,
         }}>
           {pendingFromItem
@@ -327,7 +355,7 @@ export default function GanttChart({
             left: LEFT_COL + (todayLeft / 100) * trackWidthPx,
             top: 0, bottom: 0,
             width: 2,
-            background: 'rgba(0,201,200,0.6)',
+            background: 'var(--rp-today, rgba(0,201,200,0.6))',
             zIndex: 20,
             pointerEvents: 'none',
           }} />
@@ -340,7 +368,7 @@ export default function GanttChart({
               top: 0,
               bottom: 0,
               width: 0,
-              borderRight: '2px dashed #ffb432',
+              borderRight: '2px dashed var(--rp-ooq-line, #ffb432)',
               zIndex: 19,
               pointerEvents: 'none',
             }} />
