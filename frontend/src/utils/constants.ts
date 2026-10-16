@@ -336,11 +336,12 @@ const FONTS_BASE: FontsShape = {
   mono: "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace",
 };
 
-/* Скин «Цветовые зоны» — только два шрифта: Wix Madefor Display и Text (цифры тоже). */
+/* Скин «Цветовые зоны» — только два шрифта: Wix Madefor Display и Text.
+   Цифры интерфейса — «Zones Digits»: те же глифы Wix Madefor одинаковой ширины. */
 const FONTS_ZONES: FontsShape = {
   display: "'Wix Madefor Display', 'Wix Madefor Text', 'Segoe UI', sans-serif",
-  body: "'Wix Madefor Text', 'Segoe UI', system-ui, sans-serif",
-  mono: "'Wix Madefor Text', 'Segoe UI', system-ui, sans-serif",
+  body: "'Zones Digits', 'Wix Madefor Text', 'Segoe UI', system-ui, sans-serif",
+  mono: "'Zones Digits', 'Wix Madefor Text', 'Segoe UI', system-ui, sans-serif",
 };
 
 /** Runtime-aware шрифты: как DARK_THEME, читает `<html data-skin>` при каждом обращении. */

@@ -1,6 +1,6 @@
-import { useCallback, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
-import { Dropdown } from 'antd';
+import { ConfigProvider, Dropdown } from 'antd';
 import {
   CalendarRange,
   Database,
@@ -27,6 +27,8 @@ import GlobalPeriodPicker from '../../../components/shared/GlobalPeriodPicker';
 import GlobalHelpButton from '../../../components/Layout/GlobalHelpButton';
 import OnboardingButton from '../../../onboarding/OnboardingButton';
 import { navMatch, useNavSections, type NavGroupId } from '../navConfig';
+import { buildZoneAccentTheme } from '../../theme/zonesAntdTokens';
+import { ZonesBandContext, type ZonesBandSlots } from '../../../skins/zones/bandContext';
 
 /**
  * Оболочка скина «Цветовые зоны»: тёмная колонка зон (Обзор / Планирование /
@@ -40,6 +42,13 @@ const ZONE_ICONS: Record<NavGroupId, LucideIconType> = {
   planning: CalendarRange,
   data: Database,
 };
+
+// Поправка темы AntD под зону — одна на зону, без пересборки на каждом рендере.
+const ACCENT_THEMES = {
+  overview: buildZoneAccentTheme('overview'),
+  planning: buildZoneAccentTheme('planning'),
+  data: buildZoneAccentTheme('data'),
+} satisfies Record<NavGroupId, ReturnType<typeof buildZoneAccentTheme>>;
 
 // Ниже этой ширины колонка пунктов не занимает место, а выезжает поверх.
 const NARROW_MQ = '(max-width: 1199px)';
@@ -135,8 +144,24 @@ export default function ZonesShell() {
   const pickZone = (id: NavGroupId) => {
     setView({ route: routeZone, zone: id });
     if (narrow) setOverlayOpen((o) => (id === shown?.id ? !o : true));
-    else setCollapsed(false);
+    // Щелчок по открытой зоне сворачивает колонку пунктов, по другой — открывает.
+    else setCollapsed((c) => (id === shown?.id ? !c : false));
   };
+
+  // Зона страницы — на <html>: её акцент берут и всплывающие окна вне оболочки.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-zone', routeZone);
+    return () => root.removeAttribute('data-zone');
+  }, [routeZone]);
+  const accentTheme = ACCENT_THEMES[routeZone];
+
+  // Места в цветной полосе, куда страница переносит заголовок и фильтры.
+  const [bandHead, setBandHead] = useState<HTMLDivElement | null>(null);
+  const [bandTools, setBandTools] = useState<HTMLDivElement | null>(null);
+  const [bandRows, setBandRows] = useState<HTMLDivElement | null>(null);
+  // Объект мест запоминает компилятор React — пересобирается при смене мест или зоны.
+  const band: ZonesBandSlots = { head: bandHead, tools: bandTools, rows: bandRows, zoneLabel: route.group.label };
 
   const go = (key: string) => {
     navigate(key);
@@ -157,6 +182,8 @@ export default function ZonesShell() {
 
   return (
     <HelpProvider>
+      <ConfigProvider theme={accentTheme}>
+      <ZonesBandContext.Provider value={band}>
       <div className={appClass}>
         <nav className="zn-rail" aria-label="Зоны">
           {groups.map((g) => {
@@ -215,7 +242,7 @@ export default function ZonesShell() {
             </div>
             <div className="zn-items-title">{shown.label}</div>
             <div className="zn-items-list">
-              {shown.items.map(({ key, icon: Icon, label }) => {
+              {shown.items.map(({ key, label }) => {
                 const active = selectedKey === key;
                 return (
                   <button
@@ -225,7 +252,6 @@ export default function ZonesShell() {
                     aria-current={active ? 'page' : undefined}
                     onClick={() => go(key)}
                   >
-                    <Icon size={16} strokeWidth={1.7} aria-hidden />
                     <span className="zn-item-label">{label}</span>
                   </button>
                 );
@@ -240,38 +266,41 @@ export default function ZonesShell() {
 
         <div className="zn-main">
           <header className="zn-band" data-zone={routeZone}>
-            <div className="zn-band-left">
-              <button
-                type="button"
-                className="zn-band-btn"
-                aria-label={itemsVisible ? 'Скрыть пункты зоны' : 'Показать пункты зоны'}
-                aria-expanded={itemsVisible}
-                title={itemsVisible ? 'Скрыть пункты зоны' : 'Показать пункты зоны'}
-                onClick={toggleItems}
-              >
-                <PanelLeft size={18} strokeWidth={1.6} />
-              </button>
-              <div className="zn-crumbs">
-                <span className="zn-crumb-zone">{route.group.label}</span>
-                {route.item && (
+            <div className="zn-band-top">
+              <div className="zn-band-left">
+                {narrow && (
+                  <button
+                    type="button"
+                    className="zn-band-btn"
+                    aria-label={itemsVisible ? 'Скрыть пункты зоны' : 'Показать пункты зоны'}
+                    aria-expanded={itemsVisible}
+                    title={itemsVisible ? 'Скрыть пункты зоны' : 'Показать пункты зоны'}
+                    onClick={toggleItems}
+                  >
+                    <PanelLeft size={18} strokeWidth={1.6} />
+                  </button>
+                )}
+                <div className="zn-band-head" ref={setBandHead} />
+                {/* Страница без своего заголовка — рубрика и пункт меню. */}
+                <div className="zn-page-head zn-band-default">
+                  <div className="zn-page-eyebrow">{route.group.label}</div>
+                  {route.item && <div className="zn-page-title">{route.item.label}</div>}
+                </div>
+              </div>
+              <div className="zn-band-tools">
+                <SyncIndicator />
+                {user && (
                   <>
-                    <span className="zn-crumb-sep" aria-hidden>/</span>
-                    <span className="zn-crumb-page">{route.item.label}</span>
+                    <span data-tour="header-team" style={{ display: 'inline-flex' }}><GlobalTeamFilterButton /></span>
+                    <span data-tour="header-period" style={{ display: 'inline-flex' }}><GlobalPeriodPicker /></span>
+                    <OnboardingButton />
+                    <span data-tour="header-help" style={{ display: 'inline-flex' }}><GlobalHelpButton /></span>
                   </>
                 )}
+                <div className="zn-band-page-tools" ref={setBandTools} />
               </div>
             </div>
-            <div className="zn-band-tools">
-              <SyncIndicator />
-              {user && (
-                <>
-                  <span data-tour="header-team" style={{ display: 'inline-flex' }}><GlobalTeamFilterButton /></span>
-                  <span data-tour="header-period" style={{ display: 'inline-flex' }}><GlobalPeriodPicker /></span>
-                  <OnboardingButton />
-                  <span data-tour="header-help" style={{ display: 'inline-flex' }}><GlobalHelpButton /></span>
-                </>
-              )}
-            </div>
+            <div className="zn-band-rows" ref={setBandRows} />
           </header>
           <main className="zn-content scroll-y">
             <Outlet />
@@ -281,6 +310,8 @@ export default function ZonesShell() {
       <FeedbackButton />
       {user && <UsageTracker />}
       {user && <WhatsNewGate />}
+      </ZonesBandContext.Provider>
+      </ConfigProvider>
     </HelpProvider>
   );
 }

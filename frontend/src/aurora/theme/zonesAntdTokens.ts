@@ -12,7 +12,7 @@ const HEAD = '#F7F8FA';
 const HOVER = '#F4F6FA';
 const SELECTED = '#E9ECF6'; // кобальт 12% на белом — сплошной
 
-const FONT_TEXT = "'Wix Madefor Text', 'Segoe UI', system-ui, sans-serif";
+const FONT_TEXT = "'Zones Digits', 'Wix Madefor Text', 'Segoe UI', system-ui, sans-serif";
 const FONT_MONO = "'JetBrains Mono', ui-monospace, monospace";
 
 /**
@@ -125,6 +125,70 @@ export function buildZonesAntdConfig(): ThemeConfig {
         selectorBg: SURFACE,
       },
       Tooltip: { colorBgSpotlight: '#17191C' },
+    },
+  };
+}
+
+/** Акцент зоны: главная кнопка, ссылки, выделения на белых поверхностях. */
+export interface ZoneAccent {
+  fill: string;
+  hover: string;
+  active: string;
+  /** Текст акцентом на белом и на подложке выделения (контраст ≥ 4.5). */
+  ink: string;
+  tint: string;
+  tintHover: string;
+  border: string;
+  borderHover: string;
+  outline: string;
+}
+
+export const ZONE_ACCENTS: Record<'overview' | 'planning' | 'data', ZoneAccent> = {
+  overview: {
+    fill: COBALT, hover: '#1E3B8E', active: '#18307A', ink: COBALT,
+    tint: SELECTED, tintHover: '#DFE4F3', border: '#C5CFEA', borderHover: '#9FB0DE',
+    outline: 'rgba(37,70,166,0.18)',
+  },
+  planning: {
+    fill: '#9A6F00', hover: '#845F00', active: '#6E5000', ink: '#8A6200',
+    tint: '#FBF5E6', tintHover: '#F6EACC', border: '#E2C98F', borderHover: '#C9A34E',
+    outline: 'rgba(154,111,0,0.22)',
+  },
+  data: {
+    fill: '#2F3337', hover: '#24272A', active: '#1A1C1E', ink: '#2F3337',
+    tint: '#EBECED', tintHover: '#E1E3E5', border: '#C6C9CD', borderHover: '#9DA2A8',
+    outline: 'rgba(47,51,55,0.2)',
+  },
+};
+
+/**
+ * Поправка темы AntD под зону страницы — вложенный ConfigProvider оболочки
+ * зон: на экранах «Планирования» главный цвет тёмно-горчичный, «Данных» — графит.
+ */
+export function buildZoneAccentTheme(zone: keyof typeof ZONE_ACCENTS): ThemeConfig {
+  const a = ZONE_ACCENTS[zone];
+  return {
+    token: {
+      colorPrimary: a.fill,
+      colorPrimaryHover: a.hover,
+      colorPrimaryActive: a.active,
+      colorPrimaryText: a.ink,
+      colorPrimaryTextHover: a.hover,
+      colorPrimaryBg: a.tint,
+      colorPrimaryBgHover: a.tintHover,
+      colorPrimaryBorder: a.border,
+      colorPrimaryBorderHover: a.borderHover,
+      colorLink: a.ink,
+      colorLinkHover: a.hover,
+      colorLinkActive: a.active,
+      controlOutline: a.outline,
+    },
+    components: {
+      Tabs: { inkBarColor: a.fill, itemHoverColor: a.ink, itemActiveColor: a.ink, itemSelectedColor: a.ink },
+      Segmented: { itemSelectedBg: a.fill },
+      Menu: { itemSelectedBg: a.tint, itemSelectedColor: a.ink },
+      Table: { rowSelectedBg: a.tint, rowSelectedHoverBg: a.tintHover },
+      Select: { optionSelectedBg: a.tint },
     },
   };
 }

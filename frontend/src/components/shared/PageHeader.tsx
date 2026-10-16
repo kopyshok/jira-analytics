@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { DARK_THEME } from '../../utils/constants';
 import { useAppTheme } from '../../contexts/ThemeContext';
+import { useZonesBand } from '../../skins/zones/bandContext';
+import ZonesBand from '../../skins/zones/ZonesBand';
 
 interface Props {
   eyebrow?: string;
@@ -18,6 +20,16 @@ interface Props {
  */
 export default function PageHeader({ eyebrow, title, subtitle, actions }: Props) {
   const { isAurora } = useAppTheme();
+  const zonesBand = useZonesBand();
+
+  // Скин «Цветовые зоны»: заголовок и действия страницы уходят в цветную полосу зоны.
+  if (zonesBand) {
+    return (
+      <ZonesBand eyebrow={eyebrow} title={title} subtitle={subtitle}>
+        {actions && <div className="zn-band-row page-head-actions">{actions}</div>}
+      </ZonesBand>
+    );
+  }
 
   // Классы page-head-* — крючки для скинов (стили Aurora остаются инлайновыми).
   if (isAurora) {

@@ -11,6 +11,7 @@ import {
 import { feedbackApi } from '../../api/feedback';
 import { copyText } from '../../utils/clipboard';
 import FeedbackDrawer from './FeedbackDrawer';
+import { useSkin } from '../../contexts/ThemeContext';
 
 function buildQuickMarkdown(ctx: FeedbackContext): string {
   const lines: string[] = [
@@ -50,6 +51,7 @@ export default function FeedbackButton() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const count = useSyncExternalStore(subscribe, getErrorCount);
+  const skin = useSkin();
 
   const handleQuickBug = async (): Promise<void> => {
     if (busy) return;
@@ -78,6 +80,22 @@ export default function FeedbackButton() {
       setBusy(false);
     }
   };
+
+  // Скин «Цветовые зоны»: две маленькие кнопки в правом нижнем углу тела.
+  if (skin === 'zones') {
+    return (
+      <>
+        <div className="zn-feedback">
+          <button type="button" onClick={() => setOpen(true)}>Открыть форму</button>
+          <button type="button" onClick={handleQuickBug} disabled={busy} title="Быстрый баг → в буфер">
+            Быстрый баг
+            {count > 0 && <span className="zn-feedback-count">{count > 99 ? '99+' : count}</span>}
+          </button>
+        </div>
+        <FeedbackDrawer open={open} onClose={() => setOpen(false)} />
+      </>
+    );
+  }
 
   return (
     <>

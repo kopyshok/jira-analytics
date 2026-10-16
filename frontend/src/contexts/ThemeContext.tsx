@@ -81,3 +81,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function useAppTheme(): ThemeContextValue {
   return useContext(ThemeContext);
 }
+
+/** Активный скин поверх Aurora light или null — чистая Aurora. */
+export function useSkin(): AppSkin | null {
+  return useContext(ThemeContext).skin;
+}
