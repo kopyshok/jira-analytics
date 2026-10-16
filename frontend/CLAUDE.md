@@ -42,9 +42,11 @@ Source-of-truth для текущих роутов — [`routes.tsx`](src/routes
 
 ## Themes
 
-Две темы, обе Aurora: `aurora-dark` (по умолчанию) и `aurora-light`. Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu` — оболочка теперь всегда `aurora/shell/AuroraShell`, меню одно: [`AuroraSidebar.tsx`](src/aurora/shell/AuroraSidebar.tsx). Список пунктов в нём должен совпадать с `SECTIONS` в `VisibilityTab`.
+Две темы, обе Aurora: `aurora-dark` (по умолчанию) и `aurora-light`. Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu` — оболочка теперь всегда `aurora/shell/AuroraShell`, меню Aurora: [`AuroraSidebar.tsx`](src/aurora/shell/AuroraSidebar.tsx), пункты берёт из `navConfig.ts` (см. ниже).
 
 `ThemeContext` ставит на `<html>` атрибуты `data-theme="aurora"` + `data-mode="dark|light"`; `DARK_THEME` — Proxy в `utils/constants.ts`, читающий их и отдающий нужный набор токенов. Прежние значения тем (`dark-blue`, `dark`, `dark-slate`, `dark-charcoal`) сводятся к `aurora-dark` и на фронте (`normalizeTheme`), и в БД (миграция `td03a`).
+
+**Обложка «Пульт» (`pult-light`)** — третья тема в переключателе, слой поверх Aurora light: на `<html>` остаются `data-theme="aurora"` + `data-mode="light"` и добавляется `data-skin="pult"` (у тем Aurora атрибута нет). Стили — [`aurora/styles/skins/pult.css`](src/aurora/styles/skins/pult.css) (подключён последним в `aurora.css`, всё под префиксом `html[data-theme][data-mode][data-skin]`), AntD-тема — [`pultAntdTokens.ts`](src/aurora/theme/pultAntdTokens.ts), токены `DARK_THEME`/`CHART_COLORS`/`FONTS` отдают набор «Пульта» через те же Proxy. Оболочка своя — [`aurora/shell/pult/PultShell`](src/aurora/shell/pult/PultShell.tsx): узкий переключатель разделов слева и тёмная строка состояния снизу со всеми глобальными органами (включая обратную связь — `FeedbackButton variant="bar"`). Пункты меню для обеих оболочек — общий [`aurora/shell/navConfig.ts`](src/aurora/shell/navConfig.ts) (`NAV_GROUPS` + `useNavSections()`); именно он должен совпадать с `SECTIONS` в `VisibilityTab`.
 
 ## Error Tracking
 
