@@ -29,7 +29,7 @@ from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.jira_migration import store
 from app.services.jira_migration.apply import ApplyRefused, apply_migration
 from app.services.jira_migration.dry_run import DryRunAborted, build_report
-from app.services.jira_migration.hours import post_check
+from app.services.jira_migration.hours import history_start, post_check
 from app.services.jira_migration.resolution import BLOCK_JOB
 from app.services.mapping_service import MappingService
 from app.services.production_calendar_service import ProductionCalendarService
@@ -164,11 +164,20 @@ def _hand_over(job: MigrationJob, kind: str) -> MigrationJob:
         return _job
 
 
-def worklogs_since(report: dict) -> date:
-    """С какой даты перечитать ворклоги: самая ранняя дата в базе до переезда, днём раньше."""
+def worklogs_history_start(report: dict) -> date:
+    """С какой даты списаний сервис держит историю после переезда.
+
+    Самая ранняя дата в базе до переезда, но не раньше ``HISTORY_START``:
+    старую историю из новой Jira не загружаем (решение 16.10.2026).
+    """
     raw = report.get("db_worklogs_min_date")
-    start = date.fromisoformat(raw) if raw else date.today() - timedelta(days=DEFAULT_WORKLOG_DAYS)
-    return start - timedelta(days=1)
+    earliest = date.fromisoformat(raw) if raw else date.today() - timedelta(days=DEFAULT_WORKLOG_DAYS)
+    return history_start(earliest)
+
+
+def worklogs_since(report: dict) -> date:
+    """С какой даты изменений перечитать ворклоги: начало истории, днём раньше."""
+    return worklogs_history_start(report) - timedelta(days=1)
 
 
 # --- Отдельный поток ------------------------------------------------------------
@@ -364,7 +373,8 @@ async def _full_sync_job(
         else:
             # Прежний запуск этого переезда сейчас не идёт: слот операции у нас.
             run_id = await run_full_sync(
-                db, row.id, worklogs_since(store.report_data(row)), jira_factory=jira_factory, bus=bus,
+                db, row.id, worklogs_since(store.report_data(row)),
+                started_from=worklogs_history_start(store.report_data(row)), jira_factory=jira_factory, bus=bus,
                 previous_run_id=row.sync_run_id,
             )
             error = _sync_outcome(db, run_id)
@@ -408,6 +418,7 @@ async def run_full_sync(
     report_id: str,
     worklogs_since_date: date,
     *,
+    started_from: Optional[date] = None,
     jira_factory: JiraFactory = JiraClient.from_db,
     bus: Optional[EventBroadcaster] = None,
     previous_run_id: Optional[str] = None,
@@ -415,7 +426,9 @@ async def run_full_sync(
     """Полная синхронизация задач и всех ворклогов из новой Jira после применения.
 
     Обычный конвейер «полный», но ворклоги — с самой ранней даты списаний в
-    базе до переезда, а не за 90 дней: применение удалило их все. Запуск —
+    базе до переезда, а не за 90 дней: применение удалило их все.
+    ``started_from`` — ворклоги с более ранней датой списания не загружаются
+    (фильтр по дате изменения их не отсекает: перенос мог её обновить). Запуск —
     как у синхронизации по расписанию: блокировка, запись в историю. Идёт
     другая синхронизация — не запускается (``None``). Синхронизация идёт
     часами, а блокировка через час считается зависшей — она продлевается
@@ -445,7 +458,7 @@ async def run_full_sync(
         async with jira_factory(db) as jira:
             sync_service = SyncService(db, jira, cancel_check=_lock_keeper(lock, run_id))
             stages = [
-                WorklogsFullStage(sync_service, since=worklogs_since_date)
+                WorklogsFullStage(sync_service, since=worklogs_since_date, started_from=started_from)
                 if isinstance(stage, WorklogsFullStage) else stage
                 for stage in build_pipeline(
                     mode="full",

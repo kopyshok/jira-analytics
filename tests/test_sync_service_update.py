@@ -259,3 +259,31 @@ async def test_bucket_b_skips_when_team_has_no_employees(db_session):
     await svc.update_worklogs_since(date(2026, 2, 1), teams=["NonexistentTeam"])
     # Only Bucket A JQL fired, no Bucket B
     assert all("worklogAuthor" not in q for q in calls)
+
+
+@pytest.mark.asyncio
+async def test_update_v2_skips_worklogs_started_before_started_from(db_session, issue):
+    """После переезда история только с начала периода: перенос мог обновить дату изменения старых списаний."""
+    from app.connectors.schemas import JiraWorklogSchema
+
+    def wl(wl_id: str, started: str) -> JiraWorklogSchema:
+        return JiraWorklogSchema(
+            id=wl_id, issueId="20000", started=started, timeSpentSeconds=3600,
+            author={"key": "JIRAUSER1", "name": "a", "displayName": "А"},
+        )
+
+    async def updated(_since):
+        # 20:59 UTC = 23:59 по Москве 31.12 — раньше начала; 21:00 UTC = 00:00 1.01 — уже в периоде
+        for w in (wl("1", "2025-12-31T20:59:00.000+0000"), wl("2", "2025-12-31T21:00:00.000+0000")):
+            yield w
+
+    async def deleted(_since):
+        if False:
+            yield
+
+    jira = MagicMock()
+    jira.get_worklogs_updated_since = updated
+    jira.iter_deleted_worklog_ids = deleted
+    await SyncService(db_session, jira).update_worklogs_v2(date(2025, 12, 31), started_from=date(2026, 1, 1))
+
+    assert [w.jira_worklog_id for w in db_session.query(Worklog).all()] == ["2"]

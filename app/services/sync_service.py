@@ -2447,6 +2447,7 @@ class SyncService:
         self,
         since: date,
         teams: Optional[List[str]] = None,
+        started_from: Optional[date] = None,
         on_progress: Optional[
             Callable[["UpdateStats", Optional[str]], Awaitable[None]]
         ] = None,
@@ -2464,9 +2465,11 @@ class SyncService:
 
         Курсор ворклогов двигает вызывающий и только после успеха всего
         прохода; повтор после обрыва перезапишет уже сохранённые пачки.
+        ``started_from`` — ворклоги с более ранней датой списания пропускаются.
         """
         stats = UpdateStats()
         since_dt = datetime.combine(since, datetime.min.time())
+        started_from_dt = datetime.combine(started_from, datetime.min.time()) if started_from else None
 
         # Employee cache — типично 30-50 уникальных авторов на 41k ворклогов.
         employee_cache: dict[str, Employee] = {
@@ -2476,6 +2479,10 @@ class SyncService:
         # Шаг 1-3: каждая пачка сохраняется сразу — без одной долгой транзакции
         # на весь поток, которая держала бы запись в базу для остальных.
         async for chunk in self._known_worklog_chunks(since_dt):
+            if started_from_dt is not None:
+                chunk = [c for c in chunk if (_drop_tz(c[0].started_datetime) or started_from_dt) >= started_from_dt]
+                if not chunk:
+                    continue
             self._upsert_worklog_chunk(
                 [(wl, issue_id) for wl, issue_id, _key in chunk], employee_cache,
             )

@@ -200,6 +200,7 @@ async def test_apply_job_commits_and_starts_full_sync(db_session, monkeypatch):
     assert get_migration_state(db_session) == STATE_DONE
     full_sync.assert_awaited_once()
     assert full_sync.await_args.args[2] == date(2026, 9, 9)
+    assert full_sync.await_args.kwargs["started_from"] == date(2026, 9, 10)
 
 
 async def test_apply_job_refused_keeps_database(db_session, monkeypatch):
@@ -554,8 +555,11 @@ async def test_restart_full_sync_requires_applied_migration(db_session, monkeypa
     full_sync.assert_not_awaited()
 
 
-def test_worklogs_since_is_day_before_earliest():
-    assert runner.worklogs_since({"db_worklogs_min_date": "2020-02-27"}) == date(2020, 2, 26)
+def test_worklogs_since_is_day_before_history_start():
+    # старую историю не грузим: не раньше 2026-01-01 (решение 16.10.2026)
+    assert runner.worklogs_history_start({"db_worklogs_min_date": "2020-02-27"}) == date(2026, 1, 1)
+    assert runner.worklogs_since({"db_worklogs_min_date": "2020-02-27"}) == date(2025, 12, 31)
+    assert runner.worklogs_since({"db_worklogs_min_date": "2026-03-05"}) == date(2026, 3, 4)
     assert runner.worklogs_since({}) == date.today() - timedelta(days=runner.DEFAULT_WORKLOG_DAYS + 1)
 
 

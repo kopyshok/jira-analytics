@@ -37,7 +37,9 @@ from app.services.jira_migration.hours import (
     compare_hours,
     db_seconds,
     dc_seconds,
+    hours_from_month,
     load_db_worklogs,
+    month_of_minute,
     to_hours,
 )
 from app.services.jira_migration.issues import scan_issue_ids
@@ -232,6 +234,9 @@ async def build_report(
         person["hours_at_risk"] = round(rebound_seconds.get(person["employee_id"], 0) / 3600, 2)
 
     min_started = db.query(func.min(Worklog.started_at)).scalar()
+    min_date = min_started.date().isoformat() if min_started else None
+    from_month = hours_from_month({"db_worklogs_min_date": min_date})
+    shift = offset.hours * 60
     report = {
         "version": REPORT_VERSION,
         "generated_at": now.isoformat(),
@@ -256,11 +261,14 @@ async def build_report(
         "hours": {
             "rows": compare_hours(
                 to_hours(db_seconds(db_rows)), to_hours(dc_seconds(dc.rows, team_by_key, offset.hours)),
+                from_month=from_month,
             ),
-            "db_worklogs": len(db_rows),
-            "dc_worklogs": len(dc.rows),
+            # Сверяется история с этого месяца — её сервис загрузит после переезда.
+            "from_month": from_month,
+            "db_worklogs": sum(1 for r in db_rows if month_of_minute(r.minute) >= from_month),
+            "dc_worklogs": sum(1 for r in dc.rows if month_of_minute(r.minute + shift) >= from_month),
             "dc_worklogs_total": dc.total,
         },
-        "db_worklogs_min_date": min_started.date().isoformat() if min_started else None,
+        "db_worklogs_min_date": min_date,
     }
     return DryRunResult(report=report, maps={"projects": dc_projects, "issues": scan.key_to_id})

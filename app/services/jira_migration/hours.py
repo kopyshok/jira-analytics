@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
@@ -18,6 +18,9 @@ from app.services.jira_migration.fingerprints import DbWorklog, DcWorklog, minut
 
 NO_TEAM = "Без команды"
 DIFF_THRESHOLD_PCT = 1.0
+# Решение 16.10.2026: после переезда сервис держит списания только с 2026 года —
+# более старую историю из новой Jira не загружает и в сверке часов не сравнивает.
+HISTORY_START = date(2026, 1, 1)
 _EPOCH = datetime(1970, 1, 1)
 
 TeamMonth = tuple[str, str]
@@ -25,6 +28,18 @@ TeamMonth = tuple[str, str]
 
 def month_of_minute(minute: int) -> str:
     return (_EPOCH + timedelta(minutes=minute)).strftime("%Y-%m")
+
+
+def history_start(earliest: date) -> date:
+    """С какой даты сервис держит списания после переезда: не раньше ``HISTORY_START``."""
+    return max(earliest, HISTORY_START)
+
+
+def hours_from_month(report: Mapping[str, Any]) -> str:
+    """Первый месяц сверки часов (``ГГГГ-ММ``) по самой ранней дате списаний в базе из отчёта."""
+    raw = report.get("db_worklogs_min_date")
+    earliest = date.fromisoformat(raw) if raw else HISTORY_START
+    return history_start(earliest).strftime("%Y-%m")
 
 
 def _team(team: Optional[str]) -> str:
@@ -78,9 +93,13 @@ def compare_hours(
     db_hours: Mapping[TeamMonth, float],
     dc_hours: Mapping[TeamMonth, float],
     threshold_pct: float = DIFF_THRESHOLD_PCT,
+    from_month: str = "",
 ) -> list[dict[str, Any]]:
-    """Строки (месяц по убыванию, команда): база, новая Jira, разница в % от базы."""
-    keys = sorted(set(db_hours) | set(dc_hours), key=lambda k: k[0])
+    """Строки (месяц по убыванию, команда): база, новая Jira, разница в % от базы.
+
+    Месяцы раньше ``from_month`` не сравниваются: эту историю сервис после переезда не держит.
+    """
+    keys = sorted((k for k in set(db_hours) | set(dc_hours) if k[1] >= from_month), key=lambda k: k[0])
     keys.sort(key=lambda k: k[1], reverse=True)
     rows: list[dict[str, Any]] = []
     for team, month in keys:
@@ -103,5 +122,5 @@ def post_check(db: Session, report: Mapping[str, Any], now: datetime) -> dict[st
         "checked_at": now.replace(microsecond=0).isoformat() + "Z",
         "db_worklogs": len(rows_now),
         "dc_worklogs": int(hours.get("dc_worklogs", 0)),
-        "rows": compare_hours(to_hours(db_seconds(rows_now)), dc_before),
+        "rows": compare_hours(to_hours(db_seconds(rows_now)), dc_before, from_month=hours_from_month(report)),
     }

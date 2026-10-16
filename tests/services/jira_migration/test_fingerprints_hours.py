@@ -11,6 +11,7 @@ from app.services.jira_migration.fingerprints import (
 from app.services.jira_migration.hours import (
     NO_TEAM,
     compare_hours,
+    hours_from_month,
     db_seconds,
     dc_seconds,
     load_db_worklogs,
@@ -197,3 +198,18 @@ async def test_scan_reads_started_with_moscow_offset_string():
         DcWorklog("OS-1", minute_of(datetime(2026, 9, 10, 7, 0, tzinfo=UTC)), 3600, "JIRAUSER5"),
     ]
     assert detect_offset([_db("OS-1", datetime(2026, 9, 10, 10, 0))], scan.rows).hours == 3
+
+
+def test_compare_skips_months_before_from_month():
+    rows = compare_hours(
+        {("А", "2025-12"): 1.0, ("А", "2026-01"): 2.0},
+        {("А", "2025-12"): 50.0, ("А", "2026-01"): 2.0},
+        from_month="2026-01",
+    )
+    assert [(r["month"], r["flagged"]) for r in rows] == [("2026-01", False)]
+
+
+def test_hours_from_month_not_before_2026():
+    assert hours_from_month({"db_worklogs_min_date": "2020-02-27"}) == "2026-01"
+    assert hours_from_month({"db_worklogs_min_date": "2026-03-05"}) == "2026-03"
+    assert hours_from_month({}) == "2026-01"

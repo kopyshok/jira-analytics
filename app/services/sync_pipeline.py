@@ -331,9 +331,10 @@ class WorklogsFullStage(Stage):
     name = "worklogs"
     critical = True
 
-    def __init__(self, sync_svc, since=None) -> None:
+    def __init__(self, sync_svc, since=None, started_from=None) -> None:
         self.svc = sync_svc
         self.since = since
+        self.started_from = started_from
 
     async def run(self, ctx: dict) -> dict:
         from datetime import date, timedelta
@@ -343,7 +344,7 @@ class WorklogsFullStage(Stage):
         elif isinstance(since, str):
             since = date.fromisoformat(since)
 
-        result = await self.svc.update_worklogs_v2(since=since)
+        result = await self.svc.update_worklogs_v2(since=since, started_from=self.started_from)
         if hasattr(result, "worklogs_upserted"):
             return {
                 "worklogs_upserted": result.worklogs_upserted,

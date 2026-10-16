@@ -125,6 +125,8 @@ export interface HoursSummary {
   db_worklogs: number;
   dc_worklogs: number;
   dc_worklogs_total: number;
+  /** Первый сверяемый месяц (ГГГГ-ММ): с него сервис загрузит списания после переезда. */
+  from_month?: string;
 }
 
 export interface MigrationReport {

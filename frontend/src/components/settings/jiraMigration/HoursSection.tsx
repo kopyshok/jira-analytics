@@ -48,11 +48,21 @@ export default function HoursSection({ hours, offsetHours, offsetMatches, offset
     offsetText = ` Время списаний в базе отличается от новой Jira на ${offsetHours > 0 ? '+' : ''}${offsetHours} ч${matchesText}.`;
   }
 
+  const fromMonth = hours.from_month
+    ? new Date(`${hours.from_month}-01T00:00:00`).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
+    : null;
+
   return (
     <>
       <Typography.Paragraph type="secondary">
         Часы по командам и месяцам: сколько списано в базе сервиса и сколько по тем же задачам
         списано в новой Jira. Расхождение больше 1 % подсвечено.
+        {fromMonth && (
+          <>
+            {' '}Сверяются месяцы начиная с {fromMonth}: с этого месяца сервис загрузит списания после
+            переезда, более раннюю историю не загружает.
+          </>
+        )}
       </Typography.Paragraph>
       <Typography.Paragraph>
         Списаний в базе: {hours.db_worklogs.toLocaleString('ru-RU')}; в новой Jira по задачам
