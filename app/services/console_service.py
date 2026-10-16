@@ -214,7 +214,7 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> tuple[int, Optional[str
             if size > MAX_RAW_BYTES:
                 raise _TooBig(resp.status_code)
             chunks.append(chunk)
-        text = b"".join(chunks).decode(resp.charset_encoding or "utf-8", errors="replace")
+        text = b"".join(chunks).decode(resp.encoding or "utf-8", errors="replace")
         return resp.status_code, resp.headers.get("location"), text
 
 
@@ -260,7 +260,8 @@ async def execute(
     count = errors = rejected = skipped = total = 0
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     async with httpx.AsyncClient(
-        headers=headers, follow_redirects=False, transport=transport,
+        # timeout=None: предел держит asyncio.wait_for ниже, а не 5 с httpx по умолчанию.
+        headers=headers, follow_redirects=False, transport=transport, timeout=None,
     ) as client:
         for line in lines:
             if line.comment:

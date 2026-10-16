@@ -176,6 +176,8 @@ async def test_execute_formats_blocks_and_counts():
     assert [r.method for r in seen] == ["GET", "GET"]
     assert seen[0].headers["Authorization"] == "Bearer secret-token"
     assert "secret-token" not in out
+    # Предел ожидания держит asyncio.wait_for; у httpx по умолчанию 5 с — слишком мало.
+    assert seen[0].extensions["timeout"]["read"] is None
 
 
 async def test_execute_non_json_redirect_and_network_error():
