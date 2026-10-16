@@ -122,6 +122,17 @@ GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) на к�
 2. Frontend lint + build (Node 20)
 3. Playwright E2E
 
+## Перед релизом — проверка безопасности (обязательно)
+
+Перед каждым тегом релиза сервис проверяется двумя навыками (стоят в `~/.claude/skills/`):
+
+1. **`github-security-review`** — оповещения GitHub по `kopyshok/jira-analytics`: Dependabot, CodeQL, secret scanning.
+   Из папки навыка: `bash scripts/fetch.sh kopyshok/jira-analytics | python3 scripts/analyze.py`.
+   Нужны `gh` и `jq` (winget, `%LOCALAPPDATA%\Microsoft\WinGet\Links`). `fetch.sh` поправлен локально под Windows — при переустановке навыка правку повторить.
+2. **`semgrep-code-security`** — правила Semgrep (источник `semgrep/skills`, `skills/code-security`). Не сканер: по ним просматривается diff от прошлого тега — для Python и TS в первую очередь инъекции, path traversal, SSRF, XSS, секреты, JWT, Docker, GitHub Actions.
+
+Critical/High из обоих — исправить до тега; остальное — в отчёт к релизу с решением, чинить или нет.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
