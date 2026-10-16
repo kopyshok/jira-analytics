@@ -10,11 +10,14 @@ export const FREE_FILL = 'rgba(255,255,255,0.06)';
  * (цветом общей загрузки, чтобы перегруз краснел), выше — нормированные
  * работы, сверху — свободно. Шкала — 100% или сумма, если перегруз.
  */
-export function splitLoadFill(ownBg: string, pct: number, extPct: number, normedPct = 0): string {
+export function splitLoadFill(
+  ownBg: string, pct: number, extPct: number, normedPct = 0,
+  colors: { ext: string; normed: string; free: string } = { ext: EXT_LOAD_COLOR, normed: NORMED_WORK_COLOR, free: FREE_FILL },
+): string {
   if (extPct <= 0 && normedPct <= 0) return ownBg;
   const scale = Math.max(pct + extPct + normedPct, 100);
   const e = Math.round((extPct / scale) * 100);
   const o = Math.round(((pct + extPct) / scale) * 100);
   const w = Math.round(((pct + extPct + normedPct) / scale) * 100);
-  return `linear-gradient(to top, ${EXT_LOAD_COLOR} 0 ${e}%, ${ownBg} ${e}% ${o}%, ${NORMED_WORK_COLOR} ${o}% ${w}%, ${FREE_FILL} ${w}% 100%)`;
+  return `linear-gradient(to top, ${colors.ext} 0 ${e}%, ${ownBg} ${e}% ${o}%, ${colors.normed} ${o}% ${w}%, ${colors.free} ${w}% 100%)`;
 }

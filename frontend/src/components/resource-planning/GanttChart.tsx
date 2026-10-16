@@ -20,6 +20,9 @@ import { busyGaps, type BusyGap } from '../../utils/rpBusy';
 
 const LEFT_COL_DEFAULT = 280;
 const LEFT_COL_TWO_LEVEL = 540;
+/** Плотный режим (скин «Цветовые зоны»): узкая левая колонка, шкала по ширине блока. */
+const LEFT_COL_COMPACT = 320;
+const MIN_PX_PER_DAY_FIT: Record<TimelineScale, number> = { day: 36, week: 6, month: 3 };
 // Одна и та же пустая ссылка, пока календарь грузится: новый [] на каждом
 // рендере пересобирал бы шкалу и блок «Привлечённые».
 const NO_CALENDAR: ProductionCalendarDayResponse[] = [];
@@ -63,6 +66,11 @@ interface Props {
   employeeLoad?: EmployeeLoadOut[];
   /** Команда плана — подпись своих в виде «Исполнители». */
   planTeam?: string | null;
+  /**
+   * Плотный режим: строки в одну линию высотой 25, левая колонка 320,
+   * недели и месяцы растягиваются на ширину блока, на полосах — часы.
+   */
+  compact?: boolean;
 }
 
 export default function GanttChart({
@@ -95,8 +103,11 @@ export default function GanttChart({
   layout = 'tasks',
   employeeLoad,
   planTeam,
+  compact = false,
 }: Props) {
-  const LEFT_COL = viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
+  const LEFT_COL = compact
+    ? LEFT_COL_COMPACT
+    : viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
   // Свёрнутость блоков «Привлечённые» / «Наши люди в других командах» — здесь,
   // а не в блоке: строки ниже сдвигаются, и стрелки связей перерисовываются.
@@ -109,6 +120,18 @@ export default function GanttChart({
   const innerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
+  // Плотный режим: ширина блока — по ней растягивается шкала недель и месяцев.
+  const [fitWidth, setFitWidth] = useState(0);
+  useEffect(() => {
+    if (!compact) return;
+    const el = headerScrollRef.current;
+    if (!el) return;
+    const apply = () => setFitWidth(el.clientWidth);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [compact]);
 
   // Двусторонний sync горизонтального скролла между sticky-шапкой и телом
   // графика. Флаг предотвращает рекурсивный onScroll при программной установке
@@ -196,8 +219,12 @@ export default function GanttChart({
     return buildTimeline(start, extEnd);
   }, [quarter, year, hideWeekends, calendar, oogMonths]);
 
-  const pxPerDay = PX_PER_DAY[effectiveScale];
-  const trackWidthPx = Math.round(timeline.totalDays * pxPerDay);
+  const pxPerDay = compact && effectiveScale !== 'day' && fitWidth > LEFT_COL
+    ? Math.max(MIN_PX_PER_DAY_FIT[effectiveScale], (fitWidth - LEFT_COL) / timeline.totalDays)
+    : PX_PER_DAY[effectiveScale];
+  const trackWidthPx = compact
+    ? Math.floor(timeline.totalDays * pxPerDay)
+    : Math.round(timeline.totalDays * pxPerDay);
 
   const todayLeft = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -230,33 +257,42 @@ export default function GanttChart({
         position: 'sticky',
         top: 'var(--rp-page-sticky-h, 0px)',
         zIndex: 40,
-        background: '#0a1628',
-        border: '1px solid #1e3a5f',
+        background: 'var(--rp-surface, #0a1628)',
+        border: 'var(--rp-frame, 1px solid #1e3a5f)',
         borderBottom: 'none',
-        borderTopLeftRadius: 8,
-        borderTopRightRadius: 8,
+        borderTopLeftRadius: 'var(--rp-frame-radius, 8px)',
+        borderTopRightRadius: 'var(--rp-frame-radius, 8px)',
         overflowX: 'auto',
         overflowY: 'hidden',
       }}
     >
-      <div style={{ width: LEFT_COL + trackWidthPx, minWidth: '100%' }}>
+      <div style={{ width: LEFT_COL + trackWidthPx, minWidth: '100%', position: 'relative' }}>
         <TimelineHeader
           timeline={timeline}
           leftColWidth={LEFT_COL}
           scale={effectiveScale}
           trackWidthPx={trackWidthPx}
           calendar={calendar}
+          compact={compact}
         />
+        {compact && todayLeft >= 0 && todayLeft <= 100 && (
+          <span
+            className="rp-today-pill"
+            style={{ left: LEFT_COL + (todayLeft / 100) * trackWidthPx }}
+          >
+            сегодня {new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+          </span>
+        )}
       </div>
     </div>
     <div
       data-tour="rp-gantt"
       style={{
-        background: '#0a1628',
-        border: '1px solid #1e3a5f',
+        background: 'var(--rp-surface, #0a1628)',
+        border: 'var(--rp-frame, 1px solid #1e3a5f)',
         borderTop: 'none',
-        borderBottomLeftRadius: 8,
-        borderBottomRightRadius: 8,
+        borderBottomLeftRadius: 'var(--rp-frame-radius, 8px)',
+        borderBottomRightRadius: 'var(--rp-frame-radius, 8px)',
         overflow: 'hidden',
         position: 'relative',
       }}
@@ -264,9 +300,9 @@ export default function GanttChart({
       {depDrawMode && (
         <div style={{
           padding: '6px 12px',
-          background: 'rgba(255,122,69,0.12)',
-          borderBottom: '1px solid rgba(255,122,69,0.4)',
-          color: '#ff7a45',
+          background: 'var(--rp-draw-bg, rgba(255,122,69,0.12))',
+          borderBottom: '1px solid var(--rp-draw-border, rgba(255,122,69,0.4))',
+          color: 'var(--rp-draw-text, #ff7a45)',
           fontSize: 12,
         }}>
           {pendingFromItem
@@ -327,7 +363,7 @@ export default function GanttChart({
             left: LEFT_COL + (todayLeft / 100) * trackWidthPx,
             top: 0, bottom: 0,
             width: 2,
-            background: 'rgba(0,201,200,0.6)',
+            background: 'var(--rp-today, rgba(0,201,200,0.6))',
             zIndex: 20,
             pointerEvents: 'none',
           }} />
@@ -340,7 +376,7 @@ export default function GanttChart({
               top: 0,
               bottom: 0,
               width: 0,
-              borderRight: '2px dashed #ffb432',
+              borderRight: 'var(--rp-ooq-line, 2px dashed #ffb432)',
               zIndex: 19,
               pointerEvents: 'none',
             }} />
@@ -383,6 +419,7 @@ export default function GanttChart({
               trackWidthPx={trackWidthPx}
               collapsed={borrowedCollapsed}
               onToggle={() => setBorrowedCollapsed((v) => !v)}
+              compact={compact}
             />
           )}
           {layout === 'tasks' && (
@@ -397,6 +434,7 @@ export default function GanttChart({
               trackWidthPx={trackWidthPx}
               collapsed={ownPeopleCollapsed}
               onToggle={() => setOwnPeopleCollapsed((v) => !v)}
+              compact={compact}
             />
           )}
 
@@ -432,6 +470,7 @@ export default function GanttChart({
             planTeam={planTeam}
             isWorkday={isWorkday}
             dragLocked={patching || refetching}
+            compact={compact}
           />
         </div>
       </div>

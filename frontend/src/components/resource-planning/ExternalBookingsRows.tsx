@@ -44,6 +44,8 @@ interface Props {
    *  сдвигаются, и стрелки связей надо перерисовать. */
   collapsed: boolean;
   onToggle: () => void;
+  /** Плотный режим: строки ниже. */
+  compact?: boolean;
 }
 
 // Ключ — размером с подпись вокруг, иначе вторая строка уезжает вниз.
@@ -67,6 +69,7 @@ export default function ExternalBookingsRows({
   showOverlap = false,
   collapsed,
   onToggle,
+  compact = false,
 }: Props) {
   const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
   const rows = useMemo(() => {
@@ -80,9 +83,10 @@ export default function ExternalBookingsRows({
   }, [bookings, timeline, calendar]);
 
   if (rows.length === 0) return null;
+  const rowH = compact ? 30 : ROW_H;
 
   return (
-    <div style={{ borderBottom: '2px solid #066770' }}>
+    <div style={{ borderBottom: 'var(--rp-init-divider, 2px solid #066770)' }}>
       {/* Шапка сворачивает блок — как секции групп команды. */}
       <button
         type="button"
@@ -98,9 +102,9 @@ export default function ExternalBookingsRows({
           alignItems: 'baseline',
           gap: 10,
           padding: '6px 14px',
-          background: '#0a1628',
+          background: 'var(--rp-surface, #0a1628)',
           border: 0,
-          borderBottom: '1px solid #1e3a5f',
+          borderBottom: '1px solid var(--rp-border, #1e3a5f)',
           cursor: 'pointer',
           userSelect: 'none',
           textAlign: 'left',
@@ -126,7 +130,7 @@ export default function ExternalBookingsRows({
         return (
           <div
             key={b.assignment_id}
-            style={{ display: 'flex', height: ROW_H, borderBottom: '1px solid #0e2540' }}
+            style={{ display: 'flex', height: rowH, borderBottom: '1px solid var(--rp-row-line, #0e2540)' }}
           >
             <div
               title={`${full} — ${meta}`}
@@ -137,8 +141,8 @@ export default function ExternalBookingsRows({
                 position: 'sticky',
                 left: 0,
                 zIndex: STICKY_Z,
-                background: '#0a1628',
-                borderRight: '1px solid #1e3a5f',
+                background: 'var(--rp-surface, #0a1628)',
+                borderRight: '1px solid var(--rp-border, #1e3a5f)',
                 display: 'grid',
                 gridTemplateColumns: 'minmax(0, 1fr) 160px',
                 columnGap: 8,
@@ -149,7 +153,7 @@ export default function ExternalBookingsRows({
               }}
             >
               <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.3 }}>
-                <span style={{ color: '#9ab3cc', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span style={{ color: 'var(--rp-text-2, #9ab3cc)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {/* Ключ в подписи — ссылка в Jira. */}
                   {label.split(' · ').map((part, i) => (
                     <Fragment key={i}>
@@ -159,15 +163,15 @@ export default function ExternalBookingsRows({
                   ))}
                 </span>
                 {name && (
-                  <span style={{ fontSize: 11, color: '#7a9ab8', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span style={{ fontSize: 11, color: 'var(--rp-text-3, #7a9ab8)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {name}
                   </span>
                 )}
               </span>
               {/* «предварительно» — отдельной строкой: длинное название команды его не съест. */}
               <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, fontSize: 11, lineHeight: 1.15 }}>
-                <span style={{ color: '#7a9ab8', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.team}</span>
-                {b.provisional && <span style={{ fontSize: 10, color: '#e0a84a' }}>предварительно</span>}
+                <span style={{ color: 'var(--rp-text-3, #7a9ab8)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.team}</span>
+                {b.provisional && <span style={{ fontSize: 10, color: 'var(--rp-provisional, #e0a84a)' }}>предварительно</span>}
               </span>
             </div>
             <div style={{ position: 'relative', width: trackWidthPx, flex: '0 0 auto' }}>
@@ -179,12 +183,12 @@ export default function ExternalBookingsRows({
                     position: 'absolute',
                     left: `${dateToLeft(r.start, timeline)}%`,
                     width: `${datesToWidth(r.start, r.end, timeline)}%`,
-                    top: (ROW_H - BAR_H) / 2,
+                    top: (rowH - BAR_H) / 2,
                     height: BAR_H,
                     boxSizing: 'border-box',
                     borderRadius: 3,
-                    background: OTHER_TEAM_HATCH,
-                    border: '1px solid rgba(160,170,190,0.5)',
+                    background: `var(--rp-booking-fill, ${OTHER_TEAM_HATCH})`,
+                    border: 'var(--rp-booking-border, 1px solid rgba(160,170,190,0.5))',
                     zIndex: 2,
                   }}
                 />
@@ -197,10 +201,10 @@ export default function ExternalBookingsRows({
                     position: 'absolute',
                     left: `${dateToLeft(d, timeline)}%`,
                     width: `${datesToWidth(d, d, timeline)}%`,
-                    top: (ROW_H - BAR_H) / 2 - 2,
+                    top: (rowH - BAR_H) / 2 - 2,
                     height: BAR_H + 4,
                     boxSizing: 'border-box',
-                    border: '2px solid #ef4444',
+                    border: '2px solid var(--rp-bad, #ef4444)',
                     borderRadius: 3,
                     zIndex: 3,
                   }}

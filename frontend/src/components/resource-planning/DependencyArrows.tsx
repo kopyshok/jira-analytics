@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react';
 import type { AssignmentOut, DependencyOut } from '../../api/resourcePlanning';
 
+// Цвета стрелок — через CSS-переменные скина; без скина — прежние.
+const ARROW_CHAIN = 'var(--rp-arrow-chain, #7aa7ff)';
+const ARROW_RELAY = 'var(--rp-arrow-relay, #00e6c0)';
+const ARROW_MANUAL = 'var(--rp-arrow-manual, #ff7a45)';
+
 interface Props {
   assignments: AssignmentOut[];
   rowRefs: React.MutableRefObject<Map<string, HTMLElement>>;
@@ -70,7 +75,7 @@ export default function DependencyArrows({
     marker.setAttribute('orient', 'auto');
     const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     poly.setAttribute('points', '0 0, 9 3, 0 6');
-    poly.setAttribute('fill', '#7aa7ff');
+    poly.style.fill = ARROW_CHAIN;
     marker.appendChild(poly);
     defs.appendChild(marker);
 
@@ -83,7 +88,7 @@ export default function DependencyArrows({
     relayMarker.setAttribute('orient', 'auto');
     const relayPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     relayPoly.setAttribute('points', '0 0, 9 3, 0 6');
-    relayPoly.setAttribute('fill', '#00e6c0');
+    relayPoly.style.fill = ARROW_RELAY;
     relayMarker.appendChild(relayPoly);
     defs.appendChild(relayMarker);
 
@@ -96,7 +101,7 @@ export default function DependencyArrows({
     manualMarker.setAttribute('orient', 'auto');
     const manualPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     manualPoly.setAttribute('points', '0 0, 7 2.5, 0 5');
-    manualPoly.setAttribute('fill', '#ff7a45');
+    manualPoly.style.fill = ARROW_MANUAL;
     manualMarker.appendChild(manualPoly);
     defs.appendChild(manualMarker);
 
@@ -163,7 +168,8 @@ export default function DependencyArrows({
           ` L${x2},${y2}`;
       }
       path.setAttribute('d', d);
-      path.setAttribute('stroke', color);
+      // Цвет — свойством стиля: так работает CSS-переменная скина.
+      path.style.stroke = color;
       path.setAttribute('stroke-width', width);
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke-linecap', 'round');
@@ -177,7 +183,8 @@ export default function DependencyArrows({
       }
       if (className) path.setAttribute('class', className);
       if (onClick) {
-        path.setAttribute('style', 'pointer-events: stroke; cursor: pointer;');
+        path.style.pointerEvents = 'stroke';
+        path.style.cursor = 'pointer';
         path.addEventListener('click', onClick);
       }
       (svg as SVGSVGElement).appendChild(path);
@@ -213,7 +220,7 @@ export default function DependencyArrows({
           fRect.top + fRect.height / 2 - cRect.top,
           tRect.left - cRect.left,
           tRect.top + tRect.height / 2 - cRect.top,
-          '#7aa7ff', '2', '', 'rp-arrowhead',
+          ARROW_CHAIN, '2', '', 'rp-arrowhead',
           undefined, undefined, isFaded ? 0.18 : 1,
         );
       }
@@ -254,7 +261,7 @@ export default function DependencyArrows({
           fRect.top + fRect.height / 2 - cRect.top,
           tRect.left - cRect.left,
           tRect.top + tRect.height / 2 - cRect.top,
-          '#00e6c0', '2', '8 4', 'rp-relay-arrowhead',
+          ARROW_RELAY, '2', '8 4', 'rp-relay-arrowhead',
           undefined,
           isFaded ? undefined : 'rp-flow',
           isFaded ? 0.18 : 1,
@@ -302,7 +309,7 @@ export default function DependencyArrows({
             fRect.top + fRect.height / 2 - cRect.top,
             tRect.left - cRect.left,
             tRect.top + tRect.height / 2 - cRect.top,
-            '#00e6c0', '2', '8 4', 'rp-relay-arrowhead',
+            ARROW_RELAY, '2', '8 4', 'rp-relay-arrowhead',
             undefined,
             isFaded ? undefined : 'rp-flow',
             isFaded ? 0.18 : 1,
@@ -331,7 +338,7 @@ export default function DependencyArrows({
           fRect.top + fRect.height / 2 - cRect.top,
           endSide,
           tRect.top + tRect.height / 2 - cRect.top,
-          '#ff7a45', '2', '', 'rp-manual-arrowhead',
+          ARROW_MANUAL, '2', '', 'rp-manual-arrowhead',
           onDeleteDependency ? () => {
             // Confirm via window.confirm — simple, no extra deps
             if (window.confirm(`Удалить связь ${dep.dep_type}?`)) {

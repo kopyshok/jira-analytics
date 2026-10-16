@@ -8,6 +8,11 @@ interface Props {
   conflicts: ConflictOut[];
   planId: string | null;
   onSelectAssignment?: (assignmentId: string) => void;
+  /**
+   * «zones» — блок скина «Цветовые зоны»: шапка с метками и группировкой,
+   * под ней ряд коротких конфликтов; «Подробности» раскрывают полный список.
+   */
+  variant?: 'zones';
 }
 
 type GroupBy = 'item' | 'employee' | 'type';
@@ -50,6 +55,14 @@ const STATUS_LABEL: Record<ConflictOut['status'], string> = {
   muted: 'Замучен',
   resolved: 'Решён',
 };
+
+/** «1 критический», «2 критических», «5 критических». */
+function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
 
 function ConflictAlert({
   conflict: c,
@@ -119,13 +132,13 @@ function ConflictAlert({
             </Space>
           </Space>
           {showDetails && isOverload && (
-            <div style={{ marginTop: 8, padding: 8, background: 'rgba(0,0,0,0.18)', borderRadius: 4 }}>
+            <div style={{ marginTop: 8, padding: 8, background: 'var(--rp-explain-bg, rgba(0,0,0,0.18))', borderRadius: 4 }}>
               {explain.isLoading && <Spin size="small" />}
               {explain.data && (
                 <ExplainBreakdown data={explain.data} onSelectAssignment={onSelectAssignment} />
               )}
               {explain.isError && (
-                <span style={{ color: '#ef4444', fontSize: 12 }}>Ошибка загрузки расчёта</span>
+                <span style={{ color: 'var(--rp-bad, #ef4444)', fontSize: 12 }}>Ошибка загрузки расчёта</span>
               )}
             </div>
           )}
@@ -153,7 +166,7 @@ function ExplainBreakdown({
       </div>
       <div style={{ marginBottom: 6 }}>
         Доступно: <b>{avail.toFixed(1)} ч</b> · Назначено: <b>{demand.toFixed(1)} ч</b> ·
-        <span style={{ color: pct > 110 ? '#ef4444' : '#ffb432', fontWeight: 700, marginLeft: 4 }}>
+        <span style={{ color: pct > 110 ? 'var(--rp-bad, #ef4444)' : 'var(--rp-warn, #ffb432)', fontWeight: 700, marginLeft: 4 }}>
           {pct.toFixed(0)}%
         </span>
       </div>
@@ -175,7 +188,7 @@ function ExplainBreakdown({
                   fontSize: 11,
                   padding: '2px 0',
                   cursor: onSelectAssignment ? 'pointer' : 'default',
-                  borderBottom: '1px dashed rgba(120,150,180,0.15)',
+                  borderBottom: '1px dashed var(--rp-explain-line, rgba(120,150,180,0.15))',
                 }}
                 onClick={() => onSelectAssignment?.(co.assignment_id)}
               >
@@ -196,11 +209,14 @@ function ExplainBreakdown({
   );
 }
 
-export default function ConflictPanel({ conflicts, planId, onSelectAssignment }: Props) {
+export default function ConflictPanel({ conflicts, planId, onSelectAssignment, variant }: Props) {
   const { message } = App.useApp();
   const patchMutation = usePatchConflict(planId);
   const [showHidden, setShowHidden] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>('item');
+  // Блок скина: развёрнут ли ряд коротких конфликтов и полный список.
+  const [zonesOpen, setZonesOpen] = useState(true);
+  const [zonesDetails, setZonesDetails] = useState(false);
 
   const { active, hidden, visible } = useMemo(() => {
     const nonInfo = conflicts.filter(c => c.severity !== 'info');
@@ -251,6 +267,103 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
     );
   };
 
+  const groupSwitch = (
+    <Segmented
+      size="small"
+      value={groupBy}
+      onChange={(v) => setGroupBy(v as GroupBy)}
+      options={[
+        { label: 'По задачам', value: 'item' },
+        { label: 'По сотрудникам', value: 'employee' },
+        { label: 'По типу', value: 'type' },
+      ]}
+    />
+  );
+
+  if (variant === 'zones') {
+    // Короткий ряд — первые конфликты в порядке групп; полный список — в «Подробностях».
+    const firstRow = groups.flatMap(g => g.items).slice(0, 3);
+    return (
+      <section className="rpz-conflicts" aria-label="Конфликты">
+        <div className="rpz-conflicts-head">
+          <button
+            type="button"
+            className="rpz-conflicts-toggle"
+            aria-expanded={zonesOpen}
+            onClick={() => setZonesOpen(v => !v)}
+          >
+            <span aria-hidden>{zonesOpen ? '▾' : '▸'}</span>
+            <h2>Конфликты</h2>
+          </button>
+          {criticals.length > 0 && (
+            <span className="rpz-pill is-bad">{criticals.length} {plural(criticals.length, 'критический', 'критических', 'критических')}</span>
+          )}
+          {warnings.length > 0 && (
+            <span className="rpz-pill is-warn">{warnings.length} {plural(warnings.length, 'предупреждение', 'предупреждения', 'предупреждений')}</span>
+          )}
+          {groupSwitch}
+          {hidden.length > 0 && (
+            <Button size="small" type="link" onClick={() => setShowHidden(!showHidden)}>
+              {showHidden ? 'Скрыть погашенные' : `Показать ${hidden.length} погашенных`}
+            </Button>
+          )}
+          <span style={{ flex: 1 }} />
+          <button type="button" className="rpz-link" onClick={() => { setZonesOpen(true); setZonesDetails(v => !v); }}>
+            {zonesDetails ? 'Свернуть' : 'Подробности'}
+          </button>
+        </div>
+        {zonesOpen && !zonesDetails && (
+          <div className="rpz-conflict-row">
+            {firstRow.map(c => (
+              <button
+                key={c.id}
+                type="button"
+                className={`rpz-conflict is-${c.severity === 'critical' ? 'bad' : 'warn'}`}
+                title={c.message}
+                onClick={() => (c.assignment_id ? onSelectAssignment?.(c.assignment_id) : setZonesDetails(true))}
+              >
+                <span className="rpz-conflict-icon" aria-hidden>{c.severity === 'critical' ? '⚠' : 'ⓘ'}</span>
+                <span className="rpz-conflict-text">
+                  <b>{TYPE_LABELS[c.type] ?? 'Конфликт'}</b>
+                  <span> · {c.message}</span>
+                </span>
+                <span className="rpz-conflict-status">{STATUS_LABEL[c.status]}</span>
+              </button>
+            ))}
+            {visible.length > firstRow.length && (
+              <button type="button" className="rpz-conflict-more" onClick={() => setZonesDetails(true)}>
+                ещё {visible.length - firstRow.length}
+              </button>
+            )}
+          </div>
+        )}
+        {zonesOpen && zonesDetails && (
+          <div className="rpz-conflicts-list">
+            {groups.map(g => (
+                  <div key={g.key} style={{ borderTop: '1px solid var(--rp-border, #1e3a5f)', paddingTop: 6 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)', fontWeight: 600, marginBottom: 4 }}>
+                      {g.label}{' '}
+                      <Tag>{g.items.length}</Tag>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {g.items.map(c => (
+                        <ConflictAlert
+                          key={c.id}
+                          conflict={c}
+                          planId={planId}
+                          onSelectAssignment={onSelectAssignment}
+                          onStatusChange={handleStatusChange}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+        )}
+      </section>
+    );
+  }
+
   return (
     <Collapse
       size="small"
@@ -261,12 +374,12 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
           <span>
             Конфликты{' '}
             {criticals.length > 0 && (
-              <span style={{ color: '#e85d4a', fontWeight: 700 }}>
+              <span style={{ color: 'var(--rp-bad-text, #e85d4a)', fontWeight: 700 }}>
                 {criticals.length} критических
               </span>
             )}
             {warnings.length > 0 && (
-              <span style={{ color: '#ffb432', marginLeft: 8 }}>
+              <span style={{ color: 'var(--rp-warn-text, #ffb432)', marginLeft: 8 }}>
                 {warnings.length} предупреждений
               </span>
             )}
@@ -275,16 +388,7 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
         children: (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Space style={{ justifyContent: 'space-between' }}>
-              <Segmented
-                size="small"
-                value={groupBy}
-                onChange={(v) => setGroupBy(v as GroupBy)}
-                options={[
-                  { label: 'По задачам', value: 'item' },
-                  { label: 'По сотрудникам', value: 'employee' },
-                  { label: 'По типу', value: 'type' },
-                ]}
-              />
+              {groupSwitch}
               {hidden.length > 0 && (
                 <Button
                   size="small"
@@ -297,7 +401,7 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
               )}
             </Space>
             {groups.map(g => (
-              <div key={g.key} style={{ borderTop: '1px solid #1e3a5f', paddingTop: 6 }}>
+              <div key={g.key} style={{ borderTop: '1px solid var(--rp-border, #1e3a5f)', paddingTop: 6 }}>
                 <div style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)', fontWeight: 600, marginBottom: 4 }}>
                   {g.label}{' '}
                   <Tag>{g.items.length}</Tag>

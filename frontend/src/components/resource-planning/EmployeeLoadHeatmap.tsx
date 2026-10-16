@@ -1,11 +1,12 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Button, Tooltip } from 'antd';
+import { useSkin } from '../../contexts/ThemeContext';
 
 import type {
   AssignmentOut, EmployeeLoadDay, EmployeeLoadOut, EmployeeQuarterLoad, ExternalBookingOut, WatchRowOut,
 } from '../../api/resourcePlanning';
 import { dayTooltipLines } from '../../utils/rpBusy';
-import { EXT_LOAD_COLOR, NORMED_WORK_COLOR, splitLoadFill } from '../../utils/heatmapFill';
+import { EXT_LOAD_COLOR, FREE_FILL, NORMED_WORK_COLOR, splitLoadFill } from '../../utils/heatmapFill';
 import { dayReserveTypes, fmtHours, reserveUseLines, type ReserveLine } from '../../utils/normedReserve';
 import { freeByMonthLabel, techReserveText } from '../../utils/rpWatch';
 
@@ -39,6 +40,11 @@ export interface EmployeeLoadHeatmapProps {
   onRemoveWatch?: (employeeId: string) => void;
   /** Кнопка «Подобрать людей» в шапке. */
   onPickPeople?: () => void;
+  /**
+   * Плотный режим (скин «Цветовые зоны»): клетки растягиваются на ширину
+   * блока, строки ниже, пояснение — в подсказке у заголовка.
+   */
+  compact?: boolean;
 }
 
 const RU_MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -65,8 +71,8 @@ const WATCH_RIGHT: React.CSSProperties = {
   zIndex: 1,
   marginLeft: 8,
   padding: '0 4px 0 10px',
-  background: '#0f2340',
-  boxShadow: '-6px 0 8px -4px rgba(0,0,0,0.5)',
+  background: 'var(--rp-heat-bg, #0f2340)',
+  boxShadow: 'var(--rp-heat-sticky-shadow, -6px 0 8px -4px rgba(0,0,0,0.5))',
 };
 
 // Штриховка отпуска (синеватая) и праздника (тусклая серая).
@@ -77,6 +83,10 @@ const HOLIDAY_FILL =
 // Дни вне участия в команде — человека в этом периоде в команде просто нет.
 const OUT_OF_TEAM_FILL =
   'repeating-linear-gradient(45deg, rgba(250,173,20,0.5) 0 3px, rgba(250,173,20,0.12) 3px 6px)';
+
+/** Пояснение к тепловой карте: в Aurora — текстом под заголовком, в плотном режиме — подсказкой. */
+const HEAT_HINT =
+  'Только рабочие дни. Нормированные работы — запас квартала из сценария основной команды: заблокированные периоды, остаток дня после вовлечённости и остальное — на свободные дни. Процент у имени — загрузка за квартал с задачами других команд и нормированными работами. Наведите на день — часы; на процент у имени — разбивка; щелчок по имени — фильтр по человеку.';
 
 // Стабильные пустые значения по умолчанию.
 const NO_ASSIGNMENTS: AssignmentOut[] = [];
@@ -171,7 +181,7 @@ function TipLineView({ line, bold }: { line: TipLine; bold?: boolean }) {
   return (
     <div style={line.indent ? { paddingLeft: 12 } : undefined}>
       {line.text}
-      {line.over && <span style={{ color: '#ff7875', fontWeight: 600 }}> {line.over}</span>}
+      {line.over && <span style={{ color: 'var(--rp-heat-over, #ff7875)', fontWeight: 600 }}> {line.over}</span>}
     </div>
   );
 }
@@ -194,6 +204,41 @@ function quarterTooltipLines(q: EmployeeQuarterLoad, ownLabel = 'Задачи п
   return lines;
 }
 
+interface HeatPalette {
+  load: (pct: number) => { bg: string; border?: string };
+  /** Квартальный процент у имени выше 100%. */
+  over: string;
+  absence: string;
+  holiday: string;
+  outOfTeam: string;
+  layers: { ext: string; normed: string; free: string };
+}
+
+/** Скин «Цветовые зоны»: синяя шкала загрузки, красный — свыше 110%. */
+function zonesLoadColor(pct: number): { bg: string; border?: string } {
+  if (pct <= 0) return { bg: '#EAF3FB', border: '1px solid #C9CDD4' };
+  if (pct < 60) return { bg: '#8DB4E8' };
+  if (pct <= 90) return { bg: '#4F86D6' };
+  if (pct <= 110) return { bg: '#1F4FA8' };
+  return { bg: '#D1382A' };
+}
+
+const ZONES_HEAT: HeatPalette = {
+  load: zonesLoadColor,
+  over: '#D1382A',
+  absence: '#E0AC2B',
+  holiday: '#6B717A',
+  outOfTeam: 'repeating-linear-gradient(45deg, #C9CDD4 0 2px, #FFFFFF 2px 5px)',
+  layers: { ext: '#A58BD6', normed: '#9AA0A8', free: '#EAF3FB' },
+};
+
+/** Квартальный процент у имени в плотном режиме — цвет текста по загрузке. */
+function zonesPctColor(avg: number): string {
+  if (avg > 100) return '#B42A1E';
+  if (avg >= 90) return '#1B3A8C';
+  return '#3F444B';
+}
+
 /** Цвет клетки рабочего дня по загрузке. */
 function loadColor(pct: number): { bg: string; border?: string } {
   if (pct <= 0) {
@@ -210,6 +255,15 @@ function loadColor(pct: number): { bg: string; border?: string } {
   const sat = 28 + 46 * t;
   return { bg: `hsl(150 ${sat}% ${light}%)` };
 }
+
+const AURORA_HEAT: HeatPalette = {
+  load: loadColor,
+  over: 'hsl(4 78% 52%)',
+  absence: ABSENCE_FILL,
+  holiday: HOLIDAY_FILL,
+  outOfTeam: OUT_OF_TEAM_FILL,
+  layers: { ext: EXT_LOAD_COLOR, normed: NORMED_WORK_COLOR, free: FREE_FILL },
+};
 
 type Off = 'weekend' | 'holiday' | 'absence' | 'out_of_team' | null | undefined;
 
@@ -235,7 +289,19 @@ export default function EmployeeLoadHeatmap({
   watchBookings = NO_BOOKINGS,
   onRemoveWatch,
   onPickPeople,
+  compact = false,
 }: EmployeeLoadHeatmapProps) {
+  const skin = useSkin();
+  const pal = skin === 'zones' ? ZONES_HEAT : AURORA_HEAT;
+  // Плотный режим: клетки тянутся на ширину блока, строки ниже.
+  const labelW = compact ? 170 : LABEL_W;
+  const rowH = compact ? 20 : ROW_H;
+  const cellStyle = (extra?: React.CSSProperties): React.CSSProperties => (compact
+    ? { flex: '1 1 0', minWidth: 3, height: 16, marginRight: 1, ...extra }
+    : { width: CELL, height: CELL, marginRight: CELL_GAP, ...extra });
+  const weekStyle = (wi: number, n: number): React.CSSProperties => (compact
+    ? { display: 'flex', flex: `${n} 1 0`, minWidth: 0, marginLeft: wi === 0 ? 0 : 3 }
+    : { display: 'flex', marginLeft: wi === 0 ? 0 : WEEK_GAP });
   const [tip, setTip] = useState<{ left?: number; right?: number; top: number; lines: TipLine[] } | null>(null);
 
   const data = useMemo(() => {
@@ -355,7 +421,7 @@ export default function EmployeeLoadHeatmap({
     const avg = Math.round(row.quarter?.pct ?? 0);
     // Порог перегруза квартала — 100% (у клеток дня, где перегруз бывает
     // обычным делом на один день, шкала другая — см. loadColor).
-    const avgColor = avg > 100 ? { bg: 'hsl(4 78% 52%)' } : loadColor(avg);
+    const avgColor = avg > 100 ? { bg: pal.over } : pal.load(avg);
     // У привлечённого вместо «пришёл / выбыл» — из какой он команды.
     const note = watch ? watchNote(watch) : row.is_borrowed ? borrowedNote(row) : moveNote(row);
     // Наблюдаемых щелчок по имени в фильтр «Исполнители» не добавляет.
@@ -367,14 +433,14 @@ export default function EmployeeLoadHeatmap({
     const header = !watch && grouped && group !== prev ? (
       <div
         style={{
-          width: LABEL_W,
+          width: labelW,
           position: 'sticky',
           left: 0,
-          padding: '8px 0 2px',
-          fontSize: 10,
+          padding: compact ? '4px 0 1px' : '8px 0 2px',
+          fontSize: compact ? 9.5 : 10,
           fontWeight: 700,
           letterSpacing: '0.06em',
-          color: '#7a9ab8',
+          color: 'var(--rp-heat-caption, #7a9ab8)',
         }}
       >
         {sectionTitle(group).toUpperCase()}
@@ -388,18 +454,19 @@ export default function EmployeeLoadHeatmap({
         style={{
           display: 'flex',
           alignItems: 'center',
-          height: note ? ROW_H + 12 : ROW_H,
-          background: ri % 2 === 0 ? 'rgba(0,201,200,0.03)' : 'transparent',
+          height: note && !compact ? rowH + 12 : rowH,
+          background: ri % 2 === 0 ? 'var(--rp-heat-stripe, rgba(0,201,200,0.03))' : 'transparent',
         }}
       >
         {/* Левая колонка */}
         <div
+          title={compact && note ? note : undefined}
           style={{
-            width: LABEL_W,
+            width: labelW,
             flexShrink: 0,
             position: 'sticky',
             left: 0,
-            background: ri % 2 === 0 ? '#0f2541' : '#0f2340',
+            background: ri % 2 === 0 ? 'var(--rp-heat-label-bg-alt, #0f2541)' : 'var(--rp-heat-label-bg, #0f2340)',
             zIndex: 1,
             display: 'flex',
             alignItems: 'center',
@@ -428,7 +495,7 @@ export default function EmployeeLoadHeatmap({
                 }
                 style={{
                   fontSize: 12,
-                  color: selectedIds.includes(row.employee_id) ? '#00c9c8' : '#fff',
+                  color: selectedIds.includes(row.employee_id) ? 'var(--rp-heat-selected, #00c9c8)' : 'var(--rp-heat-text, #fff)',
                   fontWeight: selectedIds.includes(row.employee_id) ? 700 : undefined,
                   cursor: click ? 'pointer' : undefined,
                   whiteSpace: 'nowrap',
@@ -447,21 +514,21 @@ export default function EmployeeLoadHeatmap({
                     lineHeight: '13px',
                     padding: '0 4px',
                     borderRadius: 3,
-                    color: '#b39ddb',
-                    background: 'rgba(179,157,219,0.16)',
-                    border: '1px solid rgba(179,157,219,0.4)',
+                    color: 'var(--rp-borrowed, #b39ddb)',
+                    background: 'var(--rp-borrowed-bg, rgba(179,157,219,0.16))',
+                    border: '1px solid var(--rp-borrowed-border, rgba(179,157,219,0.4))',
                   }}
                 >
                   общий
                 </span>
               )}
             </div>
-            {note && (
+            {note && !compact && (
               <span
                 title={note}
                 style={{
                   fontSize: 10,
-                  color: watch || row.is_borrowed ? '#b39ddb' : '#e0a84a',
+                  color: watch || row.is_borrowed ? 'var(--rp-borrowed, #b39ddb)' : 'var(--rp-provisional, #e0a84a)',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -471,8 +538,8 @@ export default function EmployeeLoadHeatmap({
               </span>
             )}
           </div>
-          {row.employee_role && (
-            <span style={{ fontSize: 10, color: '#5a8ab8', flexShrink: 0 }}>{row.employee_role}</span>
+          {row.employee_role && !compact && (
+            <span style={{ fontSize: 10, color: 'var(--rp-heat-role, #5a8ab8)', flexShrink: 0 }}>{row.employee_role}</span>
           )}
           {avg > 0 && (
             <Tooltip
@@ -486,7 +553,13 @@ export default function EmployeeLoadHeatmap({
             >
             <span
               data-testid={watch ? 'rp-watch-pct' : 'rp-load-pct'}
-              style={{
+              style={compact ? {
+                marginLeft: 'auto',
+                flexShrink: 0,
+                fontSize: 11,
+                fontWeight: 700,
+                color: zonesPctColor(avg),
+              } : {
                 marginLeft: 'auto',
                 flexShrink: 0,
                 fontSize: 10,
@@ -505,12 +578,12 @@ export default function EmployeeLoadHeatmap({
 
         {/* Клетки дней или подпись «нет загрузки» */}
         {allEmpty && !watch ? (
-          <div style={{ fontSize: 11, fontStyle: 'italic', color: '#4a6a8a', paddingLeft: 4 }}>
+          <div style={{ fontSize: 11, fontStyle: 'italic', color: 'var(--rp-heat-empty, #4a6a8a)', paddingLeft: 4 }}>
             нет загрузки в этом квартале
           </div>
         ) : (
           data.weeks.map((w, wi) => (
-            <div key={wi} style={{ display: 'flex', marginLeft: wi === 0 ? 0 : WEEK_GAP }}>
+            <div key={wi} style={weekStyle(wi, w.days.length)}>
               {w.days.map((cell) => {
                 const d = byDate.get(cell.date);
                 const off = d?.off;
@@ -519,15 +592,15 @@ export default function EmployeeLoadHeatmap({
                 const normed = d?.normed_pct ?? 0;
                 let bg: string;
                 let border: string | undefined;
-                if (off === 'out_of_team') bg = OUT_OF_TEAM_FILL;
-                else if (off === 'absence') bg = ABSENCE_FILL;
-                else if (off === 'holiday') bg = HOLIDAY_FILL;
+                if (off === 'out_of_team') bg = pal.outOfTeam;
+                else if (off === 'absence') bg = pal.absence;
+                else if (off === 'holiday') bg = pal.holiday;
                 else {
                   // Снизу — часы в планах других команд, над ними — этот план
                   // цветом общей загрузки дня, выше — нормированные работы
                   // (заблокированный день уже даёт normed 100%).
-                  const c = loadColor(pct + ext + normed);
-                  bg = splitLoadFill(c.bg, pct, ext, normed);
+                  const c = pal.load(pct + ext + normed);
+                  bg = splitLoadFill(c.bg, pct, ext, normed, pal.layers);
                   border = ext > 0 || normed > 0 ? undefined : c.border;
                 }
                 return (
@@ -541,17 +614,14 @@ export default function EmployeeLoadHeatmap({
                     onMouseOut={(e) => {
                       (e.currentTarget as HTMLDivElement).style.filter = 'none';
                     }}
-                    style={{
-                      width: CELL,
-                      height: CELL,
+                    style={cellStyle({
                       boxSizing: 'border-box',
-                      marginRight: CELL_GAP,
-                      borderRadius: 3,
+                      borderRadius: compact ? 1 : 3,
                       background: bg,
                       border,
                       cursor: 'default',
                       transition: 'filter 160ms cubic-bezier(0.22,1,0.36,1)',
-                    }}
+                    })}
                   />
                 );
               })}
@@ -572,7 +642,7 @@ export default function EmployeeLoadHeatmap({
         <span
           data-testid="rp-watch-free"
           title={`Свободно за квартал ${fmtHours(w.free_hours)}: норма минус задачи всех команд и нормированные работы`}
-          style={{ width: FREE_W, color: '#cfe1f5', whiteSpace: 'nowrap' }}
+          style={{ width: FREE_W, color: 'var(--rp-heat-text-2, #cfe1f5)', whiteSpace: 'nowrap' }}
         >
           {freeByMonthLabel(w.free_by_month)}
         </span>
@@ -581,7 +651,7 @@ export default function EmployeeLoadHeatmap({
           style={{
             width: TECH_W,
             whiteSpace: 'nowrap',
-            color: tech.over ? '#ff7875' : '#cfe1f5',
+            color: tech.over ? 'var(--rp-heat-over, #ff7875)' : 'var(--rp-heat-text-2, #cfe1f5)',
             fontWeight: tech.over ? 600 : undefined,
           }}
         >
@@ -593,7 +663,7 @@ export default function EmployeeLoadHeatmap({
             aria-label={`Убрать из наблюдаемых: ${w.employee_name ?? ''}`}
             title="Убрать из наблюдаемых"
             onClick={() => onRemoveWatch(w.employee_id)}
-            style={{ background: 'none', border: 'none', color: '#7a9ab8', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}
+            style={{ background: 'none', border: 'none', color: 'var(--rp-heat-caption, #7a9ab8)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}
           >
             ×
           </button>
@@ -609,28 +679,28 @@ export default function EmployeeLoadHeatmap({
         data-tour="rp-watch-header"
         title="Люди любых команд, которых рассматриваете для плана. Свой цвет — задачи их основной команды и этого плана, нижний слой — другие команды. Самые свободные — сверху."
         style={{
-          width: LABEL_W,
+          width: labelW,
           flexShrink: 0,
           position: 'sticky',
           left: 0,
           zIndex: 1,
-          background: '#0f2340',
+          background: 'var(--rp-heat-bg, #0f2340)',
           fontSize: 10,
           fontWeight: 700,
           letterSpacing: '0.06em',
-          color: '#b39ddb',
+          color: 'var(--rp-borrowed, #b39ddb)',
         }}
       >
         НАБЛЮДАЕМЫЕ
       </div>
       {data.weeks.map((w, wi) => (
-        <div key={wi} style={{ display: 'flex', marginLeft: wi === 0 ? 0 : WEEK_GAP }}>
+        <div key={wi} style={weekStyle(wi, w.days.length)}>
           {w.days.map((d) => (
-            <div key={d.date} style={{ width: CELL, marginRight: CELL_GAP }} />
+            <div key={d.date} style={cellStyle({ height: 'auto' })} />
           ))}
         </div>
       ))}
-      <div style={{ ...WATCH_RIGHT, fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', color: '#7a9ab8' }}>
+      <div style={{ ...WATCH_RIGHT, fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', color: 'var(--rp-heat-caption, #7a9ab8)' }}>
         <span style={{ width: FREE_W }}>СВОБОДНО ПО МЕСЯЦАМ, Ч</span>
         <span style={{ width: TECH_W }} title="Остаток «Технических задач» основной команды на роль человека">
           ТЕХ. ЗАДАЧИ ОСНОВНОЙ
@@ -641,17 +711,25 @@ export default function EmployeeLoadHeatmap({
 
   return (
     <div
+      className={compact ? 'rp-heat rp-heat-compact' : 'rp-heat'}
       style={{
-        background: '#0f2340',
-        border: '1px solid #1e3a5f',
-        borderRadius: 8,
-        padding: 12,
-        marginTop: 16,
+        background: 'var(--rp-heat-bg, #0f2340)',
+        border: '1px solid var(--rp-border, #1e3a5f)',
+        borderRadius: 'var(--rp-frame-radius, 8px)',
+        padding: compact ? '8px 14px' : 12,
+        marginTop: compact ? 0 : 16,
         position: 'relative',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>Загрузка сотрудников по дням</div>
+        <div className="rp-heat-title" style={{ fontSize: 13, fontWeight: 600, color: 'var(--rp-heat-text, #fff)' }}>
+          Загрузка сотрудников по дням
+          {compact && (
+            <Tooltip title={HEAT_HINT} styles={{ root: { maxWidth: TIP_MAX_W } }}>
+              <span className="rp-heat-hint" aria-label={HEAT_HINT} tabIndex={0}>?</span>
+            </Tooltip>
+          )}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {onPickPeople && (
             <Button
@@ -666,34 +744,37 @@ export default function EmployeeLoadHeatmap({
           <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>{data.periodLabel}</div>
         </div>
       </div>
+      {!compact && (
       <div style={{ fontSize: 11, color: '#5a7a9a', marginBottom: 8 }}>
-        Только рабочие дни. Нормированные работы — запас квартала из сценария основной команды: заблокированные периоды, остаток дня после вовлечённости и остальное — на свободные дни. Процент у имени — загрузка за квартал с задачами других команд и нормированными работами. Наведите на день — часы; на процент у имени — разбивка; щелчок по имени — фильтр по человеку.
+        {HEAT_HINT}
       </div>
+      )}
 
-      <div style={{ overflowX: 'auto' }}>
-        <div style={{ display: 'inline-block', minWidth: '100%' }}>
+      <div className="rp-heat-scroll" style={{ overflowX: 'auto' }}>
+        <div style={{ display: compact ? 'block' : 'inline-block', minWidth: '100%' }}>
           {/* Шапка: месяцы */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', height: 18 }}>
+          <div className="rp-heat-headrow" style={{ display: 'flex', alignItems: 'flex-end', height: 18 }}>
             <div
               style={{
-                width: LABEL_W,
+                width: labelW,
                 flexShrink: 0,
                 position: 'sticky',
                 left: 0,
-                background: '#0f2340',
+                background: 'var(--rp-heat-bg, #0f2340)',
                 zIndex: 2,
-                fontSize: 10,
+                fontSize: compact ? 9.5 : 10,
                 fontWeight: 600,
                 letterSpacing: '0.06em',
-                color: '#7a9ab8',
+                color: 'var(--rp-heat-caption, #7a9ab8)',
               }}
             >
               СОТРУДНИК
             </div>
             {data.weeks.map((w, wi) => (
-              <div key={wi} style={{ display: 'flex', marginLeft: wi === 0 ? 0 : WEEK_GAP, position: 'relative' }}>
+              <div key={wi} style={{ ...weekStyle(wi, w.days.length), position: 'relative' }}>
                 {w.monthLabel && (
                   <div
+                    className="rp-heat-month"
                     style={{
                       position: 'absolute',
                       bottom: 0,
@@ -702,14 +783,14 @@ export default function EmployeeLoadHeatmap({
                       fontSize: 10,
                       fontWeight: 600,
                       letterSpacing: '0.06em',
-                      color: '#7a9ab8',
+                      color: 'var(--rp-heat-caption, #7a9ab8)',
                     }}
                   >
-                    {w.monthLabel}
+                    {compact ? w.monthLabel.charAt(0) + w.monthLabel.slice(1).toLowerCase() : w.monthLabel}
                   </div>
                 )}
                 {w.days.map((d) => (
-                  <div key={d.date} style={{ width: CELL, marginRight: CELL_GAP }} />
+                  <div key={d.date} style={cellStyle({ height: 'auto' })} />
                 ))}
               </div>
             ))}
@@ -725,32 +806,32 @@ export default function EmployeeLoadHeatmap({
       </div>
 
       {/* Легенда */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', color: '#7a9ab8' }}>ЗАГРУЗКА</span>
+      <div className="rp-heat-legend" style={{ display: 'flex', alignItems: 'center', gap: compact ? '2px 12px' : 14, marginTop: compact ? 4 : 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', color: 'var(--rp-heat-caption, #7a9ab8)' }}>ЗАГРУЗКА</span>
         {[
-          { label: 'свободно', fill: loadColor(0).bg, border: loadColor(0).border },
-          { label: 'до 60%', fill: loadColor(45).bg },
-          { label: '60–90%', fill: loadColor(80).bg },
-          { label: '90–110%', fill: loadColor(100).bg },
-          { label: 'свыше 110%', fill: loadColor(125).bg },
-          { label: 'отпуск', fill: ABSENCE_FILL },
-          { label: 'праздник', fill: HOLIDAY_FILL },
+          { label: 'свободно', fill: pal.load(0).bg, border: pal.load(0).border },
+          { label: 'до 60%', fill: pal.load(45).bg },
+          { label: '60–90%', fill: pal.load(80).bg },
+          { label: '90–110%', fill: pal.load(100).bg },
+          { label: 'свыше 110%', fill: pal.load(125).bg },
+          { label: 'отпуск', fill: pal.absence },
+          { label: 'праздник', fill: pal.holiday },
           // Двухцветная клетка: низ — другие команды, верх — этот план.
           ...(data.hasExt || watchRows.some((r) => r.days.some((d) => (d.ext_pct ?? 0) > 0))
             ? [
-                { label: 'в этом плане', fill: loadColor(80).bg },
-                { label: 'в планах других команд', fill: EXT_LOAD_COLOR },
+                { label: 'в этом плане', fill: pal.load(80).bg },
+                { label: 'в планах других команд', fill: pal.layers.ext },
               ]
             : []),
-          ...(data.hasNormed || watchRows.some((r) => r.days.some((d) => (d.normed_pct ?? 0) > 0)) ? [{ label: 'нормированные работы', fill: NORMED_WORK_COLOR }] : []),
+          ...(data.hasNormed || watchRows.some((r) => r.days.some((d) => (d.normed_pct ?? 0) > 0)) ? [{ label: 'нормированные работы', fill: pal.layers.normed }] : []),
           // У наблюдаемых свой слой — задачи их основной команды (и этого плана).
           ...(watchRows.length > 0
-            ? [{ label: 'у наблюдаемых — задачи основной команды и этого плана', fill: loadColor(80).bg }]
+            ? [{ label: 'у наблюдаемых — задачи основной команды и этого плана', fill: pal.load(80).bg }]
             : []),
         ].map((it) => (
-          <span key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#9ab3cc' }}>
+          <span key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: compact ? 10.5 : 11, color: 'var(--rp-heat-legend, #9ab3cc)' }}>
             <span
-              style={{ width: 12, height: 12, borderRadius: 3, background: it.fill, border: it.border, display: 'inline-block' }}
+              style={{ width: compact ? 10 : 12, height: compact ? 10 : 12, borderRadius: compact ? 2 : 3, background: it.fill, border: it.border, display: 'inline-block', boxSizing: compact ? 'border-box' : undefined }}
             />
             {it.label}
           </span>
@@ -766,15 +847,15 @@ export default function EmployeeLoadHeatmap({
             top: tip.top,
             zIndex: 1000,
             pointerEvents: 'none',
-            background: '#0a1628',
-            border: '1px solid #1e3a5f',
+            background: 'var(--rp-tip-bg, #0a1628)',
+            border: '1px solid var(--rp-tip-border, #1e3a5f)',
             borderRadius: 6,
             padding: '4px 8px',
             fontSize: 11,
-            color: '#e6f0fa',
+            color: 'var(--rp-tip-text, #e6f0fa)',
             maxWidth: TIP_MAX_W,
             whiteSpace: 'normal',
-            boxShadow: '0 4px 14px rgba(0,0,0,0.45)',
+            boxShadow: 'var(--rp-tip-shadow, 0 4px 14px rgba(0,0,0,0.45))',
           }}
         >
           {tip.lines.map((line, i) => <TipLineView key={i} line={line} bold={i === 0} />)}

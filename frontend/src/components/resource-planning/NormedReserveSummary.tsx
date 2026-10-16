@@ -25,12 +25,12 @@ interface Props {
 const itemKey = (item: OtherTeamWorkOut) => `${item.backlog_item_id}::${item.team}::${item.role}`;
 
 const thStyle: React.CSSProperties = {
-  textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#7a9ab8',
-  padding: '4px', borderBottom: '1px solid #1e3a5f',
+  textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--rp-text-3, #7a9ab8)',
+  padding: '4px', borderBottom: '1px solid var(--rp-border, #1e3a5f)',
 };
 const tdStyle: React.CSSProperties = {
-  fontSize: 12, color: '#cfe1f5', padding: '6px 4px', verticalAlign: 'top',
-  borderBottom: '1px solid rgba(30,58,95,0.4)',
+  fontSize: 12, color: 'var(--rp-text-2b, #cfe1f5)', padding: '6px 4px', verticalAlign: 'top',
+  borderBottom: '1px solid var(--rp-row-line-2, rgba(30,58,95,0.4))',
 };
 
 export default function NormedReserveSummary({ reserve }: Props) {
@@ -111,7 +111,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
             ? localOverrides[overrideKey] ?? undefined
             : item.is_manual ? item.work_type_id : undefined;
         return (
-          <div key={itemKey(item)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#cfe1f5' }}>
+          <div key={itemKey(item)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--rp-text-2b, #cfe1f5)' }}>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.issue_key && (
                 <>
@@ -121,8 +121,8 @@ export default function NormedReserveSummary({ reserve }: Props) {
               )}
               {item.title}
             </span>
-            <span style={{ color: '#9ab3cc', flexShrink: 0 }}>{item.team}</span>
-            <span style={{ color: '#9ab3cc', flexShrink: 0, width: 56, textAlign: 'right' }}>
+            <span style={{ color: 'var(--rp-text-2, #9ab3cc)', flexShrink: 0 }}>{item.team}</span>
+            <span style={{ color: 'var(--rp-text-2, #9ab3cc)', flexShrink: 0, width: 56, textAlign: 'right' }}>
               {fmtHours(item.hours)}
             </span>
             <Select
@@ -146,11 +146,11 @@ export default function NormedReserveSummary({ reserve }: Props) {
     <div
       data-testid="rp-reserve-summary"
       style={{
-        background: '#0f2340',
-        border: '1px solid #1e3a5f',
-        borderRadius: 8,
+        background: 'var(--rp-heat-bg, #0f2340)',
+        border: '1px solid var(--rp-border, #1e3a5f)',
+        borderRadius: 'var(--rp-frame-radius, 8px)',
         padding: 12,
-        marginTop: 16,
+        marginTop: 'var(--rp-block-gap, 16px)',
       }}
     >
       <button
@@ -165,17 +165,17 @@ export default function NormedReserveSummary({ reserve }: Props) {
         }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 11, color: '#7a9ab8' }}>
+          <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 11, color: 'var(--rp-text-3, #7a9ab8)' }}>
             {expanded ? '▾' : '▸'}
           </span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--rp-heat-text, #fff)' }}>
             Нормированные работы — запас квартала
           </span>
         </span>
         {overuseNote ? (
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#ff6b6b' }}>⚠ {overuseNote}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rp-bad-2, #ff6b6b)' }}>⚠ {overuseNote}</span>
         ) : (
-          <span style={{ fontSize: 11, color: '#7a9ab8' }}>перерасхода нет</span>
+          <span style={{ fontSize: 11, color: 'var(--rp-text-3, #7a9ab8)' }}>перерасхода нет</span>
         )}
       </button>
 
@@ -186,7 +186,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
           </div>
 
           {visibleRoles.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#7a9ab8' }}>
+            <div style={{ fontSize: 12, color: 'var(--rp-text-3, #7a9ab8)' }}>
               Заблокированных периодов и работы в других командах нет — запас не расходуется
             </div>
           ) : (
@@ -213,7 +213,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
                         colSpan={4}
                         style={{
                           fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-                          color: '#7a9ab8', padding: '8px 4px 4px',
+                          color: 'var(--rp-text-3, #7a9ab8)', padding: '8px 4px 4px',
                         }}
                       >
                         {r.role_label}
@@ -246,7 +246,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
                                   }}
                                   style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                                 >
-                                  <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 10, color: '#7a9ab8' }}>
+                                  <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 10, color: 'var(--rp-text-3, #7a9ab8)' }}>
                                     {isOpen ? '▾' : '▸'}
                                   </span>
                                   {row.label}
@@ -258,18 +258,18 @@ export default function NormedReserveSummary({ reserve }: Props) {
                             <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtHours(row.planned_hours)}</td>
                             <td style={tdStyle}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                                  <div style={{ width: `${pct}%`, height: '100%', background: isOveruse ? '#ff6b6b' : '#00c9c8' }} />
+                                <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--rp-track, rgba(255,255,255,0.08))', overflow: 'hidden' }}>
+                                  <div style={{ width: `${pct}%`, height: '100%', background: isOveruse ? 'var(--rp-bad-2, #ff6b6b)' : 'var(--rp-progress, #00c9c8)' }} />
                                 </div>
                                 <span style={{ flexShrink: 0, textAlign: 'right', minWidth: 52 }}>{fmtHours(used)}</span>
                               </div>
                               {caption && (
-                                <div style={{ fontSize: 10, color: '#7a9ab8', marginTop: 2 }}>{caption}</div>
+                                <div style={{ fontSize: 10, color: 'var(--rp-text-3, #7a9ab8)', marginTop: 2 }}>{caption}</div>
                               )}
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'right' }}>
                               {row.overuse_hours > 0.5 ? (
-                                <span style={{ color: '#ff6b6b', fontWeight: 600 }}>
+                                <span style={{ color: 'var(--rp-bad-2, #ff6b6b)', fontWeight: 600 }}>
                                   −{fmtHours(row.overuse_hours)} <span style={{ fontWeight: 400, fontSize: 10 }}>перерасход</span>
                                 </span>
                               ) : (
@@ -279,7 +279,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
                           </tr>
                           {canExpand && isOpen && (
                             <tr>
-                              <td colSpan={4} style={{ padding: '0 4px 8px 18px', borderBottom: '1px solid rgba(30,58,95,0.4)' }}>
+                              <td colSpan={4} style={{ padding: '0 4px 8px 18px', borderBottom: '1px solid var(--rp-row-line-2, rgba(30,58,95,0.4))' }}>
                                 {renderRowItems(r.role, row.work_type_id)}
                               </td>
                             </tr>

@@ -28,6 +28,8 @@ interface Props {
   scale?: TimelineScale;
   trackWidthPx?: number;
   calendar?: ProductionCalendarDayResponse[];
+  /** Плотный режим: шапка ниже, месяцы — подписью слева. */
+  compact?: boolean;
 }
 
 const MONTH_NAMES = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
@@ -37,9 +39,10 @@ interface CellTint {
   fg: string | null;
 }
 
+// Цвета — через CSS-переменные скина; без скина берётся прежнее значение.
 function tintForDow(dow: number): CellTint {
   if (dow === 0 || dow === 6) {
-    return { bg: 'rgba(120, 145, 180, 0.10)', fg: '#7a99c4' };
+    return { bg: 'var(--rp-th-weekend-bg, rgba(120, 145, 180, 0.10))', fg: 'var(--rp-th-weekend-fg, #7a99c4)' };
   }
   return { bg: null, fg: null };
 }
@@ -47,9 +50,9 @@ function tintForDow(dow: number): CellTint {
 function tintForCalendar(row: ProductionCalendarDayResponse, dow: number): CellTint {
   if (!row.is_workday) {
     if (row.kind === 'holiday' || row.kind === 'preholiday') {
-      return { bg: 'rgba(232, 134, 74, 0.18)', fg: '#f0a075' };
+      return { bg: 'var(--rp-th-holiday-bg, rgba(232, 134, 74, 0.18))', fg: 'var(--rp-th-holiday-fg, #f0a075)' };
     }
-    return { bg: 'rgba(120, 145, 180, 0.14)', fg: '#7a99c4' };
+    return { bg: 'var(--rp-th-off-bg, rgba(120, 145, 180, 0.14))', fg: 'var(--rp-th-weekend-fg, #7a99c4)' };
   }
   return tintForDow(dow);
 }
@@ -60,6 +63,7 @@ export default function TimelineHeader({
   scale = 'week',
   trackWidthPx,
   calendar,
+  compact = false,
 }: Props) {
   const calMap = useMemo(() => {
     const m = new Map<string, ProductionCalendarDayResponse>();
@@ -120,13 +124,14 @@ export default function TimelineHeader({
   }, [timeline, scale, calendar, lower]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid #1e3a5f' }}>
-      <div style={{ display: 'flex', height: 28, background: '#091829' }}>
-        <div style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid #1e3a5f', position: 'sticky', left: 0, zIndex: 31, background: '#091829' }} />
+    <div className={compact ? 'rp-th rp-th-compact' : 'rp-th'} style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--rp-border, #1e3a5f)' }}>
+      <div style={{ display: 'flex', height: compact ? 20 : 28, background: 'var(--rp-th-bg, #091829)' }}>
+        <div style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid var(--rp-border, #1e3a5f)', position: 'sticky', left: 0, zIndex: 31, background: 'var(--rp-th-bg, #091829)' }} />
         <div style={{ width: trackWidthPx ?? undefined, flex: trackWidthPx ? '0 0 auto' : 1, position: 'relative' }}>
           {upperRow.map((m, i) => (
             <div
               key={`${m.label}-${i}`}
+              className="rp-th-upper"
               style={{
                 position: 'absolute',
                 left: `${m.leftPct}%`,
@@ -134,13 +139,16 @@ export default function TimelineHeader({
                 height: '100%',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
+                justifyContent: compact ? 'flex-start' : 'center',
+                paddingLeft: compact ? 6 : undefined,
+                boxSizing: compact ? 'border-box' : undefined,
                 fontSize: 11,
-                fontWeight: 700,
-                color: '#5a7aaa',
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                borderRight: '1px solid #1e3a5f',
+                fontWeight: compact ? 600 : 700,
+                color: 'var(--rp-th-month, #5a7aaa)',
+                textTransform: compact ? 'none' : 'uppercase',
+                letterSpacing: compact ? 0 : '0.06em',
+                borderRight: compact ? undefined : '1px solid var(--rp-border, #1e3a5f)',
+                borderLeft: compact ? '1px solid var(--rp-th-month-line, #1e3a5f)' : undefined,
               }}
             >
               {m.label}
@@ -148,8 +156,10 @@ export default function TimelineHeader({
           ))}
         </div>
       </div>
-      <div style={{ display: 'flex', height: 24, background: '#0a1e35' }}>
-        <div style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid #1e3a5f', position: 'sticky', left: 0, zIndex: 31, background: '#0a1e35' }} />
+      <div style={{ display: 'flex', height: 24, background: 'var(--rp-th-bg-2, #0a1e35)' }}>
+        <div className="rp-th-corner" style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid var(--rp-border, #1e3a5f)', position: 'sticky', left: 0, zIndex: 31, background: 'var(--rp-th-bg-2, #0a1e35)' }}>
+          {compact && <span className="rp-th-caption">Инициатива · фаза · исполнитель</span>}
+        </div>
         <div style={{ width: trackWidthPx ?? undefined, flex: trackWidthPx ? '0 0 auto' : 1, position: 'relative' }}>
           {lower.map((w, i) => {
             let tint: CellTint = { bg: null, fg: null };
@@ -169,10 +179,10 @@ export default function TimelineHeader({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 10,
-                  color: tint.fg ?? '#4a6a90',
+                  fontSize: compact ? 10.5 : 10,
+                  color: tint.fg ?? 'var(--rp-th-week, #4a6a90)',
                   background: tint.bg ?? 'transparent',
-                  borderRight: '1px solid #142a45',
+                  borderRight: '1px solid var(--rp-th-week-line, #142a45)',
                   overflow: 'hidden',
                   whiteSpace: 'nowrap',
                 }}
@@ -181,7 +191,7 @@ export default function TimelineHeader({
                 {scale === 'week' && weeksWithHoliday.has(w.label) && (
                   <span
                     title="В неделе есть праздничный день"
-                    style={{ position: 'absolute', bottom: 1, right: 4, color: '#f0a075', fontSize: 9, lineHeight: 1 }}
+                    style={{ position: 'absolute', bottom: 1, right: 4, color: 'var(--rp-th-holiday-fg, #f0a075)', fontSize: 9, lineHeight: 1 }}
                   >
                     ●
                   </span>

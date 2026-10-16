@@ -1,0 +1,461 @@
+/* ============================================================
+   «Ресурсное планирование» в скине «Цветовые зоны».
+   Цвета диаграммы — через переменные --rp-*: компоненты берут их
+   с фолбэком на прежние цвета Aurora, скин задаёт свои.
+   ============================================================ */
+html[data-skin="zones"] {
+  --rp-surface: #FFFFFF;
+  --rp-frame: 0 solid transparent;
+  --rp-frame-radius: 0px;
+  --rp-border: #E1E3E8;
+  --rp-row-line: #F0F1F4;
+  --rp-row-line-2: #EEF0F3;
+  --rp-init-divider: 1px solid #E6E8EC;
+  --rp-init-bg: #F6F6F7;
+  --rp-init-bg-solid: #F6F6F7;
+  --rp-pending-bg: #FDF0E6;
+  --rp-pending-bg-solid: #FDF0E6;
+  --rp-pending-outline: 2px solid #B85C00;
+  --rp-section-bg: #EEF0F3;
+  --rp-cell-shadow: 0 1px 0 0 #F0F1F4;
+  --rp-cell-shadow-1: 0 1px 0 0 #F0F1F4;
+  --rp-text: #17191C;
+  --rp-text-2: #3F444B;
+  --rp-text-2b: #17191C;
+  --rp-text-3: #5A5F66;
+  --rp-dim: #6B7078;
+  --rp-key: var(--za-ink);
+  --rp-key-strong: var(--za-ink);
+  --rp-prio-fg: #FFFFFF;
+  --rp-prio-bg: #6B717A;
+  --rp-hl-bg: var(--za-tint);
+  --rp-foreign: #8A4B00;
+  --rp-foreign-border: #E8C9A6;
+  --rp-borrowed: #6A3FA6;
+  --rp-borrowed-bg: #F1ECF9;
+  --rp-borrowed-border: #CDB8EA;
+  --rp-provisional: #7A5200;
+  --rp-bad: #D1382A;
+  --rp-bad-2: #B42A1E;
+  --rp-bad-text: #B42A1E;
+  --rp-warn: #946200;
+  --rp-warn-text: #7A5200;
+  --rp-track: #EEF0F3;
+  --rp-progress: var(--za);
+
+  /* полосы фаз */
+  --rp-bar-cp-border: 1px solid #17191C;
+  --rp-bar-cp-shadow: 0 0 0 1px #17191C;
+  --rp-bar-sub-border: 1px dashed #7A45B8;
+  --rp-bar-conflict: inset 0 0 0 2px #D1382A;
+  --rp-bar-me-shadow: none;
+  --rp-bar-me-outline: 2px solid #17191C;
+  --rp-bar-pin-outline: 2px dashed #17191C;
+  --rp-bar-fact: rgba(255, 255, 255, 0.22);
+  --rp-bar-overrun: 2px solid #D1382A;
+  --rp-ghost-outline: 1px dashed #17191C;
+  --rp-ooq-fill: repeating-linear-gradient(45deg, rgba(209, 56, 42, 0.85) 0 2px, rgba(255, 255, 255, 0.55) 2px 6px);
+  --rp-ooq-edge: 1px solid #D1382A;
+  --rp-busy-fill: repeating-linear-gradient(45deg, #FFFFFF 0 3px, #C9CDD4 3px 6px);
+  --rp-unavail-absence: repeating-linear-gradient(45deg, #FFE08A 0 2px, transparent 2px 6px);
+  --rp-unavail-holiday: repeating-linear-gradient(45deg, rgba(23, 25, 28, 0.35) 0 2px, transparent 2px 6px);
+  --rp-unavail-weekend: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.45) 0 2px, transparent 2px 6px);
+  --rp-booking-fill: repeating-linear-gradient(45deg, #C9CDD4 0 3px, #F2F3F5 3px 6px);
+  --rp-booking-border: 1px solid #C9CDD4;
+
+  /* шкала и сетка */
+  --rp-th-bg: #F7F8FA;
+  --rp-th-bg-2: #F7F8FA;
+  --rp-th-month: #17191C;
+  --rp-th-month-line: #C9CDD4;
+  --rp-th-week: #3F444B;
+  --rp-th-week-line: #E6E8EC;
+  --rp-th-weekend-bg: #EEF0F3;
+  --rp-th-weekend-fg: #5A5F66;
+  --rp-th-holiday-bg: #E4E6EA;
+  --rp-th-holiday-fg: #3F444B;
+  --rp-th-off-bg: #EEF0F3;
+  --rp-today: #D1382A;
+  --rp-ooq-line: 2px dashed #9AA0A8;
+  --rp-nonwork-holiday: #F1F2F4;
+  --rp-nonwork-weekend: #F7F8FA;
+  --rp-grid-month: #DDE0E5;
+  --rp-grid-week: #E6E8EC;
+  --rp-grid-day: #F0F1F4;
+  --rp-block-fill: repeating-linear-gradient(45deg, rgba(23, 25, 28, 0.05) 0 4px, transparent 4px 10px);
+  --rp-block-edge: #C9CDD4;
+  --rp-block-text: #5A5F66;
+  --rp-draw-bg: #FDF0E6;
+  --rp-draw-border: #E8C9A6;
+  --rp-draw-text: #8A4B00;
+  --rp-arrow-chain: #3F444B;
+  --rp-arrow-relay: #0F7F8C;
+  --rp-arrow-manual: #B85C00;
+  --rp-explain-bg: #F7F8FA;
+  --rp-explain-line: #E1E3E8;
+
+  /* тепловая карта загрузки */
+  --rp-heat-bg: #FFFFFF;
+  --rp-heat-sticky-shadow: -1px 0 0 #E1E3E8;
+  --rp-heat-caption: #5A5F66;
+  --rp-heat-stripe: transparent;
+  --rp-heat-label-bg: #FFFFFF;
+  --rp-heat-label-bg-alt: #FFFFFF;
+  --rp-heat-text: #17191C;
+  --rp-heat-text-2: #3F444B;
+  --rp-heat-selected: var(--za-ink);
+  --rp-heat-role: #5A5F66;
+  --rp-heat-empty: #5A5F66;
+  --rp-heat-over: #B42A1E;
+  --rp-heat-legend: #3F444B;
+  --rp-tip-bg: #17191C;
+  --rp-tip-border: #17191C;
+  --rp-tip-text: #FFFFFF;
+  --rp-tip-shadow: none;
+  --rp-block-gap: 0px;
+}
+html[data-skin="zones"] [data-prio="1"] { --rp-prio-bg: var(--za); }
+html[data-skin="zones"] [data-prio="2"] { --rp-prio-bg: #3F444B; }
+
+/* без свечения и пульсации */
+html[data-skin="zones"] .rp-bar-emp-highlighted,
+html[data-skin="zones"] .rp-bar-critical { animation: none; }
+
+/* --- раскладка экрана --- */
+html[data-skin="zones"] .rpz { gap: 10px; }
+html[data-skin="zones"] .rpz > .ant-alert { flex: none; }
+html[data-skin="zones"] .rpz-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+}
+html[data-skin="zones"] .rpz-gantt {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+html[data-skin="zones"] .rpz-gantt > .zn-card-head { padding: 7px 14px; border-bottom: 1px solid #E1E3E8; }
+html[data-skin="zones"] .rpz-gantt-scroll {
+  --rp-page-sticky-h: 0px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+html[data-skin="zones"] .rpz-gantt-scroll .rp-sticky-header-track { border: 0 !important; }
+html[data-skin="zones"] .rpz-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
+html[data-skin="zones"] .rpz-bottom {
+  flex: 0 0 236px;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+}
+html[data-skin="zones"] .rpz-load { flex: 999 1 600px; min-width: 0; min-height: 0; display: flex; }
+html[data-skin="zones"] .rpz-load > .rp-heat { flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: 10px !important; border-color: #E1E3E8 !important; }
+html[data-skin="zones"] .rpz-reserve {
+  flex: 1 1 380px;
+  max-width: 420px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: #FFFFFF;
+  border: 1px solid #E1E3E8;
+  border-radius: 10px;
+}
+html[data-skin="zones"] .rpz-reserve > [data-testid="rp-reserve-summary"] { border: 0 !important; padding: 8px 14px !important; }
+
+/* --- легенда диаграммы --- */
+html[data-skin="zones"] .rpz-legend {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 6px 14px;
+  border-top: 1px solid #E1E3E8;
+  font-size: 11px;
+  color: #3F444B;
+}
+html[data-skin="zones"] .rpz-legend span { display: inline-flex; align-items: center; gap: 5px; }
+html[data-skin="zones"] .rpz-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; box-sizing: border-box; }
+html[data-skin="zones"] .rpz-legend .rpz-lg-conflict { width: 14px; background: #2F5FD0; border: 2px solid #D1382A; }
+html[data-skin="zones"] .rpz-legend .rpz-lg-cp { width: 14px; background: #2F5FD0; outline: 2px solid #17191C; outline-offset: -1px; }
+html[data-skin="zones"] .rpz-legend .rpz-lg-pin { width: 14px; background: #2F5FD0; outline: 2px dashed #17191C; outline-offset: 1px; margin: 0 2px; }
+html[data-skin="zones"] .rpz-legend .rpz-lg-ooq { width: 14px; background: var(--rp-ooq-fill); border: 1px solid #D1382A; }
+html[data-skin="zones"] .rpz-legend .rpz-lg-absence { width: 14px; background: #2F5FD0; background-image: var(--rp-unavail-absence); }
+html[data-skin="zones"] .rpz-legend .rpz-lg-busy { width: 14px; background: var(--rp-busy-fill); border: 1px solid #C9CDD4; }
+
+/* --- шапка шкалы --- */
+html[data-skin="zones"] .rp-th-compact .rp-th-corner {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 14px 5px;
+}
+html[data-skin="zones"] .rp-th-caption {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #5A5F66;
+  white-space: nowrap;
+}
+html[data-skin="zones"] .rp-today-pill {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  height: 16px;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: #D1382A;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  z-index: 32;
+  pointer-events: none;
+}
+
+/* --- строки диаграммы --- */
+html[data-skin="zones"] .rp-cell-compact b { color: #17191C; }
+html[data-skin="zones"] .rp-cp-badge {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #17191C;
+  color: #FFFFFF;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 15px;
+}
+html[data-skin="zones"] .rp-bar-label {
+  position: relative;
+  z-index: 5;
+  padding: 0 5px;
+  color: #FFFFFF;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 17px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* полоса инициативы — тонкая серая линия вместо скобок с бегущим пунктиром */
+html[data-skin="zones"] .rp-init-span { background: none !important; }
+html[data-skin="zones"] .rp-init-span > * { display: none !important; }
+html[data-skin="zones"] .rp-init-span::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  border-radius: 2px;
+  background: #9AA0A8;
+}
+
+/* --- конфликты --- */
+html[data-skin="zones"] .rpz-conflicts {
+  flex: none;
+  background: #FFFFFF;
+  border: 1px solid #E1E3E8;
+  border-radius: 10px;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 42%;
+  min-height: 0;
+}
+html[data-skin="zones"] .rpz-conflicts-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+html[data-skin="zones"] .rpz-conflicts-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: #17191C;
+  cursor: pointer;
+}
+html[data-skin="zones"] .rpz-conflicts-toggle h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: #17191C;
+}
+html[data-skin="zones"] .rpz-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+html[data-skin="zones"] .rpz-pill.is-bad { background: #D1382A; color: #FFFFFF; }
+html[data-skin="zones"] .rpz-pill.is-warn { background: #FBF1DC; border: 1px solid #E2C98F; color: #7A5200; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .rpz-conflicts-head .ant-segmented {
+  background: #EEF0F3 !important;
+  padding: 2px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .rpz-conflicts-head .ant-segmented-item-selected,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .rpz-conflicts-head .ant-segmented-thumb {
+  background: #FFFFFF !important;
+  color: #17191C !important;
+  font-weight: 600;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .rpz-conflicts-head .ant-segmented-item { color: #3F444B; }
+html[data-skin="zones"] .rpz-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--za-ink);
+  text-decoration: underline;
+  cursor: pointer;
+}
+html[data-skin="zones"] .rpz-conflict-row { display: flex; flex-wrap: wrap; gap: 8px; }
+html[data-skin="zones"] .rpz-conflict {
+  flex: 1 1 340px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+html[data-skin="zones"] .rpz-conflict.is-bad { border: 1px solid #E6B7B1; background: #FDF3F1; --c: #B42A1E; }
+html[data-skin="zones"] .rpz-conflict.is-warn { border: 1px solid #E2C98F; background: #FBF1DC; --c: #7A5200; }
+html[data-skin="zones"] .rpz-conflict-icon { flex: none; color: var(--c); font-size: 14px; }
+html[data-skin="zones"] .rpz-conflict-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #3F444B; }
+html[data-skin="zones"] .rpz-conflict-text b { color: var(--c); font-weight: 600; }
+html[data-skin="zones"] .rpz-conflict-status {
+  flex: none;
+  font-size: 11.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #FFFFFF;
+  border: 1px solid currentColor;
+  color: var(--c);
+}
+html[data-skin="zones"] .rpz-conflict-more {
+  flex: none;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #D5D8DE;
+  border-radius: 8px;
+  background: #FFFFFF;
+  color: #3F444B;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+html[data-skin="zones"] .rpz-conflicts-list { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+html[data-skin="zones"] .rpz-conflicts-list .ant-alert { padding: 6px 10px; }
+
+/* --- панель назначения рядом с диаграммой --- */
+html[data-skin="zones"] .rp-assign-docked {
+  flex: 0 0 340px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #FFFFFF;
+  border: 1px solid #E1E3E8;
+  border-radius: 10px;
+}
+html[data-skin="zones"] .rp-assign-head {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #E1E3E8;
+}
+html[data-skin="zones"] .rp-assign-head-main { min-width: 0; flex: 1; }
+html[data-skin="zones"] .rp-assign-head h2 {
+  margin: 0 0 2px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: #17191C;
+}
+html[data-skin="zones"] .rp-assign-head .ant-space { font-size: 12.5px; }
+html[data-skin="zones"] .rp-assign-head .ant-btn { width: 28px; height: 28px; padding: 0; }
+html[data-skin="zones"] .rp-assign-body { flex: 1; min-height: 0; overflow: auto; padding: 10px 14px; }
+html[data-skin="zones"] .rp-assign-body h5.ant-typography { font-size: 13.5px; margin-bottom: 2px; }
+html[data-skin="zones"] .rp-assign-body .ant-divider { margin: 10px 0; }
+html[data-skin="zones"] .rp-assign-body .ant-descriptions-item-label {
+  font-size: 11px !important;
+  font-weight: 600;
+  color: #5A5F66 !important;
+  padding-bottom: 3px !important;
+}
+html[data-skin="zones"] .rp-assign-body .ant-descriptions-item-content { font-size: 13px; }
+html[data-skin="zones"] .rp-assign-body .ant-descriptions-row > td { padding-bottom: 10px !important; }
+html[data-skin="zones"] .rp-assign-body .ant-picker,
+html[data-skin="zones"] .rp-assign-body .ant-input-number { width: 100%; }
+
+/* --- плотная тепловая карта --- */
+html[data-skin="zones"] .rp-heat-compact { overflow: hidden; }
+html[data-skin="zones"] .rp-heat-compact .rp-heat-title {
+  font-family: var(--font-display);
+  font-weight: 700 !important;
+  font-size: 15px !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+html[data-skin="zones"] .rp-heat-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid #C9CDD4;
+  color: #5A5F66;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: help;
+}
+html[data-skin="zones"] .rp-heat-compact .rp-heat-scroll { flex: 1; min-height: 0; overflow: auto !important; }
+html[data-skin="zones"] .rp-heat-compact .rp-heat-headrow { position: sticky; top: 0; z-index: 3; background: #FFFFFF; }
+html[data-skin="zones"] .rp-heat-compact .rp-heat-month {
+  left: 0;
+  padding-left: 4px;
+  border-left: 1px solid #C9CDD4;
+  letter-spacing: 0 !important;
+  text-transform: none;
+  color: #3F444B !important;
+  font-size: 10.5px !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .rp-heat-compact .ant-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--za-ink);
+  color: var(--za-ink);
+  background: #FFFFFF;
+  font-size: 12px;
+}
+html[data-skin="zones"] .rp-assign-body .ant-descriptions-item-content { display: block !important; }
