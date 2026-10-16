@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import type { DragEndEvent } from '@dnd-kit/core';
 import {
   Alert, App, Badge, Button, Card, Popconfirm, Select, Space, Switch, Tooltip, Typography,
 } from 'antd';
@@ -11,7 +9,6 @@ import {
   CodeOutlined, DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined,
   PlusOutlined, RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
-import BacklogAllocRow from '../components/planning/BacklogAllocRow';
 import PageHeader from '../components/shared/PageHeader';
 import planningHelp from '../../../docs/help/planning.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
@@ -45,11 +42,8 @@ import {
   usePatchAllocationDeveloper,
   useSetAllocationSubgroup,
   useReorderAllocations,
-  useCapacityDiff,
-  useAcknowledgeDrift,
   usePatchBacklogPriority,
 } from '../hooks/usePlanning';
-import SubgroupSectionHeader from '../components/planning/SubgroupSectionHeader';
 import NeighborsTakenBanner from '../components/planning/NeighborsTakenBanner';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
@@ -58,6 +52,10 @@ import { DEFAULT_APPEARANCE } from '../contexts/appearanceDefaults';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { useStickyViewportHeight } from '../hooks/useStickyViewportHeight';
+import { useSkin } from '../contexts/ThemeContext';
+import BacklogSections from '../components/planning/BacklogSections';
+import CapacityDriftIndicator from '../components/planning/CapacityDriftIndicator';
+import PultPlanningLayout from '../skins/pult/pages/PlanningLayout';
 import { downloadScenarioXlsx } from '../api/exports';
 import { trackAction } from '../lib/usage/track';
 import { DARK_THEME, FONTS } from '../utils/constants';
@@ -134,132 +132,11 @@ function rolesAffectedByAllocation(
   return out;
 }
 
-const MONTH_NAMES = ['', 'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
-                     'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-
-function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
-  const { notification } = App.useApp();
-  const [expanded, setExpanded] = useState(false);
-  const { data: diff } = useCapacityDiff(scenarioId, true);
-  const acknowledge = useAcknowledgeDrift();
-  const revert = useRevertScenario();
-
-  if (!diff?.has_changes) return null;
-
-  const handleRevise = () => {
-    revert.mutate(scenarioId, {
-      onSuccess: () => notification.info({
-        title: 'Сценарий в черновике',
-        description: 'Пересмотрите состав инициатив с учётом новой доступности и утвердите снова — будет создана новая ревизия.',
-      }),
-      onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
-    });
-  };
-
-  return (
-    <div style={{
-      border: '1px solid rgba(245,158,11,0.5)',
-      borderRadius: 8,
-      background: 'rgba(245,158,11,0.04)',
-      padding: '8px 12px',
-      marginTop: 8,
-    }}>
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-        onClick={() => setExpanded(v => !v)}
-      >
-        <span style={{ color: '#f59e0b' }}>⚠</span>
-        <span style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>
-          Доступность изменилась ({diff.changed_employees.length} чел.)
-        </span>
-        <span style={{ color: 'var(--text-muted, #64748b)', fontSize: 11, marginLeft: 'auto' }}>
-          {expanded ? '▲' : '▼'}
-        </span>
-      </div>
-
-      {expanded && (
-        <div style={{ marginTop: 8 }}>
-          {diff.changed_employees.map(emp => (
-            <div key={emp.employee_id}>
-              {emp.left_team_at && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '4px 6px', background: 'rgba(248,113,113,0.10)',
-                  borderRadius: 5, fontSize: 12, marginBottom: 3,
-                }}>
-                  <span style={{ color: '#e2e8f0', fontWeight: 500, minWidth: 120 }}>
-                    {emp.employee_name}
-                  </span>
-                  <span style={{ color: '#f87171', fontWeight: 600 }}>
-                    выбыл из команды {emp.left_team_at.split('-').reverse().join('.')}
-                  </span>
-                </div>
-              )}
-              {(emp.subgroup_before || emp.subgroup_after) && (
-                <div style={{
-                  display: 'flex', gap: 8, padding: '4px 6px',
-                  background: 'rgba(245,158,11,0.07)', borderRadius: 5,
-                  fontSize: 12, marginBottom: 3,
-                }}>
-                  <span style={{ color: '#e2e8f0', fontWeight: 500, minWidth: 120 }}>
-                    {emp.employee_name}
-                  </span>
-                  <span style={{ color: 'var(--text-muted, #94a3b8)' }}>
-                    группа: {emp.subgroup_before ?? 'без группы'} → {emp.subgroup_after ?? 'без группы'}
-                  </span>
-                </div>
-              )}
-              {emp.months.map(m => (
-                <div key={`${m.year}-${m.month}`} style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap',
-                  padding: '4px 6px', background: 'rgba(245,158,11,0.07)',
-                  borderRadius: 5, fontSize: 12, marginBottom: 3,
-                }}>
-                  <span style={{ color: '#e2e8f0', fontWeight: 500, minWidth: 120 }}>
-                    {emp.employee_name}
-                  </span>
-                  <span style={{ color: 'var(--text-muted, #94a3b8)' }}>
-                    {MONTH_NAMES[m.month]}: {Math.round(m.snapshot_available_hours)} → {Math.round(m.current_available_hours)} ч
-                  </span>
-                  <span style={{ fontWeight: 700, color: m.delta_hours > 0 ? '#22c55e' : '#f87171' }}>
-                    {m.delta_hours > 0 ? '+' : ''}{Math.round(m.delta_hours)} ч
-                  </span>
-                  {m.absence_changes.map((ac, i) => (
-                    <span key={i} style={{ color: 'var(--text-muted, #64748b)', fontSize: 11 }}>
-                      {ac.type === 'removed' ? 'Удалено' : 'Добавлено'}:{' '}
-                      {ac.reason ?? 'отсутствие'} {ac.start_date}–{ac.end_date}{' '}
-                      ({Math.round(ac.hours)} ч)
-                    </span>
-                  ))}
-                </div>
-              ))}
-            </div>
-          ))}
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <Button
-              size="small"
-              style={{ borderColor: '#f59e0b', color: '#f59e0b' }}
-              loading={revert.isPending}
-              onClick={handleRevise}
-            >
-              Пересмотреть сценарий
-            </Button>
-            <Button
-              size="small"
-              style={{ color: 'var(--text-muted, #64748b)' }}
-              loading={acknowledge.isPending}
-              onClick={() => acknowledge.mutate(scenarioId)}
-            >
-              Игнорировать
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function PlanningPage() {
+/**
+ * Данные, состояние и обработчики «Сценариев» — общие для раскладки Aurora
+ * и раскладок обложек. Раскладка только рисует.
+ */
+function usePlanningPage() {
   const { notification } = App.useApp();
   const navigate = useNavigate();
   const [scenarioId, setScenarioId] = usePersistedSearchParam('scenario', 'planning_scenario_id');
@@ -377,8 +254,6 @@ export default function PlanningPage() {
   // обновляем после применения инверсии.
   // Правая колонка листается сама по себе — иначе её низ достижим только
   // после прокрутки всего бэклога. 72 = отступ sticky сверху + воздух снизу.
-  const [rightColumnEl, setRightColumnEl] = useState<HTMLDivElement | null>(null);
-  const rightColumnHeight = useStickyViewportHeight(rightColumnEl, 72);
 
   const flipPrevTopsRef = useRef<Map<string, number>>(new Map());
   const allocIdsKey = orderedAllocations.map((a) => a.id).join(',');
@@ -728,6 +603,147 @@ export default function PlanningPage() {
     })),
     [scenarios],
   );
+
+  return {
+    navigate,
+    scenarioId,
+    setScenarioId,
+    createOpen,
+    setCreateOpen,
+    activeTab,
+    setActiveTab,
+    celebrate,
+    diffOpen,
+    setDiffOpen,
+    compareOpen,
+    setCompareOpen,
+    historyOpen,
+    setHistoryOpen,
+    involvementOpen,
+    setInvolvementOpen,
+    ungroupedDrawerId,
+    setUngroupedDrawerId,
+    compact,
+    flashingIds,
+    pulsedRoles,
+    roles,
+    jiraBaseUrl,
+    period,
+    breakdown,
+    setBreakdown,
+    scenarios,
+    scenario,
+    opoOff,
+    allocations,
+    allocLoading,
+    continuation,
+    updateAppearance,
+    appearanceValue,
+    liftIncluded,
+    approve,
+    revert,
+    includedIds,
+    orderedAllocations,
+    personSort,
+    setPersonSort,
+    handleDragEnd,
+    quarterInt,
+    resourceBase,
+    resourceSummary,
+    teamAssigneeOptions,
+    isDraft,
+    isApproved,
+    deficit,
+    hasAnyDeficit,
+    rowStateClass,
+    toggleAllocation,
+    registerRowRef,
+    handlePriorityChange,
+    handleAssigneeChange,
+    handleDeveloperChange,
+    subgroups,
+    hasSubgroups,
+    ungrouped,
+    subgroupOptions,
+    sections,
+    neighborsTakenIds,
+    onlyNeighborsTaken,
+    setOnlyNeighborsFor,
+    shownSections,
+    collapsedSections,
+    toggleSection,
+    handleSubgroupChange,
+    handleOpenBreakdown,
+    handleApprove,
+    handleRevert,
+    handleDelete,
+    handleTeamChange,
+    handleRename,
+    scenarioOptions,
+    gridTemplate: hasSubgroups ? GRID_WITH_SUBGROUP : GRID,
+    gridGap: GRID_GAP,
+  };
+}
+
+export type PlanningPageState = ReturnType<typeof usePlanningPage>;
+
+function AuroraPlanningLayout({ p }: { p: PlanningPageState }) {
+  const {
+    navigate,
+    scenarioId,
+    setScenarioId,
+    createOpen,
+    setCreateOpen,
+    activeTab,
+    setActiveTab,
+    celebrate,
+    diffOpen,
+    setDiffOpen,
+    compareOpen,
+    setCompareOpen,
+    historyOpen,
+    setHistoryOpen,
+    involvementOpen,
+    setInvolvementOpen,
+    ungroupedDrawerId,
+    setUngroupedDrawerId,
+    compact,
+    pulsedRoles,
+    period,
+    breakdown,
+    setBreakdown,
+    scenario,
+    opoOff,
+    allocations,
+    allocLoading,
+    updateAppearance,
+    appearanceValue,
+    liftIncluded,
+    approve,
+    revert,
+    includedIds,
+    personSort,
+    setPersonSort,
+    quarterInt,
+    resourceBase,
+    resourceSummary,
+    isDraft,
+    isApproved,
+    deficit,
+    hasSubgroups,
+    ungrouped,
+    neighborsTakenIds,
+    onlyNeighborsTaken,
+    setOnlyNeighborsFor,
+    handleApprove,
+    handleRevert,
+    handleDelete,
+    handleTeamChange,
+    handleRename,
+    scenarioOptions,
+  } = p;
+  const [rightColumnEl, setRightColumnEl] = useState<HTMLDivElement | null>(null);
+  const rightColumnHeight = useStickyViewportHeight(rightColumnEl, 72);
 
   return (
     <Space orientation="vertical" size={12} style={{ width: '100%' }}>
@@ -1088,74 +1104,7 @@ export default function PlanningPage() {
                     Всего часов
                   </span>
                 </div>
-                <DndContext
-                  collisionDetection={closestCenter}
-                  modifiers={[restrictToVerticalAxis]}
-                  onDragEnd={handleDragEnd}
-                >
-                  <div>
-                  {shownSections.map((section) => {
-                    const collapsed = section.id !== null && collapsedSections.has(section.id);
-                    return (
-                      <div key={section.id ?? '__all__'}>
-                        {section.id !== null && (
-                          <SubgroupSectionHeader
-                            name={section.name}
-                            items={section.items}
-                            collapsed={collapsed}
-                            roles={roles}
-                            opoOff={opoOff}
-                            onToggle={() => toggleSection(section.id!)}
-                          />
-                        )}
-                        {!collapsed && (
-                          <SortableContext
-                            items={section.items.map((a) => a.id)}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            <div>
-                              {section.items.map((a) => (
-                                <BacklogAllocRow
-                                  key={a.id}
-                                  alloc={a}
-                                  scenarioId={scenarioId!}
-                                  scenarioStatus={(scenario?.status ?? 'draft') as 'draft' | 'approved'}
-                                  isDraft={isDraft}
-                                  dragLocked={personSort !== null}
-                                  compact={compact}
-                                  flashing={flashingIds.has(a.id)}
-                                  rowStateClass={rowStateClass(a)}
-                                  gridTemplate={hasSubgroups ? GRID_WITH_SUBGROUP : GRID}
-                                  gridGap={GRID_GAP}
-                                  continuationInfo={continuation?.info_by_allocation_id?.[a.id]}
-                                  teamAssigneeOptions={teamAssigneeOptions}
-                                  subgroupOptions={hasSubgroups ? subgroupOptions : undefined}
-                                  roles={roles}
-                                  opoOff={opoOff}
-                                  jiraBaseUrl={jiraBaseUrl}
-                                  resourceTotalForBacklog={resourceSummary?.available_for_backlog_total ?? 0}
-                                  registerRef={registerRowRef}
-                                  onToggle={toggleAllocation}
-                                  onPriorityChange={handlePriorityChange}
-                                  onAssigneeChange={handleAssigneeChange}
-                                  onDeveloperChange={handleDeveloperChange}
-                                  onSubgroupChange={handleSubgroupChange}
-                                  onOpenBreakdown={handleOpenBreakdown}
-                                />
-                              ))}
-                            </div>
-                          </SortableContext>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {(allocations ?? []).length === 0 && !allocLoading && (
-                    <div style={{ padding: 24, textAlign: 'center', color: DARK_THEME.textMuted, fontSize: 13 }}>
-                      В сценарии нет элементов. Добавьте задачи в бэклог — они появятся автоматически.
-                    </div>
-                  )}
-                  </div>
-                </DndContext>
+                <BacklogSections p={p} />
                 </div>
                 </div>
               </Card>
@@ -1246,4 +1195,11 @@ export default function PlanningPage() {
       />
     </Space>
   );
+}
+
+export default function PlanningPage() {
+  const p = usePlanningPage();
+  const skin = useSkin();
+  if (skin === 'pult') return <PultPlanningLayout p={p} />;
+  return <AuroraPlanningLayout p={p} />;
 }

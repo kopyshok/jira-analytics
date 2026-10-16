@@ -1,0 +1,113 @@
+/* ============================================================
+   «Пульт» · Сценарии (D-scenarios).
+   ============================================================ */
+html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
+  & .sc-panel-tools { align-items: flex-end; gap: 10px; }
+  & .sc-panel-tools .ant-btn { height: 32px; }
+
+  & .sc-pult { gap: 8px; }
+  & .sc-empty { flex: 1; align-items: center; justify-content: center; }
+  & .sc-team-pick { display: flex; flex-direction: column; gap: 16px; width: min(560px, 100%); }
+
+  /* М1 · сценарий — одна строка */
+  & .sc-head { flex: none; padding: 6px 10px; }
+  & .sc-head .pm-head { gap: 14px; }
+  & .sc-name .ant-typography { margin: 0 !important; font-size: 16px; font-weight: 600; color: var(--text); }
+  & .sc-name .ant-typography-edit { color: var(--text) !important; }
+  & .sc-q { font-size: 12px; }
+  & .sc-status {
+    padding: 2px 8px;
+    background: var(--p-screen);
+    border: 1px solid var(--p-line-strong);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+  & .sc-status.is-ok { border-color: #9CCDB0; color: #237A45; }
+  & .sc-incl { font-size: 12px; color: var(--text-muted); }
+  & .sc-incl b { color: var(--text); }
+  & .sc-actions { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  & .sc-actions .ant-btn.is-key { background: var(--p-key) !important; border-color: var(--p-key) !important; color: #FFFFFF !important; width: 32px; }
+  & .sc-lift { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+
+  /* М2 · сводка ресурса */
+  & .sc-resource { flex: none; padding: 5px 10px; gap: 4px; max-height: 38vh; overflow: auto; }
+  & .sc-resource-cap { display: block; }
+  & .sc-resource > div { margin: 0 !important; }
+  & .sc-resource .ant-card { background: transparent !important; border: 0 !important; }
+  & .sc-resource .ant-card-body { padding: 0 !important; }
+
+  & .sc-tabs-line { flex: none; display: flex; align-items: center; gap: 10px; }
+  & .sc-tabs { display: flex; gap: 4px; }
+  & .sc-neighbors { flex: 1; min-width: 0; }
+  & .sc-neighbors .ant-alert {
+    height: 32px;
+    padding: 0 10px;
+    background: #F3D27A !important;
+    border: 1px solid #E3B94D !important;
+    border-radius: 6px;
+    color: #1C1C1A;
+  }
+  & .sc-neighbors .ant-alert-title { color: #1C1C1A !important; font-size: 13px; font-weight: 500; }
+  & .sc-neighbors .ant-alert-icon { color: #1C1C1A !important; }
+
+  /* основная сетка */
+  & .sc-main { flex: 1; min-height: 0; display: flex; gap: 10px; }
+  & .sc-backlog,
+  & .sc-rules { flex: 1 1 auto; }
+  & .sc-ideas { font-size: 12px; }
+  & .sc-roles-sum { font-size: 12px; color: var(--text-muted); }
+  & .sc-roles-sum b { color: var(--text); }
+  & .sc-hint { font-size: 11px; color: var(--text-muted); }
+  & .sc-backlog-screen { position: relative; }
+  & .sc-grid-head {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    align-items: center;
+    padding: 4px 14px;
+    min-height: 34px;
+    box-sizing: border-box;
+    background: var(--p-body);
+    border-bottom: 1px solid var(--p-line-strong);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  & .sc-grid-head .sc-c { text-align: center; }
+  & .sc-grid-head .sc-r { text-align: right; }
+  & .sc-roles-head { display: flex; gap: 4px; }
+  & .sc-roles-head > span { flex: 1; min-width: 52px; text-align: center; }
+  & .sc-sort { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+  & .sc-sort .anticon { color: var(--p-accent); }
+  & .sc-legend i.is-round { border-radius: 50%; }
+  & .sc-legend i.is-ring { border: 2px solid #D9381E; border-radius: 50%; }
+  & .sc-legend i.is-empty { border: 1px solid #5C5A55; }
+  & .sc-rules-screen { padding: 12px; }
+
+  /* правая колонка: ресурс команды, по ролям, по сотрудникам, внешний QA */
+  & .sc-side { flex: 0 0 400px; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+  & .sc-side .ant-card {
+    background: var(--p-module) !important;
+    border: 1px solid var(--p-line) !important;
+    border-radius: 8px !important;
+  }
+  & .sc-qa { flex: none; }
+}
+
+@media (max-width: 1400px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
+    & .sc-side { flex-basis: 340px; }
+  }
+}
+@media (max-width: 1100px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
+    & .sc-main { flex-direction: column; }
+    & .sc-side { flex-basis: auto; overflow: visible; }
+    & .sc-backlog { min-height: 520px; }
+  }
+}

@@ -3,7 +3,7 @@ import SubgroupFlowLine from '../common/SubgroupFlowLine';
 import { Card, Skeleton, Tooltip } from 'antd';
 import { useScenarioResourceSummary } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
-import { getRoleLabel, getRoleColor } from '../../utils/roles';
+import { getRoleLabel, getRoleColor, getRoleInk } from '../../utils/roles';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { demandByAssigneeRole, demandByRole } from '../../utils/planning';
 import type { AllocationResponse, ResourceEmployee } from '../../types/api';
@@ -200,7 +200,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
     return {
       borderLeft: `2px solid ${color}`,
       ...(isLast ? { borderRight: `2px solid ${color}` } : {}),
-      background: `${color}08`,
+      background: `var(--rs-role-cell, ${color}08)`,
     };
   };
 
@@ -254,7 +254,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
               borderRight: `1px solid ${DARK_THEME.border}`,
               height: '100%',
             }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: getRoleColor(roles, role) }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: getRoleInk(roles, role) }}>
                 {getRoleLabel(roles, role)}
               </span>
               <span
@@ -364,7 +364,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                         style={{
                           fontWeight: 600,
                           fontSize: 13,
-                          color: getRoleColor(roles, role),
+                          color: getRoleInk(roles, role),
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                         }}
@@ -456,7 +456,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             <div
               style={{
                 ...CELL_LABEL,
-                background: 'rgba(0,201,200,0.08)',
+                background: 'var(--rs-ok-bg, rgba(0,201,200,0.08))',
                 color: DARK_THEME.cyanPrimary,
                 fontWeight: 700,
                 fontSize: 16,
@@ -484,7 +484,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                   style={{
                     ...CELL,
                     ...roleBorderStyle(role),
-                    background: isDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.1)',
+                    background: isDeficit ? 'var(--rs-deficit-bg, rgba(255,165,0,0.08))' : 'var(--rs-ok-bg, rgba(0,201,200,0.1))',
                     color: isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
                     fontWeight: 700,
                     fontSize: 17,
@@ -518,7 +518,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                         left: 8,
                         right: 8,
                         height: 4,
-                        background: 'rgba(255,255,255,0.06)',
+                        background: 'var(--rs-track, rgba(255,255,255,0.06))',
                         borderRadius: 2,
                         overflow: 'hidden',
                       }}
@@ -545,7 +545,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                 <div
                   style={{
                     ...CELL,
-                    background: isTotalDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.08)',
+                    background: isTotalDeficit ? 'var(--rs-deficit-bg, rgba(255,165,0,0.08))' : 'var(--rs-ok-bg, rgba(0,201,200,0.08))',
                     color: isTotalDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
                     fontWeight: 700,
                     fontSize: 17,
@@ -795,7 +795,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                       textAlign: 'center' as const,
                       fontFamily: FONTS.mono,
                       fontSize: 13,
-                      color: getRoleColor(roles, role),
+                      color: getRoleInk(roles, role),
                     }}
                   >
                     {Math.round(byRole[role] ?? 0).toLocaleString('ru')}
@@ -866,6 +866,8 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
           opacity: collapsed ? 0 : 1,
           transition: `opacity ${DUR} ${EASE}`,
           pointerEvents: collapsed ? 'none' : 'auto',
+          // Обложка прячет невидимый слой целиком — его текст не должен попадать в проверку контраста.
+          visibility: collapsed ? 'var(--rs-hidden-layer, visible)' as 'visible' : 'visible',
         }}
         aria-hidden={collapsed}
       >
@@ -882,7 +884,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
           transition: `opacity ${DUR} ${EASE}`,
           pointerEvents: collapsed ? 'auto' : 'none',
           // До первого замера прячем — иначе мерцает поверх expandedCard.
-          visibility: measured ? 'visible' : 'hidden',
+          visibility: measured ? (collapsed ? 'visible' : 'var(--rs-hidden-layer, visible)' as 'visible') : 'hidden',
         }}
         aria-hidden={!collapsed}
       >

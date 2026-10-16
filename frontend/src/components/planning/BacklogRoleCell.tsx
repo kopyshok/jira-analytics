@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react';
 import { Tooltip } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
-import { useAppTheme } from '../../contexts/ThemeContext';
+import { useAppTheme, useSkin } from '../../contexts/ThemeContext';
+import { readablePair } from '../../utils/readableColor';
 
 interface BacklogRoleCellProps {
   label: string;       // 'АН' | 'ПР' | 'ТС' | 'ОПЭ'
@@ -42,8 +43,10 @@ export default function BacklogRoleCell({
   // но текст переключаем на тёмный для light.
   const { mode } = useAppTheme();
   const isLight = mode === 'light';
-  const fillText = isLight ? '#1a1f2c' : '#ffffff';
-  const filledBg = `linear-gradient(180deg, ${color}aa 0%, ${color}44 100%)`;
+  // Обложка: плоская ячейка — светлая подложка роли и тёмный текст того же оттенка (≥ 4.5:1).
+  const pair = useSkin() ? readablePair(color) : null;
+  const fillText = pair ? '#1C1C1A' : isLight ? '#1a1f2c' : '#ffffff';
+  const filledBg = pair ? pair.bg : `linear-gradient(180deg, ${color}aa 0%, ${color}44 100%)`;
 
   const hasJiraData = (involvement != null) || (durationDays != null);
   const tooltipLines: string[] = [];
@@ -65,10 +68,14 @@ export default function BacklogRoleCell({
         padding: '5px 6px 4px',
         textAlign: 'center',
         background: empty
-          ? `${color}1a`
+          ? (pair ? '#FFFFFF' : `${color}1a`)
           : filledBg,
-        border: empty ? `1px solid ${color}55` : `1px solid ${color}cc`,
-        borderBottom: empty ? `2px solid ${color}77` : `2px solid ${color}`,
+        border: pair
+          ? `1px solid ${empty ? '#E2E0DA' : pair.border}`
+          : empty ? `1px solid ${color}55` : `1px solid ${color}cc`,
+        borderBottom: pair
+          ? `2px solid ${empty ? '#E2E0DA' : color}`
+          : empty ? `2px solid ${color}77` : `2px solid ${color}`,
         userSelect: 'none',
         position: disputed ? 'relative' : undefined,
         outline: disputed ? `2px dashed ${WARN}` : undefined,
@@ -82,8 +89,8 @@ export default function BacklogRoleCell({
           fontWeight: 800,
           letterSpacing: '0.07em',
           textTransform: 'uppercase',
-          color: empty ? `${color}` : fillText,
-          opacity: empty ? 0.6 : 1,
+          color: pair ? pair.fg : empty ? `${color}` : fillText,
+          opacity: empty && !pair ? 0.6 : 1,
           marginBottom: 2,
         }}
       >
@@ -94,7 +101,7 @@ export default function BacklogRoleCell({
           style={{
             fontSize: 16,
             fontWeight: 800,
-            color: empty ? DARK_THEME.textDim : fillText,
+            color: empty ? (pair ? '#5C5A55' : DARK_THEME.textDim) : fillText,
           }}
         >
           {empty ? '—' : hours}
@@ -116,8 +123,8 @@ export default function BacklogRoleCell({
       <div
         style={{
           fontSize: 10,
-          color: empty ? DARK_THEME.textMuted : fillText,
-          opacity: empty ? 0.6 : 0.7,
+          color: pair ? (empty ? '#5C5A55' : pair.fg) : empty ? DARK_THEME.textMuted : fillText,
+          opacity: pair ? 1 : empty ? 0.6 : 0.7,
         }}
       >
         {empty ? '0%' : `${pct}%`}
