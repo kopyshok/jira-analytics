@@ -42,5 +42,8 @@ python-dotenv>=1.0.0
 --extra-index-url https://download.pytorch.org/whl/cpu
 # >= 2.6.0: CVE-2025-32434 (torch.load выполняет код из файла модели даже с weights_only=True)
 torch==2.13.0+cpu
-sentence-transformers==2.7.0
+# >= 5.6.0: CVE-2026-68770 (код из локальной папки модели в обход trust_remote_code)
+sentence-transformers==5.7.0
+# Проверенная пара с sentence-transformers 5.7 (векторы e5 совпадают с 2.7); 5.x — отдельный шаг
+transformers==4.57.6
 numpy>=1.26,<2

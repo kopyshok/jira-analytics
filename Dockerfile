@@ -89,7 +89,8 @@ RUN chmod +x /app/scripts/entrypoint.sh
 COPY --from=frontend-builder /build/frontend/dist ./app/static/
 
 # Mutable data directory for exports / generated artifacts
-RUN mkdir -p /app/data && chown -R app:app /app /opt/hf-cache
+# /opt/hf-cache остаётся за root: сервис модель только читает, подложить в неё файлы не может.
+RUN mkdir -p /app/data && chown -R app:app /app
 
 ENV HF_HOME=/opt/hf-cache
 # Модель уже в образе: в работе к HuggingFace не ходим — ни скачивания, ни подмены.
