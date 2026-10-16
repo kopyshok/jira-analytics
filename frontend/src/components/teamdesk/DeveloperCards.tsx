@@ -6,6 +6,7 @@ import {
 import type { QueueScope } from './queueFilter';
 import { HoursScale } from './HoursScale';
 import { StatusCounters } from './StatusCounters';
+import { accuracyLevel, developerSeverity } from './deskSignals';
 
 function initials(name: string | null): string {
   if (!name) return '?';
@@ -13,11 +14,11 @@ function initials(name: string | null): string {
   return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 
+const ACCURACY_COLOR = { bad: '#ff6b6b', warn: '#eeb13c', good: '#3ebd85' } as const;
+
 function accuracyColor(value: number | null): string | undefined {
-  if (value == null) return undefined;
-  if (value > 1.3) return '#ff6b6b';
-  if (value < 0.7) return '#eeb13c';
-  return '#3ebd85';
+  const level = accuracyLevel(value);
+  return level ? ACCURACY_COLOR[level] : undefined;
 }
 
 interface Props {
@@ -82,7 +83,7 @@ export function DeveloperCards({
   return (
     <Row gutter={[10, 10]}>
       {developers.map((dev) => {
-        const severity = dev.flag_counts.over ? 2 : (dev.flag_counts.decomp || dev.flag_counts.stale) ? 1 : 0;
+        const severity = developerSeverity(dev);
         const load = workload[dev.developer_id];
         const isSelected = selected === dev.developer_id;
         return (

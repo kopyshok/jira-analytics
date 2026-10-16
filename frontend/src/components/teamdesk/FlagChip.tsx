@@ -104,7 +104,7 @@ export function FlagList({
   const reviewedMap = new Map(reviewed.map((r) => [r.flag, r]));
 
   if (flags.length === 0) {
-    return <span style={{ opacity: 0.35 }}>—</span>;
+    return <span style={{ opacity: 'var(--fc-none-opacity, 0.35)', color: 'var(--fc-none-color, inherit)' }}>—</span>;
   }
   return (
     <span>

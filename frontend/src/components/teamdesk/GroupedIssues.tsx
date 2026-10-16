@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import {
-  Button, Card, Checkbox, Dropdown, InputNumber, Space, Switch, Table, Tag, Tooltip, Typography,
+  Button, Card, Checkbox, Dropdown, InputNumber, Segmented, Space, Switch, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -29,7 +29,7 @@ interface Row extends Partial<DeskIssue> {
 }
 
 interface Props {
-  title: string;
+  title: React.ReactNode;
   developers: DeskDeveloper[];
   issues: DeskIssue[];
   overrunPct: number;
@@ -70,6 +70,8 @@ interface Props {
   refreshing?: boolean;
   /** Обновление из Jira запрещено до завершения переезда — кнопка видна, но не нажимается. */
   refreshBlocked?: boolean;
+  /** Встроено модулем раскладки (обложка): без карточки, шапка таблицы липкая, прокрутка внутри. */
+  docked?: boolean;
 }
 
 /** Подписи колонок для настройки видимости. «Задача» не убирается. */
@@ -193,6 +195,7 @@ export function GroupedIssues({
   sprintFilter = [], releaseFilter = [],
   columnWidths = {}, onColumnWidthsChange,
   onHiddenColumnsChange, onGroupByDeveloperChange, onRefreshVisible, refreshing = false, refreshBlocked = false,
+  docked = false,
 }: Props) {
   const [sort, setSort] = useState<SortState>(null);
   // Пока тянут мышкой, ширина живёт на экране; в профиль уходит один раз,
@@ -429,7 +432,7 @@ export function GroupedIssues({
       ? [{
           title: (
             <Tooltip title="Часов в день по «резиновой» задаче: в очередь пойдёт норма за настроенное число дней, а не весь остаток">
-              <span style={{ borderBottom: '1px dotted rgba(160,175,195,0.6)' }}>
+              <span style={{ borderBottom: '1px dotted var(--td-dotline, rgba(160,175,195,0.6))' }}>
                 DevForDay
               </span>
             </Tooltip>
@@ -479,7 +482,7 @@ export function GroupedIssues({
               </div>
             }
           >
-            <span style={{ borderBottom: '1px dotted rgba(160,175,195,0.6)' }}>{hours}</span>
+            <span style={{ borderBottom: '1px dotted var(--td-dotline, rgba(160,175,195,0.6))' }}>{hours}</span>
           </Tooltip>
         );
       },
@@ -493,7 +496,7 @@ export function GroupedIssues({
         if (row.est_hours == null) return '—';
         // Минус — перерасход: оценка исчерпана, работа продолжается.
         const left = roundHours(row.est_hours - (row.fact_hours ?? 0));
-        return <span style={{ color: left < 0 ? '#ff6b6b' : undefined }}>{left}</span>;
+        return <span style={{ color: left < 0 ? 'var(--td-bad, #ff6b6b)' : undefined }}>{left}</span>;
       },
     },
     {
@@ -594,26 +597,31 @@ export function GroupedIssues({
     (sum, col) => sum + ((col.width as number | undefined) ?? 160), 0,
   );
 
-  return (
-    <Card
+  // Группировка: в обложке — ряд клавиш «по людям | списком», в Aurora — переключатель.
+  const groupToggle = onGroupByDeveloperChange && (docked ? (
+    <Segmented
       size="small"
-      title={title}
-      extra={
-        <Space size="small">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {hint ? `${hint} · ` : ''}{shown} задач
-          </Typography.Text>
-          {onGroupByDeveloperChange && (
-            <Tooltip title="Группировать задачи по разработчикам">
-              <Switch
-                size="small"
-                checked={groupByDeveloper}
-                onChange={onGroupByDeveloperChange}
-                checkedChildren="по людям"
-                unCheckedChildren="списком"
-              />
-            </Tooltip>
-          )}
+      value={groupByDeveloper ? 'people' : 'list'}
+      onChange={(v) => onGroupByDeveloperChange(v === 'people')}
+      options={[
+        { label: 'по людям', value: 'people' },
+        { label: 'списком', value: 'list' },
+      ]}
+    />
+  ) : (
+    <Tooltip title="Группировать задачи по разработчикам">
+      <Switch
+        size="small"
+        checked={groupByDeveloper}
+        onChange={onGroupByDeveloperChange}
+        checkedChildren="по людям"
+        unCheckedChildren="списком"
+      />
+    </Tooltip>
+  ));
+
+  const tools = (
+    <>
           {onHiddenColumnsChange && (
             <Dropdown
               trigger={['click']}
@@ -649,9 +657,10 @@ export function GroupedIssues({
               </Button>
             </Tooltip>
           )}
-        </Space>
-      }
-    >
+    </>
+  );
+
+  const table = (
       <div ref={tableRef}>
       <Table<Row>
         size="small"
@@ -683,8 +692,41 @@ export function GroupedIssues({
             ? { onClick: () => toggle(row.rowKey), style: { cursor: 'pointer' } }
             : {}
         }
+        sticky={docked || undefined}
       />
       </div>
+  );
+
+  if (docked) {
+    return (
+      <section className="pm td-issues" aria-label="Задачи">
+        <div className="pm-head">
+          {title}
+          <span className="pc-count">{shown} задач</span>
+          {hint && <span className="td-hint">{hint}</span>}
+          {groupToggle}
+          <span className="pm-push td-tools">{tools}</span>
+        </div>
+        <div className="pm-screen td-issues-screen">{table}</div>
+      </section>
+    );
+  }
+
+  return (
+    <Card
+      size="small"
+      title={title}
+      extra={
+        <Space size="small">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {hint ? `${hint} · ` : ''}{shown} задач
+          </Typography.Text>
+          {groupToggle}
+          {tools}
+        </Space>
+      }
+    >
+      {table}
     </Card>
   );
 }

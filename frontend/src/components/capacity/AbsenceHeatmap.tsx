@@ -1,6 +1,6 @@
 import { Tooltip } from 'antd';
 import dayjs from 'dayjs';
-import { useAppTheme } from '../../contexts/ThemeContext';
+import { useAppTheme, useSkin } from '../../contexts/ThemeContext';
 import { DARK_THEME } from '../../utils/constants';
 import type { AbsenceResponse } from '../../types/api';
 
@@ -25,6 +25,7 @@ interface Props {
 export default function AbsenceHeatmap({ year, quarter, employees, absences }: Props) {
   const { mode } = useAppTheme();
   const isLight = mode === 'light';
+  const skin = useSkin();
 
   const months = QUARTER_MONTHS[quarter] ?? [];
   if (months.length === 0) return null;
@@ -53,8 +54,19 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences }: P
     return null;
   };
 
-  // Палитра ячеек: тёмная и светлая.
-  const palette = isLight
+  // Палитра ячеек: обложка, светлая и тёмная.
+  const palette = skin
+    ? {
+        weekendBg: '#E1DED7',
+        emptyBg: '#FFFFFF',
+        cellBorder: '#CFCCC4',
+        monthSep: '#9A978F',
+        monthLabel: '#1C1C1A',
+        dayHeader: '#5C5A55',
+        weekendHeader: '#5C5A55',
+        nameColor: '#1C1C1A',
+      }
+    : isLight
     ? {
         weekendBg: '#dde3ec',
         emptyBg: '#eef2f7',
