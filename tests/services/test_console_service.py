@@ -117,3 +117,102 @@ def test_masker_keeps_short_names_in_text():
     m = cs.Masker()
     m.walk({"displayName": "Jira"})
     assert m.scrub("Jira Software") == "Jira Software"
+
+
+def _transport(routes: dict):
+    """Ответы по пути; значение — httpx.Response или исключение."""
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        got = routes[request.url.path]
+        if isinstance(got, Exception):
+            raise got
+        return got
+
+    return httpx.MockTransport(handler), seen
+
+
+async def _run(text, routes, mask=False, **kw):
+    transport, seen = _transport(routes)
+    lines = cs.parse_lines(text, BASE, "jira")
+    result = await cs.execute(lines, "jira", mask, BASE, "secret-token", transport=transport, **kw)
+    return result, seen
+
+
+async def test_execute_formats_blocks_and_counts():
+    result, seen = await _run(
+        "# сервер\n/rest/api/2/serverInfo\n/rest/api/2/issue/OS-1\n//evil.com/x",
+        {
+            "/rest/api/2/serverInfo": httpx.Response(200, json={"version": "11.3.7"}),
+            "/rest/api/2/issue/OS-1": httpx.Response(404, json={"errorMessages": ["Issue Does Not Exist"]}),
+        },
+    )
+    out = result.output
+    assert out.startswith("=== Jira ===\nЗапросов: 3, с ошибкой: 1, отклонено: 1, не выполнено: 0")
+    assert "# сервер\n### 1. /rest/api/2/serverInfo\n→ 200 · " in out
+    assert '{\n  "version": "11.3.7"\n}' in out
+    assert "### 2. /rest/api/2/issue/OS-1\n→ 404 · " in out
+    assert "Issue Does Not Exist" in out
+    assert "### 3. //evil.com/x\n→ отклонено: ссылка ведёт не на Jira" in out
+    assert (result.request_count, result.error_count, result.rejected_count) == (3, 1, 1)
+    assert [r.method for r in seen] == ["GET", "GET"]
+    assert seen[0].headers["Authorization"] == "Bearer secret-token"
+    assert "secret-token" not in out
+
+
+async def test_execute_non_json_redirect_and_network_error():
+    result, _ = await _run(
+        "/rest/a\n/rest/b\n/rest/c",
+        {
+            "/rest/a": httpx.Response(200, text="<html>вход</html>"),
+            "/rest/b": httpx.Response(302, headers={"location": "https://sso.example.ru/login"}),
+            "/rest/c": httpx.ConnectError("refused"),
+        },
+    )
+    assert "<html>вход</html>" in result.output
+    assert "→ 302 · " in result.output and "Перенаправление: https://sso.example.ru/login" in result.output
+    assert "### 3. /rest/c\n→ нет ответа: ConnectError" in result.output
+    assert result.error_count == 1
+
+
+async def test_execute_masks_across_requests():
+    result, _ = await _run(
+        "/rest/a\n/rest/b",
+        {
+            "/rest/a": httpx.Response(200, text="Ответственный: Иванов Иван"),
+            "/rest/b": httpx.Response(200, json={"assignee": {"displayName": "Иванов Иван",
+                                                              "name": "Ivanov_I_I"}}),
+        },
+        mask=True,
+    )
+    assert result.output.startswith("=== Jira · имена и почта скрыты ===")
+    assert "Иванов Иван" not in result.output
+    assert "Ответственный: Человек-1" in result.output
+    assert '"name": "Ivanov_I_I"' in result.output
+
+
+async def test_execute_truncates_long_response(monkeypatch):
+    monkeypatch.setattr(cs, "MAX_RESPONSE_CHARS", 10)
+    result, _ = await _run("/rest/a", {"/rest/a": httpx.Response(200, text="x" * 50)})
+    assert "xxxxxxxxxx\n… обрезано, показано" in result.output
+    assert "x" * 11 not in result.output
+
+
+async def test_execute_stops_on_output_limit(monkeypatch):
+    monkeypatch.setattr(cs, "MAX_OUTPUT_CHARS", 10)
+    result, seen = await _run("/rest/a\n/rest/b",
+                              {"/rest/a": httpx.Response(200, text="x" * 20),
+                               "/rest/b": httpx.Response(200, text="y")})
+    assert len(seen) == 1
+    assert "### 2. /rest/b\n→ не выполнено — результат слишком большой" in result.output
+
+
+async def test_execute_stops_on_time_budget():
+    ticks = iter([0.0, 0.0, 0.0, 200.0, 200.0, 200.0, 200.0])
+    result, seen = await _run("/rest/a\n/rest/b",
+                              {"/rest/a": httpx.Response(200, text="a"),
+                               "/rest/b": httpx.Response(200, text="b")},
+                              clock=lambda: next(ticks))
+    assert len(seen) == 1
+    assert "### 2. /rest/b\n→ не выполнено — вышло общее время" in result.output

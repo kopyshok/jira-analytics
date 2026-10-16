@@ -5,9 +5,11 @@
 Только GET, только на адрес системы из настроек и только пути `rest/…` —
 иначе токен ушёл бы на чужой сервер.
 """
+import json
 import re
+import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import urlsplit
 
 import httpx
@@ -17,6 +19,11 @@ from app.config import get_settings
 from app.models.app_setting import AppSetting
 
 MAX_REQUESTS = 50
+REQUEST_TIMEOUT_S = 60.0
+# Прокси на сервере рвёт запрос через 120 с — оставляем запас.
+RUN_BUDGET_S = 100.0
+MAX_RESPONSE_CHARS = 5 * 1024 * 1024
+MAX_OUTPUT_CHARS = 10 * 1024 * 1024
 TARGET_TITLES = {"jira": "Jira", "confluence": "Confluence"}
 
 
@@ -145,3 +152,123 @@ def parse_lines(text: str, base: str, target: str) -> list[Line]:
     if count > MAX_REQUESTS:
         raise ConsoleError(f"Не больше {MAX_REQUESTS} запросов за один запуск, сейчас {count}")
     return lines
+
+
+@dataclass
+class RunResult:
+    output: str
+    request_count: int
+    error_count: int
+    rejected_count: int
+    duration_ms: int
+
+
+def _secs(seconds: float, digits: int = 2) -> str:
+    return f"{seconds:.{digits}f}".replace(".", ",")
+
+
+def _mb(chars: int) -> str:
+    return f"{chars / 1024 / 1024:.1f}".replace(".", ",")
+
+
+def _body(resp: httpx.Response, masker: Optional[Masker]) -> str:
+    """Тело ответа: JSON с отступами, иначе текст; длинное — обрезать."""
+    if 300 <= resp.status_code < 400:
+        return f"Перенаправление: {resp.headers.get('location', '—')}"
+    try:
+        data = resp.json()
+    except ValueError:
+        text = resp.text
+    else:
+        if masker:
+            data = masker.walk(data)
+        text = json.dumps(data, ensure_ascii=False, indent=2)
+    if len(text) > MAX_RESPONSE_CHARS:
+        text = (
+            text[:MAX_RESPONSE_CHARS]
+            + f"\n… обрезано, показано {_mb(MAX_RESPONSE_CHARS)} МБ из {_mb(len(text))} МБ"
+        )
+    return text
+
+
+async def execute(
+    lines: list[Line],
+    target: str,
+    mask: bool,
+    base: str,
+    token: str,
+    *,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> RunResult:
+    """Выполнить запросы по очереди и собрать один текст.
+
+    Ошибка одного запроса пакет не останавливает. Когда вышло общее время или
+    результат стал слишком большим, оставшиеся строки помечаются невыполненными.
+    """
+    masker = Masker() if mask else None
+    start = clock()
+    # (заголовок, тело или None, пустая строка после блока)
+    blocks: list[tuple[list[str], Optional[str], bool]] = []
+    count = errors = rejected = skipped = total = 0
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    async with httpx.AsyncClient(
+        headers=headers, follow_redirects=False, transport=transport,
+    ) as client:
+        for line in lines:
+            if line.comment:
+                blocks.append(([line.text], None, False))
+                continue
+            count += 1
+            head = [f"### {count}. {line.text}"]
+            if line.reject or not line.url:
+                rejected += 1
+                blocks.append((head + [f"→ отклонено: {line.reject}"], None, True))
+                continue
+            left = RUN_BUDGET_S - (clock() - start)
+            if left <= 0:
+                skipped += 1
+                blocks.append((head + ["→ не выполнено — вышло общее время, запустите эти строки отдельно"], None, True))
+                continue
+            if total >= MAX_OUTPUT_CHARS:
+                skipped += 1
+                blocks.append((head + ["→ не выполнено — результат слишком большой"], None, True))
+                continue
+            t0 = clock()
+            try:
+                resp = await client.get(line.url, timeout=min(REQUEST_TIMEOUT_S, left))
+            except httpx.TimeoutException:
+                errors += 1
+                blocks.append((head + [f"→ нет ответа за {_secs(clock() - t0)} с"], None, True))
+                continue
+            except (httpx.HTTPError, httpx.InvalidURL) as e:
+                errors += 1
+                blocks.append((head + [f"→ нет ответа: {type(e).__name__}: {e}"], None, True))
+                continue
+            if resp.status_code >= 400:
+                errors += 1
+            body = _body(resp, masker)
+            total += len(body)
+            blocks.append((head + [f"→ {resp.status_code} · {_secs(clock() - t0)} с"], body, True))
+
+    elapsed = clock() - start
+    out = [
+        f"=== {TARGET_TITLES[target]}{' · имена и почта скрыты' if mask else ''} ===",
+        f"Запросов: {count}, с ошибкой: {errors}, отклонено: {rejected}, "
+        f"не выполнено: {skipped}, время: {_secs(elapsed, 1)} с",
+        "",
+    ]
+    for head, body, gap in blocks:
+        out.extend(head)
+        if body is not None:
+            # Имена из поздних ответов скрываем и в ранних — поэтому в самом конце.
+            out.append(masker.scrub(body) if masker else body)
+        if gap:
+            out.append("")
+    return RunResult(
+        output="\n".join(out).rstrip() + "\n",
+        request_count=count,
+        error_count=errors,
+        rejected_count=rejected,
+        duration_ms=int(elapsed * 1000),
+    )
