@@ -11,7 +11,7 @@ import { useHeartbeat } from '../../lib/usage/useHeartbeat';
 import { useEventStream } from '../../hooks/useEventStream';
 import { useThemeSync } from '../../hooks/useTheme';
 
-function UsageTracker(): ReactNode {
+export function UsageTracker(): ReactNode {
   usePageView();
   useHeartbeat();
   return null;

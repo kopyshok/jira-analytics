@@ -1,0 +1,987 @@
+/* ============================================================
+   Обложка «Швейцарская» (International Typographic Style).
+   Ложится поверх Aurora light:
+     <html data-theme="aurora" data-mode="light" data-skin="swiss">
+   Все правила начинаются с полного префикса — специфичность выше, чем у
+   Aurora light, и файл подключён последним, поэтому Aurora-правила (включая
+   !important) перекрываются. У самих Aurora-тем атрибута data-skin нет —
+   они этот файл не замечают.
+
+   Принципы: белый лист, чёрный текст, один красно-оранжевый акцент;
+   скруглений 0, теней 0, стекла и градиентов нет; структура держится
+   на линиях (#111 — главные, #E2E2E2 — сетка) и пустом месте; числа табличные.
+   ============================================================ */
+
+@import '@fontsource/geologica/400.css';
+@import '@fontsource/geologica/500.css';
+@import '@fontsource/geologica/700.css';
+@import '@fontsource/geologica/800.css';
+
+/* ---------------- Переменные ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
+  --sw-accent: #E5401F;        /* линии, крупные цифры, подчёркивания */
+  --sw-accent-ink: #D9391A;    /* текст и заливка под белым текстом: 4.6:1 */
+  --sw-ink: #111111;
+  --sw-ink-2: #3A3A3A;
+  --sw-muted: #5E5E5E;
+  --sw-line: #E2E2E2;
+  --sw-fill: #F4F4F4;
+  --sw-font: 'Geologica', 'Segoe UI', Arial, sans-serif;
+  --sw-mono: 'JetBrains Mono', ui-monospace, 'Consolas', monospace;
+
+  /* контракт Aurora */
+  --bg: #FFFFFF;
+  --text: #111111;
+  --text-2: #3A3A3A;
+  --text-muted: #5E5E5E;
+  --accent-1: #111111;
+  --accent-2: #111111;
+  --on-accent: #FFFFFF;
+  --accent-border: #111111;
+  --accent-glow: transparent;
+  --wash-1: transparent;
+  --wash-2: transparent;
+  --grain: 0;
+  --glass-bg: #FFFFFF;
+  --glass-border: #E2E2E2;
+  --glass-sheen: transparent;
+  --glass-shadow: none;
+  --pill-bg: #FFFFFF;
+  --pill-border: #111111;
+  --track-bg: #E2E2E2;
+  --good: #1E7A3E;
+  --warn: #9A6400;
+  --bad: #D9391A;
+  --modal-tile-bg: #F4F4F4;
+  --mini-tile-bg: #F4F4F4;
+  --key-chip-bg: #F4F4F4;
+  --key-chip-border: #E2E2E2;
+  --row-included-bg: #F4F4F4;
+  --row-excluded-bg: transparent;
+  --neu-d: #E2E2E2;
+  --neu-l: #FFFFFF;
+  --neu-raised: none;
+  --neu-raised-lg: none;
+  --neu-inset: none;
+  --neu-sm: none;
+  --marker-issue-bg: #F4F4F4;
+  --marker-issue-fg: #111111;
+  --radius: 0px;
+  --radius-sm: 0px;
+  --radius-pill: 0px;
+  --blur: 0px;
+  --font-display: var(--sw-font);
+  --font-body: var(--sw-font);
+  --font-mono: var(--sw-font);
+
+  /* классические переменные index.css (справка, заголовки, разбор задач) */
+  --color-page: #FFFFFF;
+  --color-sidebar: #FFFFFF;
+  --color-card: #FFFFFF;
+  --color-border: #E2E2E2;
+  --color-cyan: #111111;
+  --color-cyan-2: #5E5E5E;
+  --color-amber: #9A6400;
+  --color-text: #111111;
+  --color-text-muted: #5E5E5E;
+
+  font-family: var(--sw-font);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: #111111;
+  background: #FFFFFF;
+}
+
+/* ---------------- Лист: без подсветок, зерна, размытия ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] body {
+  background: #FFFFFF !important;
+  color: #111111;
+  font-family: var(--sw-font);
+  font-weight: 400;
+  font-feature-settings: normal;
+  letter-spacing: 0;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] body::before,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] body::after { display: none !important; }
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] *,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] *::before,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] ::selection { background: #111111; color: #FFFFFF; }
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] :focus-visible:not(input):not(textarea) {
+  outline: 2px solid #111111 !important;
+  outline-offset: 2px;
+}
+
+/* Полосы прокрутки — тонкие, прямоугольные */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] ::-webkit-scrollbar { width: 8px; height: 8px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] ::-webkit-scrollbar-track { background: #FFFFFF; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] ::-webkit-scrollbar-thumb,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .scroll-y::-webkit-scrollbar-thumb { background: #C9C9C9; border-radius: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] ::-webkit-scrollbar-thumb:hover { background: #111111; }
+
+/* ---------------- Оболочка: двухъярусная навигация ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #FFFFFF;
+  color: #111111;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-tier1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0 24px;
+  min-height: 48px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--sw-line);
+  flex-shrink: 0;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-tier1-left {
+  display: flex;
+  align-items: stretch;
+  gap: 32px;
+  min-width: 0;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-brand b { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-version { font-size: 11px; color: var(--sw-muted); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-groups {
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 2px 0;
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--sw-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-group:hover { color: #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-group-num { font-size: 11px; font-weight: 700; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-group.is-current .sw-group-num { color: var(--sw-accent-ink); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-group.is-shown {
+  color: #111111;
+  font-weight: 700;
+  border-bottom-color: var(--sw-accent);
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 16px;
+  padding: 8px 0;
+  font-size: 12px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-avatar {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #111111;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 700;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: none;
+  border: 0;
+  color: #111111;
+  cursor: pointer;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-icon-btn:hover { color: var(--sw-accent-ink); }
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-tier2 {
+  display: flex;
+  align-items: stretch;
+  gap: 0 24px;
+  min-height: 40px;
+  padding: 0 32px;
+  border-bottom: 1px solid #111111;
+  font-size: 13px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  flex-shrink: 0;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-item {
+  display: flex;
+  align-items: center;
+  padding-top: 2px;
+  border-bottom: 2px solid transparent;
+  color: var(--sw-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-item:hover { color: #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-item.is-active {
+  color: #111111;
+  font-weight: 700;
+  border-bottom-color: #111111;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-main {
+  flex: 1;
+  min-height: 0;
+  padding: 24px 32px 32px;
+  overflow-y: auto;
+}
+
+/* Общие элементы управления в ярусе 1 — текстом с линией, без «пилюль» */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-testid="sync-indicator"] {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  color: #111111 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-testid="sync-indicator"] > span:first-child { box-shadow: none !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-team"] .ant-btn {
+  height: auto;
+  padding: 2px 0 !important;
+  border: 0 !important;
+  border-bottom: 1px solid #111111 !important;
+  background: none !important;
+  font-size: 12px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-team"] .ant-btn:hover { color: var(--sw-accent-ink) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-period"] .ant-select {
+  border-width: 0 0 1px !important;
+  border-color: #111111 !important;
+  background: none !important;
+  font-size: 12px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-onboarding"] {
+  background: #111111 !important;
+  color: #FFFFFF !important;
+  padding: 0 10px !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-onboarding"]:hover { background: var(--sw-accent-ink) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-help"] .ant-btn { color: #111111 !important; }
+
+@media (max-width: 1600px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-user-name { display: none; }
+}
+@media (max-width: 1500px) {
+  /* Компактный ярус 1: на 1366 px всё помещается в одну строку */
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-tier1,
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-tier2,
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-main { padding-left: 24px; padding-right: 24px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-tier1 { gap: 0 16px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-tier1-left { gap: 24px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-groups { gap: 16px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-group { font-size: 13px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-controls { gap: 8px 10px; }
+  /* синхронизация — только точка и время */
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-testid="sync-indicator"] > span:nth-child(2),
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-testid="sync-indicator"] > span:nth-child(3) { display: none; }
+  /* длинное имя команды — многоточием */
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-team"] .ant-btn {
+    max-width: 170px;
+    justify-content: flex-start;
+    overflow: hidden;
+  }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-team"] .ant-btn > .ant-space { min-width: 0; flex: 1 1 auto; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-team"] .ant-btn .ant-space-item:first-child {
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-period"] .ant-space-item:nth-child(1) .ant-select { min-width: 68px !important; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-period"] .ant-space-item:nth-child(2) .ant-select { min-width: 108px !important; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls [data-tour="header-period"] .ant-space-item:nth-child(3) .ant-select { min-width: 72px !important; }
+  /* тема — только цветная точка, название — в выпадающем списке */
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls .sw-theme .ant-select { width: 48px !important; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-controls .sw-theme .ant-select-content > span > span:nth-child(2) { display: none; }
+}
+@media (max-width: 900px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-tier1,
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-tier2,
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-main { padding-left: 16px; padding-right: 16px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-tier1-left { flex-wrap: wrap; gap: 0 16px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-groups { gap: 16px; overflow-x: auto; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-controls { justify-content: flex-start; }
+}
+
+/* ---------------- Шапка страницы (PageHeader) ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .page-header { margin-bottom: 24px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .page-header-eyebrow {
+  margin-bottom: 8px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em !important;
+  color: var(--sw-muted) !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .page-header-title {
+  font-family: var(--sw-font) !important;
+  font-size: 32px !important;
+  font-weight: 700 !important;
+  line-height: 1.05;
+  letter-spacing: -0.015em !important;
+  color: #111111;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .page-header-subtitle {
+  margin-top: 8px !important;
+  max-width: 820px;
+  font-size: 13px !important;
+  line-height: 1.45;
+  color: var(--sw-muted) !important;
+}
+
+/* ---------------- Типографика ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] h1.page-title,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-typography.page-title {
+  font-family: var(--sw-font) !important;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #111111;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .page-subtitle { color: var(--sw-muted); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .serif { font-family: var(--sw-font); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .num { font-family: var(--sw-font); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--sw-muted);
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .accent-grad {
+  background: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  color: #111111 !important;
+  -webkit-text-fill-color: currentColor;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] code,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] kbd,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-typography code,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .help-code-inline,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .help-code-block { font-family: var(--sw-mono) !important; }
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-typography h1,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-typography h2,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-typography h3,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] h1.ant-typography,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] h2.ant-typography,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] h3.ant-typography,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] h4.ant-typography,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] h5.ant-typography { font-family: var(--sw-font); font-weight: 700; letter-spacing: -0.01em; }
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-statistic-title {
+  font-size: 11px !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--sw-muted) !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-statistic-content-value,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-statistic-content-prefix,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-statistic-content-suffix {
+  font-family: var(--sw-font) !important;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-form-item-label > label { font-size: 12px; font-weight: 700; color: #111111; }
+
+/* ---------------- Поверхности: линия сверху вместо коробки ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .glass,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-card {
+  background: #FFFFFF !important;
+  border: 0 !important;
+  border-top: 2px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .glass::before,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-card::before { display: none !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .glass-hover:hover,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-card:hover,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .kpi-card:hover {
+  transform: none !important;
+  box-shadow: none !important;
+  border-top-color: #111111 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-card.ant-card-hoverable:hover,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .glass-hover:hover,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .kpi-card:hover { border-top-color: var(--sw-accent) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .glass .glass,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-card .ant-card,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-content .ant-card,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-content .ant-card {
+  background: #FFFFFF !important;
+  border: 0 !important;
+  border-top: 1px solid var(--sw-line) !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-card .ant-card-head {
+  min-height: 40px;
+  padding: 0 !important;
+  border-bottom: 1px solid var(--sw-line) !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-card .ant-card-head-title {
+  font-family: var(--sw-font) !important;
+  font-size: 14px;
+  font-weight: 700 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-card .ant-card-body { padding-left: 0 !important; padding-right: 0 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-card .ant-card-actions { background: #FFFFFF; border-top: 1px solid var(--sw-line); }
+
+/* Всплывающая подсказка графика на .glass — рамкой */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .recharts-tooltip-wrapper .glass {
+  border: 1px solid #111111 !important;
+  padding: 8px 12px !important;
+}
+
+/* ---------------- Кнопки ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-btn {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-family: var(--sw-font);
+  font-weight: 500;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-btn-primary:not(:disabled) {
+  background: var(--sw-accent-ink) !important;
+  background-image: none !important;
+  border: 1px solid var(--sw-accent-ink) !important;
+  color: #FFFFFF !important;
+  font-weight: 700;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-btn-primary:not(:disabled):hover {
+  background: #111111 !important;
+  border-color: #111111 !important;
+  filter: none;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-btn-default:not(:disabled):not(.ant-btn-dangerous) {
+  background: #FFFFFF !important;
+  border: 1px solid #111111 !important;
+  color: #111111 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-btn-default:not(:disabled):not(.ant-btn-dangerous):hover {
+  background: var(--sw-fill) !important;
+  color: #111111 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-btn:disabled,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-btn-default:disabled {
+  background: #FFFFFF !important;
+  background-image: none !important;
+  border: 1px solid var(--sw-line) !important;
+  color: #8A8A8A !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-btn-dangerous.ant-btn-default:not(:disabled) {
+  background: #FFFFFF !important;
+  border: 1px solid var(--sw-accent-ink) !important;
+  color: var(--sw-accent-ink) !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-btn-text:disabled,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-btn-link:disabled { border-color: transparent !important; background: none !important; }
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gbtn { border-radius: 0; box-shadow: none !important; font-weight: 500; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gbtn-primary {
+  background: var(--sw-accent-ink) !important;
+  color: #FFFFFF !important;
+  border: 1px solid var(--sw-accent-ink) !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gbtn-primary:hover { background: #111111 !important; border-color: #111111 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gbtn-ghost {
+  background: #FFFFFF !important;
+  color: #111111 !important;
+  border: 1px solid #111111 !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gbtn-ghost:hover { background: var(--sw-fill) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .icon-btn {
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  background: #FFFFFF !important;
+  box-shadow: none !important;
+  color: #111111 !important;
+}
+
+/* ---------------- Поля ввода ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input:not(.ant-input-borderless),
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-password,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-affix-wrapper:not(.ant-input-borderless),
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-number:not(.ant-input-number-borderless),
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-picker:not(.ant-picker-borderless),
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ginput {
+  background: #FFFFFF !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: #111111 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-affix-wrapper > .ant-input,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-affix-wrapper > input,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-number .ant-input-number-input,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-number .ant-input-number-input-wrap,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-picker .ant-picker-input > input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input:not(.ant-input-borderless):focus,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-focused,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-affix-wrapper-focused,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-affix-wrapper:focus-within,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-number-focused,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-number:focus-within,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-picker-focused,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ginput:focus-within {
+  border-color: #111111 !important;
+  box-shadow: 0 0 0 1px #111111 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-affix-wrapper > .ant-input:focus { box-shadow: none !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-status-error:not(.ant-input-borderless),
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-number-status-error,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-picker-status-error,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-select-status-error {
+  border-color: var(--sw-accent-ink) !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-number .ant-input-number-handler-wrap {
+  background: #FFFFFF !important;
+  border-left: 1px solid var(--sw-line) !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input[disabled],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-disabled,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-number-disabled,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-picker-disabled {
+  background: var(--sw-fill) !important;
+  border-color: var(--sw-line) !important;
+  color: #8A8A8A !important;
+}
+
+/* ---------------- Таблицы ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table { border-radius: 0 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-thead > tr > th,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-thead > tr > td {
+  background: #FFFFFF !important;
+  color: #111111 !important;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid #111111 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-thead > tr > th.ant-table-column-sort,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-thead > tr > th.ant-table-column-has-sorters:hover { background: var(--sw-fill) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-tbody > tr > td { border-bottom-color: var(--sw-line) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-tbody > tr:hover > td,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-tbody > tr:hover > td.ant-table-cell-fix,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-tbody > tr.ant-table-row-selected > td {
+  background: var(--sw-fill) !important;
+  background-image: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-cell.ant-table-cell-fix { background: #FFFFFF !important; }
+/* Закреплённые колонки: вместо тени — линия по краю */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-wrapper .ant-table-cell-fix-start-shadow-show::after,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-wrapper .ant-table-cell-fix-end-shadow-show::after,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-wrapper .ant-table-fix-start-shadow-show .ant-table-container::before,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-wrapper .ant-table-fix-end-shadow-show .ant-table-container::after { box-shadow: none !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-wrapper .ant-table-cell-fix-start-shadow-show { box-shadow: inset -1px 0 0 var(--sw-line); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-wrapper .ant-table-cell-fix-end-shadow-show { box-shadow: inset 1px 0 0 var(--sw-line); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-summary > tr > td,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-summary td {
+  border-top: 1px solid #111111 !important;
+  font-weight: 700;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-bordered .ant-table-container,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-table-bordered .ant-table-cell { border-color: var(--sw-line) !important; }
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gtable th {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  color: #111111;
+  border-bottom: 1px solid #111111 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gtable td { border-bottom: 1px solid var(--sw-line) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gtable tbody tr:hover { background: var(--sw-fill) !important; }
+
+/* Глубина дерева — ступени серого вместо голубых заливок */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .tree-row-depth-1 > td { background-color: #FBFBFB !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .tree-row-depth-2 > td { background-color: #F7F7F7 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .tree-row-depth-3 > td { background-color: #F3F3F3 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .tree-row-depth-4 > td { background-color: #EFEFEF !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .tree-row-depth-5 > td { background-color: #EBEBEB !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .tree-row-has-children > td { font-weight: 700; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .involvement-row-editing > td { background-color: var(--sw-fill) !important; }
+
+/* Тепловые ячейки — сплошные светлые тона */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .heat-over { background: #FBE4DE !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .heat-warn { background: #F6EDDA !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .heat-ok   { background: var(--sw-fill) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .heat-good { background: #E5F0E8 !important; }
+
+/* Строки целевых задач: полоса слева — тонкая и плоская */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .backlog-row { border-left-width: 2px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .backlog-row:hover { border-left-color: #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .backlog-row.row-state-no-estimates,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .backlog-row.row-state-no-estimates:hover { border-left-color: #9A6400; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .backlog-row.row-state-deficit,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .backlog-row.row-state-deficit:hover { border-left-color: var(--sw-accent); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .backlog-row.row-state-in-work,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .backlog-row.row-state-in-work:hover { border-left-color: #1E7A3E; }
+
+@keyframes sw-flash {
+  0%   { background-color: #E2E2E2; }
+  100% { background-color: transparent; }
+}
+@keyframes sw-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.12); }
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .cyan-flash { animation-name: sw-flash; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .role-pulse { animation-name: sw-pulse; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .deficit-pulse:hover { animation: none; }
+
+/* ---------------- Вкладки ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tabs-nav::before { border-bottom: 1px solid #111111 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tabs-tab-btn { color: var(--sw-muted); font-weight: 500; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tabs-tab:hover .ant-tabs-tab-btn { color: #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tabs-tab-active .ant-tabs-tab-btn { color: #111111 !important; font-weight: 700; text-shadow: none; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tabs-ink-bar {
+  height: 2px !important;
+  background: #111111 !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gtabs { border-bottom: 1px solid #111111 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gtab { color: var(--sw-muted); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gtab.active { color: #111111; font-weight: 700; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .gtab.active::after {
+  left: 0; right: 0; height: 2px; border-radius: 0;
+  background: #111111; box-shadow: none;
+}
+
+/* ---------------- Переключатели, метки, бейджи ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-segmented {
+  padding: 0 !important;
+  background: #FFFFFF !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-segmented .ant-segmented-item { border-radius: 0 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-segmented .ant-segmented-item + .ant-segmented-item { border-left: 1px solid #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-segmented .ant-segmented-item-selected,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-segmented .ant-segmented-thumb {
+  background: #111111 !important;
+  background-image: none !important;
+  color: #FFFFFF !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .seg {
+  padding: 0;
+  gap: 0;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  background: #FFFFFF !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .seg button { border-radius: 0; color: #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .seg button + button { border-left: 1px solid #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .seg button.active {
+  background: #111111 !important;
+  color: #FFFFFF !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-switch { border-radius: 0 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-switch .ant-switch-handle::before { border-radius: 0 !important; box-shadow: none !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-avatar { border-radius: 0 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-progress-inner,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-progress-bg { border-radius: 0 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .track { border-radius: 0 !important; box-shadow: none !important; background: #E2E2E2 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .track > i { border-radius: 0 !important; }
+
+/* Метки: плоские, без заливки — цвет текста и линия */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-weight: 500;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid):not([style*="background"]) {
+  background: transparent !important;
+  border-color: currentColor !important;
+}
+/* Готовые цвета меток AntD на белом без подложки — темнее, чтобы читались */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-gold,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-yellow,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-warning { color: #9A6400 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-orange { color: #9A5B00 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-red,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-volcano,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-error { color: var(--sw-accent-ink) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-green,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-success { color: #1E7A3E !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-lime { color: #4D7A12 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-cyan { color: #0E7C86 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-blue,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-geekblue,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-processing { color: #1F4FD1 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-purple { color: #7A3E9A !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-magenta,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-pink { color: #A3286A !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pill {
+  background: #FFFFFF !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: #111111 !important;
+  font-weight: 500;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .badge {
+  background: transparent !important;
+  border-color: currentColor !important;
+  border-radius: 0 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .badge-key { border-color: transparent !important; color: #111111 !important; font-weight: 700; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-badge .ant-badge-count { border-radius: 0; box-shadow: none; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-pagination .ant-pagination-item-active {
+  background: #111111 !important;
+  border-color: #111111 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-pagination .ant-pagination-item-active a { color: #FFFFFF !important; }
+
+/* ---------------- Окна, панели, всплывающие слои ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-content,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-content > *,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [class*="ant-modal-section"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [class*="ant-modal-confirm"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-body,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-header,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-title,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-footer,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-content,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-content > *,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-body,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-header,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-footer {
+  background-color: #FFFFFF !important;
+  background-image: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-content,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-content {
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-header,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-header { border-bottom: 1px solid #111111 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-footer,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-footer { border-top: 1px solid var(--sw-line) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-title,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-title { font-family: var(--sw-font); font-weight: 700; color: #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-modal-mask,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-drawer-mask,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-image-preview-mask {
+  background: rgba(17, 17, 17, 0.45) !important;
+}
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-dropdown-menu,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-select-dropdown,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-picker-panel-container,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-popover-inner,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-cascader-menus,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-notification-notice,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-message-notice-content,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .recharts-default-tooltip {
+  background: #FFFFFF !important;
+  background-image: none !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-picker-dropdown { background: transparent !important; border: 0 !important; box-shadow: none !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-popover-arrow { display: none !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tooltip-inner {
+  background: #111111 !important;
+  color: #FFFFFF !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tooltip-inner * { color: inherit; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-dropdown-menu .ant-dropdown-menu-item,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-select-dropdown .ant-select-item { border-radius: 0 !important; }
+
+/* Графики */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .recharts-tooltip-label { color: #111111 !important; font-weight: 700; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .recharts-tooltip-item { font-family: var(--sw-font) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .recharts-cartesian-grid line { stroke: #E2E2E2 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .recharts-cartesian-axis-line { stroke: #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .recharts-cartesian-axis-tick-value {
+  font-family: var(--sw-font) !important;
+  fill: #5E5E5E !important;
+}
+
+/* ---------------- Дерево, меню, прочее ---------------- */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tree-node-content-wrapper { border-radius: 0 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tree-node-content-wrapper:hover { background: var(--sw-fill) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tree-node-selected { background: #E2E2E2 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-menu-item,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-menu-submenu-title { border-radius: 0 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-menu-inline .ant-menu-item-selected {
+  font-weight: 700;
+  box-shadow: inset 2px 0 0 #111111;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-collapse,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-collapse > .ant-collapse-item:last-child,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-collapse > .ant-collapse-item:last-child > .ant-collapse-header { border-radius: 0 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-alert { border-radius: 0 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-empty-description { color: var(--sw-muted); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .divider { background: var(--sw-line) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .card-title { font-size: 14px; font-weight: 700; }
+
+/* Разбор задач (категории) */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-triage-header,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-queue-card {
+  background: #FFFFFF !important;
+  border: 0 !important;
+  border-top: 2px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: #111111 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-queue-card:hover { transform: none !important; background: var(--sw-fill) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-queue-card.is-active {
+  background: #FFFFFF !important;
+  border-top-color: var(--sw-accent) !important;
+  transform: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-queue-count { font-family: var(--sw-font); font-weight: 800; color: #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-queue-success .category-queue-count { color: #1E7A3E; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-queue-warning .category-queue-count { color: #9A6400; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-queue-archive .category-queue-count { color: #1F4FD1; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-queue-muted .category-queue-count { color: var(--sw-accent-ink); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-table-wrap { border: 1px solid var(--sw-line); border-radius: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-issue-table .category-column { background: #FAFAFA !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .category-draft-bar {
+  background: #FFFFFF;
+  border: 1px solid #1E7A3E;
+  border-radius: 0;
+}
+
+/* Справка */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .help-markdown { font-family: var(--sw-font); color: #111111; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .help-markdown blockquote { border-left: 2px solid #111111; background: transparent; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .help-table th { background: var(--sw-fill); color: #111111; font-weight: 700; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .help-table th,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .help-table td { border-color: var(--sw-line); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .help-table tr:nth-child(even) td { background: #FAFAFA; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .help-code-inline { background: var(--sw-fill); color: #111111; border-radius: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .help-code-block { background: var(--sw-fill); color: #111111; border: 1px solid var(--sw-line); border-radius: 0; }
+
+/* ---------------- Страницы: точечно, без правки разметки ---------------- */
+/* Тени из инлайн-стилей страниц (липкие шапки, всплывающие блоки, свечения).
+   Внутренние полосы-маркеры (inset 2px 0 0 …) не трогаем — они смысловые. */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-main [style*="box-shadow: rgba(0, 0, 0"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-main [style*="box-shadow"][style*="0px 0px 4px"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-main [style*="box-shadow"][style*="0px 0px 8px"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-main [style*="box-shadow"][style*="0px 0px 10px"] { box-shadow: none !important; }
+
+/* Плитки итогов в «Аналитике»: линия сверху, крупная цифра */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [data-tour="analytics-kpi"] { gap: 24px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [data-tour="analytics-kpi"] > div {
+  padding: 8px 0 0 !important;
+  background: #FFFFFF !important;
+  border: 0 !important;
+  border-top: 2px solid #111111 !important;
+  border-radius: 0 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [data-tour="analytics-kpi"] > div > div:first-child {
+  font-weight: 700;
+  letter-spacing: 0.08em !important;
+  color: var(--sw-muted) !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [data-tour="analytics-kpi"] > div > div:last-child {
+  font-size: 40px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.02em;
+  line-height: 1 !important;
+  margin-top: 8px;
+}
+
+/* Ячейки ролей в «Целевых задачах»: без градиентной заливки — белая плитка
+   с цветной рамкой и нижней линией (цвет роли сохраняется). */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .backlog-role-cell {
+  background: #FFFFFF !important;
+  background-image: none !important;
+  border-radius: 0 !important;
+}
+
+/* Светлые «тёмно-синие» цвета текста, зашитые в разметку страниц, на белом
+   почти не читаются — заменяем на тёмные цвета статусов (только свойство color). */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(103, 214, 141)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(103, 214, 141)"] { color: #1E7A3E !important; } /* #67d68d */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(82, 196, 26)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(82, 196, 26)"] { color: #1E7A3E !important; } /* #52c41a */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(250, 173, 20)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(250, 173, 20)"] { color: #9A6400 !important; } /* #faad14 */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(255, 156, 74)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(255, 156, 74)"] { color: #9A5B00 !important; } /* #ff9c4a */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(255, 77, 79)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(255, 77, 79)"] { color: #D9391A !important; } /* #ff4d4f */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(255, 120, 117)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(255, 120, 117)"] { color: #D9391A !important; } /* #ff7875 */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(122, 154, 184)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(122, 154, 184)"] { color: #5E5E5E !important; } /* #7a9ab8 */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(154, 179, 204)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(154, 179, 204)"] { color: #5E5E5E !important; } /* #9ab3cc */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(0, 201, 200)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(0, 201, 200)"] { color: #111111 !important; } /* #00c9c8 */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(132, 204, 22)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(132, 204, 22)"] { color: #1E7A3E !important; } /* #84cc16 */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(34, 197, 94)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(34, 197, 94)"] { color: #1E7A3E !important; } /* #22c55e */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(164, 184, 216)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(164, 184, 216)"] { color: #5E5E5E !important; } /* #a4b8d8 */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(143, 174, 200)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(143, 174, 200)"] { color: #5E5E5E !important; } /* #8faec8 */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(77, 184, 232)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(77, 184, 232)"] { color: #0E7C86 !important; } /* #4db8e8 */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(167, 139, 250)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(167, 139, 250)"] { color: #7A3E9A !important; } /* #a78bfa */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style^="color: rgb(239, 159, 39)"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] [style*="; color: rgb(239, 159, 39)"] { color: #9A5B00 !important; } /* #EF9F27 */

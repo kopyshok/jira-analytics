@@ -42,9 +42,11 @@ Source-of-truth для текущих роутов — [`routes.tsx`](src/routes
 
 ## Themes
 
-Две темы, обе Aurora: `aurora-dark` (по умолчанию) и `aurora-light`. Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu` — оболочка теперь всегда `aurora/shell/AuroraShell`, меню одно: [`AuroraSidebar.tsx`](src/aurora/shell/AuroraSidebar.tsx). Список пунктов в нём должен совпадать с `SECTIONS` в `VisibilityTab`.
+Две темы Aurora: `aurora-dark` (по умолчанию) и `aurora-light`, плюс обложка `swiss-light` (см. ниже). Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu`. Меню одно для всех оболочек: [`aurora/shell/navConfig.ts`](src/aurora/shell/navConfig.ts) (`NAV_GROUPS` + хук `useNavSections()` — видимые группы с учётом скрытых разделов и admin-only, выбранный пункт; `findGroupForPath()`); его рисуют `AuroraSidebar` и `SwissShell`. Список пунктов должен совпадать с `SECTIONS` в `VisibilityTab`.
 
 `ThemeContext` ставит на `<html>` атрибуты `data-theme="aurora"` + `data-mode="dark|light"`; `DARK_THEME` — Proxy в `utils/constants.ts`, читающий их и отдающий нужный набор токенов. Прежние значения тем (`dark-blue`, `dark`, `dark-slate`, `dark-charcoal`) сводятся к `aurora-dark` и на фронте (`normalizeTheme`), и в БД (миграция `td03a`).
+
+**Обложка «Швейцарская» (`swiss-light`)** — слой поверх Aurora light: на `<html>` остаются `data-theme="aurora" data-mode="light"` и добавляется `data-skin="swiss"` (у Aurora-тем атрибута нет; `mode`/`skin` темы — в `APP_THEMES`). Стили — [`aurora/styles/skins/swiss.css`](src/aurora/styles/skins/swiss.css) (подключён последним в `aurora.css`, все правила под префиксом `html[data-theme="aurora"][data-mode="light"][data-skin="swiss"]`): белый лист, чёрный текст, акцент `#E5401F`, скруглений и теней нет, шрифт Geologica (`@fontsource/geologica`). AntD — `aurora/theme/swissAntdTokens.ts`; `DARK_THEME`/`CHART_COLORS`/`FONTS` (Proxy) при `data-skin="swiss"` отдают свой набор. Оболочка — [`SwissShell`](src/aurora/shell/SwissShell.tsx): без бокового меню, ярус 1 — название, группы «01 Обзор · 02 Планирование · 03 Данные» и общие элементы управления (те же `data-tour`), ярус 2 — пункты выбранной группы. `AppLayout` выбирает оболочку по `skin` и ремоунтит её по полному id темы. Классы `.side-item`/`.topbar` (по ним ходят ролики справки) есть только в Aurora.
 
 ## Error Tracking
 

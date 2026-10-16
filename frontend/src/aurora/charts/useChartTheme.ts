@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { CHART_COLORS, DARK_THEME } from '../../utils/constants';
-import { CHART_COLORS_AURORA, CHART_PALETTE_AURORA } from './colors';
+import { CHART_COLORS_AURORA, CHART_PALETTE_AURORA, CHART_COLORS_SWISS, CHART_PALETTE_SWISS } from './colors';
 
 export function useChartTheme() {
-  const { isAurora, mode } = useAppTheme();
+  const { isAurora, mode, skin } = useAppTheme();
   return useMemo(() => {
     if (!isAurora) {
       return {
@@ -17,6 +17,17 @@ export function useChartTheme() {
         tooltipBg: DARK_THEME.cardBg,
       };
     }
+    if (skin === 'swiss') {
+      return {
+        isAurora: true as const,
+        mode,
+        palette: CHART_PALETTE_SWISS,
+        colors: CHART_COLORS_SWISS,
+        gridStroke: '#E2E2E2',
+        axisColor: '#5E5E5E',
+        tooltipBg: '#FFFFFF',
+      };
+    }
     const isDark = mode === 'dark';
     return {
       isAurora: true as const,
@@ -27,5 +38,5 @@ export function useChartTheme() {
       axisColor: isDark ? '#7f90b0' : '#707f9e',
       tooltipBg: isDark ? 'rgba(20,25,40,0.95)' : 'rgba(255,255,255,0.95)',
     };
-  }, [isAurora, mode]);
+  }, [isAurora, mode, skin]);
 }

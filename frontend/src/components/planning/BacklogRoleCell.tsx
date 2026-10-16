@@ -58,6 +58,7 @@ export default function BacklogRoleCell({
 
   const cell = (
     <div
+      className="backlog-role-cell"
       style={{
         flex: 1,
         minWidth: 52,

@@ -67,6 +67,19 @@ const CHART_COLORS_AURORA_LIGHT_OVERRIDES: ChartColorsShape = {
   neutral: '#8089a0',
 };
 
+/* «Швейцарская»: данные — плотные цвета статусов/фаз из макетов, акцент — перерасход. */
+const CHART_COLORS_SWISS: ChartColorsShape = {
+  blue: '#1F4FD1',
+  green: '#1E7A3E',
+  orange: '#C75B00',
+  red: '#D9391A',
+  purple: '#7A3E9A',
+  cyan: '#0E7C86',
+  cyanSecondary: '#6F90E8',
+  yellow: '#9A6400',
+  neutral: '#6E6E6E',
+};
+
 /** Runtime-aware chart colors. Mirrors DARK_THEME Proxy strategy. */
 export const CHART_COLORS: ChartColorsShape = new Proxy(CHART_COLORS_CLASSIC, {
   get(target, prop: string) {
@@ -74,6 +87,9 @@ export const CHART_COLORS: ChartColorsShape = new Proxy(CHART_COLORS_CLASSIC, {
     const root = document.documentElement;
     if (root.getAttribute('data-theme') !== 'aurora') {
       return target[prop as keyof ChartColorsShape];
+    }
+    if (root.getAttribute('data-skin') === 'swiss') {
+      return CHART_COLORS_SWISS[prop as keyof ChartColorsShape] ?? target[prop as keyof ChartColorsShape];
     }
     const mode = root.getAttribute('data-mode');
     const pool = mode === 'light' ? CHART_COLORS_AURORA_LIGHT_OVERRIDES : CHART_COLORS_AURORA_DARK_OVERRIDES;
@@ -170,11 +186,35 @@ const AURORA_LIGHT_TOKENS: DarkThemeShape = {
   textDim: '#7a8298',
 };
 
+/* «Швейцарская» (обложка над Aurora light): белый лист, чёрный текст,
+ * линии #E2E2E2 / #111111. Только сплошные цвета. */
+const SWISS_TOKENS: DarkThemeShape = {
+  pageBg: '#FFFFFF',
+  sidebarBg: '#FFFFFF',
+  cardBg: '#FFFFFF',
+  darkAccent: '#F4F4F4',
+  border: '#E2E2E2',
+  darkRows: '#F4F4F4',
+  cyanPrimary: '#111111',
+  cyanSecondary: '#5E5E5E',
+  yellow: '#9A6400',
+  amber: '#9A6400',
+  amberDim: '#7A4F00',
+  danger: '#D9391A',
+  success: '#1E7A3E',
+  textPrimary: '#111111',
+  textSecondary: '#3A3A3A',
+  textMuted: '#5E5E5E',
+  textHint: '#6E6E6E',
+  textDim: '#767676',
+};
+
 /** Runtime-aware Dark theme tokens.
  *  Reads `<html data-theme="aurora" data-mode="dark|light">` on every access:
  *  - classic: returns DARK_THEME_CLASSIC value
  *  - aurora-dark: returns AURORA_DARK_TOKENS value
  *  - aurora-light: returns AURORA_LIGHT_TOKENS value
+ *  - обложка (`data-skin="swiss"`): returns SWISS_TOKENS value
  *
  *  This drops in for every existing `DARK_THEME.cardBg` / `DARK_THEME.cyanPrimary`
  *  call without touching consumer code. AppLayout dispatcher remounts the entire
@@ -187,13 +227,19 @@ export const DARK_THEME: DarkThemeShape = new Proxy(DARK_THEME_CLASSIC, {
     if (root.getAttribute('data-theme') !== 'aurora') {
       return target[prop as keyof DarkThemeShape];
     }
+    if (root.getAttribute('data-skin') === 'swiss') {
+      return SWISS_TOKENS[prop as keyof DarkThemeShape] ?? target[prop as keyof DarkThemeShape];
+    }
     const mode = root.getAttribute('data-mode');
     const pool = mode === 'light' ? AURORA_LIGHT_TOKENS : AURORA_DARK_TOKENS;
     return pool[prop as keyof DarkThemeShape] ?? target[prop as keyof DarkThemeShape];
   },
 });
 
-export type AppTheme = 'aurora-dark' | 'aurora-light';
+export type AppTheme = 'aurora-dark' | 'aurora-light' | 'swiss-light';
+
+/** Обложка поверх Aurora light: `<html data-skin="…">`. У самих Aurora-тем её нет. */
+export type AppSkin = 'swiss';
 
 export interface ThemeTokens {
   pageBg: string;
@@ -210,9 +256,17 @@ export interface ThemeTokens {
   textHint: string;
 }
 
-export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }> = {
+export interface AppThemeDef {
+  label: string;
+  mode: 'dark' | 'light';
+  skin?: AppSkin;
+  tokens: ThemeTokens;
+}
+
+export const APP_THEMES: Record<AppTheme, AppThemeDef> = {
   'aurora-dark': {
     label: 'Aurora тёмная',
+    mode: 'dark',
     tokens: {
       pageBg: '#080b16',
       sidebarBg: '#0d1226',
@@ -230,6 +284,7 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
   },
   'aurora-light': {
     label: 'Aurora светлая',
+    mode: 'light',
     tokens: {
       pageBg: '#e6ebf2',
       sidebarBg: '#e6ebf2',
@@ -245,14 +300,49 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
       textHint: '#7a8298',
     },
   },
+  'swiss-light': {
+    label: 'Швейцарская',
+    mode: 'light',
+    skin: 'swiss',
+    tokens: {
+      pageBg: '#FFFFFF',
+      sidebarBg: '#FFFFFF',
+      cardBg: '#FFFFFF',
+      darkAccent: '#F4F4F4',
+      border: '#E2E2E2',
+      darkRows: '#F4F4F4',
+      primary: '#E5401F',
+      primarySecondary: '#111111',
+      textPrimary: '#111111',
+      textSecondary: '#3A3A3A',
+      textMuted: '#5E5E5E',
+      textHint: '#6E6E6E',
+    },
+  },
 };
 
 /** Typography stack — distinctive, not system-font slop */
-export const FONTS = {
+const FONTS_BASE = {
   display: "'Fraunces', 'Georgia', serif",
   body: "'Manrope', -apple-system, 'Segoe UI', sans-serif",
   mono: "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace",
 } as const;
+
+const SWISS_FONT = "'Geologica', 'Segoe UI', Arial, sans-serif";
+
+/** Runtime-aware: под обложкой «Швейцарская» все три гарнитуры — Geologica
+ *  (одна гарнитура, числа табличные через CSS). Как и DARK_THEME, читается
+ *  при рендере; оболочка ремоунтится при смене темы. */
+export const FONTS: typeof FONTS_BASE = new Proxy(FONTS_BASE, {
+  get(target, prop: string) {
+    if (typeof document !== 'undefined'
+      && document.documentElement.getAttribute('data-skin') === 'swiss'
+      && prop in target) {
+      return SWISS_FONT;
+    }
+    return target[prop as keyof typeof FONTS_BASE];
+  },
+});
 
 export const QUARTER_MONTHS: Record<number, number[]> = {
   1: [1, 2, 3],

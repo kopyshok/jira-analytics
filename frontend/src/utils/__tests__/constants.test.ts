@@ -17,9 +17,23 @@ describe('APP_THEMES Aurora', () => {
     expect(APP_THEMES['aurora-light'].tokens.primary).toBe('#3b6ef5');
   });
 
-  it('AppTheme union — только две темы Aurora', () => {
-    const themes: AppTheme[] = ['aurora-dark', 'aurora-light'];
-    expect(themes).toHaveLength(2);
-    expect(Object.keys(APP_THEMES)).toEqual(['aurora-dark', 'aurora-light']);
+  it('AppTheme union — две темы Aurora и обложка «Швейцарская»', () => {
+    const themes: AppTheme[] = ['aurora-dark', 'aurora-light', 'swiss-light'];
+    expect(themes).toHaveLength(3);
+    expect(Object.keys(APP_THEMES)).toEqual(['aurora-dark', 'aurora-light', 'swiss-light']);
+  });
+
+  it('у Aurora-тем нет обложки, «Швейцарская» — обложка над светлой', () => {
+    expect(APP_THEMES['aurora-dark'].skin).toBeUndefined();
+    expect(APP_THEMES['aurora-light'].skin).toBeUndefined();
+    expect(APP_THEMES['aurora-dark'].mode).toBe('dark');
+    expect(APP_THEMES['aurora-light'].mode).toBe('light');
+    expect(APP_THEMES['swiss-light']).toMatchObject({ label: 'Швейцарская', mode: 'light', skin: 'swiss' });
+    expect(APP_THEMES['swiss-light'].tokens.pageBg).toBe('#FFFFFF');
+    expect(APP_THEMES['swiss-light'].tokens.primary).toBe('#E5401F');
+  });
+
+  it('id тем помещаются в колонку БД (String(20))', () => {
+    for (const id of Object.keys(APP_THEMES)) expect(id.length).toBeLessThanOrEqual(20);
   });
 });
