@@ -42,6 +42,8 @@ SKIP_TABLES: set[str] = {
     "sync_state",
     "sync_run",
     "confluence_page_cache",
+    # Ответы Jira из консоли — разовая диагностика, переносить незачем.
+    "console_runs",
     "executive_dashboard_snapshots",
     # Замеры быстродействия — про этот сервер, на другом они бессмысленны.
     "perf_minute",

@@ -46,6 +46,16 @@ class Line:
 
 _MAIL_KEYS = {"emailAddress", "email"}
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# Поля истории изменений, где значение — человек; у пользовательских полей судим по логину.
+_USER_FIELDS = {"assignee", "reporter", "creator"}
+_LOGIN_RE = re.compile(r"^(JIRAUSER\d+|[A-Za-z][\w.-]*_[\w.-]+)$")
+
+
+def _is_user_change(item: dict) -> bool:
+    """Запись истории изменений, где «было/стало» — человек."""
+    if str(item.get("field", "")).lower() in _USER_FIELDS:
+        return True
+    return any(isinstance(item.get(k), str) and _LOGIN_RE.match(item[k]) for k in ("from", "to"))
 
 
 class Masker:
@@ -55,22 +65,24 @@ class Masker:
     """
 
     def __init__(self) -> None:
-        self._labels: dict[str, str] = {}
-        self._count = {"Человек": 0, "почта": 0}
+        self._labels: dict[str, dict[str, str]] = {"Человек": {}, "почта": {}}
 
     def _label(self, value: str, kind: str) -> str:
         key = value.strip().lower() if kind == "почта" else value.strip()
-        if key not in self._labels:
-            self._count[kind] += 1
-            self._labels[key] = f"{kind}-{self._count[kind]}"
-        return self._labels[key]
+        labels = self._labels[kind]
+        if key not in labels:
+            labels[key] = f"{kind}-{len(labels) + 1}"
+        return labels[key]
 
     def walk(self, data: Any) -> Any:
         """Заменить значения полей имени и почты в разобранном ответе."""
         if isinstance(data, dict):
             out: dict[str, Any] = {}
+            user_change = "field" in data and _is_user_change(data)
             for k, v in data.items():
-                if k == "displayName" and isinstance(v, str) and v.strip():
+                if user_change and k in ("fromString", "toString") and isinstance(v, str) and v.strip():
+                    out[k] = self._label(v, "Человек")
+                elif k == "displayName" and isinstance(v, str) and v.strip():
                     out[k] = self._label(v, "Человек")
                 elif k in _MAIL_KEYS and isinstance(v, str) and v.strip():
                     out[k] = self._label(v, "почта")
@@ -83,10 +95,11 @@ class Masker:
 
     def scrub(self, text: str) -> str:
         """Заменить в тексте уже встреченные имена и любые адреса почты."""
-        names = [k for k in self._labels if " " in k and len(k) >= 5]
+        people = self._labels["Человек"]
         # ponytail: имя из одного слова («Jira», «Admin») в тексте не ищем — заденет обычные слова.
-        for name in sorted(names, key=len, reverse=True):
-            text = text.replace(name, self._labels[name])
+        names = sorted((k for k in people if " " in k and len(k) >= 5), key=len, reverse=True)
+        if names:
+            text = re.compile("|".join(map(re.escape, names))).sub(lambda m: people[m.group(0)], text)
         return _EMAIL_RE.sub(lambda m: self._label(m.group(0), "почта"), text)
 
 

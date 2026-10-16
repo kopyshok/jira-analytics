@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.core.auth_deps import get_current_user
 from app.database import get_db
@@ -104,7 +104,12 @@ def run(
 @router.get("/runs")
 def list_runs(db: Session = Depends(get_db)) -> dict:
     """Свежие запуски первыми, без текста результата."""
-    rows = db.query(ConsoleRun).order_by(ConsoleRun.created_at.desc(), ConsoleRun.id.desc()).all()
+    rows = (
+        db.query(ConsoleRun)
+        .options(defer(ConsoleRun.output_text))
+        .order_by(ConsoleRun.created_at.desc(), ConsoleRun.id.desc())
+        .all()
+    )
     return {"items": [_brief(r) for r in rows]}
 
 

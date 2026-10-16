@@ -38,6 +38,7 @@ DROP_ROWS = [
     "project_ai_summaries", "issue_classifications",     # AI-тексты про реальные проекты
     "work_type_report_snapshots", "executive_dashboard_snapshots",
     "confluence_page_cache",
+    "console_runs",                                      # ответы Jira из консоли
     "plan_audit", "plan_conflicts",                      # пересчитываются сами
     "comments",                                          # тела комментариев Jira
 ]

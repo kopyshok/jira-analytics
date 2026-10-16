@@ -271,3 +271,29 @@ async def test_execute_masks_request_lines():
     )
     assert "ivanov@corp.ru" not in result.output
     assert "### 1. /rest/a?q=почта-1" in result.output
+
+
+def test_masker_changelog_user_items():
+    m = cs.Masker()
+    got = m.walk({
+        "author": {"displayName": "Иванов Иван"},
+        "items": [
+            {"field": "assignee", "fieldtype": "jira", "from": "kozlov", "fromString": "Козлов Карл",
+             "to": "Ivanov_I_I", "toString": "Иванов Иван"},
+            {"field": "Разработчик", "fieldtype": "custom", "from": "Kozlov_K_K",
+             "fromString": "Козлов Карл", "to": None, "toString": None},
+            {"field": "status", "from": "10001", "fromString": "Open", "to": "3", "toString": "In Progress"},
+            {"field": "Link", "from": None, "to": "OS-5", "toString": "This issue relates to OS-5"},
+        ],
+    })
+    a, dev, status, link = got["items"]
+    assert (a["fromString"], a["toString"]) == ("Человек-2", "Человек-1")
+    assert dev["fromString"] == "Человек-2" and dev["toString"] is None
+    assert status["fromString"] == "Open" and status["toString"] == "In Progress"
+    assert link["toString"] == "This issue relates to OS-5"
+
+
+def test_masker_separate_label_numbers():
+    m = cs.Masker()
+    got = m.walk([{"displayName": "a@corp.ru"}, {"emailAddress": "a@corp.ru"}])
+    assert got == [{"displayName": "Человек-1"}, {"emailAddress": "почта-1"}]

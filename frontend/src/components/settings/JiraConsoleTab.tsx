@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Checkbox, Input, Popconfirm, Segmented, Space, Table, Typography } from 'antd';
 import { CopyOutlined, DeleteOutlined, DownloadOutlined, PlayCircleOutlined } from '@ant-design/icons';
@@ -74,6 +74,11 @@ function downloadRun(run: ConsoleRun) {
   URL.revokeObjectURL(url);
 }
 
+// Вынесено и мемоизировано: набор текста запроса не перерисовывает поле с результатом до 10 МБ.
+const ResultText = memo(function ResultText({ text }: { text: string }) {
+  return <Input.TextArea value={text} readOnly rows={24} style={{ fontFamily: 'monospace' }} />;
+});
+
 export default function JiraConsoleTab() {
   const { notification } = App.useApp();
   const qc = useQueryClient();
@@ -89,10 +94,9 @@ export default function JiraConsoleTab() {
 
   const runMut = useMutation({
     mutationFn: () => consoleApi.run({ target, text, mask }),
-    onSuccess: (run) => {
-      setCurrent(run);
-      qc.invalidateQueries({ queryKey: ['admin', 'console-runs'] });
-    },
+    onSuccess: (run) => setCurrent(run),
+    // Запуск мог сохраниться, даже если прокси оборвал ответ (504).
+    onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'console-runs'] }),
     onError: (e: Error) => notification.error({ title: 'Запуск не выполнен', description: e.message }),
   });
 
@@ -204,12 +208,7 @@ export default function JiraConsoleTab() {
             <Button icon={<CopyOutlined />} onClick={copy}>Скопировать всё</Button>
             <Button icon={<DownloadOutlined />} onClick={() => downloadRun(current)}>Скачать файлом</Button>
           </Space>
-          <Input.TextArea
-            value={current.output_text}
-            readOnly
-            rows={24}
-            style={{ fontFamily: 'monospace' }}
-          />
+          <ResultText text={current.output_text} />
         </Space>
       )}
 
