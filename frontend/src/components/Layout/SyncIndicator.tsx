@@ -29,16 +29,18 @@ export default function SyncIndicator() {
   const ageHours = lastSyncIso && now !== null ? (now - new Date(lastSyncIso).getTime()) / 3_600_000 : null;
   const stale = ageHours !== null && ageHours > 6;
 
-  const { dot, label, text } = (() => {
-    if (hasError) return { dot: DARK_THEME.amber, label: 'Ошибка синхронизации', text: DARK_THEME.amber };
-    if (lastSyncIso === null) return { dot: DARK_THEME.textHint, label: 'Нет данных', text: DARK_THEME.textMuted };
-    if (stale) return { dot: DARK_THEME.textHint, label: nowDate ? timeAgo(lastSyncIso, nowDate) : '—', text: DARK_THEME.textMuted };
-    return { dot: DARK_THEME.cyanPrimary, label: nowDate ? timeAgo(lastSyncIso, nowDate) : '—', text: DARK_THEME.textSecondary };
+  // state — для оболочек на цветном фоне: цвет точки там задаёт CSS по состоянию.
+  const { dot, label, text, state } = (() => {
+    if (hasError) return { dot: DARK_THEME.amber, label: 'Ошибка синхронизации', text: DARK_THEME.amber, state: 'error' };
+    if (lastSyncIso === null) return { dot: DARK_THEME.textHint, label: 'Нет данных', text: DARK_THEME.textMuted, state: 'none' };
+    if (stale) return { dot: DARK_THEME.textHint, label: nowDate ? timeAgo(lastSyncIso, nowDate) : '—', text: DARK_THEME.textMuted, state: 'stale' };
+    return { dot: DARK_THEME.cyanPrimary, label: nowDate ? timeAgo(lastSyncIso, nowDate) : '—', text: DARK_THEME.textSecondary, state: 'ok' };
   })();
 
   return (
     <div
       data-testid="sync-indicator"
+      data-state={state}
       style={{
         display: 'inline-flex',
         alignItems: 'center',

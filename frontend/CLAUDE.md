@@ -42,7 +42,9 @@ Source-of-truth для текущих роутов — [`routes.tsx`](src/routes
 
 ## Themes
 
-Две темы, обе Aurora: `aurora-dark` (по умолчанию) и `aurora-light`. Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu` — оболочка теперь всегда `aurora/shell/AuroraShell`, меню одно: [`AuroraSidebar.tsx`](src/aurora/shell/AuroraSidebar.tsx). Список пунктов в нём должен совпадать с `SECTIONS` в `VisibilityTab`.
+Темы: `aurora-dark` (по умолчанию), `aurora-light` и скин `zones-light` («Цветовые зоны»). Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu`. Меню одно на все оболочки — [`aurora/shell/navConfig.ts`](src/aurora/shell/navConfig.ts) (`NAV_GROUPS` + хук `useNavSections()`: скрытые разделы, `/settings` только админу, выбранный пункт; `navMatch()` — группа/пункт по адресу). Его используют `AuroraSidebar` и `ZonesShell`; список пунктов должен совпадать с `SECTIONS` в `VisibilityTab`.
+
+Скин «Цветовые зоны» — слой поверх Aurora light: на `<html>` остаются `data-theme="aurora"` + `data-mode="light"` и добавляется `data-skin="zones"` (у тем Aurora атрибута нет). Описание темы в `APP_THEMES` несёт `mode` и `skin`; `DARK_THEME`, `CHART_COLORS` и `FONTS` — Proxy, по `data-skin` отдают наборы скина. AntD — `aurora/theme/zonesAntdTokens.ts`, стили — `aurora/styles/skins/zones.css` (всё под префиксом скина, шрифты Wix Madefor из `@fontsource`). Оболочка своя — [`aurora/shell/zones/ZonesShell.tsx`](src/aurora/shell/zones/ZonesShell.tsx) с классами `zn-*` (тёмная колонка зон, колонка пунктов зоны, цветная полоса зоны с глобальными элементами); `.side-item`/`.topbar` остаются только у Aurora — на них завязаны записи видео-справки. `AppLayout` выбирает оболочку по скину, ключ ремоунта — полный id темы.
 
 `ThemeContext` ставит на `<html>` атрибуты `data-theme="aurora"` + `data-mode="dark|light"`; `DARK_THEME` — Proxy в `utils/constants.ts`, читающий их и отдающий нужный набор токенов. Прежние значения тем (`dark-blue`, `dark`, `dark-slate`, `dark-charcoal`) сводятся к `aurora-dark` и на фронте (`normalizeTheme`), и в БД (миграция `td03a`).
 
