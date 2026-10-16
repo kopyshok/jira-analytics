@@ -24,13 +24,8 @@ from app.schemas.work_type_report import (
     ManualClassifyRequest,
     LayoutCreateRequest, LayoutUpdateRequest, LayoutOut,
     AliasAddRequest, ThemeAliasResponse,
-    ThresholdRequest, ThresholdResponse,
 )
-from app.services.work_type_report_service import (
-    WorkTypeReportService,
-    DEFAULT_EMBEDDING_THRESHOLD,
-    THRESHOLD_SETTING_KEY,
-)
+from app.services.work_type_report_service import WorkTypeReportService
 from app.services.theme_dictionary_service import ThemeDictionaryService
 from app.services.llm.base import get_llm_provider
 from app.services.work_type_report_xlsx import export_snapshot_to_xlsx
@@ -232,9 +227,8 @@ def merge_candidate(
     """Merge a candidate into an existing theme.
 
     Помимо перепривязки классификаций, `proposed_name` записывается в
-    `Theme.aliases` целевой темы — это обучает embedding-матчер: следующие
-    задачи с похожей формулировкой попадут в эту тему автоматически.
-    Recompute centroid темы запускается в ThemeDictionaryService.add_alias.
+    `Theme.aliases` целевой темы — синонимы уходят в промпт классификатора,
+    и следующие задачи с похожей формулировкой LLM отнесёт к этой теме.
     """
     snap = db.get(WorkTypeReportSnapshot, payload.snapshot_id)
     if not snap:
@@ -296,32 +290,6 @@ def delete_theme_alias(
     except ValueError as e:
         raise HTTPException(404, str(e))
     return ThemeAliasResponse(theme_id=t.id, aliases=t.aliases)
-
-
-@router.get("/settings/embedding-threshold", response_model=ThresholdResponse)
-def get_embedding_threshold_endpoint(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    from app.api.endpoints.settings import _get_setting
-    raw = _get_setting(db, THRESHOLD_SETTING_KEY)
-    try:
-        value = float(raw) if raw else DEFAULT_EMBEDDING_THRESHOLD
-    except (TypeError, ValueError):
-        value = DEFAULT_EMBEDDING_THRESHOLD
-    return ThresholdResponse(threshold=value)
-
-
-@router.put("/settings/embedding-threshold", response_model=ThresholdResponse)
-def set_embedding_threshold(
-    payload: ThresholdRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    from app.api.endpoints.settings import _set_setting
-    _set_setting(db, THRESHOLD_SETTING_KEY, str(payload.threshold))
-    db.commit()
-    return ThresholdResponse(threshold=payload.threshold)
 
 
 @router.post("/candidates/ignore", dependencies=[Depends(require_ai_enabled)])

@@ -9,7 +9,6 @@ SQLAlchemy сессии (потокобезопасность не требуе�
 event loop, важен лишь порядок коммитов).
 """
 import hashlib
-import pickle
 from dataclasses import dataclass, field
 from typing import Optional, Protocol
 from datetime import date, datetime
@@ -22,12 +21,6 @@ from app.models.theme import Theme
 from app.models.issue_classification import IssueClassification
 from app.models.mandatory_work_type import MandatoryWorkType
 from app.models.worklog import Worklog
-from app.services.llm.embedding_matcher import EmbeddingMatcher
-from app.services.llm.embedding_service import (
-    MODEL_VERSION as EMB_MODEL_VERSION,
-    EmbeddingService,
-)
-from app.services.llm.theme_embedding_service import ThemeEmbeddingService
 
 
 PROMPT_VERSION = "wt-classify-v3-generic"
@@ -97,7 +90,9 @@ def collect_worklog_comments(
 def build_classify_prompt(issue: Issue, worklog_comments: list[str], themes: list[Theme]) -> str:
     """Map-промпт. Возвращает структуру с markers/area/nature/candidate_name."""
     themes_list = "\n".join(
-        f"- {t.id}: «{t.name}»" + (f" — {t.description}" if t.description else "")
+        f"- {t.id}: «{t.name}»"
+        + (f" — {t.description}" if t.description else "")
+        + (f" (синонимы: {', '.join(t.aliases)})" if t.aliases else "")
         for t in themes
     ) or "(словарь пуст)"
     parts = [
@@ -156,12 +151,6 @@ def build_classify_prompt(issue: Issue, worklog_comments: list[str], themes: lis
 class WorkTypeClassifier:
     """Оркестратор Map-фазы.
 
-    Two-tier классификация:
-    1. Embedding-first — для каждой задачи считаем вектор и ищем ближайшую тему
-       по cosine ≥ ``embedding_threshold``. Если матч — LLM не вызывается.
-    2. LLM fallback — если embedding не нашёл темы с достаточной близостью,
-       идём в текущий LLM-классификатор.
-
     Кэш per-issue, инвалидируется при изменении содержимого или версии словаря.
     """
 
@@ -169,23 +158,9 @@ class WorkTypeClassifier:
         self,
         db: Session,
         provider: ClassifierProvider,
-        *,
-        embedding_threshold: float = 0.78,
     ) -> None:
         self.db = db
         self.provider = provider
-        self.embedding_threshold = embedding_threshold
-        self.embedder = EmbeddingService()
-        self.theme_embedding_svc = ThemeEmbeddingService(db, self.embedder)
-        self.matcher = EmbeddingMatcher(self.theme_embedding_svc)
-        self._pending_issue_vec: dict[str, bytes] = {}
-
-    def _build_issue_text(self, issue: Issue) -> str:
-        return " ".join(filter(None, [
-            issue.summary or "",
-            issue.goal_text or "",
-            issue.current_behavior or "",
-        ]))
 
     def prepare(
         self,
@@ -196,7 +171,7 @@ class WorkTypeClassifier:
         period_start: Optional[date] = None,
         period_end: Optional[date] = None,
     ) -> "ClassificationPrep | IssueClassification":
-        """Sync prep: возвращает кэш-хит, embedding-match ИЛИ ClassificationPrep на LLM."""
+        """Sync prep: возвращает кэш-хит ИЛИ ClassificationPrep на LLM."""
         wt = self.db.get(MandatoryWorkType, work_type_id)
         if not wt:
             raise ValueError(f"Work type {work_type_id} not found")
@@ -219,42 +194,6 @@ class WorkTypeClassifier:
         ):
             return existing
 
-        # ---- Embedding-first path ----
-        issue_text = self._build_issue_text(issue)
-        issue_vec = self.embedder.encode_text(issue_text, kind="query")
-        issue_vec_blob = pickle.dumps(issue_vec)
-
-        if themes:
-            best_theme, score = self.matcher.find_best_theme(
-                issue_vec, themes, self.embedding_threshold,
-            )
-            if best_theme is not None:
-                return self._upsert(
-                    existing,
-                    issue,
-                    work_type_id,
-                    h,
-                    wt.theme_dict_version,
-                    theme_id=best_theme.id,
-                    candidate_name=None,
-                    contribution_text=None,
-                    confidence=score,
-                    nature_tag=None,
-                    area=None,
-                    nature=None,
-                    model_id=None,
-                    failed=False,
-                    failure_reason=None,
-                    match_method="embedding",
-                    match_score=score,
-                    input_embedding=issue_vec_blob,
-                    embedding_model_version=EMB_MODEL_VERSION,
-                    _markers=[],
-                )
-
-        # Embedding не сработал — сохраним вектор для последующего persist_success
-        self._pending_issue_vec[issue.id] = issue_vec_blob
-
         prompt = build_classify_prompt(issue, comments, themes)
         themes_payload = [
             {"id": t.id, "name": t.name, "description": t.description} for t in themes
@@ -273,8 +212,12 @@ class WorkTypeClassifier:
         self, prep: ClassificationPrep, res: ClassificationResult, meta: dict,
     ) -> IssueClassification:
         """Sync upsert успешного результата LLM-классификатора."""
-        issue_vec_blob = self._pending_issue_vec.pop(prep.issue.id, None)
-        kwargs: dict = dict(
+        return self._upsert(
+            prep.existing,
+            prep.issue,
+            prep.work_type_id,
+            prep.input_hash,
+            prep.dictionary_version,
             theme_id=res.theme_id,
             candidate_name=res.candidate_name,
             contribution_text=res.contribution_text,
@@ -285,42 +228,22 @@ class WorkTypeClassifier:
             model_id=meta.get("model"),
             failed=False,
             failure_reason=None,
-            match_method="llm",
-            match_score=None,
             _markers=res.markers,
-        )
-        if issue_vec_blob is not None:
-            kwargs["input_embedding"] = issue_vec_blob
-            kwargs["embedding_model_version"] = EMB_MODEL_VERSION
-        return self._upsert(
-            prep.existing,
-            prep.issue,
-            prep.work_type_id,
-            prep.input_hash,
-            prep.dictionary_version,
-            **kwargs,
         )
 
     def persist_failure(
         self, prep: ClassificationPrep, exc: BaseException,
     ) -> IssueClassification:
         """Sync upsert провала LLM."""
-        issue_vec_blob = self._pending_issue_vec.pop(prep.issue.id, None)
-        kwargs: dict = dict(
-            failed=True,
-            failure_reason=str(exc)[:500],
-            model_id=getattr(self.provider, "model", None),
-        )
-        if issue_vec_blob is not None:
-            kwargs["input_embedding"] = issue_vec_blob
-            kwargs["embedding_model_version"] = EMB_MODEL_VERSION
         return self._upsert(
             prep.existing,
             prep.issue,
             prep.work_type_id,
             prep.input_hash,
             prep.dictionary_version,
-            **kwargs,
+            failed=True,
+            failure_reason=str(exc)[:500],
+            model_id=getattr(self.provider, "model", None),
         )
 
     async def classify_issue(

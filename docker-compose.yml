@@ -65,7 +65,6 @@ services:
     environment:
       # Overrides any DATABASE_URL that might be in .env
       DATABASE_URL: "postgresql://app:${DB_PASSWORD}@jira-postgres:5432/jira_analytics_prod"
-      HF_HOME: /opt/hf-cache
     volumes:
       - app-data-prod:/app/data
     networks:

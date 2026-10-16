@@ -120,15 +120,11 @@ def build() -> Path:
         rows=[
             ["npm", "registry.npmjs.org", "npm ci для фронта (~700MB зависимостей)"],
             ["pip", "pypi.org, files.pythonhosted.org", "pip install backend-зависимостей"],
-            ["torch", "download.pytorch.org", "CPU-сборка torch ~200MB"],
-            ["HuggingFace", "huggingface.co", "Скачивание модели multilingual-e5-base ~470MB"],
             ["apt", "deb.debian.org", "apt install build-essential, libpq-dev, curl, tini"],
         ],
     )
     doc.add_paragraph()
     add_question(doc, "Что из этого закрыто? Какие корп. mirror-ы есть на замену?")
-    add_question(doc, "Если HuggingFace недоступен — можно ли разработчику собрать base image отдельно "
-                      "(с torch + моделью внутри), загрузить во внутренний registry, и наш Dockerfile будет наследоваться от него?")
     add_question(doc, "Лимит RAM/CPU/disk для GitLab runner на одну сборку? (Build тяжёлый: ~5GB образ, ~10 минут.)")
     add_question(doc, "Версия Docker и наличие buildx на runner? (для multi-stage build с кэшем)")
     doc.add_paragraph()

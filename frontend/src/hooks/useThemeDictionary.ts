@@ -150,26 +150,3 @@ export function useRemoveThemeAlias() {
     },
   });
 }
-
-export function useEmbeddingThreshold() {
-  return useQuery({
-    queryKey: ['embedding-threshold'],
-    queryFn: () => workTypeReportApi.getEmbeddingThreshold(),
-    staleTime: 60_000,
-  });
-}
-
-export function useSetEmbeddingThreshold() {
-  const qc = useQueryClient();
-  const { message } = App.useApp();
-  return useMutation({
-    mutationFn: (threshold: number) => workTypeReportApi.setEmbeddingThreshold(threshold),
-    onSuccess: (data) => {
-      qc.setQueryData(['embedding-threshold'], data);
-    },
-    onError: (e: unknown) => {
-      const err = e as { message?: string };
-      message.error(`Не удалось сохранить порог: ${err?.message ?? 'Ошибка'}`);
-    },
-  });
-}

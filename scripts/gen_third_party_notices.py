@@ -20,9 +20,6 @@ ROOT = Path(__file__).resolve().parent.parent
 # Пакеты только для тестов/разработки — в поставку не попадают.
 PY_DEV_ONLY = {"pytest", "pytest-asyncio", "respx"}
 
-# Пакеты, не указывающие лицензию в метаданных, — берём из их файла LICENSE.
-PY_LICENSE_OVERRIDES = {"torch": "BSD-3-Clause"}
-
 
 def python_packages() -> list[tuple[str, str, str]]:
     """(имя, версия, лицензия) для рантайм-зависимостей backend."""
@@ -33,9 +30,6 @@ def python_packages() -> list[tuple[str, str, str]]:
             continue
         name = re.split(r"[<>=!\[;]", line, 1)[0].strip()
         if name.lower() in PY_DEV_ONLY:
-            continue
-        if name in PY_LICENSE_OVERRIDES:
-            rows.append((name, version(name), PY_LICENSE_OVERRIDES[name]))
             continue
         try:
             md = metadata(name)
@@ -92,9 +86,6 @@ def main() -> None:
 ## Серверная часть (Python), {len(py)} компонентов
 
 {table(py)}
-
-Языковая модель `intfloat/multilingual-e5-base`, загружаемая при работе тематического
-анализа, распространяется под лицензией MIT.
 
 ## Клиентская часть (JavaScript/TypeScript), {len(npm)} компонентов
 

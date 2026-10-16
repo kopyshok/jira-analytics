@@ -130,7 +130,7 @@ export const workTypeReportApi = {
   downloadXlsx: (snapshotId: string) =>
     api.download(`/work-type-report/export/${encodeURIComponent(snapshotId)}.xlsx`),
 
-  // ---- Theme aliases (embedding training) ----
+  // ---- Theme aliases ----
 
   addAlias: (themeId: string, alias: string) =>
     api.post<{ theme_id: string; aliases: string[] }>(
@@ -141,16 +141,5 @@ export const workTypeReportApi = {
   removeAlias: (themeId: string, alias: string) =>
     api.del<{ theme_id: string; aliases: string[] }>(
       `/work-type-report/themes/${encodeURIComponent(themeId)}/aliases?alias=${encodeURIComponent(alias)}`,
-    ),
-
-  // ---- Embedding threshold ----
-
-  getEmbeddingThreshold: () =>
-    api.get<{ threshold: number }>('/work-type-report/settings/embedding-threshold'),
-
-  setEmbeddingThreshold: (threshold: number) =>
-    api.put<{ threshold: number }>(
-      '/work-type-report/settings/embedding-threshold',
-      { threshold },
     ),
 };

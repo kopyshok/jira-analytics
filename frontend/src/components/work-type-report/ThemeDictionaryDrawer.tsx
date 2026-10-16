@@ -33,7 +33,6 @@ import {
 } from '../../hooks/useWorkTypeReport';
 import type { ThemeOut, Candidate } from '../../types/workTypeReport';
 import ThemeAliasesEditor from './ThemeAliasesEditor';
-import EmbeddingThresholdSlider from './EmbeddingThresholdSlider';
 
 interface Props {
   open: boolean;
@@ -359,7 +358,6 @@ function ActiveTab({ workTypeId }: ActiveTabProps) {
 
   return (
     <>
-      <EmbeddingThresholdSlider />
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
         <Button
           icon={<PlusOutlined />}

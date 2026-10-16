@@ -37,7 +37,7 @@ export default function ThemeAliasesEditor({ themeId, aliases, readOnly }: Props
           marginBottom: 6,
         }}
       >
-        Алиасы — синонимы темы для embedding-матчинга
+        Алиасы — синонимы темы, подсказка нейросети при подборе темы
       </Typography.Text>
 
       <Space size={[4, 8]} wrap style={{ marginBottom: readOnly ? 0 : 8, minHeight: 24 }}>

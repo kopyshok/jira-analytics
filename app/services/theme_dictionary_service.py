@@ -3,7 +3,6 @@
 Любая мутация словаря поднимает MandatoryWorkType.theme_dict_version,
 что инвалидирует кэш классификации задач при следующем построении.
 """
-import logging
 from typing import Optional
 
 from sqlalchemy import select, update
@@ -12,8 +11,6 @@ from sqlalchemy.orm import Session
 from app.models.theme import Theme
 from app.models.issue_classification import IssueClassification
 from app.models.mandatory_work_type import MandatoryWorkType
-
-logger = logging.getLogger("jira_analytics.thematic")
 
 
 class ThemeDictionaryService:
@@ -74,8 +71,6 @@ class ThemeDictionaryService:
         self._bump_version(work_type_id)
         self.db.commit()
         self.db.refresh(t)
-        self._recompute_embedding_silent(t.id)
-        self.db.refresh(t)
         return t
 
     def update_theme(
@@ -118,9 +113,6 @@ class ThemeDictionaryService:
             self._bump_version(t.work_type_id)
         self.db.commit()
         self.db.refresh(t)
-        if changed:
-            self._recompute_embedding_silent(t.id)
-            self.db.refresh(t)
         return t
 
     def archive_theme(self, theme_id: str) -> Theme:
@@ -164,8 +156,6 @@ class ThemeDictionaryService:
         self._bump_version(src.work_type_id)
         self.db.commit()
         self.db.refresh(dst)
-        self._recompute_embedding_silent(dst.id)
-        self.db.refresh(dst)
         return dst
 
     def add_alias(self, theme_id: str, alias: str) -> Theme:
@@ -183,8 +173,6 @@ class ThemeDictionaryService:
         self._bump_version(t.work_type_id)
         self.db.commit()
         self.db.refresh(t)
-        self._recompute_embedding_silent(t.id)
-        self.db.refresh(t)
         return t
 
     def remove_alias(self, theme_id: str, alias: str) -> Theme:
@@ -199,8 +187,6 @@ class ThemeDictionaryService:
         self._bump_version(t.work_type_id)
         self.db.commit()
         self.db.refresh(t)
-        self._recompute_embedding_silent(t.id)
-        self.db.refresh(t)
         return t
 
     # ------------------------------------------------------------------
@@ -213,11 +199,3 @@ class ThemeDictionaryService:
         if not wt:
             raise ValueError(f"MandatoryWorkType {work_type_id} not found")
         wt.theme_dict_version = (wt.theme_dict_version or 0) + 1
-
-    def _recompute_embedding_silent(self, theme_id: str) -> None:
-        """Перепосчитать centroid темы; не валим вызывающий код при сбое модели."""
-        try:
-            from app.services.llm.theme_embedding_service import ThemeEmbeddingService
-            ThemeEmbeddingService(self.db).recompute_theme_embedding(theme_id)
-        except Exception as e:
-            logger.warning("Theme embedding recompute failed (theme=%s): %s", theme_id, e)

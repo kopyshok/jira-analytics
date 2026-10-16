@@ -52,14 +52,6 @@ class ThemeAliasResponse(BaseModel):
     aliases: list[str]
 
 
-class ThresholdResponse(BaseModel):
-    threshold: float
-
-
-class ThresholdRequest(BaseModel):
-    threshold: float = Field(..., ge=0.0, le=1.0)
-
-
 class ThemeCandidate(BaseModel):
     """Кандидат в словарь — из ведра «Другое» свежего снапшота."""
     proposed_name: str

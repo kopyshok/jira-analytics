@@ -8,7 +8,8 @@ from app.models.issue import Issue
 from app.models.project import Project
 from app.models.issue_classification import IssueClassification
 from app.services.llm.work_type_classifier import (
-    WorkTypeClassifier, ClassificationResult, build_input_hash, PROMPT_VERSION,
+    WorkTypeClassifier, ClassificationResult, build_classify_prompt, build_input_hash,
+    PROMPT_VERSION,
 )
 
 
@@ -55,7 +56,7 @@ async def test_classify_creates_classification(fixture_setup, db_session):
         {"model": "test-model", "input_tokens": 100, "output_tokens": 30},
     ))
 
-    clf = WorkTypeClassifier(db_session, provider=fake_provider, embedding_threshold=1.0)
+    clf = WorkTypeClassifier(db_session, provider=fake_provider)
     cls = await clf.classify_issue(issue=issue, work_type_id=wt.id, themes=[theme])
     assert cls.theme_id == theme.id and cls.contribution_text == "разбор сбоев"
     assert cls.input_hash and cls.dictionary_version == wt.theme_dict_version
@@ -69,7 +70,7 @@ async def test_classify_cached_skips_llm(fixture_setup, db_session):
     db_session.add(theme); db_session.commit()
 
     fake_provider = AsyncMock(); fake_provider.model = "m"; fake_provider.classify_issue = AsyncMock()
-    clf = WorkTypeClassifier(db_session, provider=fake_provider, embedding_threshold=1.0)
+    clf = WorkTypeClassifier(db_session, provider=fake_provider)
 
     # Pre-seed classification with current input_hash
     h = build_input_hash(issue, worklog_comments=[])
@@ -107,7 +108,7 @@ async def test_prompt_version_change_invalidates_cache(fixture_setup, db_session
                              contribution_text="fresh", confidence=0.8, nature_tag=None),
         {"model": "m"},
     ))
-    clf = WorkTypeClassifier(db_session, provider=fake_provider, embedding_threshold=1.0)
+    clf = WorkTypeClassifier(db_session, provider=fake_provider)
     cls = await clf.classify_issue(issue=issue, work_type_id=wt.id, themes=[theme])
     assert cls.contribution_text == "fresh"
     assert cls.prompt_version == PROMPT_VERSION
@@ -132,7 +133,7 @@ async def test_dictionary_version_change_invalidates_cache(fixture_setup, db_ses
                              contribution_text="fresh", confidence=0.8, nature_tag=None),
         {"model": "m"},
     ))
-    clf = WorkTypeClassifier(db_session, provider=fake_provider, embedding_threshold=1.0)
+    clf = WorkTypeClassifier(db_session, provider=fake_provider)
     cls = await clf.classify_issue(issue=issue, work_type_id=wt.id, themes=[theme])
     assert cls.contribution_text == "fresh"
 
@@ -142,45 +143,26 @@ async def test_classify_failure_marks_failed_not_raise(fixture_setup, db_session
     wt, issue = fixture_setup["wt"], fixture_setup["issue"]
     fake = AsyncMock(); fake.model = "m"
     fake.classify_issue = AsyncMock(side_effect=RuntimeError("LLM down"))
-    clf = WorkTypeClassifier(db_session, provider=fake, embedding_threshold=1.0)
+    clf = WorkTypeClassifier(db_session, provider=fake)
     cls = await clf.classify_issue(issue=issue, work_type_id=wt.id, themes=[])
     assert cls.failed is True and cls.failure_reason
 
 
-@pytest.mark.asyncio
-async def test_embedding_match_skips_llm(fixture_setup, db_session):
-    """Если cosine ≥ threshold — LLM не вызывается, theme_id выставлен."""
+def test_prompt_lists_theme_aliases(fixture_setup, db_session):
+    """Синонимы темы (накопленные слиянием кандидатов) уходят в промпт LLM."""
     wt, issue = fixture_setup["wt"], fixture_setup["issue"]
-    theme = Theme(
-        work_type_id=wt.id,
-        name="Ошибки обмена",
-        description="Сбои интеграции и переноса данных",
-    )
+    theme = Theme(work_type_id=wt.id, name="Себестоимость")
+    theme.aliases = ["Таможенная стоимость", "Расчёт себестоимости"]
     db_session.add(theme)
     db_session.commit()
 
-    fake_provider = AsyncMock()
-    fake_provider.model = "stub"
-    fake_provider.classify_issue = AsyncMock(
-        side_effect=AssertionError("LLM не должен был вызваться"),
-    )
-
-    clf = WorkTypeClassifier(
-        db_session, provider=fake_provider, embedding_threshold=0.5,
-    )
-    res = await clf.classify_issue(
-        issue=issue, work_type_id=wt.id, themes=[theme],
-    )
-    assert res.theme_id == theme.id
-    assert res.match_method == "embedding"
-    assert res.match_score is not None and res.match_score >= 0.5
-    assert res.input_embedding is not None
-    fake_provider.classify_issue.assert_not_called()
+    prompt = build_classify_prompt(issue, [], [theme])
+    assert "«Себестоимость» (синонимы: Таможенная стоимость, Расчёт себестоимости)" in prompt
 
 
 @pytest.mark.asyncio
-async def test_low_similarity_falls_back_to_llm(fixture_setup, db_session):
-    """Если cosine < threshold — LLM вызывается, candidate_name проставлен."""
+async def test_theme_not_matched_gives_candidate(fixture_setup, db_session):
+    """Тему подбирает LLM: не подошла ни одна — candidate_name проставлен."""
     wt, issue = fixture_setup["wt"], fixture_setup["issue"]
     theme = Theme(
         work_type_id=wt.id,
@@ -205,19 +187,13 @@ async def test_low_similarity_falls_back_to_llm(fixture_setup, db_session):
         {"model": "stub"},
     ))
 
-    clf = WorkTypeClassifier(
-        db_session, provider=fake_provider, embedding_threshold=1.0,
-    )
+    clf = WorkTypeClassifier(db_session, provider=fake_provider)
     res = await clf.classify_issue(
         issue=issue, work_type_id=wt.id, themes=[theme],
     )
     fake_provider.classify_issue.assert_called_once()
     assert res.theme_id is None
     assert res.candidate_name == "Космос"
-    assert res.match_method == "llm"
-    assert res.match_score is None
-    # input_embedding всё равно сохранён для будущих кэш-хитов
-    assert res.input_embedding is not None
 
 
 @pytest.mark.asyncio
@@ -240,7 +216,7 @@ async def test_classifier_persists_markers_and_area(fixture_setup, db_session):
         {"model": "test-model"},
     ))
 
-    clf = WorkTypeClassifier(db_session, provider=fake_provider, embedding_threshold=1.0)
+    clf = WorkTypeClassifier(db_session, provider=fake_provider)
     res = await clf.classify_issue(
         issue=issue,
         work_type_id=wt.id,

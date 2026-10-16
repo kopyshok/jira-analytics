@@ -22,7 +22,7 @@
 ├── app/                              # backend код
 ├── frontend/dist/                    # собранная статика (после npm run build)
 ├── alembic/                          # миграции БД
-├── data/                             # рабочие файлы backend (модели embeddings, кэш)
+├── data/                             # рабочие файлы backend (экспорты, кэш)
 ├── scripts/release.py                # релизный скрипт
 └── .env                              # production конфиг (chmod 600, root)
 
@@ -107,7 +107,7 @@ sudo systemctl reload nginx
 
 ## Healthchecks
 
-- `GET /health/ready` — readiness (БД доступна, embeddings прогреты)
+- `GET /health/ready` — readiness (БД доступна)
 - `GET /health/live` — liveness (процесс жив)
 - nginx должен дёргать `/health/ready` за `proxy_pass` и не отдавать клиенту, если 503
 

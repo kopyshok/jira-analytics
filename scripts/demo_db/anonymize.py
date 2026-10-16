@@ -197,7 +197,7 @@ COLUMN_POLICY = _parse_policy({
     "team_work_type_overrides": "keep: id backlog_item_id work_type_id; rule: team",
     "teams": "keep: id; rule: name",
     "themes": "keep: id work_type_id color created_by; rule: name; "
-              "clear: description aliases_json embedding embedding_model_version embedding_updated_at",
+              "clear: description aliases_json",
     "user_rp_preferences": "keep: user_id collapsed_initiative_ids view_mode detail_sections_visible "
                            "detail_sections_collapsed",
     "users": "keep: id role selected_subgroups selected_period analytics_columns analytics_layout selected_theme "

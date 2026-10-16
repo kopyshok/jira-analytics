@@ -19,12 +19,12 @@ RUN npm run build
 
 
 # ============================================================================
-# Stage 2: install Python dependencies and pre-cache the embedding model
+# Stage 2: install Python dependencies
 # ============================================================================
 FROM python:3.10-slim AS python-builder
 WORKDIR /build
 
-# Build deps for psycopg2-binary wheels + torch + sentence-transformers
+# Build deps for psycopg2-binary wheels
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
@@ -38,15 +38,6 @@ RUN python /tmp/get-pip.py && rm /tmp/get-pip.py
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the multilingual-e5-base model so the runtime image does not
-# need outbound HuggingFace access. ~470 MB.
-# Ревизия закреплена (= MODEL_REVISION в app/services/llm/embedding_service.py):
-# подменённый в хранилище файл модели в образ не попадёт.
-ENV HF_HOME=/opt/hf-cache
-ARG E5_REVISION=d128750597153bb5987e10b1c3493a34e5a4502a
-RUN python -c "from sentence_transformers import SentenceTransformer; \
-               SentenceTransformer('intfloat/multilingual-e5-base', revision='${E5_REVISION}')"
-
 
 # ============================================================================
 # Stage 3: runtime
@@ -56,11 +47,9 @@ FROM python:3.10-slim AS runtime
 # Runtime deps:
 #   curl    — used by HEALTHCHECK
 #   libpq5  — runtime library for psycopg2
-#   libgomp1 — OpenMP runtime needed by torch
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         libpq5 \
-        libgomp1 \
         tini \
     && rm -rf /var/lib/apt/lists/*
 
@@ -72,9 +61,6 @@ WORKDIR /app
 # Copy installed Python packages + scripts (uvicorn, alembic, etc.)
 COPY --from=python-builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 COPY --from=python-builder /usr/local/bin /usr/local/bin
-
-# Cached HF model
-COPY --from=python-builder /opt/hf-cache /opt/hf-cache
 
 # Application code
 COPY app/ ./app/
@@ -89,12 +75,8 @@ RUN chmod +x /app/scripts/entrypoint.sh
 COPY --from=frontend-builder /build/frontend/dist ./app/static/
 
 # Mutable data directory for exports / generated artifacts
-# /opt/hf-cache остаётся за root: сервис модель только читает, подложить в неё файлы не может.
 RUN mkdir -p /app/data && chown -R app:app /app
 
-ENV HF_HOME=/opt/hf-cache
-# Модель уже в образе: в работе к HuggingFace не ходим — ни скачивания, ни подмены.
-ENV HF_HUB_OFFLINE=1
 ENV TZ=Europe/Moscow
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1

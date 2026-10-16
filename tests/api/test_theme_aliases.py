@@ -1,4 +1,4 @@
-"""Tests for theme alias CRUD + merge integration + threshold setting endpoint."""
+"""Tests for theme alias CRUD + merge integration."""
 import pytest
 from datetime import date
 from fastapi.testclient import TestClient
@@ -130,7 +130,7 @@ def test_add_alias_to_missing_theme_404(client):
     assert r.status_code == 404
 
 
-def test_merge_candidate_adds_alias_and_recomputes_embedding(
+def test_merge_candidate_adds_alias(
     client, db_session, work_type,
 ):
     theme = Theme(work_type_id=work_type.id, name="Себестоимость")
@@ -187,31 +187,3 @@ def test_merge_candidate_adds_alias_and_recomputes_embedding(
     db_session.expire_all()
     t = db_session.get(Theme, theme_id)
     assert "Таможенная стоимость" in t.aliases
-    assert t.embedding is not None
-    assert t.embedding_model_version is not None
-
-
-def test_threshold_get_default(client):
-    r = client.get("/api/v1/work-type-report/settings/embedding-threshold")
-    assert r.status_code == 200
-    assert r.json()["threshold"] == pytest.approx(0.78)
-
-
-def test_threshold_put_and_get_roundtrip(client):
-    r = client.put(
-        "/api/v1/work-type-report/settings/embedding-threshold",
-        json={"threshold": 0.82},
-    )
-    assert r.status_code == 200, r.text
-    assert r.json()["threshold"] == pytest.approx(0.82)
-
-    r = client.get("/api/v1/work-type-report/settings/embedding-threshold")
-    assert r.json()["threshold"] == pytest.approx(0.82)
-
-
-def test_threshold_rejects_out_of_range(client):
-    r = client.put(
-        "/api/v1/work-type-report/settings/embedding-threshold",
-        json={"threshold": 1.5},
-    )
-    assert r.status_code == 422

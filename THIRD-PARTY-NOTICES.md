@@ -10,7 +10,7 @@
 Файл генерируется автоматически: `py -3.10 scripts/gen_third_party_notices.py`.
 Инструменты разработки и тестирования в перечень не включены — в поставку они не входят.
 
-## Серверная часть (Python), 21 компонентов
+## Серверная часть (Python), 19 компонентов
 
 | Компонент | Версия | Лицензия |
 |---|---|---|
@@ -31,13 +31,8 @@
 | `python-multipart` | 0.0.25 | Apache-2.0 |
 | `python-pptx` | 1.0.2 | MIT |
 | `reportlab` | 4.4.10 | BSD License |
-| `sentence-transformers` | 2.7.0 | Apache License 2.0 |
 | `sqlalchemy` | 2.0.49 | MIT |
-| `torch` | 2.13.0 | BSD-3-Clause |
 | `uvicorn` | 0.44.0 | BSD-3-Clause |
-
-Языковая модель `intfloat/multilingual-e5-base`, загружаемая при работе тематического
-анализа, распространяется под лицензией MIT.
 
 ## Клиентская часть (JavaScript/TypeScript), 233 компонентов
 

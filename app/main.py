@@ -77,18 +77,6 @@ async def lifespan(app: FastAPI):
     )
     app.state.scheduler = sched_svc
 
-    # --- Embedding model warmup (background, non-blocking) ---
-    async def _warmup_embedding() -> None:
-        try:
-            from app.services.llm.embedding_service import EmbeddingService
-            await asyncio.to_thread(EmbeddingService().warmup)
-            logger.info("Embedding service warmed up")
-        except Exception as e:
-            logger.warning("Embedding warmup failed (non-fatal): %s", e)
-
-    warmup_task = asyncio.create_task(_warmup_embedding())
-    app.state.embedding_warmup_task = warmup_task
-
     # --- Разовое дозаполнение «автора задачи» (background, non-blocking) ---
     # Отрабатывает один раз на окружение при обновлении на версию с
     # исправленным чтением Автора из Jira; дальше сам себя пропускает.
@@ -114,8 +102,6 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- Shutdown ---
-    if not warmup_task.done():
-        warmup_task.cancel()
     if not backfill_task.done():
         backfill_task.cancel()
     if perf_task is not None:

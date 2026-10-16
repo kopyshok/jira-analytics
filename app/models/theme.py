@@ -1,14 +1,11 @@
 """Theme — dictionary entry per work type for thematic reports."""
 import json
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
     Boolean,
-    DateTime,
     ForeignKey,
     Integer,
-    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -32,9 +29,6 @@ class Theme(Base, TimestampMixin):
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-    embedding: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
-    embedding_model_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    embedding_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     aliases_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     @property
