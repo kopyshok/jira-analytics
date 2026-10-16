@@ -4,8 +4,9 @@
    обеих сторон). Лидер ≥ 90 % голосов и ≥ 3 совпадений — «по списаниям»;
    иначе при совпадениях — «спорно». Если 1–2 совпавших списания указывают
    на одного пользователя и он же единственный с тем же ФИО — «по ФИО».
-2. Без совпадений — по точному ФИО (регистр, ё→е, пробелы; без частичных):
-   ровно один пользователь новой Jira — «по ФИО».
+2. Без совпадений — по точному ФИО (регистр, ё→е, пробелы, порядок слов
+   не важен: «Иван Петров» = «Петров Иван»; без частичных): ровно один
+   пользователь новой Jira — «по ФИО».
 3. Иначе — «не найден»: решает администратор; поиск не удался — «поиск не
    удался», тоже решает администратор.
 Почта ненадёжна (облачная почта одного человека в новой Jira — у другого),
@@ -72,6 +73,11 @@ def normalize_name(value: Optional[str]) -> str:
     return " ".join((value or "").lower().replace("ё", "е").split())
 
 
+def name_key(value: Optional[str]) -> str:
+    """Ключ ФИО без порядка слов: в базе бывает «Имя Фамилия», в новой Jira — «Фамилия Имя»."""
+    return " ".join(sorted(normalize_name(value).split()))
+
+
 def vote_people(
     db_rows: Sequence[DbWorklog],
     dc_rows: Sequence[DcWorklog],
@@ -112,38 +118,40 @@ def classify_votes(votes: Optional[Counter]) -> tuple[Optional[str], Optional[st
 
 
 def exact_name_matches(display_name: Optional[str], candidates: Iterable[DcUser]) -> list[DcUser]:
-    """Пользователи с тем же ФИО (после нормализации), без повторов, по ключу."""
-    wanted = normalize_name(display_name)
+    """Пользователи с тем же ФИО (после нормализации, в любом порядке слов), без повторов, по ключу."""
+    wanted = name_key(display_name)
     if not wanted:
         return []
     found: dict[str, DcUser] = {}
     for user in candidates:
-        if normalize_name(user.display_name) == wanted and user.key not in found:
+        if name_key(user.display_name) == wanted and user.key not in found:
             found[user.key] = user
     return [found[key] for key in sorted(found)]
 
 
 async def _search_by_name(jira: Any, display_name: Optional[str]) -> Optional[list[DcUser]]:
-    """Пользователи новой Jira (и неактивные) по фамилии сотрудника; ``None`` — поиск не удался.
+    """Пользователи новой Jira (и неактивные) по словам ФИО сотрудника; ``None`` — поиск не удался.
 
-    Поиск новой Jira сравнивает начала слов и «ё» с «е» не приравнивает:
-    ищется первое слово ФИО (фамилия), с «ё» — ещё и написанием через «е»;
-    ФИО целиком сверяется потом. Нет доступа, лимит запросов, нет связи,
-    сбой сервера — ошибка наружу: прогон останавливается.
+    Поиск новой Jira сравнивает начала слов и «ё» с «е» не приравнивает.
+    Где фамилия — неизвестно (в базе бывает и «Имя Фамилия»), поэтому слова
+    ищутся по очереди, пока среди найденных не окажется то же ФИО; слово с
+    «ё» — ещё и написанием через «е». ФИО целиком сверяется потом. Нет
+    доступа, лимит запросов, нет связи, сбой сервера — ошибка наружу:
+    прогон останавливается.
     """
     words = (display_name or "").split()
-    if not words:
-        return []
-    surname = words[0]
     found: list[DcUser] = []
     failed = False
-    for query in dict.fromkeys([surname, surname.replace("ё", "е").replace("Ё", "Е")]):
+    queries = dict.fromkeys(q for w in words for q in (w, w.replace("ё", "е").replace("Ё", "Е")))
+    for query in queries:
+        if exact_name_matches(display_name, found):
+            break
         try:
             users = await jira.search_users(query, max_results=NAME_SEARCH_LIMIT, include_inactive=True)
         except _FATAL_SEARCH_ERRORS:
             raise
         except Exception:  # noqa: BLE001 — сбой поиска по одному человеку не роняет прогон
-            logger.warning("Поиск пользователей новой Jira по фамилии «%s» не удался", query, exc_info=True)
+            logger.warning("Поиск пользователей новой Jira по «%s» не удался", query, exc_info=True)
             failed = True
             continue
         if len(users) >= NAME_SEARCH_LIMIT:
@@ -177,7 +185,7 @@ async def build_people_rows(
     """
     authors_by_name: dict[str, list[DcUser]] = {}
     for user in authors.values():
-        authors_by_name.setdefault(normalize_name(user.display_name), []).append(user)
+        authors_by_name.setdefault(name_key(user.display_name), []).append(user)
     employees = db.query(Employee.id, Employee.display_name).order_by(Employee.display_name).all()
     db.commit()
     rows: list[dict[str, Any]] = []
@@ -205,7 +213,7 @@ async def build_people_rows(
                 failures_in_a_row = 0
             matches = exact_name_matches(
                 display_name,
-                [*(found or []), *authors_by_name.get(normalize_name(display_name), [])],
+                [*(found or []), *authors_by_name.get(name_key(display_name), [])],
             )
             if status == STATUS_DISPUTED:
                 if found is not None and len(matches) == 1 and matches[0].key in counter:

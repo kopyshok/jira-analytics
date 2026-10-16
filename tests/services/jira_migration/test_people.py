@@ -84,6 +84,8 @@ def test_exact_name_matches_without_partial():
         DcUser("K1", "a", "Лебедев Александр"),
     ]
     assert exact_name_matches("лебедев  александр", users) == [DcUser("K1", "a", "Лебедев Александр")]
+    # порядок слов не важен: в базе «Имя Фамилия», в новой Jira «Фамилия Имя»
+    assert exact_name_matches("Александр Лебедев", users) == [DcUser("K1", "a", "Лебедев Александр")]
     assert exact_name_matches("", users) == []
 
 
@@ -132,9 +134,35 @@ async def test_people_rows_by_hours_name_and_not_found(db_session):
     assert by_name["Сидоров Сидор"]["status"] == STATUS_NOT_FOUND
     assert by_name["Сидоров Сидор"]["candidates"] == []
     assert seen[-1] == 6
-    # ищется фамилия: поиск новой Jira сравнивает начала слов
+    # слова ищутся по очереди, пока не найдётся то же ФИО: поиск сравнивает начала слов
     searched = [arg for name, arg in jira.calls if name == "search_users"]
-    assert sorted(searched) == ["Кузнецов", "Лебедев", "Орлов", "Петров", "Сидоров"]
+    assert sorted(searched) == ["Кузнецов", "Лебедев", "Олег", "Орлов", "Петров", "Сидор", "Сидоров"]
+
+
+async def test_name_order_differs_in_db_and_new_jira(db_session):
+    # в базе «Имя Фамилия», в новой Jira «Фамилия Имя»: первым словом ищется имя
+    make_employee(db_session, "cloud-1", "Алексей Быстров")
+    db_session.commit()
+    jira = FakeJira(users=[
+        dc_user("JIRAUSER7", "Bystrov_A", "Быстров Алексей"),
+        dc_user("JIRAUSER8", "Bystrov_A_I", "Быстров Алексей Иванович"),
+    ])
+
+    rows = await build_people_rows(db_session, jira, {}, {}, {})
+
+    assert rows[0]["status"] == STATUS_BY_NAME
+    assert rows[0]["auto"]["key"] == "JIRAUSER7"
+    assert [arg for name, arg in jira.calls if name == "search_users"] == ["Алексей"]
+
+
+async def test_name_order_differs_among_worklog_authors(db_session):
+    make_employee(db_session, "cloud-1", "Алексей Быстров")
+    db_session.commit()
+    author = DcUser("JIRAUSER7", "Bystrov_A", "Быстров Алексей")
+
+    rows = await build_people_rows(db_session, FakeJira(), {}, {"JIRAUSER7": author}, {})
+
+    assert (rows[0]["status"], rows[0]["auto"]["key"]) == (STATUS_BY_NAME, "JIRAUSER7")
 
 
 async def test_surname_with_yo_is_also_searched_with_ye(db_session):
