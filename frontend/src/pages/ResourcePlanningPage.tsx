@@ -342,6 +342,7 @@ function ResourcePlanningPageInner() {
     <div ref={pageRef} style={{ padding: '16px 24px', '--rp-anim-speed': `${appearanceSettings.animation_speed_seconds}s` } as React.CSSProperties}>
       <div
         ref={stickyRef}
+        className="rp-sticky-head"
         style={{
           position: 'sticky',
           top: 0,

@@ -23,3 +23,30 @@ export const CHART_PALETTE_AURORA = [
   CHART_COLORS_AURORA.teal,
   CHART_COLORS_AURORA.neutral,
 ];
+
+/* Скин «Цветовые зоны» — цвета статусов стиля, насыщенные под белый фон. */
+export const CHART_COLORS_ZONES = {
+  blue: '#2F6FDE',
+  violet: '#8250C4',
+  green: '#2E8B57',
+  yellow: '#E0AC2B',
+  red: '#D1382A',
+  cyan: '#2546A6',
+  pink: '#C2477A',
+  amber: '#B7791F',
+  teal: '#1F8A84',
+  neutral: '#7B8088',
+} as const;
+
+export const CHART_PALETTE_ZONES = [
+  CHART_COLORS_ZONES.cyan,
+  CHART_COLORS_ZONES.yellow,
+  CHART_COLORS_ZONES.green,
+  CHART_COLORS_ZONES.violet,
+  CHART_COLORS_ZONES.red,
+  CHART_COLORS_ZONES.blue,
+  CHART_COLORS_ZONES.teal,
+  CHART_COLORS_ZONES.amber,
+  CHART_COLORS_ZONES.pink,
+  CHART_COLORS_ZONES.neutral,
+];

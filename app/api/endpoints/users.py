@@ -64,6 +64,7 @@ def set_my_columns(
 VALID_THEMES = {
     "aurora-dark",
     "aurora-light",
+    "zones-light",
 }
 
 

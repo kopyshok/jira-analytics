@@ -67,6 +67,19 @@ const CHART_COLORS_AURORA_LIGHT_OVERRIDES: ChartColorsShape = {
   neutral: '#8089a0',
 };
 
+/* Скин «Цветовые зоны» — данные в цветах статусов стиля (насыщенные, на белом). */
+const CHART_COLORS_ZONES: ChartColorsShape = {
+  blue: '#2F6FDE',
+  green: '#2E8B57',
+  orange: '#B7791F',
+  red: '#D1382A',
+  purple: '#8250C4',
+  cyan: '#2546A6',
+  cyanSecondary: '#6A8BD6',
+  yellow: '#E0AC2B',
+  neutral: '#7B8088',
+};
+
 /** Runtime-aware chart colors. Mirrors DARK_THEME Proxy strategy. */
 export const CHART_COLORS: ChartColorsShape = new Proxy(CHART_COLORS_CLASSIC, {
   get(target, prop: string) {
@@ -74,6 +87,9 @@ export const CHART_COLORS: ChartColorsShape = new Proxy(CHART_COLORS_CLASSIC, {
     const root = document.documentElement;
     if (root.getAttribute('data-theme') !== 'aurora') {
       return target[prop as keyof ChartColorsShape];
+    }
+    if (root.getAttribute('data-skin') === 'zones') {
+      return CHART_COLORS_ZONES[prop as keyof ChartColorsShape] ?? target[prop as keyof ChartColorsShape];
     }
     const mode = root.getAttribute('data-mode');
     const pool = mode === 'light' ? CHART_COLORS_AURORA_LIGHT_OVERRIDES : CHART_COLORS_AURORA_DARK_OVERRIDES;
@@ -170,11 +186,35 @@ const AURORA_LIGHT_TOKENS: DarkThemeShape = {
   textDim: '#7a8298',
 };
 
+/* Скин «Цветовые зоны» поверх Aurora light: белые поверхности на светло-сером,
+ * рамка 1px, акцент — кобальт. Только сплошные цвета: инлайновые фоны без blur. */
+const ZONES_TOKENS: DarkThemeShape = {
+  pageBg: '#F2F3F5',
+  sidebarBg: '#FFFFFF',
+  cardBg: '#FFFFFF',
+  darkAccent: '#F7F8FA',
+  border: '#E1E3E8',
+  darkRows: '#F7F8FA',
+  cyanPrimary: '#2546A6',
+  cyanSecondary: '#2F6FDE',
+  yellow: '#A06A0E',
+  amber: '#A06A0E',
+  amberDim: '#8A5A0A',
+  danger: '#D1382A',
+  success: '#237A4B',
+  textPrimary: '#17191C',
+  textSecondary: '#3F444B',
+  textMuted: '#5A5F66',
+  textHint: '#6B7078',
+  textDim: '#7B8088',
+};
+
 /** Runtime-aware Dark theme tokens.
  *  Reads `<html data-theme="aurora" data-mode="dark|light">` on every access:
  *  - classic: returns DARK_THEME_CLASSIC value
  *  - aurora-dark: returns AURORA_DARK_TOKENS value
  *  - aurora-light: returns AURORA_LIGHT_TOKENS value
+ *  - skin «zones» (`data-skin="zones"` поверх aurora-light): returns ZONES_TOKENS value
  *
  *  This drops in for every existing `DARK_THEME.cardBg` / `DARK_THEME.cyanPrimary`
  *  call without touching consumer code. AppLayout dispatcher remounts the entire
@@ -187,13 +227,19 @@ export const DARK_THEME: DarkThemeShape = new Proxy(DARK_THEME_CLASSIC, {
     if (root.getAttribute('data-theme') !== 'aurora') {
       return target[prop as keyof DarkThemeShape];
     }
+    if (root.getAttribute('data-skin') === 'zones') {
+      return ZONES_TOKENS[prop as keyof DarkThemeShape] ?? target[prop as keyof DarkThemeShape];
+    }
     const mode = root.getAttribute('data-mode');
     const pool = mode === 'light' ? AURORA_LIGHT_TOKENS : AURORA_DARK_TOKENS;
     return pool[prop as keyof DarkThemeShape] ?? target[prop as keyof DarkThemeShape];
   },
 });
 
-export type AppTheme = 'aurora-dark' | 'aurora-light';
+export type AppTheme = 'aurora-dark' | 'aurora-light' | 'zones-light';
+
+/** Скин — слой поверх Aurora light (`<html data-skin>`); у тем Aurora его нет. */
+export type AppSkin = 'zones';
 
 export interface ThemeTokens {
   pageBg: string;
@@ -210,9 +256,19 @@ export interface ThemeTokens {
   textHint: string;
 }
 
-export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }> = {
+export interface AppThemeDef {
+  label: string;
+  /** Режим Aurora, на который ложится тема (`<html data-mode>`). */
+  mode: 'dark' | 'light';
+  /** Скин поверх Aurora (`<html data-skin>`); нет — чистая Aurora. */
+  skin?: AppSkin;
+  tokens: ThemeTokens;
+}
+
+export const APP_THEMES: Record<AppTheme, AppThemeDef> = {
   'aurora-dark': {
     label: 'Aurora тёмная',
+    mode: 'dark',
     tokens: {
       pageBg: '#080b16',
       sidebarBg: '#0d1226',
@@ -230,6 +286,7 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
   },
   'aurora-light': {
     label: 'Aurora светлая',
+    mode: 'light',
     tokens: {
       pageBg: '#e6ebf2',
       sidebarBg: '#e6ebf2',
@@ -245,14 +302,56 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
       textHint: '#7a8298',
     },
   },
+  'zones-light': {
+    label: 'Цветовые зоны',
+    mode: 'light',
+    skin: 'zones',
+    tokens: {
+      pageBg: '#F2F3F5',
+      sidebarBg: '#FFFFFF',
+      cardBg: '#FFFFFF',
+      darkAccent: '#F7F8FA',
+      border: '#E1E3E8',
+      darkRows: '#F7F8FA',
+      primary: '#2546A6',
+      primarySecondary: '#2F6FDE',
+      textPrimary: '#17191C',
+      textSecondary: '#3F444B',
+      textMuted: '#5A5F66',
+      textHint: '#6B7078',
+    },
+  },
 };
 
+interface FontsShape {
+  readonly display: string;
+  readonly body: string;
+  readonly mono: string;
+}
+
 /** Typography stack — distinctive, not system-font slop */
-export const FONTS = {
+const FONTS_BASE: FontsShape = {
   display: "'Fraunces', 'Georgia', serif",
   body: "'Manrope', -apple-system, 'Segoe UI', sans-serif",
   mono: "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace",
-} as const;
+};
+
+/* Скин «Цветовые зоны» — только два шрифта: Wix Madefor Display и Text (цифры тоже). */
+const FONTS_ZONES: FontsShape = {
+  display: "'Wix Madefor Display', 'Wix Madefor Text', 'Segoe UI', sans-serif",
+  body: "'Wix Madefor Text', 'Segoe UI', system-ui, sans-serif",
+  mono: "'Wix Madefor Text', 'Segoe UI', system-ui, sans-serif",
+};
+
+/** Runtime-aware шрифты: как DARK_THEME, читает `<html data-skin>` при каждом обращении. */
+export const FONTS: FontsShape = new Proxy(FONTS_BASE, {
+  get(target, prop: string) {
+    if (typeof document !== 'undefined' && document.documentElement.getAttribute('data-skin') === 'zones') {
+      return FONTS_ZONES[prop as keyof FontsShape] ?? target[prop as keyof FontsShape];
+    }
+    return target[prop as keyof FontsShape];
+  },
+});
 
 export const QUARTER_MONTHS: Record<number, number[]> = {
   1: [1, 2, 3],

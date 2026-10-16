@@ -40,10 +40,11 @@ export default function BacklogRoleCell({
   // На светлой теме classic-градиент color×aa→color×44 даёт пастельный фон,
   // на нём белый текст не читается. Оставляем тот же градиент (мягкая прозрачность),
   // но текст переключаем на тёмный для light.
-  const { mode } = useAppTheme();
+  const { mode, skin } = useAppTheme();
   const isLight = mode === 'light';
   const fillText = isLight ? '#1a1f2c' : '#ffffff';
-  const filledBg = `linear-gradient(180deg, ${color}aa 0%, ${color}44 100%)`;
+  // Скин — плоский стиль без градиентов: ровная заливка того же тона.
+  const filledBg = skin ? `${color}40` : `linear-gradient(180deg, ${color}aa 0%, ${color}44 100%)`;
 
   const hasJiraData = (involvement != null) || (durationDays != null);
   const tooltipLines: string[] = [];
