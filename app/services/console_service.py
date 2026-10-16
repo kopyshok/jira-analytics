@@ -5,8 +5,9 @@
 Только GET, только на адрес системы из настроек и только пути `rest/…` —
 иначе токен ушёл бы на чужой сервер.
 """
+import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlsplit
 
 import httpx
@@ -31,6 +32,52 @@ class Line:
     comment: bool = False
     url: Optional[str] = None
     reject: Optional[str] = None
+
+
+_MAIL_KEYS = {"emailAddress", "email"}
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+class Masker:
+    """Заменяет имена и почту метками «Человек-N» / «почта-N» в рамках запуска.
+
+    Логины, `key` и номера учёток не трогает — по ним сверяем людей.
+    """
+
+    def __init__(self) -> None:
+        self._labels: dict[str, str] = {}
+        self._count = {"Человек": 0, "почта": 0}
+
+    def _label(self, value: str, kind: str) -> str:
+        key = value.strip().lower() if kind == "почта" else value.strip()
+        if key not in self._labels:
+            self._count[kind] += 1
+            self._labels[key] = f"{kind}-{self._count[kind]}"
+        return self._labels[key]
+
+    def walk(self, data: Any) -> Any:
+        """Заменить значения полей имени и почты в разобранном ответе."""
+        if isinstance(data, dict):
+            out: dict[str, Any] = {}
+            for k, v in data.items():
+                if k == "displayName" and isinstance(v, str) and v.strip():
+                    out[k] = self._label(v, "Человек")
+                elif k in _MAIL_KEYS and isinstance(v, str) and v.strip():
+                    out[k] = self._label(v, "почта")
+                else:
+                    out[k] = self.walk(v)
+            return out
+        if isinstance(data, list):
+            return [self.walk(v) for v in data]
+        return data
+
+    def scrub(self, text: str) -> str:
+        """Заменить в тексте уже встреченные имена и любые адреса почты."""
+        names = [k for k in self._labels if " " in k and len(k) >= 5]
+        # ponytail: имя из одного слова («Jira», «Admin») в тексте не ищем — заденет обычные слова.
+        for name in sorted(names, key=len, reverse=True):
+            text = text.replace(name, self._labels[name])
+        return _EMAIL_RE.sub(lambda m: self._label(m.group(0), "почта"), text)
 
 
 def _setting(db: Session, key: str) -> Optional[str]:

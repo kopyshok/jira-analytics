@@ -89,3 +89,31 @@ def test_credentials_from_settings(db_session):
 def test_missing_confluence_credentials(db_session):
     with pytest.raises(cs.ConsoleError, match="Подключение к Confluence"):
         cs.credentials(db_session, "confluence")
+
+
+def test_masker_replaces_names_and_mail_consistently():
+    m = cs.Masker()
+    data = {
+        "author": {"name": "Ivanov_I_I", "key": "JIRAUSER1", "displayName": "Иванов Иван",
+                   "emailAddress": "Ivanov@corp.ru"},
+        "comments": [{"author": {"displayName": "Иванов Иван", "emailAddress": "ivanov@corp.ru"}},
+                     {"author": {"displayName": "Петров Пётр", "email": "p@corp.ru"}}],
+    }
+    got = m.walk(data)
+    assert got["author"] == {"name": "Ivanov_I_I", "key": "JIRAUSER1",
+                             "displayName": "Человек-1", "emailAddress": "почта-1"}
+    assert got["comments"][0]["author"] == {"displayName": "Человек-1", "emailAddress": "почта-1"}
+    assert got["comments"][1]["author"] == {"displayName": "Человек-2", "email": "почта-2"}
+
+
+def test_masker_scrubs_free_text():
+    m = cs.Masker()
+    m.walk({"displayName": "Иванов Иван"})
+    text = 'Согласовано: Иванов Иван, копия ivanov@corp.ru, Sprint@4e7c[id=5]'
+    assert m.scrub(text) == "Согласовано: Человек-1, копия почта-1, Sprint@4e7c[id=5]"
+
+
+def test_masker_keeps_short_names_in_text():
+    m = cs.Masker()
+    m.walk({"displayName": "Jira"})
+    assert m.scrub("Jira Software") == "Jira Software"
