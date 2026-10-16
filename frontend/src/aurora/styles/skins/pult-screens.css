@@ -1,0 +1,215 @@
+/* ============================================================
+   Обложка «Пульт» — экраны: панель управления + сетка модулей.
+   Раскладки страниц — frontend/src/skins/pult/pages/*Layout.tsx.
+   Все правила под префиксом обложки — Aurora не задета.
+   ============================================================ */
+html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
+
+  /* Экран занимает всю рабочую область: отступы и прокрутку у оболочки снимаем */
+  & .pult-content:has(> .pult-screen) { padding: 0; overflow: hidden; }
+
+  & .pult-screen {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---------- панель управления экраном ---------- */
+  & .pc-panel {
+    flex: none;
+    background: var(--p-module);
+    border-bottom: 1px solid var(--p-line);
+    padding: 8px 16px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  & .pc-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  & .pc-row > .pc-push { margin-left: auto; }
+  & .pc-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  & .pc-title-line { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  & .pc-title h1 {
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 30px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  & .pc-count {
+    align-self: center;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 1px 7px;
+    background: var(--p-screen);
+    border: 1px solid var(--p-line-strong);
+    border-radius: 4px;
+  }
+  & .pc-sub { font-size: 12px; color: var(--text-muted); line-height: 1.3; }
+  & .pc-cap,
+  & .pm-cap {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    line-height: 12px;
+    white-space: nowrap;
+  }
+  & .pc-cap b,
+  & .pm-cap b { color: var(--text); font-weight: 700; }
+  & .pc-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  & .pc-lamp {
+    height: 30px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 9px;
+    background: var(--p-screen);
+    border: 1px solid var(--p-line-strong);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  & .pc-lamp b { font-weight: 700; }
+  & .pc-lamp.is-dark { background: var(--p-key); border-color: var(--p-key); color: #FFFFFF; font-weight: 700; }
+  & .p-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  & .pc-group { display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap; }
+
+  /* ---------- тело и модули ---------- */
+  & .pult-body {
+    flex: 1;
+    min-height: 0;
+    padding: 10px 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  & .pm {
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    background: var(--p-module);
+    border: 1px solid var(--p-line);
+    border-radius: 8px;
+    padding: 7px 10px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  & .pm-head { display: flex; align-items: center; gap: 12px; min-height: 18px; flex-wrap: wrap; }
+  & .pm-head > .pm-push { margin-left: auto; }
+  /* «экран» модуля: белое углубление, прокрутка внутри */
+  & .pm-screen {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: var(--p-screen);
+    border: 1px solid var(--p-line-strong);
+    border-radius: 6px;
+  }
+  & .pm-legend {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  & .pm-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; box-sizing: border-box; }
+  & .pm-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  & .pm-close {
+    margin-left: auto;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--p-screen);
+    border: 1px solid var(--p-line-strong);
+    border-radius: 6px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  & .pm-close:hover { border-color: var(--p-key); }
+  & .pm-link {
+    font-size: 12px;
+    color: var(--text);
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--p-line-strong);
+  }
+  & .pm-link:hover { color: var(--p-accent-text); text-decoration-color: currentColor; }
+
+  /* Клавиши размера модуля (24px) */
+  & .pm .ant-btn-sm,
+  & .pm .ant-segmented-sm .ant-segmented-item-label { font-size: 12px; }
+  /* Мелкие счётные фишки */
+  & .p-count {
+    display: inline-block;
+    min-width: 18px;
+    padding: 1px 6px;
+    box-sizing: border-box;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 16px;
+  }
+  & .p-count.is-red { background: #D9381E; color: #FFFFFF; }
+  & .p-count.is-amber { background: #F3D27A; color: #1C1C1A; }
+  & .p-count.is-key { background: var(--p-key); color: #FFFFFF; }
+  & .p-count.is-plain { background: var(--p-screen); border: 1px solid var(--p-line-strong); color: var(--text); }
+  & .p-sev {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 3px 5px;
+    border-radius: 4px;
+    line-height: 10px;
+  }
+  & .p-sev.is-critical { background: #D9381E; color: #FFFFFF; }
+  & .p-sev.is-warning { background: #F3D27A; color: #1C1C1A; }
+  & .p-sev.is-info { background: var(--p-row-alt); color: var(--text); border: 1px solid var(--p-line-strong); }
+}
+
+@media (max-width: 1100px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
+    & .pult-content:has(> .pult-screen) { overflow: auto; }
+    & .pult-screen { height: auto; }
+    & .pult-body { overflow: visible; }
+  }
+}

@@ -89,3 +89,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function useAppTheme(): ThemeContextValue {
   return useContext(ThemeContext);
 }
+
+/** Активная обложка (`data-skin`) или null — чистая Aurora. Страницы выбирают по ней раскладку. */
+export function useSkin(): AppSkin | null {
+  return useContext(ThemeContext).skin;
+}

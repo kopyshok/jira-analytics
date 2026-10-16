@@ -80,8 +80,9 @@ const CHART_COLORS_PULT: ChartColorsShape = {
   neutral: '#9A978F',
 };
 
-/** Обложка поверх Aurora light: `<html data-skin="…">`; у самих Aurora атрибута нет. */
-function currentSkin(): string | null {
+/** Обложка поверх Aurora light: `<html data-skin="…">`; у самих Aurora атрибута нет.
+ *  Для вспомогательных функций вне компонентов (в компонентах — useSkin()). */
+export function currentSkin(): string | null {
   if (typeof document === 'undefined') return null;
   return document.documentElement.getAttribute('data-skin');
 }
@@ -201,8 +202,8 @@ const PULT_TOKENS: DarkThemeShape = {
   darkRows: '#EFEDE7',
   cyanPrimary: '#A93F0A',
   cyanSecondary: '#2A62C9',
-  yellow: '#8F6400',
-  amber: '#8F6400',
+  yellow: '#7E5800',
+  amber: '#7E5800',
   amberDim: '#6E4D00',
   danger: '#B92E17',
   success: '#237A45',
