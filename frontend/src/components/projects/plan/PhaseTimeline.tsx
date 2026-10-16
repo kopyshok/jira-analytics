@@ -4,11 +4,11 @@ import type { PlanTimeline } from '../../../types/projects';
 import { DARK_THEME, MONTH_NAMES } from '../../../utils/constants';
 
 const PHASE_COLOR: Record<string, string> = {
-  analyst: '#00c9c8',
-  cons: '#00c9c8',
-  dev: '#378ADD',
-  qa: '#EF9F27',
-  opo: '#7F77DD',
+  analyst: 'var(--wt-analyst, #00c9c8)',
+  cons: 'var(--wt-analyst, #00c9c8)',
+  dev: 'var(--wt-dev, #378ADD)',
+  qa: 'var(--wt-qa, #EF9F27)',
+  opo: 'var(--wt-opo, #7F77DD)',
 };
 
 const LANE_H = 20;
@@ -137,20 +137,20 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
           </div>
           <div style={{
             position: 'relative', height: LANE_H + 6,
-            background: 'rgba(255,255,255,0.02)', borderRadius: 4,
+            background: 'var(--pt-lane, rgba(255,255,255,0.02))', borderRadius: 4,
             overflow: 'hidden',
           }}>
             <div style={{
               position: 'absolute', top: 0, bottom: 0,
               left: `${qLeft}%`, width: `${Math.max(0, qRight - qLeft)}%`,
-              background: 'rgba(255,255,255,0.035)',
-              borderLeft: '1px dashed rgba(255,255,255,0.14)',
-              borderRight: '1px dashed rgba(255,255,255,0.14)',
+              background: 'var(--pt-quarter, rgba(255,255,255,0.035))',
+              borderLeft: '1px dashed var(--pt-quarter-line, rgba(255,255,255,0.14))',
+              borderRight: '1px dashed var(--pt-quarter-line, rgba(255,255,255,0.14))',
             }} />
             {gridlines.map((g, i) => (
               <div key={i} style={{
                 position: 'absolute', top: 0, bottom: 0, left: `${g}%`,
-                width: 1, background: 'rgba(255,255,255,0.05)',
+                width: 1, background: 'var(--pt-grid, rgba(255,255,255,0.05))',
               }} />
             ))}
             {row.bars.map((b, bi) => {
@@ -166,7 +166,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
                     position: 'absolute', top: 3, height: LANE_H,
                     left: `${left}%`, width: `${width}%`,
                     background: PHASE_COLOR[b.phase] ?? DARK_THEME.cyanPrimary,
-                    borderRadius: 4, color: '#0d1c33', fontSize: 10, lineHeight: `${LANE_H}px`,
+                    borderRadius: 4, color: `var(--pt-fg-${b.phase}, #0d1c33)`, fontSize: 10, lineHeight: `${LANE_H}px`,
                     padding: '0 5px', overflow: 'hidden', whiteSpace: 'nowrap',
                   }}>
                     {width > 8 ? b.label : ''}

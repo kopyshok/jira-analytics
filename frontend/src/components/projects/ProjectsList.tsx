@@ -5,6 +5,8 @@ import type { ProjectListFiltersState } from '../../types/projects';
 import { ProjectListCard } from './ProjectListCard';
 import { ProjectListFilters } from './ProjectListFilters';
 import { DARK_THEME } from '../../utils/constants';
+import { projectQueryParams } from './projectsShared';
+import type { ProjectListItem } from '../../types/projects';
 
 interface Props {
   selectedKey: string | null;
@@ -12,23 +14,41 @@ interface Props {
   filters: ProjectListFiltersState;
   onFiltersChange: (next: ProjectListFiltersState) => void;
   onShowPortfolio: () => void;
+  /** Встроено модулем раскладки (обложка): только список, отборы и шапка — в раскладке. */
+  docked?: boolean;
+  /** Карточка проекта для встроенного списка. */
+  renderItem?: (item: ProjectListItem, selected: boolean, onClick: () => void) => React.ReactNode;
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
 
 export const ProjectsList: React.FC<Props> = ({
-  selectedKey, onSelect, filters, onFiltersChange, onShowPortfolio,
+  selectedKey, onSelect, filters, onFiltersChange, onShowPortfolio, docked = false, renderItem,
 }) => {
   const patch = (part: Partial<ProjectListFiltersState>) =>
     onFiltersChange({ ...filters, ...part });
 
-  const { data: projects, isLoading } = useProjectsList({
-    search: filters.search || undefined,
-    status_category: filters.statusCategory || undefined,
-    category: filters.category || undefined,
-    year: filters.year,
-    quarter: filters.quarter,
-  });
+  const { data: projects, isLoading } = useProjectsList(projectQueryParams(filters));
+
+  if (docked) {
+    return (
+      <div className="pp-list-items">
+        {isLoading && Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} active paragraph={{ rows: 2 }} />
+        ))}
+        {!isLoading && (!projects || projects.length === 0) && (
+          <Empty description="Нет проектов" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+        {!isLoading && projects?.map((item) => (
+          <React.Fragment key={item.key}>
+            {(renderItem ?? ((it, sel, click) => <ProjectListCard item={it} selected={sel} onClick={click} />))(
+              item, item.key === selectedKey, () => onSelect(item.key),
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  }
 
   const yearOptions = Array.from({ length: 5 }, (_, i) => {
     const y = CURRENT_YEAR - 1 + i;

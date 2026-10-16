@@ -2,6 +2,7 @@ import React from 'react';
 import type { ProjectListItem } from '../../types/projects';
 import { StarRating } from './shared/StarRating';
 import { DARK_THEME } from '../../utils/constants';
+import { avgProjectRating, CATEGORY_LABEL, formatProjectMonth, STATUS_CATEGORY_LABEL } from './projectsShared';
 
 const STATUS_CATEGORY_COLOR: Record<string, string> = {
   done: '#67d68d',
@@ -9,22 +10,7 @@ const STATUS_CATEGORY_COLOR: Record<string, string> = {
   new: DARK_THEME.textMuted,
 };
 
-const STATUS_CATEGORY_LABEL: Record<string, string> = {
-  done: 'Готов',
-  indeterminate: 'В работе',
-  new: 'Новый',
-};
-
-const CATEGORY_LABEL: Record<string, string> = {
-  quarterly_tasks: 'Квартальные',
-  archive_target: 'Архив',
-};
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' });
-}
+const formatDate = formatProjectMonth;
 
 interface Props {
   item: ProjectListItem;
@@ -37,14 +23,7 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
     ? (STATUS_CATEGORY_COLOR[item.status_category] ?? DARK_THEME.textMuted)
     : DARK_THEME.textMuted;
 
-  const avgRating =
-    item.rating_quality != null || item.rating_speed != null || item.rating_result != null
-      ? Math.round(
-          ((item.rating_quality ?? 0) + (item.rating_speed ?? 0) + (item.rating_result ?? 0)) /
-            [item.rating_quality, item.rating_speed, item.rating_result].filter((v) => v != null)
-              .length,
-        )
-      : null;
+  const avgRating = avgProjectRating(item);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
