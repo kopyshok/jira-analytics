@@ -40,6 +40,7 @@ python-dotenv>=1.0.0
 
 # Embeddings (CPU-only torch wheel — see docs/superpowers/specs/2026-05-13-embedding-theme-matching-design.md)
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.3.1+cpu
+# >= 2.6.0: CVE-2025-32434 (torch.load выполняет код из файла модели даже с weights_only=True)
+torch==2.13.0+cpu
 sentence-transformers==2.7.0
 numpy>=1.26,<2

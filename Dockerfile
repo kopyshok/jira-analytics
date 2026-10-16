@@ -40,9 +40,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download the multilingual-e5-base model so the runtime image does not
 # need outbound HuggingFace access. ~470 MB.
+# Ревизия закреплена (= MODEL_REVISION в app/services/llm/embedding_service.py):
+# подменённый в хранилище файл модели в образ не попадёт.
 ENV HF_HOME=/opt/hf-cache
+ARG E5_REVISION=d128750597153bb5987e10b1c3493a34e5a4502a
 RUN python -c "from sentence_transformers import SentenceTransformer; \
-               SentenceTransformer('intfloat/multilingual-e5-base')"
+               SentenceTransformer('intfloat/multilingual-e5-base', revision='${E5_REVISION}')"
 
 
 # ============================================================================
@@ -89,6 +92,8 @@ COPY --from=frontend-builder /build/frontend/dist ./app/static/
 RUN mkdir -p /app/data && chown -R app:app /app /opt/hf-cache
 
 ENV HF_HOME=/opt/hf-cache
+# Модель уже в образе: в работе к HuggingFace не ходим — ни скачивания, ни подмены.
+ENV HF_HUB_OFFLINE=1
 ENV TZ=Europe/Moscow
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1

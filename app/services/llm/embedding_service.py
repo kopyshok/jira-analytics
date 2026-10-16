@@ -9,7 +9,6 @@ them automatically (issue/theme = passage, new task on lookup = query).
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from typing import Iterable
 
@@ -18,7 +17,7 @@ import numpy as np
 logger = logging.getLogger("jira_analytics.embedding")
 
 MODEL_NAME = "intfloat/multilingual-e5-base"
-MODEL_REVISION = "d128750597153bb5987e10b1c3493a34e5a4502a"
+MODEL_REVISION = "d128750597153bb5987e10b1c3493a34e5a4502a"  # = E5_REVISION в Dockerfile
 EMBEDDING_DIM = 768
 MODEL_VERSION = f"e5-base-{MODEL_REVISION[:8]}"
 
@@ -51,13 +50,10 @@ class EmbeddingService:
                 return self._model
             from sentence_transformers import SentenceTransformer
 
-            cache_folder = os.environ.get("HF_HOME") or None
             logger.info("Loading embedding model %s (rev=%s)", MODEL_NAME, MODEL_REVISION)
-            self._model = SentenceTransformer(
-                MODEL_NAME,
-                revision=MODEL_REVISION,
-                cache_folder=cache_folder,
-            )
+            # Кэш — по умолчанию HuggingFace ($HF_HOME/hub): туда модель кладёт сборка
+            # образа. cache_folder=$HF_HOME искал в корне и качал модель заново.
+            self._model = SentenceTransformer(MODEL_NAME, revision=MODEL_REVISION)
             logger.info("Embedding model loaded")
             return self._model
 
