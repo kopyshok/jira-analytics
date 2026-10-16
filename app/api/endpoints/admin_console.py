@@ -1,4 +1,5 @@
 """Консоль Jira и Confluence — запросы на чтение от имени сервера. Только администратор."""
+import asyncio
 from datetime import datetime
 from typing import Literal
 
@@ -67,7 +68,7 @@ def _prune(db: Session) -> None:
 
 
 @router.post("/run")
-async def run(
+def run(
     body: RunIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -78,7 +79,9 @@ async def run(
         lines = console_service.parse_lines(body.text, base, body.target)
     except console_service.ConsoleError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    result = await console_service.execute(lines, body.target, body.mask, base, token)
+    # Свой цикл в рабочем потоке: сеть и разбор не мешают другим; соединение с базой не держим до 100 с.
+    db.rollback()
+    result = asyncio.run(console_service.execute(lines, body.target, body.mask, base, token))
     row = ConsoleRun(
         user_id=user.id,
         user_name=user.display_name or user.email,

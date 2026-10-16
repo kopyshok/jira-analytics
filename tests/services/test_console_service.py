@@ -1,4 +1,7 @@
 """Консоль Jira/Confluence: разбор строк, скрытие имён, выполнение."""
+import asyncio
+import time
+
 import httpx
 import pytest
 
@@ -236,3 +239,35 @@ async def test_execute_hides_token_in_transport_error():
     result, _ = await _run("/rest/a", {"/rest/a": httpx.ConnectError("boom secret-token")})
     assert "***" in result.output
     assert "secret-token" not in result.output
+
+
+async def test_execute_wall_clock_timeout(monkeypatch):
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(5)
+        return httpx.Response(200, text="late")
+
+    monkeypatch.setattr(cs, "REQUEST_TIMEOUT_S", 0.2)
+    lines = cs.parse_lines("/rest/a", BASE, "jira")
+    t0 = time.monotonic()
+    result = await cs.execute(lines, "jira", False, BASE, "t", transport=httpx.MockTransport(slow))
+    assert time.monotonic() - t0 < 2
+    assert "нет ответа за" in result.output
+    assert result.error_count == 1
+
+
+async def test_execute_raw_size_cap(monkeypatch):
+    monkeypatch.setattr(cs, "MAX_RAW_BYTES", 10)
+    result, _ = await _run("/rest/a", {"/rest/a": httpx.Response(200, text="x" * 50)})
+    assert "ответ больше" in result.output
+    assert "xxxx" not in result.output
+    assert result.error_count == 1
+
+
+async def test_execute_masks_request_lines():
+    result, _ = await _run(
+        "/rest/a?q=ivanov@corp.ru",
+        {"/rest/a": httpx.Response(200, text="ok")},
+        mask=True,
+    )
+    assert "ivanov@corp.ru" not in result.output
+    assert "### 1. /rest/a?q=почта-1" in result.output

@@ -5,6 +5,7 @@
 Только GET, только на адрес системы из настроек и только пути `rest/…` —
 иначе токен ушёл бы на чужой сервер.
 """
+import asyncio
 import json
 import re
 import time
@@ -24,6 +25,8 @@ REQUEST_TIMEOUT_S = 60.0
 RUN_BUDGET_S = 100.0
 MAX_RESPONSE_CHARS = 5 * 1024 * 1024
 MAX_OUTPUT_CHARS = 10 * 1024 * 1024
+# Сырой ответ больше этого не читаем: разбор и скрытие имён съели бы память.
+MAX_RAW_BYTES = 20 * 1024 * 1024
 TARGET_TITLES = {"jira": "Jira", "confluence": "Confluence"}
 
 
@@ -180,14 +183,36 @@ def _mb(chars: int) -> str:
     return f"{chars / 1024 / 1024:.1f}".replace(".", ",")
 
 
-def _body(resp: httpx.Response, masker: Optional[Masker]) -> str:
+class _TooBig(Exception):
+    """Ответ больше MAX_RAW_BYTES — не читаем дальше."""
+
+    def __init__(self, status: int) -> None:
+        super().__init__(status)
+        self.status = status
+
+
+async def _fetch(client: httpx.AsyncClient, url: str) -> tuple[int, Optional[str], str]:
+    """Статус, адрес перенаправления и текст ответа; больше MAX_RAW_BYTES — _TooBig."""
+    async with client.stream("GET", url) as resp:
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in resp.aiter_bytes():
+            size += len(chunk)
+            if size > MAX_RAW_BYTES:
+                raise _TooBig(resp.status_code)
+            chunks.append(chunk)
+        text = b"".join(chunks).decode(resp.charset_encoding or "utf-8", errors="replace")
+        return resp.status_code, resp.headers.get("location"), text
+
+
+def _body(status: int, location: Optional[str], text: str, masker: Optional[Masker]) -> str:
     """Тело ответа: JSON с отступами, иначе текст; длинное — обрезать."""
-    if 300 <= resp.status_code < 400:
-        return f"Перенаправление: {resp.headers.get('location', '—')}"
+    if 300 <= status < 400:
+        return f"Перенаправление: {location or '—'}"
     try:
-        data = resp.json()
+        data = json.loads(text)
     except ValueError:
-        text = resp.text
+        pass
     else:
         if masker:
             data = masker.walk(data)
@@ -245,8 +270,17 @@ async def execute(
                 continue
             t0 = clock()
             try:
-                resp = await client.get(line.url, timeout=min(REQUEST_TIMEOUT_S, left))
-            except httpx.TimeoutException:
+                status, location, raw = await asyncio.wait_for(
+                    _fetch(client, line.url), timeout=min(REQUEST_TIMEOUT_S, left),
+                )
+            except _TooBig as e:
+                errors += 1
+                blocks.append((head + [
+                    f"→ {e.status} · ответ больше {_mb(MAX_RAW_BYTES)} МБ — "
+                    "сузьте запрос (меньше maxResults, без expand)"
+                ], None, True))
+                continue
+            except (httpx.TimeoutException, asyncio.TimeoutError):
                 errors += 1
                 blocks.append((head + [f"→ нет ответа за {_secs(clock() - t0)} с"], None, True))
                 continue
@@ -254,28 +288,37 @@ async def execute(
                 errors += 1
                 blocks.append((head + [f"→ нет ответа: {type(e).__name__}: {_safe(str(e), token)}"], None, True))
                 continue
-            if resp.status_code >= 400:
+            if status >= 400:
                 errors += 1
-            body = _body(resp, masker)
+            body = _body(status, location, raw, masker)
+            if total + len(body) > MAX_OUTPUT_CHARS:
+                body = (
+                    body[: max(MAX_OUTPUT_CHARS - total, 0)]
+                    + "\n… обрезано: достигнут общий предел результата"
+                )
             total += len(body)
-            blocks.append((head + [f"→ {resp.status_code} · {_secs(clock() - t0)} с"], body, True))
+            blocks.append((head + [f"→ {status} · {_secs(clock() - t0)} с"], body, True))
 
     elapsed = clock() - start
-    out = [
+    parts: list[str] = []
+    for head, shown, gap in blocks:
+        parts.extend(head)
+        if shown is not None:
+            parts.append(shown)
+        if gap:
+            parts.append("")
+    # Имена из поздних ответов скрываем и в ранних, и в строках запросов — поэтому в самом конце.
+    text = "\n".join(parts)
+    if masker:
+        text = masker.scrub(text)
+    banner = [
         f"=== {TARGET_TITLES[target]}{' · имена и почта скрыты' if mask else ''} ===",
         f"Запросов: {count}, с ошибкой: {errors}, отклонено: {rejected}, "
         f"не выполнено: {skipped}, время: {_secs(elapsed, 1)} с",
         "",
     ]
-    for head, shown, gap in blocks:
-        out.extend(head)
-        if shown is not None:
-            # Имена из поздних ответов скрываем и в ранних — поэтому в самом конце.
-            out.append(masker.scrub(shown) if masker else shown)
-        if gap:
-            out.append("")
     return RunResult(
-        output="\n".join(out).rstrip() + "\n",
+        output="\n".join(banner + [text]).rstrip() + "\n",
         request_count=count,
         error_count=errors,
         rejected_count=rejected,
