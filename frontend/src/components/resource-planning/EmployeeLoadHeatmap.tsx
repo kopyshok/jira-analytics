@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Button, Tooltip } from 'antd';
+import { readablePair } from '../../utils/readableColor';
 
 import type {
   AssignmentOut, EmployeeLoadDay, EmployeeLoadOut, EmployeeQuarterLoad, ExternalBookingOut, WatchRowOut,
@@ -39,6 +40,9 @@ export interface EmployeeLoadHeatmapProps {
   onRemoveWatch?: (employeeId: string) => void;
   /** Кнопка «Подобрать людей» в шапке. */
   onPickPeople?: () => void;
+  /** Компактный вид скина: без своей карточки, клетки тянутся на ширину блока,
+   *  строки 20 px, легенда в шапке, пояснение — в подсказке у значка. */
+  compact?: boolean;
 }
 
 const RU_MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -48,6 +52,8 @@ const CELL = 15; // ширина/высота клетки дня
 const CELL_GAP = 2; // зазор между днями внутри недели
 const WEEK_GAP = 7; // зазор между неделями
 const LABEL_W = 210;
+const COMPACT_LABEL_W = 190; // компактный вид: значок, имя, процент
+const COMPACT_WEEK_GAP = 3;
 const ROW_H = 26;
 const TIP_MAX_W = 420; // ширина подсказки дня: строки длиннее переносятся
 // Колонки справа у наблюдаемых: свободно по месяцам и остаток «Технических задач».
@@ -65,18 +71,18 @@ const WATCH_RIGHT: React.CSSProperties = {
   zIndex: 1,
   marginLeft: 8,
   padding: '0 4px 0 10px',
-  background: '#0f2340',
-  boxShadow: '-6px 0 8px -4px rgba(0,0,0,0.5)',
+  background: 'var(--rp-heat-bg, #0f2340)',
+  boxShadow: 'var(--rp-heat-sticky-shadow, -6px 0 8px -4px rgba(0,0,0,0.5))',
 };
 
 // Штриховка отпуска (синеватая) и праздника (тусклая серая).
 const ABSENCE_FILL =
-  'repeating-linear-gradient(45deg, rgba(116,150,224,0.7) 0 3px, rgba(116,150,224,0.22) 3px 6px)';
+  'var(--rp-heat-absence, repeating-linear-gradient(45deg, rgba(116,150,224,0.7) 0 3px, rgba(116,150,224,0.22) 3px 6px))';
 const HOLIDAY_FILL =
-  'repeating-linear-gradient(45deg, rgba(255,255,255,0.16) 0 3px, rgba(255,255,255,0.04) 3px 6px)';
+  'var(--rp-heat-holiday, repeating-linear-gradient(45deg, rgba(255,255,255,0.16) 0 3px, rgba(255,255,255,0.04) 3px 6px))';
 // Дни вне участия в команде — человека в этом периоде в команде просто нет.
 const OUT_OF_TEAM_FILL =
-  'repeating-linear-gradient(45deg, rgba(250,173,20,0.5) 0 3px, rgba(250,173,20,0.12) 3px 6px)';
+  'var(--rp-heat-out-of-team, repeating-linear-gradient(45deg, rgba(250,173,20,0.5) 0 3px, rgba(250,173,20,0.12) 3px 6px))';
 
 // Стабильные пустые значения по умолчанию.
 const NO_ASSIGNMENTS: AssignmentOut[] = [];
@@ -171,7 +177,7 @@ function TipLineView({ line, bold }: { line: TipLine; bold?: boolean }) {
   return (
     <div style={line.indent ? { paddingLeft: 12 } : undefined}>
       {line.text}
-      {line.over && <span style={{ color: '#ff7875', fontWeight: 600 }}> {line.over}</span>}
+      {line.over && <span style={{ color: 'var(--rp-over-fg, #ff7875)', fontWeight: 600 }}> {line.over}</span>}
     </div>
   );
 }
@@ -196,19 +202,40 @@ function quarterTooltipLines(q: EmployeeQuarterLoad, ownLabel = 'Задачи п
 
 /** Цвет клетки рабочего дня по загрузке. */
 function loadColor(pct: number): { bg: string; border?: string } {
+  // Скин подставляет свою ступенчатую шкалу переменными --rp-load-*; без них —
+  // прежний плавный расчёт.
   if (pct <= 0) {
     // Свободный рабочий день: чуть заметная заливка (есть ресурс, нет задач).
-    return { bg: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' };
+    return {
+      bg: 'var(--rp-load-free, rgba(255,255,255,0.06))',
+      border: '1px solid var(--rp-load-free-border, rgba(255,255,255,0.08))',
+    };
   }
   if (pct > 110) {
     const t = Math.min((pct - 110) / 40, 1);
     const h = 38 - 36 * t; // янтарь → красный
-    return { bg: `hsl(${h} 82% 52%)` };
+    return { bg: `var(--rp-load-over, hsl(${h} 82% 52%))` };
   }
   const t = Math.min(pct, 110) / 110;
   const light = 24 + 26 * t;
   const sat = 28 + 46 * t;
-  return { bg: `hsl(150 ${sat}% ${light}%)` };
+  const bucket = pct <= 60 ? 'low' : pct <= 90 ? 'mid' : 'full';
+  return { bg: `var(--rp-load-${bucket}, hsl(150 ${sat}% ${light}%))` };
+}
+
+/** Инициалы для значка у имени (компактный вид). */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+// Цвета значков-инициалов: оттенок от имени, читаемая пара из общего помощника.
+const AVATAR_HUES = ['#C77B5A', '#5B7FA6', '#4F8A7E', '#B56A75', '#6E8F5A', '#B08A3E', '#8A6AA0', '#5A8FA0'];
+function avatarPair(name: string) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return readablePair(AVATAR_HUES[h % AVATAR_HUES.length]);
 }
 
 type Off = 'weekend' | 'holiday' | 'absence' | 'out_of_team' | null | undefined;
@@ -235,6 +262,7 @@ export default function EmployeeLoadHeatmap({
   watchBookings = NO_BOOKINGS,
   onRemoveWatch,
   onPickPeople,
+  compact = false,
 }: EmployeeLoadHeatmapProps) {
   const [tip, setTip] = useState<{ left?: number; right?: number; top: number; lines: TipLine[] } | null>(null);
 
@@ -355,9 +383,11 @@ export default function EmployeeLoadHeatmap({
     const avg = Math.round(row.quarter?.pct ?? 0);
     // Порог перегруза квартала — 100% (у клеток дня, где перегруз бывает
     // обычным делом на один день, шкала другая — см. loadColor).
-    const avgColor = avg > 100 ? { bg: 'hsl(4 78% 52%)' } : loadColor(avg);
+    const avgColor = avg > 100 ? { bg: 'var(--rp-load-pct-over, hsl(4 78% 52%))' } : loadColor(avg);
     // У привлечённого вместо «пришёл / выбыл» — из какой он команды.
     const note = watch ? watchNote(watch) : row.is_borrowed ? borrowedNote(row) : moveNote(row);
+    const rowH = compact ? (note ? 30 : 20) : (note ? ROW_H + 12 : ROW_H);
+    const labelW = compact ? COMPACT_LABEL_W : LABEL_W;
     // Наблюдаемых щелчок по имени в фильтр «Исполнители» не добавляет.
     const click = watch ? undefined : onEmployeeClick;
     // Больше одной группы — пометка «общий», строка всё равно одна.
@@ -366,7 +396,15 @@ export default function EmployeeLoadHeatmap({
     const prev = watch || ri === 0 ? null : groupOf(orderedRows[ri - 1].row.employee_id);
     const header = !watch && grouped && group !== prev ? (
       <div
-        style={{
+        className={compact ? 'rpc-heat-section' : undefined}
+        style={compact ? {
+          width: labelW,
+          position: 'sticky',
+          left: 0,
+          padding: '6px 0 2px',
+          fontSize: 11,
+          fontWeight: 600,
+        } : {
           width: LABEL_W,
           position: 'sticky',
           left: 0,
@@ -377,7 +415,7 @@ export default function EmployeeLoadHeatmap({
           color: '#7a9ab8',
         }}
       >
-        {sectionTitle(group).toUpperCase()}
+        {compact ? sectionTitle(group) : sectionTitle(group).toUpperCase()}
       </div>
     ) : null;
     return (
@@ -385,29 +423,43 @@ export default function EmployeeLoadHeatmap({
       {header}
       <div
         key={row.employee_id}
+        className={compact ? 'rpc-heat-row' : undefined}
         style={{
           display: 'flex',
           alignItems: 'center',
-          height: note ? ROW_H + 12 : ROW_H,
-          background: ri % 2 === 0 ? 'rgba(0,201,200,0.03)' : 'transparent',
+          height: rowH,
+          background: compact ? undefined : ri % 2 === 0 ? 'rgba(0,201,200,0.03)' : 'transparent',
         }}
       >
         {/* Левая колонка */}
         <div
+          className={compact ? 'rpc-heat-label' : undefined}
           style={{
-            width: LABEL_W,
+            width: labelW,
             flexShrink: 0,
             position: 'sticky',
             left: 0,
-            background: ri % 2 === 0 ? '#0f2541' : '#0f2340',
+            background: compact ? undefined : ri % 2 === 0 ? '#0f2541' : '#0f2340',
             zIndex: 1,
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: compact ? 6 : 8,
             paddingRight: 8,
             height: '100%',
+            boxSizing: 'border-box',
           }}
         >
+          {compact && row.employee_name && (() => {
+            const pair = avatarPair(row.employee_name);
+            return (
+              <span
+                aria-hidden="true"
+                style={{ width: 18, height: 18, borderRadius: '50%', background: pair.bg, color: pair.fg, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 600, flexShrink: 0 }}
+              >
+                {initialsOf(row.employee_name)}
+              </span>
+            );
+          })()}
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
               <span
@@ -426,9 +478,10 @@ export default function EmployeeLoadHeatmap({
                     ? 'Щёлкните, чтобы добавить человека в фильтр «Исполнители» или убрать'
                     : undefined
                 }
+                className={compact ? `rpc-heat-name${selectedIds.includes(row.employee_id) ? ' is-selected' : ''}` : undefined}
                 style={{
                   fontSize: 12,
-                  color: selectedIds.includes(row.employee_id) ? '#00c9c8' : '#fff',
+                  color: compact ? undefined : selectedIds.includes(row.employee_id) ? '#00c9c8' : '#fff',
                   fontWeight: selectedIds.includes(row.employee_id) ? 700 : undefined,
                   cursor: click ? 'pointer' : undefined,
                   whiteSpace: 'nowrap',
@@ -447,9 +500,9 @@ export default function EmployeeLoadHeatmap({
                     lineHeight: '13px',
                     padding: '0 4px',
                     borderRadius: 3,
-                    color: '#b39ddb',
-                    background: 'rgba(179,157,219,0.16)',
-                    border: '1px solid rgba(179,157,219,0.4)',
+                    color: 'var(--rp-borrowed-fg, #b39ddb)',
+                    background: 'var(--rp-borrowed-bg, rgba(179,157,219,0.16))',
+                    border: '1px solid var(--rp-borrowed-border, rgba(179,157,219,0.4))',
                   }}
                 >
                   общий
@@ -461,7 +514,7 @@ export default function EmployeeLoadHeatmap({
                 title={note}
                 style={{
                   fontSize: 10,
-                  color: watch || row.is_borrowed ? '#b39ddb' : '#e0a84a',
+                  color: watch || row.is_borrowed ? 'var(--rp-borrowed-fg, #b39ddb)' : 'var(--rp-warn-fg, #e0a84a)',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -471,7 +524,7 @@ export default function EmployeeLoadHeatmap({
               </span>
             )}
           </div>
-          {row.employee_role && (
+          {row.employee_role && !compact && (
             <span style={{ fontSize: 10, color: '#5a8ab8', flexShrink: 0 }}>{row.employee_role}</span>
           )}
           {avg > 0 && (
@@ -486,7 +539,8 @@ export default function EmployeeLoadHeatmap({
             >
             <span
               data-testid={watch ? 'rp-watch-pct' : 'rp-load-pct'}
-              style={{
+              className={compact ? `rpc-heat-pct${avg > 100 ? ' is-over' : ''}` : undefined}
+              style={compact ? { marginLeft: 'auto', flexShrink: 0, fontSize: 12, fontWeight: 600 } : {
                 marginLeft: 'auto',
                 flexShrink: 0,
                 fontSize: 10,
@@ -505,12 +559,14 @@ export default function EmployeeLoadHeatmap({
 
         {/* Клетки дней или подпись «нет загрузки» */}
         {allEmpty && !watch ? (
-          <div style={{ fontSize: 11, fontStyle: 'italic', color: '#4a6a8a', paddingLeft: 4 }}>
+          <div className={compact ? 'rpc-heat-empty' : undefined} style={{ fontSize: 11, fontStyle: 'italic', color: compact ? undefined : '#4a6a8a', paddingLeft: 4, flex: compact ? '1 1 auto' : undefined }}>
             нет загрузки в этом квартале
           </div>
         ) : (
           data.weeks.map((w, wi) => (
-            <div key={wi} style={{ display: 'flex', marginLeft: wi === 0 ? 0 : WEEK_GAP }}>
+            <div key={wi} style={compact
+              ? { display: 'flex', gap: 1, flex: `${w.days.length} 1 0`, minWidth: 0, marginLeft: wi === 0 ? 0 : COMPACT_WEEK_GAP }
+              : { display: 'flex', marginLeft: wi === 0 ? 0 : WEEK_GAP }}>
               {w.days.map((cell) => {
                 const d = byDate.get(cell.date);
                 const off = d?.off;
@@ -542,11 +598,10 @@ export default function EmployeeLoadHeatmap({
                       (e.currentTarget as HTMLDivElement).style.filter = 'none';
                     }}
                     style={{
-                      width: CELL,
-                      height: CELL,
+                      ...(compact
+                        ? { flex: '1 1 0', minWidth: 3, height: 14, borderRadius: 2 }
+                        : { width: CELL, height: CELL, marginRight: CELL_GAP, borderRadius: 3 }),
                       boxSizing: 'border-box',
-                      marginRight: CELL_GAP,
-                      borderRadius: 3,
                       background: bg,
                       border,
                       cursor: 'default',
@@ -572,7 +627,7 @@ export default function EmployeeLoadHeatmap({
         <span
           data-testid="rp-watch-free"
           title={`Свободно за квартал ${fmtHours(w.free_hours)}: норма минус задачи всех команд и нормированные работы`}
-          style={{ width: FREE_W, color: '#cfe1f5', whiteSpace: 'nowrap' }}
+          style={{ width: FREE_W, color: 'var(--rp-text-2, #cfe1f5)', whiteSpace: 'nowrap' }}
         >
           {freeByMonthLabel(w.free_by_month)}
         </span>
@@ -581,7 +636,7 @@ export default function EmployeeLoadHeatmap({
           style={{
             width: TECH_W,
             whiteSpace: 'nowrap',
-            color: tech.over ? '#ff7875' : '#cfe1f5',
+            color: tech.over ? 'var(--rp-over-fg, #ff7875)' : 'var(--rp-text-2, #cfe1f5)',
             fontWeight: tech.over ? 600 : undefined,
           }}
         >
@@ -593,7 +648,7 @@ export default function EmployeeLoadHeatmap({
             aria-label={`Убрать из наблюдаемых: ${w.employee_name ?? ''}`}
             title="Убрать из наблюдаемых"
             onClick={() => onRemoveWatch(w.employee_id)}
-            style={{ background: 'none', border: 'none', color: '#7a9ab8', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}
+            style={{ background: 'none', border: 'none', color: 'var(--rp-muted, #7a9ab8)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}
           >
             ×
           </button>
@@ -608,36 +663,145 @@ export default function EmployeeLoadHeatmap({
       <div
         data-tour="rp-watch-header"
         title="Люди любых команд, которых рассматриваете для плана. Свой цвет — задачи их основной команды и этого плана, нижний слой — другие команды. Самые свободные — сверху."
+        className={compact ? 'rpc-heat-watch-title' : undefined}
         style={{
-          width: LABEL_W,
+          width: compact ? COMPACT_LABEL_W : LABEL_W,
           flexShrink: 0,
           position: 'sticky',
           left: 0,
           zIndex: 1,
-          background: '#0f2340',
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: '0.06em',
-          color: '#b39ddb',
+          background: 'var(--rp-heat-bg, #0f2340)',
+          fontSize: compact ? 11 : 10,
+          fontWeight: compact ? 600 : 700,
+          letterSpacing: compact ? 0 : '0.06em',
+          color: 'var(--rp-borrowed-fg, #b39ddb)',
         }}
       >
-        НАБЛЮДАЕМЫЕ
+        {compact ? 'Наблюдаемые' : 'НАБЛЮДАЕМЫЕ'}
       </div>
       {data.weeks.map((w, wi) => (
-        <div key={wi} style={{ display: 'flex', marginLeft: wi === 0 ? 0 : WEEK_GAP }}>
-          {w.days.map((d) => (
+        <div key={wi} style={compact
+          ? { display: 'flex', flex: `${w.days.length} 1 0`, minWidth: 0, marginLeft: wi === 0 ? 0 : COMPACT_WEEK_GAP }
+          : { display: 'flex', marginLeft: wi === 0 ? 0 : WEEK_GAP }}>
+          {!compact && w.days.map((d) => (
             <div key={d.date} style={{ width: CELL, marginRight: CELL_GAP }} />
           ))}
         </div>
       ))}
-      <div style={{ ...WATCH_RIGHT, fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', color: '#7a9ab8' }}>
-        <span style={{ width: FREE_W }}>СВОБОДНО ПО МЕСЯЦАМ, Ч</span>
+      <div style={{ ...WATCH_RIGHT, fontSize: compact ? 11 : 10, fontWeight: compact ? 500 : 600, letterSpacing: compact ? 0 : '0.04em', color: 'var(--rp-muted, #7a9ab8)' }}>
+        <span style={{ width: FREE_W }}>{compact ? 'Свободно по месяцам, ч' : 'СВОБОДНО ПО МЕСЯЦАМ, Ч'}</span>
         <span style={{ width: TECH_W }} title="Остаток «Технических задач» основной команды на роль человека">
-          ТЕХ. ЗАДАЧИ ОСНОВНОЙ
+          {compact ? 'Тех. задачи основной' : 'ТЕХ. ЗАДАЧИ ОСНОВНОЙ'}
         </span>
       </div>
     </div>
   );
+
+  const legendItems: { label: string; fill: string; border?: string }[] = [
+          { label: 'свободно', fill: loadColor(0).bg, border: loadColor(0).border },
+          { label: 'до 60%', fill: loadColor(45).bg },
+          { label: '60–90%', fill: loadColor(80).bg },
+          { label: '90–110%', fill: loadColor(100).bg },
+          { label: 'свыше 110%', fill: loadColor(125).bg },
+          { label: 'отпуск', fill: ABSENCE_FILL },
+          { label: 'праздник', fill: HOLIDAY_FILL },
+          // Двухцветная клетка: низ — другие команды, верх — этот план.
+          ...(data.hasExt || watchRows.some((r) => r.days.some((d) => (d.ext_pct ?? 0) > 0))
+            ? [
+                { label: 'в этом плане', fill: loadColor(80).bg },
+                { label: 'в планах других команд', fill: EXT_LOAD_COLOR },
+              ]
+            : []),
+          ...(data.hasNormed || watchRows.some((r) => r.days.some((d) => (d.normed_pct ?? 0) > 0)) ? [{ label: 'нормированные работы', fill: NORMED_WORK_COLOR }] : []),
+          // У наблюдаемых свой слой — задачи их основной команды (и этого плана).
+          ...(watchRows.length > 0
+            ? [{ label: 'у наблюдаемых — задачи основной команды и этого плана', fill: loadColor(80).bg }]
+            : []),
+  ];
+  const description = 'Только рабочие дни. Нормированные работы — запас квартала из сценария основной команды: заблокированные периоды, остаток дня после вовлечённости и остальное — на свободные дни. Процент у имени — загрузка за квартал с задачами других команд и нормированными работами. Наведите на день — часы; на процент у имени — разбивка; щелчок по имени — фильтр по человеку.';
+  const tipBox = tip && (
+    <div
+      style={{
+        position: 'fixed',
+        left: tip.left,
+        right: tip.right,
+        top: tip.top,
+        zIndex: 1000,
+        pointerEvents: 'none',
+        background: 'var(--rp-tip-bg, #0a1628)',
+        border: '1px solid var(--rp-border, #1e3a5f)',
+        borderRadius: 6,
+        padding: '4px 8px',
+        fontSize: 11,
+        color: 'var(--rp-tip-fg, #e6f0fa)',
+        maxWidth: TIP_MAX_W,
+        whiteSpace: 'normal',
+        boxShadow: 'var(--rp-tip-shadow, 0 4px 14px rgba(0,0,0,0.45))',
+      }}
+    >
+      {tip.lines.map((line, i) => <TipLineView key={i} line={line} bold={i === 0} />)}
+    </div>
+  );
+
+  if (compact) {
+    const cap = (m: string) => m.charAt(0) + m.slice(1).toLowerCase();
+    return (
+      <div className="rpc-heat" style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, height: '100%', position: 'relative' }}>
+        <div style={{ flex: 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px 14px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '2px 14px', minWidth: 0, flex: '1 1 auto' }}>
+            <h2 className="rpc-card-title">Загрузка сотрудников по дням</h2>
+            <span className="rpc-heat-legend" style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: '3px 10px', fontSize: 11 }}>
+              <b>Загрузка</b>
+              {legendItems.map((it) => (
+                <span key={it.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: it.fill, border: it.border, boxSizing: 'border-box', display: 'inline-block' }} />
+                  {it.label}
+                </span>
+              ))}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <Tooltip title={description} styles={{ root: { maxWidth: TIP_MAX_W } }}>
+              <span className="rpc-info" role="img" tabIndex={0} aria-label={description}>?</span>
+            </Tooltip>
+            <span className="rpc-heat-period" style={{ fontSize: 12 }}>{data.periodLabel}</span>
+            {onPickPeople && (
+              <Button
+                data-tour="rp-pick-people"
+                size="small"
+                onClick={onPickPeople}
+                title="Добавить людей любых команд секцией «Наблюдаемые» — видно, кто свободен"
+              >
+                Подобрать людей
+              </Button>
+            )}
+          </div>
+        </div>
+        <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto' }}>
+          <div style={{ minWidth: 760 }}>
+            <div className="rpc-heat-headrow" style={{ display: 'flex', alignItems: 'flex-end', height: 22, position: 'sticky', top: 0, zIndex: 3 }}>
+              <div className="rpc-heat-colhead" style={{ width: COMPACT_LABEL_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2, fontSize: 11, paddingBottom: 2 }}>
+                Сотрудник
+              </div>
+              {data.weeks.map((w, wi) => (
+                <div key={wi} style={{ flex: `${w.days.length} 1 0`, minWidth: 0, marginLeft: wi === 0 ? 0 : COMPACT_WEEK_GAP, position: 'relative', height: '100%' }}>
+                  {w.monthLabel && (
+                    <span className="rpc-heat-month" style={{ position: 'absolute', bottom: 2, left: 0, paddingLeft: 4, whiteSpace: 'nowrap', fontSize: 11, fontWeight: 600 }}>
+                      {cap(w.monthLabel)}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            {orderedRows.map((item, ri) => renderRow(item, ri))}
+            {watchItems.length > 0 && watchHeader}
+            {watchItems.map((item, wi) => renderRow(item, wi, item.row as WatchRowOut))}
+          </div>
+        </div>
+        {tipBox}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -727,27 +891,7 @@ export default function EmployeeLoadHeatmap({
       {/* Легенда */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', color: '#7a9ab8' }}>ЗАГРУЗКА</span>
-        {[
-          { label: 'свободно', fill: loadColor(0).bg, border: loadColor(0).border },
-          { label: 'до 60%', fill: loadColor(45).bg },
-          { label: '60–90%', fill: loadColor(80).bg },
-          { label: '90–110%', fill: loadColor(100).bg },
-          { label: 'свыше 110%', fill: loadColor(125).bg },
-          { label: 'отпуск', fill: ABSENCE_FILL },
-          { label: 'праздник', fill: HOLIDAY_FILL },
-          // Двухцветная клетка: низ — другие команды, верх — этот план.
-          ...(data.hasExt || watchRows.some((r) => r.days.some((d) => (d.ext_pct ?? 0) > 0))
-            ? [
-                { label: 'в этом плане', fill: loadColor(80).bg },
-                { label: 'в планах других команд', fill: EXT_LOAD_COLOR },
-              ]
-            : []),
-          ...(data.hasNormed || watchRows.some((r) => r.days.some((d) => (d.normed_pct ?? 0) > 0)) ? [{ label: 'нормированные работы', fill: NORMED_WORK_COLOR }] : []),
-          // У наблюдаемых свой слой — задачи их основной команды (и этого плана).
-          ...(watchRows.length > 0
-            ? [{ label: 'у наблюдаемых — задачи основной команды и этого плана', fill: loadColor(80).bg }]
-            : []),
-        ].map((it) => (
+        {legendItems.map((it) => (
           <span key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#9ab3cc' }}>
             <span
               style={{ width: 12, height: 12, borderRadius: 3, background: it.fill, border: it.border, display: 'inline-block' }}
@@ -757,29 +901,7 @@ export default function EmployeeLoadHeatmap({
         ))}
       </div>
 
-      {tip && (
-        <div
-          style={{
-            position: 'fixed',
-            left: tip.left,
-            right: tip.right,
-            top: tip.top,
-            zIndex: 1000,
-            pointerEvents: 'none',
-            background: '#0a1628',
-            border: '1px solid #1e3a5f',
-            borderRadius: 6,
-            padding: '4px 8px',
-            fontSize: 11,
-            color: '#e6f0fa',
-            maxWidth: TIP_MAX_W,
-            whiteSpace: 'normal',
-            boxShadow: '0 4px 14px rgba(0,0,0,0.45)',
-          }}
-        >
-          {tip.lines.map((line, i) => <TipLineView key={i} line={line} bold={i === 0} />)}
-        </div>
-      )}
+      {tipBox}
     </div>
   );
 }

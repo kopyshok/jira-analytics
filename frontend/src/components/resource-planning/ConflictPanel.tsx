@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Alert, App, Button, Collapse, Dropdown, Segmented, Space, Spin, Tag } from 'antd';
+import { useState } from 'react';
+import { Alert, Button, Collapse, Dropdown, Segmented, Space, Spin, Tag } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import type { ConflictOut } from '../../api/resourcePlanning';
-import { usePatchConflict, useExplainConflict } from '../../hooks/useResourcePlanning';
+import { useExplainConflict } from '../../hooks/useResourcePlanning';
+import { STATUS_LABEL, useConflictList, type ConflictGroupBy } from './conflictList';
 
 interface Props {
   conflicts: ConflictOut[];
@@ -10,26 +11,7 @@ interface Props {
   onSelectAssignment?: (assignmentId: string) => void;
 }
 
-type GroupBy = 'item' | 'employee' | 'type';
 
-const TYPE_LABELS: Record<string, string> = {
-  OVERLOAD_HIGH: 'Сильная перегрузка',
-  OVERLOAD_MED: 'Средняя перегрузка',
-  OVERLOAD_LIGHT: 'Лёгкая перегрузка',
-  QUARTER_OVERFLOW: 'Не вмещается в квартал',
-  SPLIT_REQUIRED: 'Требуется разбивка',
-  NO_ANALYST: 'Нет аналитика',
-  NO_DEV: 'Нет разработчика',
-  LATE_START: 'Поздний старт',
-  OUT_OF_TEAM: 'Вне команды',
-  CROSS_TEAM_OVERLAP: 'Пересечение с другой командой',
-  PREDECESSOR_VIOLATED: 'Нарушен порядок предшественников',
-  LEVELING_DELAY: 'Сдвиг при выравнивании',
-  LEVELING_REASSIGN: 'Переназначение',
-  UNPLACED_HOURS: 'Часы не размещены',
-  NORMED_OVERUSE: 'Перерасход нормированных работ',
-  NORMED_UNPLACED: 'Квартал не вмещается',
-};
 
 const SEVERITY_TYPE: Record<string, 'error' | 'warning' | 'info'> = {
   critical: 'error',
@@ -44,14 +26,8 @@ const STATUS_COLOR: Record<ConflictOut['status'], string> = {
   resolved: 'green',
 };
 
-const STATUS_LABEL: Record<ConflictOut['status'], string> = {
-  open: 'Открыт',
-  acknowledged: 'Принят',
-  muted: 'Замучен',
-  resolved: 'Решён',
-};
 
-function ConflictAlert({
+export function ConflictAlert({
   conflict: c,
   planId,
   onSelectAssignment,
@@ -119,13 +95,13 @@ function ConflictAlert({
             </Space>
           </Space>
           {showDetails && isOverload && (
-            <div style={{ marginTop: 8, padding: 8, background: 'rgba(0,0,0,0.18)', borderRadius: 4 }}>
+            <div style={{ marginTop: 8, padding: 8, background: 'var(--rp-explain-bg, rgba(0,0,0,0.18))', borderRadius: 4 }}>
               {explain.isLoading && <Spin size="small" />}
               {explain.data && (
                 <ExplainBreakdown data={explain.data} onSelectAssignment={onSelectAssignment} />
               )}
               {explain.isError && (
-                <span style={{ color: '#ef4444', fontSize: 12 }}>Ошибка загрузки расчёта</span>
+                <span style={{ color: 'var(--rp-conflict, #ef4444)', fontSize: 12 }}>Ошибка загрузки расчёта</span>
               )}
             </div>
           )}
@@ -153,7 +129,7 @@ function ExplainBreakdown({
       </div>
       <div style={{ marginBottom: 6 }}>
         Доступно: <b>{avail.toFixed(1)} ч</b> · Назначено: <b>{demand.toFixed(1)} ч</b> ·
-        <span style={{ color: pct > 110 ? '#ef4444' : '#ffb432', fontWeight: 700, marginLeft: 4 }}>
+        <span style={{ color: pct > 110 ? 'var(--rp-conflict, #ef4444)' : 'var(--rp-warn-strong, #ffb432)', fontWeight: 700, marginLeft: 4 }}>
           {pct.toFixed(0)}%
         </span>
       </div>
@@ -175,7 +151,7 @@ function ExplainBreakdown({
                   fontSize: 11,
                   padding: '2px 0',
                   cursor: onSelectAssignment ? 'pointer' : 'default',
-                  borderBottom: '1px dashed rgba(120,150,180,0.15)',
+                  borderBottom: '1px dashed var(--rp-dash-line, rgba(120,150,180,0.15))',
                 }}
                 onClick={() => onSelectAssignment?.(co.assignment_id)}
               >
@@ -197,59 +173,11 @@ function ExplainBreakdown({
 }
 
 export default function ConflictPanel({ conflicts, planId, onSelectAssignment }: Props) {
-  const { message } = App.useApp();
-  const patchMutation = usePatchConflict(planId);
-  const [showHidden, setShowHidden] = useState(false);
-  const [groupBy, setGroupBy] = useState<GroupBy>('item');
-
-  const { active, hidden, visible } = useMemo(() => {
-    const nonInfo = conflicts.filter(c => c.severity !== 'info');
-    const a = nonInfo.filter(c => c.status !== 'muted' && c.status !== 'resolved');
-    const h = nonInfo.filter(c => c.status === 'muted' || c.status === 'resolved');
-    return { active: a, hidden: h, visible: showHidden ? [...a, ...h] : a };
-  }, [conflicts, showHidden]);
-
-  const groups = useMemo(() => {
-    const map = new Map<string, { label: string; items: ConflictOut[] }>();
-    for (const c of visible) {
-      let key = 'misc';
-      let label = '—';
-      if (groupBy === 'item') {
-        key = c.backlog_item_id ?? 'misc';
-        label = c.backlog_item_title ?? 'Без инициативы';
-      } else if (groupBy === 'employee') {
-        key = c.employee_id ?? 'misc';
-        label = c.employee_id
-          ? c.employee_name ?? c.employee_id
-          : 'Без сотрудника';
-      } else {
-        // Незнакомые типы (сервер новее фронта) — одной группой «Прочее»,
-        // без служебного кода в подписи.
-        key = TYPE_LABELS[c.type] ? c.type : 'misc';
-        label = TYPE_LABELS[c.type] ?? 'Прочее';
-      }
-      if (!map.has(key)) map.set(key, { label, items: [] });
-      map.get(key)!.items.push(c);
-    }
-    return [...map.entries()]
-      .map(([key, v]) => ({ key, label: v.label, items: v.items }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
-  }, [visible, groupBy]);
+  const {
+    showHidden, setShowHidden, groupBy, setGroupBy, active, hidden, groups, criticals, warnings, handleStatusChange,
+  } = useConflictList(conflicts, planId);
 
   if (active.length === 0 && hidden.length === 0) return null;
-
-  const criticals = active.filter(c => c.severity === 'critical');
-  const warnings = active.filter(c => c.severity === 'warning');
-
-  const handleStatusChange = (conflictId: string, status: ConflictOut['status']) => {
-    patchMutation.mutate(
-      { conflictId, status },
-      {
-        onSuccess: () => message.success(`Статус: ${STATUS_LABEL[status]}`),
-        onError: () => message.error('Ошибка изменения статуса'),
-      }
-    );
-  };
 
   return (
     <Collapse
@@ -261,12 +189,12 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
           <span>
             Конфликты{' '}
             {criticals.length > 0 && (
-              <span style={{ color: '#e85d4a', fontWeight: 700 }}>
+              <span style={{ color: 'var(--rp-cp, #e85d4a)', fontWeight: 700 }}>
                 {criticals.length} критических
               </span>
             )}
             {warnings.length > 0 && (
-              <span style={{ color: '#ffb432', marginLeft: 8 }}>
+              <span style={{ color: 'var(--rp-warn-strong, #ffb432)', marginLeft: 8 }}>
                 {warnings.length} предупреждений
               </span>
             )}
@@ -278,7 +206,7 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
               <Segmented
                 size="small"
                 value={groupBy}
-                onChange={(v) => setGroupBy(v as GroupBy)}
+                onChange={(v) => setGroupBy(v as ConflictGroupBy)}
                 options={[
                   { label: 'По задачам', value: 'item' },
                   { label: 'По сотрудникам', value: 'employee' },
@@ -297,7 +225,7 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
               )}
             </Space>
             {groups.map(g => (
-              <div key={g.key} style={{ borderTop: '1px solid #1e3a5f', paddingTop: 6 }}>
+              <div key={g.key} style={{ borderTop: '1px solid var(--rp-border, #1e3a5f)', paddingTop: 6 }}>
                 <div style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)', fontWeight: 600, marginBottom: 4 }}>
                   {g.label}{' '}
                   <Tag>{g.items.length}</Tag>

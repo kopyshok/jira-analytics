@@ -19,27 +19,31 @@ import {
 interface Props {
   /** Запас нормированных работ команды плана на квартал. */
   reserve: ReserveOut;
+  /** Компактный вид скина: без своей карточки и без свёртки — таблица всегда на виду,
+   *  цвета — классами `rpc-norm-*` в CSS скина. */
+  compact?: boolean;
 }
 
 /** Ключ строки таблицы запаса (React `key`) — уникален по задаче+команде+роли. */
 const itemKey = (item: OtherTeamWorkOut) => `${item.backlog_item_id}::${item.team}::${item.role}`;
 
 const thStyle: React.CSSProperties = {
-  textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#7a9ab8',
-  padding: '4px', borderBottom: '1px solid #1e3a5f',
+  textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--rp-muted, #7a9ab8)',
+  padding: '4px', borderBottom: '1px solid var(--rp-border, #1e3a5f)',
 };
 const tdStyle: React.CSSProperties = {
-  fontSize: 12, color: '#cfe1f5', padding: '6px 4px', verticalAlign: 'top',
-  borderBottom: '1px solid rgba(30,58,95,0.4)',
+  fontSize: 12, color: 'var(--rp-text-2, #cfe1f5)', padding: '6px 4px', verticalAlign: 'top',
+  borderBottom: '1px solid var(--rp-row-line-soft, rgba(30,58,95,0.4))',
 };
 
-export default function NormedReserveSummary({ reserve }: Props) {
+export default function NormedReserveSummary({ reserve, compact = false }: Props) {
   const { message } = App.useApp();
   const setOverride = useSetWorkTypeOverride();
   const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
   // При каждом открытии плана: развёрнут, если у команды есть часы других команд
   // (видно, сколько запаса они заняли), иначе свёрнут. Состояние не персистится.
-  const [expanded, setExpanded] = useState(() => hasOtherTeamHours(reserve));
+  const [expandedState, setExpanded] = useState(() => hasOtherTeamHours(reserve));
+  const expanded = compact || expandedState;
   // Раскрытые строки видов работ (задачи других команд) — ключ «роль::вид работ».
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   // Вид работ хранится на сервере per задача (backlog_item_id), а не per задача+роль — задача с
@@ -111,7 +115,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
             ? localOverrides[overrideKey] ?? undefined
             : item.is_manual ? item.work_type_id : undefined;
         return (
-          <div key={itemKey(item)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#cfe1f5' }}>
+          <div key={itemKey(item)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--rp-text-2, #cfe1f5)' }}>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.issue_key && (
                 <>
@@ -121,8 +125,8 @@ export default function NormedReserveSummary({ reserve }: Props) {
               )}
               {item.title}
             </span>
-            <span style={{ color: '#9ab3cc', flexShrink: 0 }}>{item.team}</span>
-            <span style={{ color: '#9ab3cc', flexShrink: 0, width: 56, textAlign: 'right' }}>
+            <span style={{ color: 'var(--rp-text-2, #9ab3cc)', flexShrink: 0 }}>{item.team}</span>
+            <span style={{ color: 'var(--rp-text-2, #9ab3cc)', flexShrink: 0, width: 56, textAlign: 'right' }}>
               {fmtHours(item.hours)}
             </span>
             <Select
@@ -145,7 +149,8 @@ export default function NormedReserveSummary({ reserve }: Props) {
   return (
     <div
       data-testid="rp-reserve-summary"
-      style={{
+      className={compact ? 'rpc-norm' : undefined}
+      style={compact ? { display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' } : {
         background: '#0f2340',
         border: '1px solid #1e3a5f',
         borderRadius: 8,
@@ -153,6 +158,11 @@ export default function NormedReserveSummary({ reserve }: Props) {
         marginTop: 16,
       }}
     >
+      {compact ? (
+        <div style={{ flex: 'none', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <h2 className="rpc-card-title">Нормированные работы — запас квартала</h2>
+        </div>
+      ) : (
       <button
         type="button"
         data-testid="rp-reserve-toggle"
@@ -178,24 +188,28 @@ export default function NormedReserveSummary({ reserve }: Props) {
           <span style={{ fontSize: 11, color: '#7a9ab8' }}>перерасхода нет</span>
         )}
       </button>
+      )}
 
       {expanded && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)', marginBottom: 8 }}>
+        <div style={compact ? { marginTop: 4, flex: '1 1 auto', minHeight: 0, overflow: 'auto' } : { marginTop: 8 }}>
+          <div className={compact ? 'rpc-norm-caption' : undefined} style={{ fontSize: compact ? 12 : 11, color: compact ? undefined : 'var(--text-muted, #7a9ab8)', marginBottom: compact ? 2 : 8 }}>
             {reserve.scenario_name}
+            {compact && (overuseNote
+              ? <span className="rpc-norm-over-note" style={{ fontWeight: 600 }}> · {overuseNote}</span>
+              : ' · перерасхода нет')}
           </div>
 
           {visibleRoles.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#7a9ab8' }}>
+            <div className={compact ? 'rpc-norm-caption' : undefined} style={{ fontSize: 12, color: compact ? undefined : '#7a9ab8' }}>
               Заблокированных периодов и работы в других командах нет — запас не расходуется
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <table className={compact ? 'rpc-norm-table' : undefined} style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <colgroup>
                 <col />
-                <col style={{ width: 90 }} />
-                <col style={{ width: 220 }} />
-                <col style={{ width: 110 }} />
+                <col style={{ width: compact ? 70 : 90 }} />
+                <col style={{ width: compact ? 82 : 220 }} />
+                <col style={{ width: compact ? 104 : 110 }} />
               </colgroup>
               <thead>
                 <tr>
@@ -211,7 +225,8 @@ export default function NormedReserveSummary({ reserve }: Props) {
                     <tr>
                       <td
                         colSpan={4}
-                        style={{
+                        className={compact ? 'rpc-norm-role' : undefined}
+                        style={compact ? { fontSize: 12, fontWeight: 600, padding: '8px 4px 4px' } : {
                           fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
                           color: '#7a9ab8', padding: '8px 4px 4px',
                         }}
@@ -230,7 +245,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
                       const isOveruse = row.overuse_hours > 0.5 || row.planned_hours <= 0;
                       return (
                         <Fragment key={rowKey}>
-                          <tr>
+                          <tr className={compact && row.overuse_hours > 0.5 ? 'rpc-norm-over-row' : undefined}>
                             <td style={tdStyle}>
                               {canExpand ? (
                                 <span
@@ -246,7 +261,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
                                   }}
                                   style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                                 >
-                                  <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 10, color: '#7a9ab8' }}>
+                                  <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 10, color: 'var(--rp-muted, #7a9ab8)' }}>
                                     {isOpen ? '▾' : '▸'}
                                   </span>
                                   {row.label}
@@ -254,23 +269,30 @@ export default function NormedReserveSummary({ reserve }: Props) {
                               ) : (
                                 <span style={{ paddingLeft: 14 }}>{row.label}</span>
                               )}
+                              {/* Компактный вид: пояснение к «Занято» — под названием, колонка чисел узкая. */}
+                              {compact && caption && (
+                                <div className="rpc-norm-caption" style={{ fontSize: 11, marginTop: 2, paddingLeft: 14 }}>{caption}</div>
+                              )}
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtHours(row.planned_hours)}</td>
                             <td style={tdStyle}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                                  <div style={{ width: `${pct}%`, height: '100%', background: isOveruse ? '#ff6b6b' : '#00c9c8' }} />
-                                </div>
-                                <span style={{ flexShrink: 0, textAlign: 'right', minWidth: 52 }}>{fmtHours(used)}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: compact ? 'flex-end' : undefined }}>
+                                {/* Компактный вид — только число, как в макете; доля — в подсказке. */}
+                                {!compact && (
+                                  <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--rp-track, rgba(255,255,255,0.08))', overflow: 'hidden' }}>
+                                    <div style={{ width: `${pct}%`, height: '100%', background: isOveruse ? 'var(--rp-over, #ff6b6b)' : 'var(--rp-accent, #00c9c8)' }} />
+                                  </div>
+                                )}
+                                <span title={compact ? `${Math.round(pct)}% запаса` : undefined} style={{ flexShrink: 0, textAlign: 'right', minWidth: 52 }}>{fmtHours(used)}</span>
                               </div>
-                              {caption && (
-                                <div style={{ fontSize: 10, color: '#7a9ab8', marginTop: 2 }}>{caption}</div>
+                              {caption && !compact && (
+                                <div style={{ fontSize: 10, color: 'var(--rp-muted, #7a9ab8)', marginTop: 2 }}>{caption}</div>
                               )}
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'right' }}>
                               {row.overuse_hours > 0.5 ? (
-                                <span style={{ color: '#ff6b6b', fontWeight: 600 }}>
-                                  −{fmtHours(row.overuse_hours)} <span style={{ fontWeight: 400, fontSize: 10 }}>перерасход</span>
+                                <span className={compact ? 'rpc-norm-over' : undefined} style={{ color: compact ? undefined : '#ff6b6b', fontWeight: 600 }}>
+                                  −{fmtHours(row.overuse_hours)} <span className={compact ? 'rpc-norm-over-tag' : undefined} style={{ fontWeight: compact ? 600 : 400, fontSize: compact ? 11 : 10 }}>перерасход</span>
                                 </span>
                               ) : (
                                 fmtHours(row.remaining_hours)
@@ -279,7 +301,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
                           </tr>
                           {canExpand && isOpen && (
                             <tr>
-                              <td colSpan={4} style={{ padding: '0 4px 8px 18px', borderBottom: '1px solid rgba(30,58,95,0.4)' }}>
+                              <td colSpan={4} style={{ padding: '0 4px 8px 18px', borderBottom: '1px solid var(--rp-row-line-soft, rgba(30,58,95,0.4))' }}>
                                 {renderRowItems(r.role, row.work_type_id)}
                               </td>
                             </tr>

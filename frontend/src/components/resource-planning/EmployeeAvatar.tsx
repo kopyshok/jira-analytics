@@ -1,4 +1,6 @@
 import { Tooltip } from 'antd';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readablePair } from '../../utils/readableColor';
 
 interface Props {
   name: string | null;
@@ -27,8 +29,11 @@ function initials(name: string): string {
 }
 
 export default function EmployeeAvatar({ name, role, size = 22 }: Props) {
+  const skin = useSkin();
   if (!name) return null;
   const color = ROLE_COLORS[(role ?? '').toLowerCase()] ?? '#6b7280';
+  // В светлом скине — светлая подложка и тёмные инициалы того же оттенка.
+  const pair = skin ? readablePair(color) : { bg: color, fg: '#fff' };
   return (
     <Tooltip title={name}>
       <span
@@ -39,8 +44,8 @@ export default function EmployeeAvatar({ name, role, size = 22 }: Props) {
           width: size,
           height: size,
           borderRadius: '50%',
-          background: color,
-          color: '#fff',
+          background: pair.bg,
+          color: pair.fg,
           fontSize: Math.round(size * 0.45),
           fontWeight: 600,
           letterSpacing: 0.3,

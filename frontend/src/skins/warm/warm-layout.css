@@ -1,0 +1,169 @@
+/* ============================================================
+   Скин «Тёплая» — общие элементы раскладок страниц (skins/warm/pages/*).
+   Классы wr-* есть только в раскладках скина; Aurora их не видит.
+   Значения — из утверждённых макетов C-*.dc.html.
+   ============================================================ */
+
+/* Страница помещается в экран: внешняя прокрутка выключена, длинные блоки
+   прокручиваются внутри себя. */
+html[data-skin="warm"] .app-main > .scroll-y:has(> .wr-fit) {
+  overflow: hidden;
+  padding-bottom: 0;
+}
+html[data-skin="warm"] .wr-fit {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 10px;
+}
+/* Узкий экран: раскладка складывается в колонку и прокручивается целиком. */
+@media (max-width: 1100px) {
+  html[data-skin="warm"] .app-main > .scroll-y:has(> .wr-fit) { overflow: auto; }
+  html[data-skin="warm"] .wr-fit { height: auto; }
+}
+
+html[data-skin="warm"] .wr-page-head {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 20px;
+}
+html[data-skin="warm"] .wr-h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #2A2620;
+}
+html[data-skin="warm"] .wr-eyebrow { font-size: 12px; color: #6B6358; margin-bottom: 2px; }
+html[data-skin="warm"] .wr-subtitle { font-size: 13px; color: #6B6358; margin-top: 2px; }
+
+html[data-skin="warm"] .wr-card {
+  background: #FFFFFF;
+  border: 1px solid #E3DDD3;
+  border-radius: 14px;
+  box-sizing: border-box;
+}
+html[data-skin="warm"] .rpc-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #2A2620;
+}
+
+html[data-skin="warm"] .wr-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+html[data-skin="warm"] .wr-row-between { justify-content: space-between; gap: 6px 16px; }
+
+/* Поле с подписью слева: «План», «Исполнители», «Сценарий» */
+html[data-skin="warm"] .wr-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 4px 0 12px;
+  border: 1px solid #D9D2C6;
+  border-radius: 10px;
+  background: #FFFFFF;
+  box-sizing: border-box;
+  min-width: 0;
+}
+html[data-skin="warm"] .wr-field:focus-within { border-color: #2F6B5A; }
+html[data-skin="warm"] .wr-field-label { font-size: 12px; color: #6B6358; white-space: nowrap; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-field .ant-select-borderless,
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-field .ant-select-borderless .ant-select-selector {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-field .ant-select-selection-item { font-weight: 500; color: #2A2620; }
+
+/* Пилюли-статусы */
+html[data-skin="warm"] .wr-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 13px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #ECE8E1;
+  color: #5E564A;
+  box-sizing: border-box;
+}
+html[data-skin="warm"] .wr-pill.is-sm { height: 22px; padding: 0 9px; border-radius: 11px; }
+html[data-skin="warm"] .wr-pill.is-good { background: #E1EFE4; color: #2D6140; }
+html[data-skin="warm"] .wr-pill.is-warn { background: #F6EAD2; color: #7A4E0C; }
+html[data-skin="warm"] .wr-pill.is-bad { background: #F6E1D8; color: #8F3A18; }
+html[data-skin="warm"] .wr-pill.is-info { background: #E3EBF6; color: #2A4F82; }
+html[data-skin="warm"] .wr-pill.is-accent { background: #E2ECE7; color: #24584A; }
+html[data-skin="warm"] .wr-pill.is-neutral { background: #ECE8E1; color: #5E564A; }
+html[data-skin="warm"] .wr-pill.is-violet { background: #F1E3EE; color: #6E3B63; }
+
+html[data-skin="warm"] .wr-vsep { display: inline-block; width: 1px; height: 22px; background: #E3DDD3; margin: 0 4px; }
+html[data-skin="warm"] .wr-muted { font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] .wr-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2F6B5A;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+html[data-skin="warm"] .wr-link:hover { color: #24584A; }
+html[data-skin="warm"] .wr-icon-plain {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6B6358;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+html[data-skin="warm"] .wr-icon-plain:hover { background: #F3EFE8; color: #2A2620; }
+
+/* Кнопки и переключатели в раскладках — высота 36 и сегменты на камне, как в макетах */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .wr-card .ant-btn:not(.ant-btn-link):not(.ant-btn-text) { height: 36px; padding-inline: 14px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .wr-card .ant-btn-sm:not(.ant-btn-link):not(.ant-btn-text) { height: 30px; padding-inline: 12px; font-size: 12px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .wr-page-head .ant-btn { height: 36px; padding-inline: 16px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .ant-segmented {
+  background: #F3EFE8 !important;
+  border: none !important;
+  padding: 3px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .ant-segmented-item-label { min-height: 30px; line-height: 30px; padding: 0 14px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .ant-segmented-sm .ant-segmented-item-label { min-height: 26px; line-height: 26px; padding: 0 12px; font-size: 12px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .ant-segmented-item:not(.ant-segmented-item-selected) .ant-segmented-item-label { color: #5E564A; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .wr-card .ant-select:not(.ant-select-borderless) { min-height: 36px; }
+
+/* Кнопка обратной связи — небольшая, в правом нижнем углу; страницы «в экран»
+   оставляют под неё полосу, как строка «Открыть форму · Быстрый баг» в макетах. */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-float-btn-group {
+  inset-inline-end: 18px !important;
+  bottom: 6px !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-float-btn-group .ant-float-btn { width: 30px; height: 30px; min-height: 30px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-float-btn-group .ant-float-btn .ant-float-btn-body { width: 30px; height: 30px; }
+html[data-skin="warm"] .wr-fit { padding-bottom: 40px; }

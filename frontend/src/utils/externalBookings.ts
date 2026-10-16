@@ -17,7 +17,7 @@ export function ownPeopleBookingLabel(b: ExternalBookingOut): string {
 
 /** Серая штриховка чужой работы — только просмотр. */
 export const OTHER_TEAM_HATCH =
-  'repeating-linear-gradient(45deg, rgba(160,170,190,0.55) 0 4px, rgba(160,170,190,0.18) 4px 8px)';
+  'var(--rp-other-team-hatch, repeating-linear-gradient(45deg, rgba(160,170,190,0.55) 0 4px, rgba(160,170,190,0.18) 4px 8px))';
 
 /** «1 фаза», «3 фазы», «12 фаз» — счётчик в шапке блока «Привлечённые». */
 export function phaseCountLabel(n: number): string {

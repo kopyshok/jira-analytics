@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, App, Button, Checkbox, DatePicker, Descriptions, Divider, Drawer, InputNumber, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import { CloseOutlined } from '@ant-design/icons';
 import type { SelectProps } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -50,9 +51,30 @@ interface Props {
   allAssignments: AssignmentOut[];
   employees: EmployeeCandidate[];
   onChanged?: () => void | Promise<unknown>;
+  /** Панель встроена в раскладку страницы (скин), а не выезжает справа. */
+  docked?: boolean;
+}
+
+/** Встроенная панель: заголовок с кнопкой «Закрыть» и прокручиваемое тело. */
+function DockedShell({ title, onClose, children }: { title: ReactNode; onClose: () => void; children: ReactNode }) {
+  return (
+    <aside className="rpc-assign" aria-label="Назначение" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+      <div className="rpc-assign-head" style={{ flex: 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, padding: '12px 14px 8px' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>{title}</div>
+        <button type="button" className="rpc-assign-close" aria-label="Закрыть" onClick={onClose}
+          style={{ width: 30, height: 30, borderRadius: 15, border: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+          <CloseOutlined />
+        </button>
+      </div>
+      <div className="rpc-assign-body" style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto', padding: '0 14px 12px' }}>
+        {children}
+      </div>
+    </aside>
+  );
 }
 
 const fmtDay = (iso: string) => dayjs(iso).format('DD.MM');
+const END_HINT = 'Окончание рассчитывается по часам и свободным дням; чтобы сдвинуть — перетащите начало или измените вовлечённость';
 
 /** «(в команде по 19.07)» — если участие обрывается внутри квартала плана. */
 function membershipSuffix(e: EmployeeCandidate): string {
@@ -70,6 +92,7 @@ export default function AssignmentSidebar({
   allAssignments,
   employees,
   onChanged,
+  docked = false,
 }: Props) {
   const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
@@ -125,6 +148,7 @@ export default function AssignmentSidebar({
   }, [assignment, employees]);
 
   if (!assignment) {
+    if (docked) return null;
     return (
       <Drawer
         open={open}
@@ -237,45 +261,61 @@ export default function AssignmentSidebar({
     }
   };
 
-  return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      styles={{ wrapper: { width: 920 } }}
-      mask={{ closable: true }}
-      title={
-        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-          <Space>
-            <span>{PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
-            {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
-            {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
-            {assignment.out_of_quarter && <Tag color="orange">Вне квартала</Tag>}
-          </Space>
-          <SectionVisibilityPopover
-            visible={prefs.detail_sections_visible}
-            onChange={(next) => patchPrefs({ detail_sections_visible: next })}
-          />
-        </Space>
-      }
-    >
-      <Typography.Title level={5} style={{ marginTop: 0 }}>
+  const titleNode = (
+    <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+      <Space>
+        <span>{PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
+        {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
+        {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
+        {assignment.out_of_quarter && <Tag color="orange">Вне квартала</Tag>}
+      </Space>
+      <SectionVisibilityPopover
+        visible={prefs.detail_sections_visible}
+        onChange={(next) => patchPrefs({ detail_sections_visible: next })}
+      />
+    </Space>
+  );
+  // Встроенная панель скина: фаза и ключ задачи — подзаголовком, поля — сеткой.
+  const dockedTitle = (
+    <>
+      <h2 className="rpc-card-title">Назначение</h2>
+      <div className="rpc-assign-sub" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: 12, flexWrap: 'wrap' }}>
+        {assignment.backlog_item_key && <span>{assignment.backlog_item_key}</span>}
+        <span>· {PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
+        {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
+        {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
+        {assignment.out_of_quarter && <Tag color="orange">Вне квартала</Tag>}
+        <SectionVisibilityPopover
+          visible={prefs.detail_sections_visible}
+          onChange={(next) => patchPrefs({ detail_sections_visible: next })}
+        />
+      </div>
+    </>
+  );
+  const content = (
+    <>
+      <Typography.Title level={5} style={{ marginTop: 0 }} className={docked ? 'rpc-assign-title' : undefined}>
         {assignment.backlog_item_title}
       </Typography.Title>
-      {assignment.backlog_item_key && (
+      {assignment.backlog_item_key && !docked && (
         <Typography.Text type="secondary">{assignment.backlog_item_key}</Typography.Text>
       )}
-      <Divider />
-      <Descriptions size="small" column={1} bordered>
+      {!docked && <Divider />}
+      <Descriptions
+        size="small"
+        className={docked ? 'rpc-assign-fields' : undefined}
+        {...(docked ? { layout: 'vertical' as const, column: 4, bordered: false, colon: false } : { column: 1, bordered: true })}
+      >
         <Descriptions.Item label="Часов">
           {assignment.hours_allocated?.toFixed(0) ?? '—'}
         </Descriptions.Item>
         <Descriptions.Item label="Часть">
           {assignment.part_number}
         </Descriptions.Item>
-        <Descriptions.Item label="Вовлечённость">
-          <InvolvementEditor planId={planId} assignment={assignment} onChanged={onChanged} />
+        <Descriptions.Item label="Вовлечённость" span={docked ? 2 : undefined}>
+          <InvolvementEditor planId={planId} assignment={assignment} onChanged={onChanged} stacked={docked} />
         </Descriptions.Item>
-        <Descriptions.Item label="Сотрудник">
+        <Descriptions.Item label="Сотрудник" span={docked ? 4 : undefined}>
           {assignment.phase === 'qa' ? (
             <Typography.Text type="secondary">QA — без сотрудника</Typography.Text>
           ) : (
@@ -300,32 +340,34 @@ export default function AssignmentSidebar({
               title={membershipWarning}
             />
           )}
-          {assignment.employee_name && (
+          {assignment.employee_name && !docked && (
             <Space style={{ marginTop: 6 }}>
               <EmployeeAvatar name={assignment.employee_name} role={assignment.employee_role} size={20} />
               <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>{assignment.employee_name}</span>
             </Space>
           )}
         </Descriptions.Item>
-        <Descriptions.Item label="Начало">
+        <Descriptions.Item label="Начало" span={docked ? 2 : undefined}>
           <DatePicker
             value={assignment.start_date ? dayjs(assignment.start_date) : null}
+            format={docked ? 'DD.MM.YYYY' : undefined}
             disabled={saving}
             allowClear={false}
             onChange={(d) => d && updateField({ start_date: d.format('YYYY-MM-DD') })}
           />
         </Descriptions.Item>
-        <Descriptions.Item label="Окончание">
+        <Descriptions.Item label="Окончание" span={docked ? 2 : undefined}>
           {/* Конец считает планировщик по свободным дням исполнителя от даты начала. */}
-          <Typography.Text>
+          <Typography.Text title={docked ? END_HINT : undefined}>
             {assignment.end_date ? dayjs(assignment.end_date).format('DD.MM.YYYY') : '—'}
           </Typography.Text>
-          <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
-            Окончание рассчитывается по часам и свободным дням; чтобы сдвинуть — перетащите начало
-            или измените вовлечённость
-          </Typography.Text>
+          {!docked && (
+            <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
+              {END_HINT}
+            </Typography.Text>
+          )}
         </Descriptions.Item>
-        <Descriptions.Item label="Предшественники">
+        <Descriptions.Item label="Предшественники" span={docked ? 4 : undefined}>
           <Select
             mode="multiple"
             placeholder="Зависит от…"
@@ -481,6 +523,21 @@ export default function AssignmentSidebar({
           </Space>
         )}
       </Modal>
+    </>
+  );
+
+  if (docked) {
+    return <DockedShell title={dockedTitle} onClose={onClose}>{content}</DockedShell>;
+  }
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      styles={{ wrapper: { width: 920 } }}
+      mask={{ closable: true }}
+      title={titleNode}
+    >
+      {content}
     </Drawer>
   );
 }
@@ -489,10 +546,13 @@ function InvolvementEditor({
   planId,
   assignment,
   onChanged,
+  stacked = false,
 }: {
   planId: string;
   assignment: AssignmentOut;
   onChanged?: () => void | Promise<unknown>;
+  /** Узкая колонка встроенной панели: поле, отметка и кнопка — друг под другом. */
+  stacked?: boolean;
 }) {
   const { message } = App.useApp();
   const qc = useQueryClient();
@@ -553,14 +613,14 @@ function InvolvementEditor({
 
   return (
     <Space orientation="vertical" size={2}>
-      <Space>
+      <Space orientation={stacked ? 'vertical' : 'horizontal'} size={stacked ? 4 : undefined}>
         <InputNumber
           min={0}
           max={100}
           value={pct ?? undefined}
           onChange={(v) => setPct(typeof v === 'number' ? v : null)}
           suffix="%"
-          style={{ width: 110 }}
+          style={{ width: stacked ? '100%' : 110 }}
           disabled={!fixed || saving}
           onPressEnter={save}
         />

@@ -1,0 +1,462 @@
+/* ============================================================
+   «Ресурсное планирование» в скине «Тёплая» (макет C-resource).
+   1) Палитра диаграммы: компоненты берут цвета из переменных --rp-*,
+      у Aurora переменных нет — действуют прежние значения.
+   2) Компактный вид диаграммы (классы rpc-*) и раскладка страницы (wr-rp-*).
+   ============================================================ */
+
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
+  --rp-surface: #FFFFFF;
+  --rp-border: #EEE9E1;
+  --rp-row-line: #F5F1EA;
+  --rp-row-line-soft: #EEE9E1;
+  --rp-init-divider: #EEE9E1;
+  --rp-text: #2A2620;
+  --rp-text-2: #4A443A;
+  --rp-muted: #6B6358;
+  --rp-init-bg: #FAF8F4;
+  --rp-init-bg-opaque: #FAF8F4;
+  --rp-pending-bg: #FBF3EF;
+  --rp-pending-bg-opaque: #FBF3EF;
+  --rp-pending-outline: #B5502A;
+  --rp-section-bg: #F3EFE8;
+  --rp-prio-bg: #E2ECE7;
+  --rp-prio-fg: #24584A;
+  --rp-dash: #6B6358;
+  --rp-highlight-bg: #E2ECE7;
+  --rp-foreign-fg: #7A4E0C;
+  --rp-foreign-border: #E8D3A8;
+  --rp-borrowed-fg: #6E3B63;
+  --rp-borrowed-bg: #F1E3EE;
+  --rp-borrowed-border: #DCC3D6;
+  --rp-cp: #2A2620;
+  --rp-cp-glow: transparent;
+  --rp-me-glow: transparent;
+  --rp-other-subgroup: #6E3B63;
+  --rp-conflict: #B5502A;
+  --rp-accent: #2F6B5A;
+  --rp-pinned-outline: 1px dashed #2A2620;
+  --rp-fact: rgba(255, 255, 255, 0.32);
+  --rp-quarter-end: #B7791F;
+  --rp-ooq-fill: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.62) 0 2px, rgba(255, 255, 255, 0.18) 2px 6px);
+  --rp-busy-fill: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.85) 0 3px, rgba(42, 38, 32, 0.22) 3px 6px);
+  --rp-absence-fill: repeating-linear-gradient(45deg, rgba(42, 38, 32, 0.5) 0 2px, rgba(255, 255, 255, 0.35) 2px 6px);
+  --rp-holiday-fill: repeating-linear-gradient(45deg, rgba(183, 121, 31, 0.55) 0 2px, rgba(255, 255, 255, 0.3) 2px 6px);
+  --rp-weekend-fill: repeating-linear-gradient(45deg, rgba(42, 38, 32, 0.18) 0 2px, transparent 2px 6px);
+  --rp-booking-border: #CFC7BA;
+  --rp-other-team-hatch: repeating-linear-gradient(45deg, #CFC7BA 0 3px, #F3EFE8 3px 6px);
+  --rp-warn-fg: #7A4E0C;
+  --rp-warn-strong: #9A6212;
+  --rp-over: #B5502A;
+  --rp-over-fg: #8F3A18;
+  --rp-track: #EEE9E1;
+  --rp-explain-bg: #FAF8F4;
+  --rp-dash-line: #EEE9E1;
+  --rp-pert: #9A6212;
+
+  /* шкала */
+  --rp-head-1: #FFFFFF;
+  --rp-head-2: #FFFFFF;
+  --rp-head-month: #2A2620;
+  --rp-head-week: #6B6358;
+  --rp-head-tick: #EEE9E1;
+  --rp-head-weekend-bg: #F5F1EA;
+  --rp-head-weekend-fg: #6B6358;
+  --rp-head-off-bg: #F3EFE8;
+  --rp-head-holiday-bg: #F6EAD2;
+  --rp-head-holiday-fg: #7A4E0C;
+  --rp-nonwork-holiday: rgba(183, 121, 31, 0.08);
+  --rp-nonwork-weekend: #FAF8F4;
+  --rp-grid-1: #F1ECE4;
+  --rp-grid-2: #E3DDD3;
+  --rp-grid-3: #F5F1EA;
+  --rp-blocked-fill: repeating-linear-gradient(45deg, rgba(42, 38, 32, 0.06) 0 4px, transparent 4px 10px);
+  --rp-blocked-border: #D9D2C6;
+  --rp-blocked-fg: #6B6358;
+  --rp-today: #2A2620;
+  --rp-depmode-bg: #FBF3EF;
+  --rp-depmode-border: #F0D6CA;
+  --rp-depmode-fg: #8F3A18;
+  --rp-arrow-dep: #3F6CA8;
+  --rp-arrow-relay: #2F6B5A;
+  --rp-arrow-manual: #B5502A;
+
+  /* фазы: подложка полосы и подпись на ней */
+  --rp-phase-analyst: #9AD0CA;
+  --rp-phase-analyst-ink: #0F3F3B;
+  --rp-phase-dev: #3F6CA8;
+  --rp-phase-dev-ink: #FFFFFF;
+  --rp-phase-qa: #E0A04F;
+  --rp-phase-qa-ink: #3A1F00;
+  --rp-phase-opo: #3F7D4E;
+  --rp-phase-opo-ink: #FFFFFF;
+
+  /* загрузка по дням: ступенчатая шкала макета */
+  --rp-heat-bg: #FFFFFF;
+  --rp-heat-sticky-shadow: -1px 0 0 #EEE9E1;
+  --rp-load-free: #E4EEE7;
+  --rp-load-free-border: #CFDCD3;
+  --rp-load-low: #B5D3C0;
+  --rp-load-mid: #6FA787;
+  --rp-load-full: #E3B15B;
+  --rp-load-over: #C4562F;
+  --rp-load-pct-over: #C4562F;
+  --rp-load-ext: #A98BC4;
+  --rp-load-normed: #9AA3AE;
+  --rp-heat-absence: #A9BCD6;
+  --rp-heat-holiday: #DDD7CC;
+  --rp-heat-out-of-team: repeating-linear-gradient(45deg, #E3B15B 0 2px, #F6EAD2 2px 5px);
+  --rp-tip-bg: #2A2620;
+  --rp-tip-fg: #FFFFFF;
+  --rp-tip-shadow: 0 6px 20px rgba(42, 38, 32, 0.18);
+}
+
+/* ---------- раскладка страницы ---------- */
+html[data-skin="warm"] .wr-rp-toolbar,
+html[data-skin="warm"] .wr-conflicts {
+  flex: none;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+html[data-skin="warm"] .wr-rp-mid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+html[data-skin="warm"] .wr-rp-gantt {
+  flex: 1 1 760px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html[data-skin="warm"] .wr-rp-gantt-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+  --rp-page-sticky-h: 0px;
+}
+html[data-skin="warm"] .wr-rp-assign {
+  flex: 0 0 360px;
+  width: 360px;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+html[data-skin="warm"] .wr-rp-bottom {
+  flex: none;
+  height: 228px;
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  min-height: 0;
+}
+html[data-skin="warm"] .wr-rp-heat {
+  flex: 1 1 760px;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 14px;
+  overflow: hidden;
+}
+html[data-skin="warm"] .wr-rp-norm {
+  flex: 0 1 420px;
+  width: 420px;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px 16px;
+  overflow: hidden;
+}
+@media (max-width: 1100px) {
+  html[data-skin="warm"] .wr-rp-mid,
+  html[data-skin="warm"] .wr-rp-bottom { flex-direction: column; height: auto; }
+  html[data-skin="warm"] .wr-rp-gantt { min-height: 520px; }
+  html[data-skin="warm"] .wr-rp-assign { flex-basis: auto; width: auto; max-height: 640px; }
+  html[data-skin="warm"] .wr-rp-heat { height: 260px; }
+  html[data-skin="warm"] .wr-rp-norm { width: auto; }
+}
+
+/* Легенда под диаграммой */
+html[data-skin="warm"] .wr-gantt-legend {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 7px 14px;
+  border-top: 1px solid #EEE9E1;
+  font-size: 11px;
+  color: #6B6358;
+}
+html[data-skin="warm"] .wr-legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+html[data-skin="warm"] .wr-legend-sq { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+html[data-skin="warm"] .wr-legend-bar {
+  width: 14px; height: 10px; border-radius: 3px; background: #3F6CA8; display: inline-block; box-sizing: border-box;
+}
+html[data-skin="warm"] .wr-legend-bar.is-conflict { border: 2px solid #B5502A; }
+html[data-skin="warm"] .wr-legend-bar.is-cp { border: 2px solid #2A2620; }
+html[data-skin="warm"] .wr-legend-bar.is-pinned { outline: 1px dashed #2A2620; outline-offset: -3px; }
+html[data-skin="warm"] .wr-legend-hatch { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+html[data-skin="warm"] .wr-legend-hatch.is-ooq { background: var(--rp-ooq-fill), #3F6CA8; }
+html[data-skin="warm"] .wr-legend-hatch.is-absence { background: var(--rp-absence-fill), #3F6CA8; }
+html[data-skin="warm"] .wr-legend-hatch.is-busy { background: var(--rp-busy-fill), #3F6CA8; }
+
+/* ---------- конфликты ---------- */
+html[data-skin="warm"] .wr-conflict-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+html[data-skin="warm"] .wr-conflict-chip {
+  flex: 1 1 380px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: #FBF3EF;
+  border: 1px solid #F0D6CA;
+  font-size: 13px;
+  color: #8F3A18;
+  box-sizing: border-box;
+}
+html[data-skin="warm"] .wr-conflict-chip b { white-space: nowrap; font-weight: 600; }
+html[data-skin="warm"] .wr-conflict-chip.is-warn { background: #FBF7EC; border-color: #EFE0BC; color: #7A4E0C; }
+html[data-skin="warm"] .wr-conflict-chip.is-clickable { cursor: pointer; }
+html[data-skin="warm"] .wr-conflict-chip.is-clickable:hover { border-color: #D9A894; }
+html[data-skin="warm"] .wr-conflict-chip.is-warn.is-clickable:hover { border-color: #D9C38F; }
+html[data-skin="warm"] .wr-conflict-ctx {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #5E564A;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-skin="warm"] .wr-conflict-details {
+  max-height: 280px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+html[data-skin="warm"] .wr-conflict-group { border-top: 1px solid #EEE9E1; padding-top: 6px; }
+html[data-skin="warm"] .wr-conflict-group-title { font-size: 12px; font-weight: 600; color: #4A443A; margin-bottom: 4px; }
+
+/* ---------- компактная диаграмма ---------- */
+html[data-skin="warm"] .rpc-head { background: #FFFFFF; border-bottom: 1px solid #E3DDD3; }
+html[data-skin="warm"] .rpc-head-title { background: #FFFFFF; border-right: 1px solid #EEE9E1; }
+html[data-skin="warm"] .rpc-head-month {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2A2620;
+  border-left: 1px solid #D9D2C6;
+}
+html[data-skin="warm"] .rpc-head-month.is-outside { color: #6B6358; font-weight: 500; }
+html[data-skin="warm"] .rpc-head-week { font-size: 11px; color: #6B6358; }
+html[data-skin="warm"] .rpc-head-holiday { background: #B7791F; }
+html[data-skin="warm"] .rpc-head-today { background: #2A2620; color: #FFFFFF; font-size: 11px; font-weight: 600; }
+
+html[data-skin="warm"] .rpc-init-row { background: #FAF8F4; border-bottom: 1px solid #EEE9E1; }
+html[data-skin="warm"] .rpc-init-cell {
+  background: #FAF8F4;
+  border-right: 1px solid #EEE9E1;
+  font-size: 13px;
+  color: #2A2620;
+}
+html[data-skin="warm"] .rpc-init-row.is-pending,
+html[data-skin="warm"] .rpc-init-row.is-pending .rpc-init-cell { background: #FBF3EF; }
+html[data-skin="warm"] .rpc-init-row.is-pending { outline: 2px solid #B5502A; outline-offset: -2px; }
+html[data-skin="warm"] .rpc-chevron { color: #6B6358; display: inline-flex; align-items: center; }
+html[data-skin="warm"] .rpc-chevron:hover { color: #2A2620; }
+html[data-skin="warm"] .rpc-prio {
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  background: #ECE8E1;
+  color: #5E564A;
+}
+html[data-skin="warm"] .rpc-prio.is-high { background: #F6E1D8; color: #8F3A18; }
+html[data-skin="warm"] .rpc-prio.is-mid { background: #F6EAD2; color: #7A4E0C; }
+html[data-skin="warm"] .rpc-key { flex-shrink: 0; font-weight: 600; color: #2A2620; text-decoration: none; }
+html[data-skin="warm"] a.rpc-key:hover { color: #2F6B5A; text-decoration: underline; }
+html[data-skin="warm"] .rpc-title { color: #2A2620; }
+html[data-skin="warm"] .rpc-hours { margin-left: auto; flex-shrink: 0; padding-left: 6px; color: #6B6358; }
+
+html[data-skin="warm"] .rpc-section-row { background: #F3EFE8; border-bottom: 1px solid #E3DDD3; }
+html[data-skin="warm"] .rpc-section-cell { background: #F3EFE8; border-right: 1px solid #E3DDD3; font-size: 13px; }
+html[data-skin="warm"] .rpc-section-name { font-weight: 700; color: #2A2620; }
+
+html[data-skin="warm"] .rpc-phase-row { background: #FFFFFF; border-bottom: 1px solid #F5F1EA; }
+html[data-skin="warm"] .rpc-phase-cell {
+  background: #FFFFFF;
+  border-right: 1px solid #EEE9E1;
+  font-size: 12px;
+  color: #2A2620;
+}
+html[data-skin="warm"] .rpc-phase-row.is-selected,
+html[data-skin="warm"] .rpc-phase-row.is-selected .rpc-phase-cell { background: #EDF3F0; }
+html[data-skin="warm"] .rpc-phase-row.is-selected .rpc-phase-label { font-weight: 600; }
+html[data-skin="warm"] .rpc-person:hover { text-decoration: underline; }
+html[data-skin="warm"] .rpc-phase-row.is-highlighted .rpc-person { color: #24584A; font-weight: 600; }
+html[data-skin="warm"] .rpc-cp {
+  flex-shrink: 0;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: #2A2620;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+}
+html[data-skin="warm"] .rpc-pin,
+html[data-skin="warm"] .rpc-foreign {
+  flex-shrink: 0;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  background: #ECE8E1;
+  color: #5E564A;
+}
+html[data-skin="warm"] .rpc-foreign { background: #F6EAD2; color: #7A4E0C; }
+
+html[data-skin="warm"] .rpc-bar.is-cp { border: 2px solid #2A2620; }
+html[data-skin="warm"] .rpc-bar.is-other-subgroup { border: 1px dashed #6E3B63; }
+html[data-skin="warm"] .rpc-bar.is-conflict { border: 2px solid #B5502A; box-shadow: inset 0 0 0 1px #FFFFFF; }
+html[data-skin="warm"] .rpc-bar.is-pinned { outline: 1px dashed #2A2620; outline-offset: -3px; }
+html[data-skin="warm"] .rpc-bar.is-me { outline: 2px solid #2F6B5A; outline-offset: 1px; }
+html[data-skin="warm"] .rpc-bar.is-selected { outline: 2px solid #2A2620; outline-offset: 2px; }
+/* Пульсация свечением — не для скина: выделение остаётся рамкой */
+html[data-skin="warm"] .rpc-bar.rp-bar-critical,
+html[data-skin="warm"] .rpc-bar.rp-bar-emp-highlighted { animation: none; }
+html[data-skin="warm"] .rpc-bar-cp {
+  height: 14px;
+  padding: 0 5px;
+  border-radius: 7px;
+  background: #FFFFFF;
+  color: #2A2620;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---------- панель назначения ---------- */
+html[data-skin="warm"] .rpc-assign-close { background: #F3EFE8; color: #4A443A; }
+html[data-skin="warm"] .rpc-assign-close:hover { background: #E7E2DA; color: #2A2620; }
+html[data-skin="warm"] .rpc-assign-sub { color: #6B6358; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign .rpc-assign-title.ant-typography {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 2px 0 10px;
+  color: #2A2620;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-fields .ant-descriptions-item-label {
+  font-size: 12px;
+  color: #6B6358 !important;
+  padding-bottom: 3px !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-fields .ant-descriptions-item-content { font-size: 13px; color: #2A2620; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-fields .ant-descriptions-row > td { padding-bottom: 8px !important; padding-right: 8px !important; vertical-align: top; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-fields .ant-picker { width: 100%; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign .ant-divider-horizontal.ant-divider-with-text {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2A2620;
+}
+
+/* ---------- загрузка по дням (компактно) ---------- */
+html[data-skin="warm"] .rpc-heat-legend { color: #6B6358; }
+html[data-skin="warm"] .rpc-heat-legend b { color: #2A2620; font-weight: 600; }
+html[data-skin="warm"] .rpc-info {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid #D9D2C6;
+  color: #6B6358;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+}
+html[data-skin="warm"] .rpc-heat-period { color: #6B6358; }
+html[data-skin="warm"] .rpc-heat-headrow,
+html[data-skin="warm"] .rpc-heat-colhead { background: #FFFFFF; }
+html[data-skin="warm"] .rpc-heat-colhead { color: #6B6358; }
+html[data-skin="warm"] .rpc-heat-month { color: #2A2620; border-left: 1px solid #D9D2C6; }
+html[data-skin="warm"] .rpc-heat-row { border-top: 1px solid #F5F1EA; }
+html[data-skin="warm"] .rpc-heat-label { background: #FFFFFF; }
+html[data-skin="warm"] .rpc-heat-name { color: #2A2620; }
+html[data-skin="warm"] .rpc-heat-name.is-selected { color: #24584A; font-weight: 700; }
+html[data-skin="warm"] .rpc-heat-pct { color: #2A2620; }
+html[data-skin="warm"] .rpc-heat-pct.is-over { color: #8F3A18; }
+html[data-skin="warm"] .rpc-heat-empty { color: #6B6358; }
+html[data-skin="warm"] .rpc-heat-section { color: #4A443A; background: #FFFFFF; }
+html[data-skin="warm"] .rpc-heat-watch-title { color: #6E3B63; }
+
+/* ---------- нормированные работы (компактно) ---------- */
+html[data-skin="warm"] .rpc-norm-table th {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #6B6358 !important;
+  height: 30px;
+  border-bottom: 1px solid #E3DDD3 !important;
+}
+html[data-skin="warm"] .rpc-norm-table td {
+  font-size: 13px !important;
+  color: #2A2620 !important;
+  border-bottom: 1px solid #EEE9E1 !important;
+  vertical-align: middle !important;
+  padding-top: 7px !important;
+  padding-bottom: 7px !important;
+}
+html[data-skin="warm"] .rpc-norm-table td:last-child { font-weight: 600; }
+html[data-skin="warm"] .rpc-norm-table td.rpc-norm-role,
+html[data-skin="warm"] .rpc-norm-role { font-size: 12px !important; font-weight: 600 !important; color: #4A443A !important; border-bottom: none !important; }
+html[data-skin="warm"] .rpc-norm-over-row td { background: #FBF3EF; }
+html[data-skin="warm"] .rpc-norm-over { color: #8F3A18; }
+html[data-skin="warm"] .rpc-norm-over-tag {
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 10px;
+  background: #F6E1D8;
+  color: #8F3A18;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+}
+html[data-skin="warm"] .rpc-norm-caption { color: #6B6358; }
+html[data-skin="warm"] .rpc-norm-over-note { color: #8F3A18; }
+html[data-skin="warm"] .rpc-norm-note { color: #6B6358; }
+
+/* Дни за пределами квартала — затенённая зона (макет), граница квартала — тонкая */
+html[data-skin="warm"] .rpc-ooq-zone { background: #F3EFE8; }
+
+/* Брони в других командах под строками плана */
+html[data-skin="warm"] .rpc-ext { border-top: 1px solid #E3DDD3; }
+html[data-skin="warm"] .rpc-ext-head { background: #F3EFE8; color: #4A443A; border-right: 1px solid #E3DDD3; }
+html[data-skin="warm"] .rpc-ext-title { color: #2A2620; }
+html[data-skin="warm"] .rpc-ext-hint { color: #5E564A; }
+html[data-skin="warm"] .rpc-ext-row { border-bottom: 1px solid #F5F1EA; }
+html[data-skin="warm"] .rpc-ext-cell { background: #FFFFFF; border-right: 1px solid #EEE9E1; color: #2A2620; }
+html[data-skin="warm"] .rpc-ext-name { color: #5E564A; }
+html[data-skin="warm"] .rpc-ext-team { color: #6B6358; }

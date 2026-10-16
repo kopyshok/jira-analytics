@@ -44,6 +44,8 @@ interface Props {
    *  сдвигаются, и стрелки связей надо перерисовать. */
   collapsed: boolean;
   onToggle: () => void;
+  /** Компактный вид скина: строки 24 px, подпись в одну строку, цвета — классами rpc-ext-*. */
+  compact?: boolean;
 }
 
 // Ключ — размером с подпись вокруг, иначе вторая строка уезжает вниз.
@@ -67,7 +69,10 @@ export default function ExternalBookingsRows({
   showOverlap = false,
   collapsed,
   onToggle,
+  compact = false,
 }: Props) {
+  const rowH = compact ? 24 : ROW_H;
+  const barH = compact ? 10 : BAR_H;
   const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
   const rows = useMemo(() => {
     const from = fmtLocalIso(timeline.startDate);
@@ -82,13 +87,32 @@ export default function ExternalBookingsRows({
   if (rows.length === 0) return null;
 
   return (
-    <div style={{ borderBottom: '2px solid #066770' }}>
+    <div className={compact ? 'rpc-ext' : undefined} style={{ borderBottom: compact ? undefined : '2px solid var(--rp-init-divider, #066770)' }}>
       {/* Шапка сворачивает блок — как секции групп команды. */}
       <button
         type="button"
         aria-expanded={!collapsed}
         onClick={onToggle}
-        style={{
+        className={compact ? 'rpc-ext-head' : undefined}
+        style={compact ? {
+          position: 'sticky',
+          left: 0,
+          zIndex: STICKY_Z,
+          width: leftColWidth,
+          height: 28,
+          boxSizing: 'border-box',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '0 10px 0 12px',
+          border: 0,
+          cursor: 'pointer',
+          userSelect: 'none',
+          textAlign: 'left',
+          font: 'inherit',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+        } : {
           position: 'sticky',
           left: 0,
           zIndex: STICKY_Z,
@@ -98,22 +122,22 @@ export default function ExternalBookingsRows({
           alignItems: 'baseline',
           gap: 10,
           padding: '6px 14px',
-          background: '#0a1628',
+          background: 'var(--rp-surface, #0a1628)',
           border: 0,
-          borderBottom: '1px solid #1e3a5f',
+          borderBottom: '1px solid var(--rp-border, #1e3a5f)',
           cursor: 'pointer',
           userSelect: 'none',
           textAlign: 'left',
           font: 'inherit',
         }}
       >
-        <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>
+        <span aria-hidden="true" style={{ fontSize: 11, color: compact ? undefined : 'var(--text-muted, #7a9ab8)' }}>
           {collapsed ? '▶' : '▼'}
         </span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary, #e6f0f7)' }}>
+        <span className={compact ? 'rpc-ext-title' : undefined} style={{ fontSize: 13, fontWeight: compact ? 600 : 700, color: compact ? undefined : 'var(--text-primary, #e6f0f7)' }}>
           {title}
         </span>
-        <span style={{ fontSize: 11, color: 'var(--text-hint, #7a9ab8)' }}>
+        <span className={compact ? 'rpc-ext-hint' : undefined} style={{ fontSize: 11, color: compact ? undefined : 'var(--text-hint, #7a9ab8)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {phaseCountLabel(rows.length)} в планах других команд · только просмотр
         </span>
       </button>
@@ -126,8 +150,29 @@ export default function ExternalBookingsRows({
         return (
           <div
             key={b.assignment_id}
-            style={{ display: 'flex', height: ROW_H, borderBottom: '1px solid #0e2540' }}
+            className={compact ? 'rpc-ext-row' : undefined}
+            style={{ display: 'flex', height: rowH, borderBottom: compact ? undefined : '1px solid var(--rp-row-line, #0e2540)' }}
           >
+            {compact ? (
+              <div
+                title={`${full} — ${meta}`}
+                className="rpc-ext-cell"
+                style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, position: 'sticky', left: 0, zIndex: STICKY_Z, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px 0 38px', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden' }}
+              >
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {label.split(' · ').map((part, i) => (
+                    <Fragment key={i}>
+                      {i > 0 && ' · '}
+                      {part === b.issue_key ? <IssueKey issueKey={part} jiraBaseUrl={jiraBaseUrl} style={KEY_STYLE} /> : part}
+                    </Fragment>
+                  ))}
+                  {name && <span className="rpc-ext-name"> — {name}</span>}
+                </span>
+                <span className="rpc-ext-team" style={{ marginLeft: 'auto', flexShrink: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 11 }}>
+                  {b.team}{b.provisional ? ' · предварительно' : ''}
+                </span>
+              </div>
+            ) : (
             <div
               title={`${full} — ${meta}`}
               style={{
@@ -137,8 +182,8 @@ export default function ExternalBookingsRows({
                 position: 'sticky',
                 left: 0,
                 zIndex: STICKY_Z,
-                background: '#0a1628',
-                borderRight: '1px solid #1e3a5f',
+                background: 'var(--rp-surface, #0a1628)',
+                borderRight: '1px solid var(--rp-border, #1e3a5f)',
                 display: 'grid',
                 gridTemplateColumns: 'minmax(0, 1fr) 160px',
                 columnGap: 8,
@@ -149,7 +194,7 @@ export default function ExternalBookingsRows({
               }}
             >
               <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.3 }}>
-                <span style={{ color: '#9ab3cc', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span style={{ color: 'var(--rp-text-2, #9ab3cc)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {/* Ключ в подписи — ссылка в Jira. */}
                   {label.split(' · ').map((part, i) => (
                     <Fragment key={i}>
@@ -159,17 +204,18 @@ export default function ExternalBookingsRows({
                   ))}
                 </span>
                 {name && (
-                  <span style={{ fontSize: 11, color: '#7a9ab8', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span style={{ fontSize: 11, color: 'var(--rp-muted, #7a9ab8)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {name}
                   </span>
                 )}
               </span>
               {/* «предварительно» — отдельной строкой: длинное название команды его не съест. */}
               <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, fontSize: 11, lineHeight: 1.15 }}>
-                <span style={{ color: '#7a9ab8', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.team}</span>
-                {b.provisional && <span style={{ fontSize: 10, color: '#e0a84a' }}>предварительно</span>}
+                <span style={{ color: 'var(--rp-muted, #7a9ab8)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.team}</span>
+                {b.provisional && <span style={{ fontSize: 10, color: 'var(--rp-warn-fg, #e0a84a)' }}>предварительно</span>}
               </span>
             </div>
+            )}
             <div style={{ position: 'relative', width: trackWidthPx, flex: '0 0 auto' }}>
               {runs.map((r) => (
                 <div
@@ -179,12 +225,12 @@ export default function ExternalBookingsRows({
                     position: 'absolute',
                     left: `${dateToLeft(r.start, timeline)}%`,
                     width: `${datesToWidth(r.start, r.end, timeline)}%`,
-                    top: (ROW_H - BAR_H) / 2,
-                    height: BAR_H,
+                    top: (rowH - barH) / 2,
+                    height: barH,
                     boxSizing: 'border-box',
                     borderRadius: 3,
                     background: OTHER_TEAM_HATCH,
-                    border: '1px solid rgba(160,170,190,0.5)',
+                    border: '1px solid var(--rp-booking-border, rgba(160,170,190,0.5))',
                     zIndex: 2,
                   }}
                 />
@@ -197,10 +243,10 @@ export default function ExternalBookingsRows({
                     position: 'absolute',
                     left: `${dateToLeft(d, timeline)}%`,
                     width: `${datesToWidth(d, d, timeline)}%`,
-                    top: (ROW_H - BAR_H) / 2 - 2,
-                    height: BAR_H + 4,
+                    top: (rowH - barH) / 2 - 2,
+                    height: barH + 4,
                     boxSizing: 'border-box',
-                    border: '2px solid #ef4444',
+                    border: '2px solid var(--rp-conflict, #ef4444)',
                     borderRadius: 3,
                     zIndex: 3,
                   }}

@@ -81,3 +81,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function useAppTheme(): ThemeContextValue {
   return useContext(ThemeContext);
 }
+
+/** Активный скин поверх Aurora light (`'warm'` и т.п.) или null у самих тем Aurora.
+ *  По нему страница выбирает раскладку скина; данные и обработчики у раскладок общие. */
+export function useSkin(): string | null {
+  return useContext(ThemeContext).skin;
+}

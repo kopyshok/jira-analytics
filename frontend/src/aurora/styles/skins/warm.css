@@ -43,6 +43,10 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
   --key-chip-bg: #E3EBF6; --key-chip-border: #C9D7EA;
   --row-included-bg: #EDF3F0; --row-excluded-bg: transparent;
 
+  /* Подписи компонентов с запасным значением «под тёмную тему» */
+  --text-primary: #2A2620;
+  --text-hint: #6B6358;
+
   --font-display: 'Onest', -apple-system, 'Segoe UI', sans-serif;
   --font-body: 'Onest', -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Onest', -apple-system, 'Segoe UI', sans-serif;
@@ -505,7 +509,10 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-input[disabl
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-input-number-disabled,
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-picker-disabled {
   background: #F5F1EA !important;
-  color: #7D7568 !important;
+  color: #5E564A !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is(.ant-input-number-disabled, .ant-input-number-affix-wrapper-disabled, .ant-picker-disabled, .ant-select-disabled) :is(.ant-input-number-suffix, .ant-input-number-input, .ant-picker-input > input, .ant-select-selection-item, .ant-select-selection-placeholder) {
+  color: #5E564A !important;
 }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-select-focused.ant-select-outlined:not(.ant-select-disabled) {
   box-shadow: 0 0 0 3px rgba(47, 107, 90, 0.15);
