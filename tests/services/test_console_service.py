@@ -84,6 +84,22 @@ def test_credentials_from_settings(db_session):
     assert cs.credentials(db_session, "confluence") == ("https://wiki.example.ru", "t2")
 
 
+def test_credentials_strip_token(db_session):
+    _set(db_session, "jira_base_url", "https://jira.example.ru")
+    _set(db_session, "jira_api_token", "abc ")
+    db_session.commit()
+    assert cs.credentials(db_session, "jira") == ("https://jira.example.ru", "abc")
+
+
+@pytest.mark.parametrize("token", ["ab cd", "токен"])
+def test_credentials_reject_bad_token(db_session, token):
+    _set(db_session, "jira_base_url", "https://jira.example.ru")
+    _set(db_session, "jira_api_token", token)
+    db_session.commit()
+    with pytest.raises(cs.ConsoleError, match="недопустимые символы"):
+        cs.credentials(db_session, "jira")
+
+
 def test_missing_confluence_credentials(db_session):
     with pytest.raises(cs.ConsoleError, match="Подключение к Confluence"):
         cs.credentials(db_session, "confluence")
@@ -214,3 +230,9 @@ async def test_execute_stops_on_time_budget():
                               clock=lambda: next(ticks))
     assert len(seen) == 1
     assert "### 2. /rest/b\n→ не выполнено — вышло общее время" in result.output
+
+
+async def test_execute_hides_token_in_transport_error():
+    result, _ = await _run("/rest/a", {"/rest/a": httpx.ConnectError("boom secret-token")})
+    assert "***" in result.output
+    assert "secret-token" not in result.output

@@ -148,7 +148,7 @@ async def save_jira_settings(
 ):
     """Сохранить адрес Jira и персональный токен в БД."""
     if body.api_token is not None:
-        _set_setting(db, "jira_api_token", body.api_token)
+        _set_setting(db, "jira_api_token", body.api_token.strip())
     if body.base_url is not None:
         _set_setting(db, "jira_base_url", _with_scheme(body.base_url))
     db.commit()
@@ -242,7 +242,7 @@ async def save_confluence_settings(
     if body.base_url is not None:
         _set_setting(db, "confluence_base_url", _with_scheme(body.base_url))
     if body.api_token is not None:
-        _set_setting(db, "confluence_api_token", body.api_token)
+        _set_setting(db, "confluence_api_token", body.api_token.strip())
     db.commit()
     return _confluence_settings(db)
 

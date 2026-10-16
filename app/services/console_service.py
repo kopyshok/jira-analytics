@@ -103,9 +103,18 @@ def credentials(db: Session, target: str) -> tuple[str, str]:
         base = _setting(db, "confluence_base_url")
         token = _setting(db, "confluence_api_token")
         section = "«Подключение к Confluence»"
+    base, token = (base or "").strip(), (token or "").strip()
     if not (base and token):
         raise ConsoleError(f"Не указаны адрес или токен — заполните раздел настроек {section}")
+    # Пробел или не-ASCII в токене ломает заголовок, а текст ошибки выдал бы токен.
+    if not token.isascii() or any(c.isspace() for c in token):
+        raise ConsoleError(f"Токен содержит недопустимые символы — проверьте раздел настроек {section}")
     return base.rstrip("/"), token
+
+
+def _safe(text: str, token: str) -> str:
+    """Убрать токен из текста ошибки."""
+    return text.replace(token, "***") if token else text
 
 
 def _check(s: str, base: str, title: str) -> Line:
@@ -243,7 +252,7 @@ async def execute(
                 continue
             except (httpx.HTTPError, httpx.InvalidURL) as e:
                 errors += 1
-                blocks.append((head + [f"→ нет ответа: {type(e).__name__}: {e}"], None, True))
+                blocks.append((head + [f"→ нет ответа: {type(e).__name__}: {_safe(str(e), token)}"], None, True))
                 continue
             if resp.status_code >= 400:
                 errors += 1
