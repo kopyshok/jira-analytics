@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import {
-  Button, Card, Checkbox, Dropdown, InputNumber, Space, Switch, Table, Tag, Tooltip, Typography,
+  Button, Card, Checkbox, Dropdown, InputNumber, Segmented, Space, Switch, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -70,6 +70,11 @@ interface Props {
   refreshing?: boolean;
   /** Обновление из Jira запрещено до завершения переезда — кнопка видна, но не нажимается. */
   refreshBlocked?: boolean;
+  /**
+   * Блок скина «Цветовые зоны»: тянется на высоту, список листается внутри
+   * с липкой шапкой; «по людям / списком» — сегментами, замечания — словами.
+   */
+  compact?: boolean;
 }
 
 /** Подписи колонок для настройки видимости. «Задача» не убирается. */
@@ -104,6 +109,12 @@ const SORT_VALUE: Record<string, (row: Row) => string | number | null> = {
 };
 
 type SortState = { key: string; order: 'ascend' | 'descend' } | null;
+
+/** Плотные ширины колонок блока скина: «Задача» забирает остаток. */
+const COMPACT_WIDTHS: Record<string, number> = {
+  status: 128, sprint: 104, release: 84, est: 64, daily_rate: 84,
+  fact: 56, left: 76, scale: 122, days: 50, flags: 190,
+};
 
 interface HeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
   columnKey?: string;
@@ -193,6 +204,7 @@ export function GroupedIssues({
   sprintFilter = [], releaseFilter = [],
   columnWidths = {}, onColumnWidthsChange,
   onHiddenColumnsChange, onGroupByDeveloperChange, onRefreshVisible, refreshing = false, refreshBlocked = false,
+  compact = false,
 }: Props) {
   const [sort, setSort] = useState<SortState>(null);
   // Пока тянут мышкой, ширина живёт на экране; в профиль уходит один раз,
@@ -315,6 +327,8 @@ export function GroupedIssues({
     {
       title: 'Задача',
       key: 'task',
+      // В блоке скина название — в одну строку с многоточием, как в ленте Jira.
+      ellipsis: compact || undefined,
       render: (_, row) =>
         row.isGroup ? (
           <>
@@ -493,7 +507,7 @@ export function GroupedIssues({
         if (row.est_hours == null) return '—';
         // Минус — перерасход: оценка исчерпана, работа продолжается.
         const left = roundHours(row.est_hours - (row.fact_hours ?? 0));
-        return <span style={{ color: left < 0 ? '#ff6b6b' : undefined }}>{left}</span>;
+        return <span style={{ color: left < 0 ? 'var(--desk-over-text, #ff6b6b)' : undefined }}>{left}</span>;
       },
     },
     {
@@ -504,7 +518,7 @@ export function GroupedIssues({
         <HoursScale
           fact={row.fact_hours ?? 0}
           est={row.est_hours ?? null}
-          variant={scale}
+          variant={compact && scale === 'bar' ? 'inline' : scale}
           overrunPct={overrunPct}
         />
       ),
@@ -522,6 +536,7 @@ export function GroupedIssues({
             flags={row.flags ?? []}
             signatures={row.signatures ?? {}}
             reviewed={row.reviewed ?? []}
+            labelOnly={compact}
           />
         ),
     },
@@ -534,7 +549,7 @@ export function GroupedIssues({
     .filter((col) => !hiddenColumns.includes(String(col.key)))
     .map((col) => {
       const key = String(col.key);
-      const width = widths[key] ?? (col.width as number | undefined);
+      const width = widths[key] ?? (compact ? COMPACT_WIDTHS[key] : undefined) ?? (col.width as number | undefined);
       return {
         ...col,
         width,
@@ -594,16 +609,37 @@ export function GroupedIssues({
     (sum, col) => sum + ((col.width as number | undefined) ?? 160), 0,
   );
 
+  const groupSwitch = onGroupByDeveloperChange && compact ? (
+    <Segmented
+      size="small"
+      value={groupByDeveloper ? 'people' : 'list'}
+      onChange={(v) => onGroupByDeveloperChange(v === 'people')}
+      options={[
+        { label: 'по людям', value: 'people' },
+        { label: 'списком', value: 'list' },
+      ]}
+    />
+  ) : null;
+
   return (
     <Card
       size="small"
-      title={title}
+      className={compact ? 'desk-issues-card' : undefined}
+      title={compact ? (
+        <span className="desk-issues-title">
+          {title}
+          <span className="desk-issues-count">{hint ? `${hint} · ` : ''}{shown} задач</span>
+          {groupSwitch}
+        </span>
+      ) : title}
       extra={
         <Space size="small">
+          {!compact && (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {hint ? `${hint} · ` : ''}{shown} задач
           </Typography.Text>
-          {onGroupByDeveloperChange && (
+          )}
+          {onGroupByDeveloperChange && !compact && (
             <Tooltip title="Группировать задачи по разработчикам">
               <Switch
                 size="small"

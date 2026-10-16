@@ -171,12 +171,13 @@ export const STATUS_GROUP_LABELS: Record<StatusGroup, string> = {
   unassigned: 'статус не распределён',
 };
 
+// Цвет точки группы — через CSS-переменную скина; без скина — прежний.
 export const STATUS_GROUP_COLOR: Record<StatusGroup, string> = {
-  dev: '#4ba3ff',
-  waiting: '#eeb13c',
-  todo: '#788799',
-  done: '#3ebd85',
-  unassigned: '#a78bfa',
+  dev: 'var(--desk-st-dev, #4ba3ff)',
+  waiting: 'var(--desk-st-waiting, #eeb13c)',
+  todo: 'var(--desk-st-todo, #788799)',
+  done: 'var(--desk-st-done, #3ebd85)',
+  unassigned: 'var(--desk-st-unassigned, #a78bfa)',
 };
 
 /** Порядок групп: сначала мяч у разработчика, в конце нераспределённые статусы. */

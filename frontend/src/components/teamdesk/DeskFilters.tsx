@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import type { DeskMode } from '../../api/teamDesk';
 import { useTeams } from '../../hooks/useSync';
 import { useEmployees } from '../../hooks/useCapacity';
+import { BandField } from '../../skins/zones/ZonesBand';
 
 const DATE_FMT = 'YYYY-MM-DD';
 
@@ -31,6 +32,8 @@ interface Props {
   onSprintsChange: (v: string[]) => void;
   releases: string[];
   onReleasesChange: (v: string[]) => void;
+  /** «band» — ряд белых полей на цветной полосе скина «Цветовые зоны». */
+  variant?: 'card' | 'band';
 }
 
 /** Шапка раздела: команды, добранные точечно люди, период, пороги. */
@@ -44,9 +47,131 @@ export function DeskFilters({
   onToggleThresholds,
   sprintOptions, releaseOptions,
   sprints, onSprintsChange, releases, onReleasesChange,
+  variant = 'card',
 }: Props) {
   const teamsQuery = useTeams();
   const employeesQuery = useEmployees({ isActive: true });
+
+  const developerOptions = (employeesQuery.data ?? [])
+    .filter((e) => e.role && developerRoles.includes(e.role))
+    .map((e) => ({
+      value: e.jira_account_id,
+      label: e.display_name,
+    }));
+
+  if (variant === 'band') {
+    return (
+      <div className="zn-band-row desk-band-filters">
+        <BandField label="Команды">
+          <Select
+            mode="multiple"
+            variant="borderless"
+            allowClear
+            placeholder="Выберите команды"
+            style={{ minWidth: 120, maxWidth: 260 }}
+            value={teams}
+            onChange={onTeamsChange}
+            loading={teamsQuery.isLoading}
+            options={(teamsQuery.data ?? []).map((t) => ({ value: t, label: t }))}
+            maxTagCount="responsive"
+            popupMatchSelectWidth={false}
+          />
+        </BandField>
+        <BandField label="Отдельные люди">
+          <Select
+            mode="multiple"
+            variant="borderless"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Добрать разработчика"
+            style={{ minWidth: 150, maxWidth: 220 }}
+            value={developers}
+            onChange={onDevelopersChange}
+            loading={employeesQuery.isLoading}
+            options={developerOptions}
+            maxTagCount="responsive"
+            popupMatchSelectWidth={false}
+          />
+        </BandField>
+        <BandField label="Спринт">
+          <Select
+            mode="multiple"
+            variant="borderless"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Все спринты"
+            style={{ minWidth: 110, maxWidth: 200 }}
+            value={sprints}
+            onChange={onSprintsChange}
+            options={sprintOptions.map((v) => ({ value: v, label: v }))}
+            maxTagCount="responsive"
+            popupMatchSelectWidth={false}
+          />
+        </BandField>
+        <BandField label="Релиз">
+          <Select
+            mode="multiple"
+            variant="borderless"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Все релизы"
+            style={{ minWidth: 110, maxWidth: 200 }}
+            value={releases}
+            onChange={onReleasesChange}
+            options={releaseOptions.map((v) => ({ value: v, label: v }))}
+            maxTagCount="responsive"
+            popupMatchSelectWidth={false}
+          />
+        </BandField>
+        <Segmented
+          value={mode}
+          onChange={(v) => onModeChange(v as DeskMode)}
+          options={[
+            { value: 'open', label: 'Открытые сейчас' },
+            { value: 'period', label: 'За период' },
+            { value: 'all', label: 'Все задачи' },
+          ]}
+        />
+        {mode === 'period' && (
+          <BandField label="Период">
+            <DatePicker.RangePicker
+              variant="borderless"
+              value={[dayjs(periodStart), dayjs(periodEnd)]}
+              onChange={(range) => {
+                if (range?.[0] && range?.[1]) {
+                  onPeriodChange(range[0].format(DATE_FMT), range[1].format(DATE_FMT));
+                }
+              }}
+              allowClear={false}
+              format="DD.MM.YYYY"
+              style={{ width: 210 }}
+            />
+          </BandField>
+        )}
+        <label className="zn-band-switch">
+          <Switch size="small" checked={showReviewed} onChange={onShowReviewedChange} />
+          показывать просмотренные
+        </label>
+        <label
+          className="zn-band-switch"
+          title="Показывать закрытые подзадачи под их родителями — видно, разбита задача или нет"
+        >
+          <Switch
+            size="small"
+            checked={showDoneSubtasks}
+            onChange={onShowDoneSubtasksChange}
+            // В режиме «все задачи» закрытые подзадачи видны и без тумблера.
+            disabled={mode === 'all'}
+          />
+          выполненные подзадачи
+        </label>
+        <Button icon={<SettingOutlined />} onClick={onToggleThresholds} title="Настройки вида" aria-label="Настройки вида" />
+      </div>
+    );
+  }
 
   return (
     <Card size="small" styles={{ body: { padding: '10px 12px' } }}>
@@ -82,12 +207,7 @@ export function DeskFilters({
           value={developers}
           onChange={onDevelopersChange}
           loading={employeesQuery.isLoading}
-          options={(employeesQuery.data ?? [])
-            .filter((e) => e.role && developerRoles.includes(e.role))
-            .map((e) => ({
-              value: e.jira_account_id,
-              label: e.display_name,
-            }))}
+          options={developerOptions}
           maxTagCount="responsive"
         />
 

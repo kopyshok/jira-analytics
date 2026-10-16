@@ -4,17 +4,21 @@ import { roundHours } from '../../api/teamDesk';
 interface Props {
   fact: number;
   est: number | null;
-  /** centered — засечка оценки посередине: недобор влево, перебор вправо */
-  variant?: 'bar' | 'centered';
+  /**
+   * centered — засечка оценки посередине: недобор влево, перебор вправо;
+   * inline — полоса и процент в одну строку (часы стоят в соседних колонках).
+   */
+  variant?: 'bar' | 'centered' | 'inline';
   overrunPct: number;
   width?: number;
 }
 
-const COLOR_OK = '#3ebd85';
-const COLOR_OVER = '#ff6b6b';
-const COLOR_IDLE = '#788799';
-const COLOR_UNDER = '#eeb13c';
-const TRACK = 'rgba(125,145,170,0.22)';
+// Цвета — через CSS-переменные скина; без скина — прежние.
+const COLOR_OK = 'var(--desk-scale-ok, #3ebd85)';
+const COLOR_OVER = 'var(--desk-scale-over, #ff6b6b)';
+const COLOR_IDLE = 'var(--desk-scale-idle, #788799)';
+const COLOR_UNDER = 'var(--desk-scale-under, #eeb13c)';
+const TRACK = 'var(--desk-scale-track, rgba(125,145,170,0.22))';
 
 /** Шкала «факт / оценка». Перерасход рисуется штриховым хвостом поверх полосы. */
 export function HoursScale({ fact, est, variant = 'bar', overrunPct, width }: Props) {
@@ -55,6 +59,20 @@ export function HoursScale({ fact, est, variant = 'bar', overrunPct, width }: Pr
 
   const base = Math.min(ratio, 1) * 100;
   const tail = ratio > 1 ? Math.min(ratio - 1, 1) * 100 : 0;
+  if (variant === 'inline') {
+    return (
+      <Tooltip title={title}>
+        <div className="desk-scale-inline" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: width ?? 110 }}>
+          <div style={{ position: 'relative', flex: '0 0 70px', height: 6, borderRadius: 2, background: TRACK, overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${over ? 100 : base}%`, background: color, borderRadius: 2 }} />
+          </div>
+          <span className="desk-scale-pct" data-over={over || undefined} style={{ fontSize: 12, color, fontVariantNumeric: 'tabular-nums' }}>
+            {Math.round(ratio * 100)}%
+          </span>
+        </div>
+      </Tooltip>
+    );
+  }
   return (
     <Tooltip title={title}>
       <div style={{ minWidth: width ?? 132 }}>

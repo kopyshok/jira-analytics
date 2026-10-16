@@ -20,9 +20,16 @@ interface Props {
   quarter: number;
   employees: Array<{ id: string; display_name: string }>;
   absences: AbsenceResponse[];
+  /**
+   * Узкая колонка (скин «Цветовые зоны»): клетка — неделя, ширина по блоку;
+   * высота заливки — доля рабочих дней недели в отсутствии.
+   */
+  compact?: boolean;
 }
 
-export default function AbsenceHeatmap({ year, quarter, employees, absences }: Props) {
+const MONTH_SHORT = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+
+export default function AbsenceHeatmap({ year, quarter, employees, absences, compact = false }: Props) {
   const { mode } = useAppTheme();
   const isLight = mode === 'light';
 
@@ -91,6 +98,68 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences }: P
     if (!uniqueReasons.has(a.reason_label)) {
       uniqueReasons.set(a.reason_label, a.reason_color ?? DEFAULT_REASON_COLOR);
     }
+  }
+
+  if (compact) {
+    // Недели квартала с понедельника; неделя, начатая в прошлом месяце, — к нему.
+    const weeks: dayjs.Dayjs[][] = [];
+    for (const d of days) {
+      if (weeks.length === 0 || d.day() === 1) weeks.push([]);
+      weeks[weeks.length - 1].push(d);
+    }
+    const monthSpans = months.map((m) => ({
+      month: m,
+      span: weeks.filter((w) => w[0].month() + 1 === m).length,
+    })).filter((x) => x.span > 0);
+    const shownReasons = new Map<string, string>();
+    return (
+      <div className="absence-compact">
+        <div className="absence-compact-row absence-compact-head">
+          <span className="absence-compact-name" />
+          <div className="absence-compact-cells" style={{ gridTemplateColumns: `repeat(${weeks.length}, 1fr)` }}>
+            {monthSpans.map((m) => (
+              <span key={m.month} style={{ gridColumn: `span ${m.span}` }}>{MONTH_SHORT[m.month - 1]}</span>
+            ))}
+          </div>
+        </div>
+        {employees.map((e) => {
+          const list = byEmployee.get(e.id);
+          return (
+            <div key={e.id} className="absence-compact-row">
+              <span className="absence-compact-name" title={e.display_name}>{e.display_name}</span>
+              <div className="absence-compact-cells" style={{ gridTemplateColumns: `repeat(${weeks.length}, 1fr)` }}>
+                {weeks.map((w) => {
+                  const work = w.filter((d) => d.day() !== 0 && d.day() !== 6);
+                  const hits = work.map((d) => reasonForDay(list, d)).filter((a): a is AbsenceResponse => !!a);
+                  const main = hits[0];
+                  if (main) shownReasons.set(main.reason_label, main.reason_color ?? DEFAULT_REASON_COLOR);
+                  const share = work.length ? hits.length / work.length : 0;
+                  const tip = main
+                    ? `${e.display_name}: ${main.reason_label}, ${dayjs(main.start_date).format('DD.MM')}–${dayjs(main.end_date).format('DD.MM')}`
+                    : `${e.display_name} · неделя с ${w[0].format('DD.MM')}`;
+                  return (
+                    <Tooltip key={w[0].format('YYYY-MM-DD')} title={tip} mouseEnterDelay={0.3}>
+                      <i className="absence-compact-cell">
+                        {main && (
+                          <b style={{ height: `${Math.max(share, 0.35) * 100}%`, background: main.reason_color ?? DEFAULT_REASON_COLOR }} />
+                        )}
+                      </i>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        {shownReasons.size > 0 && (
+          <div className="absence-compact-legend">
+            {Array.from(shownReasons.entries()).map(([label, color]) => (
+              <span key={label}><i style={{ background: color }} />{label}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (

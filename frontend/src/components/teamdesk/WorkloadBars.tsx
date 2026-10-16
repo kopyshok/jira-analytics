@@ -30,25 +30,31 @@ export function WorkloadBars({ developers, workload, limit }: Props) {
                   : undefined
               }
             >
-              <div style={{ position: 'relative', height: 14, background: 'rgba(125,145,170,0.22)', borderRadius: 3 }}>
+              <div className="desk-wip-track" style={{ position: 'relative', height: 14, background: 'var(--desk-wip-track, rgba(125,145,170,0.22))', borderRadius: 3 }}>
                 <div
                   style={{
                     position: 'absolute', left: 0, top: 0, bottom: 0,
                     width: `${(dev.in_progress / max) * 100}%`,
-                    background: over ? '#ff6b6b' : '#4ba3ff',
-                    borderRadius: 3, opacity: 0.85,
+                    background: over ? 'var(--desk-wip-over, #ff6b6b)' : 'var(--desk-wip-fill, #4ba3ff)',
+                    borderRadius: 3, opacity: 'var(--desk-wip-opacity, 0.85)' as unknown as number,
                   }}
                 />
                 <div
                   style={{
                     position: 'absolute', top: -2, bottom: -2,
                     left: `${(limit / max) * 100}%`,
-                    borderLeft: '1px dashed rgba(160,175,195,0.8)',
+                    borderLeft: '1px dashed var(--desk-wip-limit, rgba(160,175,195,0.8))',
                   }}
                 />
               </div>
             </Tooltip>
-            <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{dev.in_progress}</span>
+            <span
+              className="desk-wip-count"
+              data-over={over || undefined}
+              style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+            >
+              {dev.in_progress}
+            </span>
           </div>
         );
       })}

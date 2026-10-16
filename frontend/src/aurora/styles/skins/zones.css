@@ -1463,3 +1463,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] [style^="color: 
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] [style*="; color: rgb(255, 120, 117)"] { color: #C0352A !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] [style^="color: rgb(0, 201, 200)"],
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] [style*="; color: rgb(0, 201, 200)"] { color: var(--za-ink) !important; }
+
+/* невидимые «лишние» метки выпадающего списка (их меряет список) — и для экранного диктора не видны */
+html[data-skin="zones"] .ant-select-selection-overflow-item[aria-hidden="true"],
+html[data-skin="zones"] .ant-select-content-item[aria-hidden="true"] { visibility: hidden; }

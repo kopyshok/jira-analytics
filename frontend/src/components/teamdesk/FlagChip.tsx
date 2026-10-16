@@ -13,13 +13,15 @@ interface Props {
   count?: number;
   /** Показывать подпись рядом со значком */
   withLabel?: boolean;
+  /** Подпись вместо значка (скин «Цветовые зоны»). */
+  labelOnly?: boolean;
 }
 
 /**
  * Значок признака. Клик открывает действие «Просмотрено» — признак перестаёт
  * считаться проблемой, пока не изменится причина.
  */
-export function FlagChip({ issueId, flag, signature, reviewed, count, withLabel }: Props) {
+export function FlagChip({ issueId, flag, signature, reviewed, count, withLabel, labelOnly }: Props) {
   const [open, setOpen] = useState(false);
   const [comment, setComment] = useState('');
   const mark = useMarkFlag();
@@ -52,9 +54,10 @@ export function FlagChip({ issueId, flag, signature, reviewed, count, withLabel 
           <Tag
             color={reviewed ? 'default' : FLAG_COLOR[flag]}
             style={{ cursor: 'pointer', opacity: reviewed ? 0.45 : 1, marginInlineEnd: 4 }}
+            data-flag={flag}
           >
-            {FLAG_ICON[flag]}
-            {withLabel ? ` ${label}` : ''}
+            {labelOnly ? label : FLAG_ICON[flag]}
+            {withLabel && !labelOnly ? ` ${label}` : ''}
             {count != null ? ` ${count}` : ''}
           </Tag>
         </Tooltip>
@@ -93,18 +96,20 @@ export function FlagList({
   flags,
   signatures,
   reviewed,
+  labelOnly,
 }: {
   issueId: string;
   flags: FlagCode[];
   signatures: Partial<Record<FlagCode, string>>;
   reviewed: ReviewedMark[];
+  labelOnly?: boolean;
 }) {
   // Просмотренные приходят только при включённом переключателе — и тогда они
   // остаются в flags, приглушёнными. Отдельного списка на экране нет.
   const reviewedMap = new Map(reviewed.map((r) => [r.flag, r]));
 
   if (flags.length === 0) {
-    return <span style={{ opacity: 0.35 }}>—</span>;
+    return <span className="desk-flags-none" style={{ opacity: 0.35 }}>—</span>;
   }
   return (
     <span>
@@ -115,6 +120,7 @@ export function FlagList({
           flag={flag}
           signature={signatures[flag] ?? ''}
           reviewed={reviewedMap.get(flag)}
+          labelOnly={labelOnly}
         />
       ))}
     </span>

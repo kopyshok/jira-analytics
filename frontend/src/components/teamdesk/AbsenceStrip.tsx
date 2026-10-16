@@ -9,10 +9,12 @@ const QUARTERS = [1, 2, 3, 4];
 interface Props {
   /** id сотрудников, попавших в срез стола (ключ — учётная запись Jira) */
   employeeIds: Record<string, string>;
+  /** Узкая колонка (скин «Цветовые зоны»): период одним списком, клетка — неделя. */
+  compact?: boolean;
 }
 
 /** Отсутствия людей стола: переиспользуем теплокарту с экрана ёмкости. */
-export function AbsenceStrip({ employeeIds }: Props) {
+export function AbsenceStrip({ employeeIds, compact = false }: Props) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [quarter, setQuarter] = useState(Math.floor(now.getMonth() / 3) + 1);
@@ -27,6 +29,36 @@ export function AbsenceStrip({ employeeIds }: Props) {
 
   if (!rows.length) {
     return <Empty description="Выберите команды или людей" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  }
+
+  if (compact) {
+    const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1];
+    return (
+      <div className="absence-strip-compact">
+        <label className="absence-strip-period">
+          Период
+          <Select
+            size="small"
+            value={`${year}-${quarter}`}
+            onChange={(v: string) => {
+              const [y, q] = v.split('-').map(Number);
+              setYear(y);
+              setQuarter(q);
+            }}
+            options={years.flatMap((y) => QUARTERS.map((q) => ({ value: `${y}-${q}`, label: `${y} · Q${q}` })))}
+            style={{ width: 110 }}
+            popupMatchSelectWidth={false}
+          />
+        </label>
+        <AbsenceHeatmap
+          compact
+          year={year}
+          quarter={quarter}
+          employees={rows}
+          absences={absences.data ?? []}
+        />
+      </div>
+    );
   }
 
   return (
