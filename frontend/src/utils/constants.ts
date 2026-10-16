@@ -201,16 +201,16 @@ const WARM_TOKENS: DarkThemeShape = {
   darkRows: '#FAF8F4',
   cyanPrimary: '#2F6B5A',
   cyanSecondary: '#3F6CA8',
-  yellow: '#B7791F',
-  amber: '#A0650F',
+  yellow: '#8A5A10',
+  amber: '#8A5A10',
   amberDim: '#7A4E0C',
-  danger: '#B5502A',
-  success: '#3F7D4E',
+  danger: '#A0461F',
+  success: '#356F45',
   textPrimary: '#2A2620',
   textSecondary: '#4A443A',
   textMuted: '#6B6358',
-  textHint: '#7D7568',
-  textDim: '#857C6F',
+  textHint: '#6B6358',
+  textDim: '#6B6358',
 };
 
 /** Наборы токенов «скинов» поверх Aurora light — ключ = `<html data-skin>`. */

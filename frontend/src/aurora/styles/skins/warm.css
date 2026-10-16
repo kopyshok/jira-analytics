@@ -29,7 +29,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
   --glass-shadow: none;
   --pill-bg: #F1ECE3; --pill-border: transparent;
   --track-bg: #EEE9E1;
-  --good: #3F7D4E; --warn: #9A6212; --bad: #B5502A;
+  --good: #356F45; --warn: #8A5A10; --bad: #A0461F;
   --radius: 14px; --radius-sm: 10px; --radius-pill: 999px;
   --blur: 0px;
 
@@ -61,6 +61,27 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
   --color-amber: #B7791F;
   --color-text: #2A2620;
   --color-text-muted: #6B6358;
+
+  /* Переменные компонентов со светлой палитрой «под Aurora» (у Aurora их нет — прежние значения) */
+  --abs-weekend-bg: #E6E0D6;
+  --abs-empty-bg: #F5F1EA;
+  --abs-cell-border: rgba(217, 210, 198, 0.5);
+  --abs-month-sep: #D9D2C6;
+  --abs-month-label: #2A2620;
+  --abs-day-header: #4A443A;
+  --abs-weekend-header: #6B6358;
+  --abs-name: #2A2620;
+  --hb-avatar-bg: #EADFC8;
+  --hb-avatar-fg: #6B4E1E;
+  --hb-skip-bg: #F1ECE3;
+  --absent-opacity: 1;
+  --absence-chip-bg: #F1E3EE;
+  --absence-chip-fg: #6E3B63;
+  --customer-fg: #4A443A;
+  --row-excluded-opacity: 1;
+  --unassigned-opacity: 1;
+  --warn-fill: #F6EAD2;
+  --warn-on: #7A4E0C;
 
   letter-spacing: 0;
   color-scheme: light;
@@ -176,7 +197,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .badge-accent { b
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .badge-key {
   font-family: var(--font-body); font-weight: 500; background: #E3EBF6; color: #2A4F82; border-radius: 8px;
 }
-html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .s-warn { color: #9A6212; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .s-warn { color: #7A4E0C; }
 
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .track {
   height: 6px; border-radius: 3px; background: #EEE9E1; box-shadow: none;
@@ -781,6 +802,10 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .kpi-card:hover {
 }
 
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .backlog-row { border-left-width: 2px; }
+/* «Не в плане» — без полупрозрачности (текст должен читаться): приглушённый фон строки */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .backlog-row-off-plan > td:not(.backlog-in-plan-cell) > * { opacity: 1; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .backlog-row-off-plan > td { background-color: #F8F5F0 !important; color: #5E564A; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tree-row-context > td { opacity: 1; color: #5E564A; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .backlog-row:hover { border-left-color: #2F6B5A; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .backlog-row.row-state-no-estimates,
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .backlog-row.row-state-no-estimates:hover { border-left-color: #B7791F; }
@@ -849,10 +874,10 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] [style*="text-tra
 
 /* Яркие «классические» цвета текста, нечитаемые на белом, — на тёмные тёплые оттенки.
    Только цвет текста (`color:` в начале или после `; `), заливки и рамки не трогаются. */
-html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(103, 214, 141)"], [style*="; color: rgb(103, 214, 141)"], [style^="color: rgb(82, 196, 26)"], [style*="; color: rgb(82, 196, 26)"], [style^="color: rgb(29, 158, 117)"], [style*="; color: rgb(29, 158, 117)"]) { color: #3F7D4E !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(103, 214, 141)"], [style*="; color: rgb(103, 214, 141)"], [style^="color: rgb(82, 196, 26)"], [style*="; color: rgb(82, 196, 26)"], [style^="color: rgb(29, 158, 117)"], [style*="; color: rgb(29, 158, 117)"]) { color: #2D6140 !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(0, 201, 200)"], [style*="; color: rgb(0, 201, 200)"]) { color: #2F6B5A !important; }
-html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(250, 173, 20)"], [style*="; color: rgb(250, 173, 20)"], [style^="color: rgb(245, 158, 11)"], [style*="; color: rgb(245, 158, 11)"], [style^="color: rgb(239, 159, 39)"], [style*="; color: rgb(239, 159, 39)"], [style^="color: rgb(255, 180, 50)"], [style*="; color: rgb(255, 180, 50)"]) { color: #9A6212 !important; }
-html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(255, 77, 79)"], [style*="; color: rgb(255, 77, 79)"], [style^="color: rgb(255, 120, 117)"], [style*="; color: rgb(255, 120, 117)"], [style^="color: rgb(255, 107, 107)"], [style*="; color: rgb(255, 107, 107)"], [style^="color: rgb(239, 68, 68)"], [style*="; color: rgb(239, 68, 68)"]) { color: #B5502A !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(250, 173, 20)"], [style*="; color: rgb(250, 173, 20)"], [style^="color: rgb(245, 158, 11)"], [style*="; color: rgb(245, 158, 11)"], [style^="color: rgb(239, 159, 39)"], [style*="; color: rgb(239, 159, 39)"], [style^="color: rgb(255, 180, 50)"], [style*="; color: rgb(255, 180, 50)"]) { color: #7A4E0C !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(255, 77, 79)"], [style*="; color: rgb(255, 77, 79)"], [style^="color: rgb(255, 120, 117)"], [style*="; color: rgb(255, 120, 117)"], [style^="color: rgb(255, 107, 107)"], [style*="; color: rgb(255, 107, 107)"], [style^="color: rgb(239, 68, 68)"], [style*="; color: rgb(239, 68, 68)"]) { color: #9C4322 !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(122, 154, 184)"], [style*="; color: rgb(122, 154, 184)"]) { color: #6B6358 !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(55, 138, 221)"], [style*="; color: rgb(55, 138, 221)"]) { color: #3F6CA8 !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(22, 119, 255)"], [style*="; color: rgb(22, 119, 255)"]) { color: #3F6CA8 !important; }
@@ -863,6 +888,3 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .app-shell [style
   background: #F5F1EA !important;
   border-color: #EEE9E1 !important;
 }
-/* Холодно-серые клетки светлой палитры (тепловая карта отсутствий) — на тёплые */
-html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .app-shell [style*="background: rgb(238, 242, 247)"] { background: #F5F1EA !important; }
-html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .app-shell [style*="background: rgb(221, 227, 236)"] { background: #E6E0D6 !important; }

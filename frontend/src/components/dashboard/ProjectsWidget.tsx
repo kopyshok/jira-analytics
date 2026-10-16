@@ -5,6 +5,11 @@ import { useNavigate } from 'react-router';
 import type { DashboardProjectsResponse, ProjectItem } from '../../types/api';
 import { statusTagColor } from '../../utils/status';
 import { DARK_THEME, CHART_COLORS } from '../../utils/constants';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readablePair } from '../../utils/readableColor';
+
+// Помощники из чужих команд в скине — светлая зелёная пара вместо градиента.
+const HELPER_PAIR = readablePair('#22c55e');
 
 const STATUS_COLORS = {
   done: 'var(--good, #67d68d)',
@@ -147,6 +152,7 @@ function Donut({ data }: { data: DashboardProjectsResponse }) {
 }
 
 function AssigneeStack({ project }: { project: ProjectItem }) {
+  const skin = useSkin();
   const extra = project.assignees_total - project.assignees.length;
   return (
     <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -156,8 +162,8 @@ function AssigneeStack({ project }: { project: ProjectItem }) {
           title={a.initials}
           style={{
             width: 24, height: 24, borderRadius: '50%',
-            border: `2px solid ${DARK_THEME.cardBg}`, background: a.color,
-            color: DARK_THEME.textPrimary, fontSize: 10, fontWeight: 700,
+            border: `2px solid ${DARK_THEME.cardBg}`, background: skin ? readablePair(a.color).bg : a.color,
+            color: skin ? readablePair(a.color).fg : DARK_THEME.textPrimary, fontSize: 10, fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             marginLeft: i === 0 ? 0 : -8,
           }}
@@ -179,6 +185,7 @@ function AssigneeStack({ project }: { project: ProjectItem }) {
 }
 
 function AlienHelpersStack({ project }: { project: ProjectItem }) {
+  const skin = useSkin();
   if (project.alien_helper_count === 0) {
     return <span style={{ color: DARK_THEME.textMuted, fontSize: 12 }}>—</span>;
   }
@@ -193,8 +200,8 @@ function AlienHelpersStack({ project }: { project: ProjectItem }) {
             style={{
               width: 22, height: 22, borderRadius: '50%',
               border: `2px solid ${DARK_THEME.cardBg}`,
-              background: 'linear-gradient(135deg, #84cc16 0%, #22c55e 100%)',
-              color: '#052e16', fontSize: 9, fontWeight: 700,
+              background: skin ? HELPER_PAIR.bg : 'linear-gradient(135deg, #84cc16 0%, #22c55e 100%)',
+              color: skin ? HELPER_PAIR.fg : '#052e16', fontSize: 9, fontWeight: 700,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               marginLeft: i === 0 ? 0 : -6,
             }}
@@ -206,7 +213,7 @@ function AlienHelpersStack({ project }: { project: ProjectItem }) {
           <div style={{
             width: 22, height: 22, borderRadius: '50%',
             border: `2px solid ${DARK_THEME.cardBg}`,
-            background: 'rgba(132,204,22,0.15)', color: '#84cc16',
+            background: skin ? HELPER_PAIR.bg : 'rgba(132,204,22,0.15)', color: skin ? HELPER_PAIR.fg : '#84cc16',
             fontSize: 9, fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             marginLeft: -6,

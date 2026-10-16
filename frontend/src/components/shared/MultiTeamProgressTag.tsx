@@ -8,9 +8,10 @@ const TONE_STYLE: Record<ProgressTone, CSSProperties> = {
   none: { color: 'var(--text-muted, #8c8c8c)' },
   neutral: {},
   alert: {
-    color: '#1f1600',
-    background: 'var(--warn, #fbbf24)',
-    borderColor: 'var(--warn, #fbbf24)',
+    // Скин задаёт светлую заливку и тёмный текст; у Aurora — прежняя жёлтая плашка.
+    color: 'var(--warn-on, #1f1600)',
+    background: 'var(--warn-fill, var(--warn, #fbbf24))',
+    borderColor: 'var(--warn-fill, var(--warn, #fbbf24))',
     fontWeight: 600,
   },
   done: {

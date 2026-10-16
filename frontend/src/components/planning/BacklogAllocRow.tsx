@@ -328,7 +328,8 @@ function BacklogAllocRowBase({
     borderLeft: a.included
       ? '3px solid var(--accent-1, #00c9c8)'
       : '3px solid transparent',
-    opacity: a.included ? 1 : 0.85,
+    // Скин показывает невключённые без полупрозрачности (текст должен читаться).
+    opacity: a.included ? 1 : 'var(--row-excluded-opacity, 0.85)',
     transform: CSS.Translate.toString(transform),
     transition,
     ...(isDragging ? { opacity: 0.5 } : null),

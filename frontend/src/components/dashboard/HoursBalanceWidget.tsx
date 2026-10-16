@@ -96,9 +96,9 @@ function EmployeeCard({
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         <div style={{
           width: 40, height: 40, borderRadius: '50%',
-          background: 'linear-gradient(135deg, #00c9c8, #4a6cf7)',
+          background: 'var(--hb-avatar-bg, linear-gradient(135deg, #00c9c8, #4a6cf7))',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontWeight: 700, fontSize: 14,
+          color: 'var(--hb-avatar-fg, #fff)', fontWeight: 700, fontSize: 14,
         }}>{emp.initials}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
@@ -132,7 +132,7 @@ function EmployeeCard({
         </span>
         <span style={{
           fontSize: 11, padding: '2px 8px', borderRadius: 4,
-          background: 'rgba(110,122,153,.18)', color: 'var(--text-muted, #a4b8d8)',
+          background: 'var(--hb-skip-bg, rgba(110,122,153,.18))', color: 'var(--text-muted, #a4b8d8)',
         }}>
           Отгулов: {emp.skip_days} дн · {Math.round(emp.skip_hours)}ч
         </span>

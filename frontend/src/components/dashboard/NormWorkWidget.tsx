@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
 import { DARK_THEME } from '../../utils/constants';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readablePair } from '../../utils/readableColor';
 import type {
   DashboardNormWorkResponse,
   NormWorkRoleGroup,
@@ -162,6 +164,9 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
   const { period } = useGlobalPeriod();
   const { selectedTeams } = useGlobalTeamFilter();
   const color = statusColor(emp.pct, t);
+  // Цвет роли из справочника: в светлом скине — светлая подложка и тёмные инициалы.
+  const skin = useSkin();
+  const avatar = skin ? readablePair(role.role_color) : { bg: role.role_color, fg: DARK_THEME.textPrimary };
   const showForeignBadge =
     emp.foreign_hours >= FOREIGN_BADGE_MIN_HOURS || emp.foreign_pct >= FOREIGN_BADGE_MIN_PCT;
   const openAnalytics = (extra: Record<string, string> = {}) => {
@@ -193,8 +198,8 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
           cursor: 'pointer',
         }}>
         <div style={{
-          width: 24, height: 24, borderRadius: '50%', background: role.role_color,
-          color: DARK_THEME.textPrimary, fontSize: 11, fontWeight: 700,
+          width: 24, height: 24, borderRadius: '50%', background: avatar.bg,
+          color: avatar.fg, fontSize: 11, fontWeight: 700,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>{emp.initials}</div>
         <div style={{ fontSize: 14, color: 'var(--text, #e6edf7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

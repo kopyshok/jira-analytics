@@ -3,6 +3,8 @@ import { Card, Spin, Empty, Popover, Button, InputNumber, Space } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { DARK_THEME } from '../../utils/constants';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readablePair } from '../../utils/readableColor';
 import type { DashboardCategoriesResponse, CategoryMetaItem, EmployeeWorklogActivity } from '../../types/api';
 
 const STORAGE_KEY = 'dashboard.categories.activityThresholds';
@@ -149,7 +151,7 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
                 border: `1px solid ${DARK_THEME.border}`,
                 borderRadius: 8,
                 padding: '8px 12px',
-                opacity: emp.is_absent ? 0.75 : 1,
+                opacity: emp.is_absent ? 'var(--absent-opacity, 0.75)' : 1,
                 cursor: 'pointer',
               }}
             >
@@ -170,8 +172,8 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
                   }}>{emp.name}</span>
                   {emp.is_absent && (
                     <span style={{
-                      background: '#a78bfa22',
-                      color: '#a78bfa',
+                      background: 'var(--absence-chip-bg, #a78bfa22)',
+                      color: 'var(--absence-chip-fg, #a78bfa)',
                       fontSize: 10,
                       fontWeight: 700,
                       padding: '1px 6px',
@@ -198,6 +200,7 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
 
 function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
   const navigate = useNavigate();
+  const skin = useSkin();
   if (!items.length) return <Empty description="Нет данных" />;
 
   const visible = items.slice(0, 10);
@@ -281,8 +284,8 @@ function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
               <span style={{
                 fontSize: 10,
                 fontWeight: 700,
-                background: item.color,
-                color: DARK_THEME.textPrimary,
+                background: skin ? readablePair(item.color).bg : item.color,
+                color: skin ? readablePair(item.color).fg : DARK_THEME.textPrimary,
                 padding: '2px 6px',
                 borderRadius: 6,
                 flexShrink: 0,

@@ -484,7 +484,7 @@ export default function BacklogPage() {
       width: 120,
       render: (_: unknown, r: BacklogItemResponse) => {
         if (r.issue_id) {
-          return <span style={{ fontSize: 12, color: '#6b8fa8' }}>{r.customer ?? '—'}</span>;
+          return <span style={{ fontSize: 12, color: 'var(--customer-fg, #6b8fa8)' }}>{r.customer ?? '—'}</span>;
         }
         return (
           <input
@@ -531,7 +531,7 @@ export default function BacklogPage() {
                 allowClear
                 size="small"
                 variant="borderless"
-                style={{ width: '100%', fontSize: 12, opacity: assigned ? 1 : 0.65 }}
+                style={{ width: '100%', fontSize: 12, opacity: assigned ? 1 : 'var(--unassigned-opacity, 0.65)' }}
                 placeholder="Группа"
                 value={r.subgroup_id ?? undefined}
                 options={subgroupOptions}

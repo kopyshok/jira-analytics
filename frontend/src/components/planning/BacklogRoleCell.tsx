@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react';
 import { Tooltip } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
-import { useAppTheme } from '../../contexts/ThemeContext';
+import { useAppTheme, useSkin } from '../../contexts/ThemeContext';
+import { readablePair } from '../../utils/readableColor';
 
 interface BacklogRoleCellProps {
   label: string;       // 'АН' | 'ПР' | 'ТС' | 'ОПЭ'
@@ -41,9 +42,12 @@ export default function BacklogRoleCell({
   // на нём белый текст не читается. Оставляем тот же градиент (мягкая прозрачность),
   // но текст переключаем на тёмный для light.
   const { mode } = useAppTheme();
+  const skin = useSkin();
   const isLight = mode === 'light';
   const fillText = isLight ? '#1a1f2c' : '#ffffff';
   const filledBg = `linear-gradient(180deg, ${color}aa 0%, ${color}44 100%)`;
+  // Скин: цвет роли из справочника — светлая подложка и тёмный текст того же оттенка.
+  const pair = skin ? readablePair(color) : null;
 
   const hasJiraData = (involvement != null) || (durationDays != null);
   const tooltipLines: string[] = [];
@@ -56,7 +60,33 @@ export default function BacklogRoleCell({
     </>
   ) : undefined;
 
-  const cell = (
+  const cell = pair ? (
+    <div
+      className="role-cell"
+      style={{
+        flex: 1,
+        minWidth: 52,
+        borderRadius: 8,
+        padding: '4px 6px',
+        textAlign: 'center',
+        background: empty ? '#FAF8F4' : pair.bg,
+        border: `1px solid ${empty ? '#EEE9E1' : pair.bg}`,
+        color: empty ? '#6B6358' : pair.fg,
+        userSelect: 'none',
+        position: disputed ? 'relative' : undefined,
+        outline: disputed ? `2px dashed ${WARN}` : undefined,
+        outlineOffset: disputed ? 1 : undefined,
+      }}
+    >
+      {disputed && <span aria-hidden style={DISPUTE_BADGE}>?</span>}
+      <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 1, color: pair.fg }}>{label}</div>
+      <div style={{ lineHeight: 1, marginBottom: 1 }}>
+        <span style={{ fontSize: 15, fontWeight: 700 }}>{empty ? '—' : hours}</span>
+        {!empty && <span style={{ fontSize: 10, fontWeight: 500, marginLeft: 3 }}>ч</span>}
+      </div>
+      <div style={{ fontSize: 10 }}>{empty ? '0%' : `${pct}%`}</div>
+    </div>
+  ) : (
     <div
       style={{
         flex: 1,

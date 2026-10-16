@@ -56,14 +56,15 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences }: P
   // Палитра ячеек: тёмная и светлая.
   const palette = isLight
     ? {
-        weekendBg: '#dde3ec',
-        emptyBg: '#eef2f7',
-        cellBorder: 'rgba(195,203,217,0.5)',
-        monthSep: '#c3cbd9',
-        monthLabel: '#3f4860',
-        dayHeader: '#5d6680',
-        weekendHeader: '#7a8298',
-        nameColor: '#2a3142',
+        // Скин переопределяет переменными --abs-*; у Aurora light их нет.
+        weekendBg: 'var(--abs-weekend-bg, #dde3ec)',
+        emptyBg: 'var(--abs-empty-bg, #eef2f7)',
+        cellBorder: 'var(--abs-cell-border, rgba(195,203,217,0.5))',
+        monthSep: 'var(--abs-month-sep, #c3cbd9)',
+        monthLabel: 'var(--abs-month-label, #3f4860)',
+        dayHeader: 'var(--abs-day-header, #5d6680)',
+        weekendHeader: 'var(--abs-weekend-header, #7a8298)',
+        nameColor: 'var(--abs-name, #2a3142)',
       }
     : {
         weekendBg: 'rgba(255,255,255,0.03)',
