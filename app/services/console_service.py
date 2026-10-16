@@ -258,11 +258,11 @@ async def execute(
         f"не выполнено: {skipped}, время: {_secs(elapsed, 1)} с",
         "",
     ]
-    for head, body, gap in blocks:
+    for head, shown, gap in blocks:
         out.extend(head)
-        if body is not None:
+        if shown is not None:
             # Имена из поздних ответов скрываем и в ранних — поэтому в самом конце.
-            out.append(masker.scrub(body) if masker else body)
+            out.append(masker.scrub(shown) if masker else shown)
         if gap:
             out.append("")
     return RunResult(

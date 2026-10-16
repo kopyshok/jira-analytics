@@ -43,6 +43,8 @@ DELETE_TABLES = (
     "sync_run", "work_desks", "perf_minute", "perf_slow_request", "perf_server_snapshot",
     # Отчёт переезда на Jira DC и решения по нему: ФИО и логины сотрудников.
     "jira_migration_reports", "jira_migration_decisions",
+    # История консоли Jira/Confluence: сырые ответы систем с ФИО и задачами.
+    "console_runs",
 )
 
 # Настройки: значение остаётся только у ключей из белого списка (номера полей Jira, настройки

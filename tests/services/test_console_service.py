@@ -1,6 +1,4 @@
 """Консоль Jira/Confluence: разбор строк, скрытие имён, выполнение."""
-import json
-
 import httpx
 import pytest
 
@@ -57,7 +55,7 @@ def test_unsafe_lines_are_rejected(line):
 
 def test_comments_and_blank_lines():
     lines = cs.parse_lines("# поля\n\n/rest/api/2/field\n", BASE, "jira")
-    assert [(l.comment, l.text) for l in lines] == [(True, "# поля"), (False, "/rest/api/2/field")]
+    assert [(x.comment, x.text) for x in lines] == [(True, "# поля"), (False, "/rest/api/2/field")]
 
 
 def test_too_many_requests_rejects_whole_run():
