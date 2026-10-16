@@ -51,7 +51,7 @@ export function buildZonesAntdConfig(): ThemeConfig {
       colorTextSecondary: TEXT_2,
       colorTextTertiary: '#6B7078',
       colorTextQuaternary: '#8A8F97',
-      colorTextPlaceholder: '#7B8088',
+      colorTextPlaceholder: '#6B7078',
       colorBorder: BORDER_CONTROL,
       colorBorderSecondary: BORDER,
       colorSplit: BORDER,

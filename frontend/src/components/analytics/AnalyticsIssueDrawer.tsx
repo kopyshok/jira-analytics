@@ -16,6 +16,8 @@ interface Props {
   periodStart: string;
   periodEnd: string;
   onClose: () => void;
+  /** Панель в раскладке страницы (скин «Цветовые зоны»), а не выезжающая справа. */
+  docked?: boolean;
 }
 
 interface DrawerContentProps {
@@ -66,9 +68,10 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
       />
       {/* Worklogs section */}
       <div
+        className="an-drawer-worklogs"
         style={{
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--an-panel-bg, rgba(255,255,255,0.03))',
+          border: '1px solid var(--an-panel-border, rgba(255,255,255,0.08))',
           borderRadius: 8,
           overflow: 'hidden',
         }}
@@ -81,7 +84,7 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
             textTransform: 'uppercase',
             color: 'var(--text-muted, #64748b)',
             padding: '10px 14px 8px',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            borderBottom: '1px solid var(--an-panel-line, rgba(255,255,255,0.06))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -117,10 +120,11 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
 
   return (
     <div
+      className="an-drawer-head"
       style={{
         padding: '16px 20px 14px',
-        borderBottom: '1px solid rgba(255,255,255,0.1)',
-        background: 'var(--bg, #0d1c33)',
+        borderBottom: '1px solid var(--an-panel-line-2, rgba(255,255,255,0.1))',
+        background: 'var(--an-panel-head-bg, var(--bg, #0d1c33))',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
@@ -140,9 +144,9 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
             fontFamily: 'monospace',
             fontSize: 13,
             fontWeight: 700,
-            color: '#00c9c8',
-            background: 'rgba(0,201,200,0.08)',
-            border: '1px solid rgba(0,201,200,0.25)',
+            color: 'var(--an-key, #00c9c8)',
+            background: 'var(--an-key-bg, rgba(0,201,200,0.08))',
+            border: '1px solid var(--an-key-border, rgba(0,201,200,0.25))',
             borderRadius: 5,
             padding: '3px 8px',
             textDecoration: 'none',
@@ -161,6 +165,9 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
         )}
         <span
           onClick={onClose}
+          role="button"
+          aria-label="Закрыть"
+          className="an-drawer-close"
           style={{
             marginLeft: 'auto',
             width: 28,
@@ -197,6 +204,7 @@ export default function AnalyticsIssueDrawer({
   periodStart,
   periodEnd,
   onClose,
+  docked = false,
 }: Props) {
   // Back-stack: stack of {id, key} entries. Current is top of stack.
   const [stack, setStack] = useState<Array<{ id: string; key: string }>>([]);
@@ -238,6 +246,34 @@ export default function AnalyticsIssueDrawer({
     // Context will be invalidated by the child components
   };
 
+  const body = currentEntry && (
+    <>
+      <DrawerHeader
+        issueId={currentEntry.id}
+        issueKey={currentEntry.key}
+        canGoBack={stack.length > 1}
+        onBack={handleBack}
+        onClose={handleClose}
+      />
+      <div style={{ flex: 1, overflowY: 'auto', background: 'var(--an-panel-body-bg, var(--bg, #0f2340))' }}>
+        <DrawerContent
+          key={currentEntry.id}
+          issueId={currentEntry.id}
+          issueKey={currentEntry.key}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+          onDrillDown={handleDrillDown}
+          onSaved={handleSaved}
+        />
+      </div>
+    </>
+  );
+
+  if (docked) {
+    if (!open) return null;
+    return <aside className="an-drawer-docked" aria-label="Карточка задачи">{body}</aside>;
+  }
+
   return (
     <Drawer
       open={open}
@@ -250,28 +286,7 @@ export default function AnalyticsIssueDrawer({
         wrapper: { width: 720 },
       }}
     >
-      {currentEntry && (
-        <>
-          <DrawerHeader
-            issueId={currentEntry.id}
-            issueKey={currentEntry.key}
-            canGoBack={stack.length > 1}
-            onBack={handleBack}
-            onClose={handleClose}
-          />
-          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg, #0f2340)' }}>
-            <DrawerContent
-              key={currentEntry.id}
-              issueId={currentEntry.id}
-              issueKey={currentEntry.key}
-              periodStart={periodStart}
-              periodEnd={periodEnd}
-              onDrillDown={handleDrillDown}
-              onSaved={handleSaved}
-            />
-          </div>
-        </>
-      )}
+      {body}
     </Drawer>
   );
 }

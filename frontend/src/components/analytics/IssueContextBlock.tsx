@@ -84,8 +84,8 @@ function SiblingPopover({
           gap: 3,
           fontSize: 10,
           color: 'var(--text-muted, #64748b)',
-          background: 'rgba(100,116,139,0.1)',
-          border: '1px solid rgba(100,116,139,0.15)',
+          background: 'var(--an-ic-chip-bg, rgba(100,116,139,0.1))',
+          border: '1px solid var(--an-ic-chip-border, rgba(100,116,139,0.15))',
           borderRadius: 10,
           padding: '2px 8px',
           cursor: 'pointer',
@@ -140,7 +140,7 @@ function TreeRow({
       {level > 0 && (
         <span
           style={{
-            color: '#334155',
+            color: 'var(--an-ic-text-3, #334155)',
             fontSize: 12,
             fontFamily: 'monospace',
             lineHeight: '18px',
@@ -180,7 +180,7 @@ function TreeRow({
       <span
         style={{
           fontSize: 12,
-          color: isCurrent ? 'var(--text, #e6edf7)' : '#cbd5e1',
+          color: isCurrent ? 'var(--text, #e6edf7)' : 'var(--an-ic-text-2, #cbd5e1)',
           fontWeight: isCurrent ? 600 : 400,
           flex: '1 1 auto',
           minWidth: 0,
@@ -273,14 +273,14 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
 
   return (
     <tr>
-      <td style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)', verticalAlign: 'middle' }}>
+      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--an-ic-line, rgba(255,255,255,0.04))', verticalAlign: 'middle' }}>
         <span
           style={{
             fontFamily: 'monospace',
             fontSize: 11,
-            color: '#00c9c8',
-            background: 'rgba(0,201,200,0.08)',
-            border: '1px solid rgba(0,201,200,0.18)',
+            color: 'var(--an-ic-key, #00c9c8)',
+            background: 'var(--an-ic-key-bg, rgba(0,201,200,0.08))',
+            border: '1px solid var(--an-ic-key-border, rgba(0,201,200,0.18))',
             borderRadius: 4,
             padding: '1px 5px',
             whiteSpace: 'nowrap',
@@ -293,18 +293,18 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
       </td>
       <td style={{
         padding: '6px 8px',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
+        borderBottom: '1px solid var(--an-ic-line, rgba(255,255,255,0.04))',
         maxWidth: 140,
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
-        color: '#e2e8f0',
+        color: 'var(--an-ic-text, #e2e8f0)',
         fontSize: 12,
         verticalAlign: 'middle',
       }}>
         <Tooltip title={child.summary}>{child.summary}</Tooltip>
       </td>
-      <td style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)', verticalAlign: 'middle' }}>
+      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--an-ic-line, rgba(255,255,255,0.04))', verticalAlign: 'middle' }}>
         <Tag
           color={statusTagColor(child.status, child.status_category)}
           style={{ marginInlineEnd: 0, fontSize: 10, padding: '2px 7px' }}
@@ -312,7 +312,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
           {child.status}
         </Tag>
       </td>
-      <td style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)', verticalAlign: 'middle' }}>
+      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--an-ic-line, rgba(255,255,255,0.04))', verticalAlign: 'middle' }}>
         <Select
           size="small"
           value={child.assigned_category ?? null}
@@ -323,7 +323,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
           options={categories.map(c => ({ value: c.code, label: c.label }))}
         />
       </td>
-      <td style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)', textAlign: 'center', verticalAlign: 'middle' }}>
+      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--an-ic-line, rgba(255,255,255,0.04))', textAlign: 'center', verticalAlign: 'middle' }}>
         <Tooltip title={isArchive ? 'Снимается автоматически архивной категорией' : undefined}>
           <Checkbox
             checked={child.include_in_analysis}
@@ -366,7 +366,7 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
           textTransform: 'uppercase',
           color: 'var(--text-muted, #64748b)',
           padding: '10px 14px 8px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: '1px solid var(--an-ic-line, rgba(255,255,255,0.06))',
         }}
       >
         Контекст
@@ -381,7 +381,7 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
           parentId={parentId}
           onDrillDown={onDrillDown}
         />
-        <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 0 10px' }} />
+        <div style={{ height: 1, background: 'var(--an-ic-line, rgba(255,255,255,0.06))', margin: '4px 0 10px' }} />
 
         {/* Children table */}
         {context.children.length === 0 ? (
@@ -411,7 +411,7 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
                         fontWeight: 500,
                         textAlign: h === 'В анализ' ? 'center' : 'left',
                         padding: '5px 8px',
-                        borderBottom: '1px solid rgba(255,255,255,0.07)',
+                        borderBottom: '1px solid var(--an-ic-line, rgba(255,255,255,0.07))',
                         fontSize: 10,
                         textTransform: 'uppercase',
                         letterSpacing: '0.04em',

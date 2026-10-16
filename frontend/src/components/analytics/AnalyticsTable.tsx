@@ -19,6 +19,8 @@ import type { AnalyticsLevel } from '../../hooks/useAnalyticsLayout';
 import { statusTagColor } from '../../utils/status';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
 import AnalyticsIssueDrawer from './AnalyticsIssueDrawer';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readablePair } from '../../skins/zones/readableColor';
 
 type RowKind = 'team' | 'role' | 'emp' | 'wt' | 'cat' | 'issue' | 'worklog-block';
 
@@ -63,11 +65,12 @@ function indent(depth: number, content: React.ReactNode): React.ReactNode {
   );
 }
 
+// Цвета процента плана — через CSS-переменные скина; без скина — прежние.
 function pctColor(pct: number | null | undefined): string | undefined {
   if (pct == null) return undefined;
-  if (pct > 110) return '#ff4d4f';
-  if (pct >= 70) return '#faad14';
-  return '#67d68d';
+  if (pct > 110) return 'var(--an-pct-over, #ff4d4f)';
+  if (pct >= 70) return 'var(--an-pct-mid, #faad14)';
+  return 'var(--an-pct-low, #67d68d)';
 }
 
 function stripKeyPrefix(summary: string, key: string): string {
@@ -174,6 +177,7 @@ function buildIssueNode(
             </Tag>
           )}
           <span
+            className="an-summary"
             style={{
               color: isContext ? 'var(--text-muted, #7e94b8)' : 'var(--text, #e6edf7)',
               fontStyle: isContext ? 'italic' : undefined,
@@ -282,9 +286,9 @@ function ForeignChip({ totals }: { totals: NodeTotals }) {
           borderRadius: 999,
           fontSize: 11,
           fontWeight: 600,
-          background: 'rgba(255, 156, 74, 0.12)',
-          color: '#ff9c4a',
-          border: '1px solid rgba(255, 156, 74, 0.35)',
+          background: 'var(--an-foreign-bg, rgba(255, 156, 74, 0.12))',
+          color: 'var(--an-foreign, #ff9c4a)',
+          border: '1px solid var(--an-foreign-border, rgba(255, 156, 74, 0.35))',
         }}
       >
         ⚠ {totals.foreign_issue_count} · {totals.foreign_hours.toFixed(0)}ч · {totals.foreign_pct.toFixed(0)}%
@@ -484,6 +488,8 @@ function buildTreeFromLayout(
   periodEnd: string,
   navigate: ReturnType<typeof useNavigate>,
   thematicParams: URLSearchParams | null,
+  /** Скин: цвета ролей из справочника — читаемой парой (подложка + тёмный текст). */
+  readable = false,
 ): TreeNode[] {
   const flat = flattenResponse(data);
   const grandFact = flat.reduce((s, r) => s + r.issue.totals.fact_hours, 0);
@@ -523,7 +529,7 @@ function buildTreeFromLayout(
                 flexShrink: 0,
               }}
             />
-            <span style={{ color: row.role_color, fontWeight: 600 }}>
+            <span style={{ color: readable ? readablePair(row.role_color).fg : row.role_color, fontWeight: 600 }}>
               {row.role_label}
             </span>
           </span>,
@@ -541,8 +547,8 @@ function buildTreeFromLayout(
                 width: 22,
                 height: 22,
                 borderRadius: '50%',
-                background: row.role_color,
-                color: '#fff',
+                background: readable ? readablePair(row.role_color).bg : row.role_color,
+                color: readable ? readablePair(row.role_color).fg : '#fff',
                 fontSize: 10,
                 fontWeight: 700,
                 flexShrink: 0,
@@ -693,7 +699,18 @@ interface Props {
   worklogMode: 'inline' | 'drawer';
   periodStart: string;
   periodEnd: string;
+  /**
+   * Скин «Цветовые зоны»: таблица в блоке на высоту окна с липкой шапкой,
+   * карточка задачи — панелью справа (тот же щелчок по задаче).
+   */
+  docked?: boolean;
 }
+
+/** Плотные ширины колонок блока скина: «Группа / Задача» забирает остаток. */
+const DOCKED_WIDTHS: Record<string, number> = {
+  fact_hours: 96, plan_hours: 76, pct_plan: 62, pct_in_group: 78, pct_total: 74,
+  worklog_count: 80, issue_count: 56, employee_count: 54, avg_min: 62,
+};
 
 export default function AnalyticsTable({
   data,
@@ -701,7 +718,9 @@ export default function AnalyticsTable({
   worklogMode,
   periodStart,
   periodEnd,
+  docked = false,
 }: Props) {
+  const skin = useSkin();
   const { visible } = useAnalyticsColumns();
   const visibleSet = new Set(visible);
   const navigate = useNavigate();
@@ -776,10 +795,11 @@ export default function AnalyticsTable({
         periodEnd,
         navigate,
         thematicBaseParams,
+        !!skin,
       ),
     // thematicBaseParams is recreated each render but is URLSearchParams — stable via stringification
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filteredData, layout, worklogMode, periodStart, periodEnd, navigate],
+    [filteredData, layout, worklogMode, periodStart, periodEnd, navigate, skin],
   );
 
   const isBlock = (r: TreeNode) => r.kind === 'worklog-block';
@@ -815,7 +835,7 @@ export default function AnalyticsTable({
                 style={{
                   width: '100%',
                   height: 3,
-                  background: 'rgba(255,255,255,0.06)',
+                  background: 'var(--an-bar-track, rgba(255,255,255,0.06))',
                   borderRadius: 2,
                   overflow: 'hidden',
                 }}
@@ -911,24 +931,30 @@ export default function AnalyticsTable({
 
   // Mandatory columns always shown: label, fact_hours.
   const MANDATORY_KEYS = new Set(['label', 'fact_hours']);
-  const columns = allColumns.filter(
-    (col) =>
-      MANDATORY_KEYS.has(col.key as string) || visibleSet.has(col.key as string),
-  );
+  const columns = allColumns
+    .filter(
+      (col) =>
+        MANDATORY_KEYS.has(col.key as string) || visibleSet.has(col.key as string),
+    )
+    .map((col) => (docked
+      ? { ...col, width: col.key === 'label' ? undefined : (DOCKED_WIDTHS[col.key as string] ?? col.width) }
+      : col));
 
-  return (
-    <>
+  const table = (
       <Table<TreeNode>
         dataSource={tableData}
         columns={columns}
         rowKey="key"
         pagination={false}
         size="small"
-        scroll={{ x: 'max-content' }}
+        scroll={docked ? undefined : { x: 'max-content' }}
+        tableLayout={docked ? 'fixed' : undefined}
         rowClassName={(record) => {
           const cls = [`tree-row-depth-${record.depth}`];
           if (record.children && record.children.length > 0)
             cls.push('tree-row-has-children');
+          if (docked && drawerIssue && record.kind === 'issue' && record.issueId === drawerIssue.id)
+            cls.push('an-row-selected');
           return cls.join(' ');
         }}
         expandable={{
@@ -950,6 +976,29 @@ export default function AnalyticsTable({
             : {}
         }
       />
+  );
+
+  if (docked) {
+    return (
+      <div className="an-split">
+        <section className="zn-card an-table-card" data-tour="analytics-table">{table}</section>
+        {drawerIssue && (
+          <AnalyticsIssueDrawer
+            docked
+            issueId={drawerIssue.id}
+            issueKey={drawerIssue.key}
+            periodStart={periodStart}
+            periodEnd={periodEnd}
+            onClose={() => setDrawerIssue(null)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {table}
       <AnalyticsIssueDrawer
         issueId={drawerIssue?.id ?? null}
         issueKey={drawerIssue?.key ?? null}

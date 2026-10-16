@@ -1,0 +1,195 @@
+/* ============================================================
+   «Аналитика» в скине «Цветовые зоны».
+   ============================================================ */
+html[data-skin="zones"] {
+  --an-pct-over: #B42A1E;
+  --an-pct-mid: #17191C;
+  --an-pct-low: #8A5A0A;
+  --an-foreign: #A14D00;
+  --an-foreign-bg: #FDF0E6;
+  --an-foreign-border: #E8C9A6;
+  --an-bar-track: #EEF0F3;
+  --an-panel-bg: #FFFFFF;
+  --an-panel-border: #E1E3E8;
+  --an-panel-line: #E1E3E8;
+  --an-panel-line-2: #E1E3E8;
+  --an-panel-head-bg: #FFFFFF;
+  --an-panel-body-bg: #FFFFFF;
+  --an-key: var(--za-ink);
+  --an-key-bg: transparent;
+  --an-key-border: transparent;
+}
+
+html[data-skin="zones"] .anz { gap: 12px; }
+html[data-skin="zones"] .anz-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
+
+/* --- итоги и переток --- */
+html[data-skin="zones"] .anz-top { flex: none; display: flex; gap: 12px; }
+html[data-skin="zones"] .anz-kpi { flex: 1 1 auto; min-width: 0; padding: 10px 6px; }
+html[data-skin="zones"] .anz-kpi [data-tour="analytics-kpi"] { margin: 0 !important; gap: 0 !important; }
+html[data-skin="zones"] .anz-kpi [data-tour="analytics-kpi"] > div {
+  background: none !important;
+  border: 0 !important;
+  border-left: 1px solid #E1E3E8 !important;
+  border-radius: 0 !important;
+  padding: 2px 18px !important;
+}
+html[data-skin="zones"] .anz-kpi [data-tour="analytics-kpi"] > div:first-child { border-left: 0 !important; }
+html[data-skin="zones"] .anz-kpi [data-tour="analytics-kpi"] > div > div:first-child {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: 11px !important;
+  color: #5A5F66 !important;
+  margin-bottom: 2px !important;
+}
+html[data-skin="zones"] .anz-kpi [data-tour="analytics-kpi"] > div > div:first-child[data-foreign]::before { content: '⚠ '; color: var(--an-foreign); }
+html[data-skin="zones"] .anz-kpi [data-tour="analytics-kpi"] > div > div:last-child {
+  font-family: var(--font-display);
+  font-weight: 700 !important;
+  font-size: 30px !important;
+  line-height: 36px !important;
+}
+html[data-skin="zones"] .anz-kpi [data-tour="analytics-kpi"] > div:first-child > div:last-child { font-weight: 800 !important; font-size: 34px !important; }
+html[data-skin="zones"] .anz-flow { flex: 0 1 650px; min-width: 0; padding: 10px 16px; }
+html[data-skin="zones"] .anz-flow > div { flex-direction: column; align-items: flex-start !important; gap: 2px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .anz-flow > div > :first-child {
+  font-size: 10px !important;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #5A5F66 !important;
+  margin-bottom: 2px;
+}
+html[data-skin="zones"] .anz-flow > div > span { font-size: 12.5px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .anz-flow > div > span > .ant-typography:first-child { font-weight: 600; color: #17191C; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .anz-flow > div > span > .ant-typography:first-child::after { content: ':'; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .anz-flow .ant-typography-warning,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .anz-flow .ant-typography-success { color: #3F444B !important; }
+
+/* --- ряд команд и отборов --- */
+html[data-skin="zones"] .anz-filters {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 6px 10px 6px 14px;
+}
+html[data-skin="zones"] .anz-label {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #5A5F66;
+}
+html[data-skin="zones"] .anz-teams { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; flex: 1 1 auto; }
+html[data-skin="zones"] .anz-team {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #F2F3F5;
+  color: #17191C;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+html[data-skin="zones"] .anz-team span { margin-left: 4px; font-weight: 400; color: #5A5F66; }
+html[data-skin="zones"] .anz-team:hover { background: var(--za-tint); }
+html[data-skin="zones"] .anz-team.is-active { background: var(--za); color: #FFFFFF; }
+html[data-skin="zones"] .anz-team.is-active span { color: #FFFFFF; }
+html[data-skin="zones"] .anz-filter-right { margin-left: auto; }
+html[data-skin="zones"] .an-filter-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+html[data-skin="zones"] .zn-field.zn-field-bordered { border: 1px solid #D5D8DE; height: 32px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .zn-field-bordered .ant-select { height: 28px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .zn-field-bordered .ant-select-placeholder,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .zn-field-bordered .ant-select-selection-placeholder { color: #17191C !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-search .ant-input-affix-wrapper,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-search .ant-input { height: 32px; }
+
+/* --- таблица и карточка задачи --- */
+html[data-skin="zones"] .an-split { flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; }
+html[data-skin="zones"] .an-table-card { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .ant-table-thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  font-size: 11px;
+  padding: 7px 8px !important;
+  white-space: nowrap;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .ant-table-content,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .ant-table-container,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .ant-table { overflow: visible !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .ant-table-tbody > tr > td { padding: 6px 8px !important; font-size: 12.5px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .an-summary {
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .tree-row-depth-0 > td { background: #F4F6FA !important; font-size: 13.5px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .tree-row-depth-1 > td,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .tree-row-depth-2 > td,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .tree-row-depth-3 > td,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .tree-row-depth-4 > td,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .tree-row-depth-5 > td { background: #FFFFFF !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .an-row-selected > td { background: var(--za-tint) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .an-row-selected > td:first-child { box-shadow: inset 2px 0 0 var(--za), inset 0 2px 0 var(--za), inset 0 -2px 0 var(--za); }
+html[data-skin="zones"] .an-drawer-docked {
+  flex: 0 0 380px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #FFFFFF;
+  border: 1px solid #E1E3E8;
+  border-radius: 10px;
+}
+html[data-skin="zones"] .an-drawer-docked .an-drawer-head { padding: 12px 14px 10px !important; }
+html[data-skin="zones"] .an-drawer-docked .an-drawer-head a {
+  font-family: var(--font-display) !important;
+  font-size: 18px !important;
+  padding: 0 !important;
+  text-decoration: underline !important;
+}
+html[data-skin="zones"] .an-drawer-docked .an-drawer-close {
+  border: 1px solid #D5D8DE;
+  color: #3F444B !important;
+  font-size: 16px !important;
+}
+html[data-skin="zones"] .an-drawer-docked > div:last-child > div { padding: 12px 14px !important; }
+
+/* карточка задачи: контекст, категория, ворклоги */
+html[data-skin="zones"] {
+  --an-ic-text: #17191C;
+  --an-ic-text-2: #3F444B;
+  --an-ic-text-3: #3F444B;
+  --an-ic-key: var(--za-ink);
+  --an-ic-key-bg: #F4F6FA;
+  --an-ic-key-border: #D5D8DE;
+  --an-ic-chip-bg: #F2F3F5;
+  --an-ic-chip-border: #E1E3E8;
+  --an-ic-line: #E1E3E8;
+  --an-ic-card: #FFFFFF;
+  --an-ic-card-border: #E1E3E8;
+  --an-ic-warn: #7A5200;
+  --an-ic-warn-bg: #FBF1DC;
+  --an-ic-warn-border: #E2C98F;
+  --an-ic-inh: var(--za-ink);
+  --an-ic-inh-bg: var(--za-tint);
+  --an-ic-inh-border: var(--za-border);
+  --an-ic-btn-fg: #FFFFFF;
+}
+
+/* переток — две колонки строк, блок не выше итогов */
+html[data-skin="zones"] .anz-top { max-height: 128px; }
+html[data-skin="zones"] .anz-flow { overflow: auto; }
+html[data-skin="zones"] .anz-flow > div { display: grid !important; grid-template-columns: repeat(2, minmax(0, auto)); column-gap: 24px !important; justify-content: start; }
+html[data-skin="zones"] .anz-flow > div > :first-child { grid-column: 1 / -1; }
+html[data-skin="zones"] .anz-kpi { display: flex; align-items: center; }
+html[data-skin="zones"] .anz-kpi [data-tour="analytics-kpi"] { flex: 1; }
+html[data-skin="zones"] .an-inherited-mark { opacity: 1 !important; font-size: 10px !important; }

@@ -47,7 +47,7 @@ export default function AnalyticsKpiTiles({ totals }: Props) {
       </div>
       <div style={TILE}>
         <div style={LABEL}>% Выполнения</div>
-        <div style={{ ...VALUE, color: pct == null ? 'var(--text, #e6edf7)' : pct > 110 ? '#ff4d4f' : pct >= 70 ? '#faad14' : '#67d68d' }}>
+        <div style={{ ...VALUE, color: pct == null ? 'var(--text, #e6edf7)' : pct > 110 ? 'var(--an-pct-over, #ff4d4f)' : pct >= 70 ? 'var(--an-pct-mid, #faad14)' : 'var(--an-pct-low, #67d68d)' }}>
           {pct == null ? '—' : `${pct.toFixed(0)}%`}
         </div>
       </div>
@@ -56,11 +56,11 @@ export default function AnalyticsKpiTiles({ totals }: Props) {
         <div style={VALUE}>{totals.employee_count}</div>
       </div>
       <div style={TILE}>
-        <div style={LABEL}>Чужих часов</div>
-        <div style={{ ...VALUE, color: totals.foreign_hours > 0 ? '#ff9c4a' : 'var(--text, #e6edf7)' }}>
+        <div style={LABEL} data-foreign={totals.foreign_hours > 0 || undefined}>Чужих часов</div>
+        <div style={{ ...VALUE, color: totals.foreign_hours > 0 ? 'var(--an-foreign, #ff9c4a)' : 'var(--text, #e6edf7)' }}>
           {totals.foreign_hours.toFixed(1)}
           {totals.foreign_hours > 0 && (
-            <span style={{ fontSize: 13, marginLeft: 6, color: '#ff9c4a', fontWeight: 500 }}>
+            <span style={{ fontSize: 13, marginLeft: 6, color: 'var(--an-foreign, #ff9c4a)', fontWeight: 500 }}>
               ({totals.foreign_pct.toFixed(0)}%)
             </span>
           )}
