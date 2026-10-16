@@ -173,7 +173,7 @@ def test_period_requires_auth(testclient_db_session):
         app.dependency_overrides.clear()
 
 
-@pytest.mark.parametrize("theme", ["aurora-dark", "aurora-light"])
+@pytest.mark.parametrize("theme", ["aurora-dark", "aurora-light", "pult-light"])
 def test_can_set_aurora_theme(testclient_db_session, theme):
     _seed_user(testclient_db_session, "ep_test@example.com")
     client, headers = _make_authed_client(testclient_db_session)

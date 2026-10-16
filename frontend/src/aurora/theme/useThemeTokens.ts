@@ -12,30 +12,32 @@ import { DARK_THEME } from '../../utils/constants';
  * stay in sync with theme switches without a re-render.
  */
 export function useThemeTokens() {
-  const { isAurora, mode } = useAppTheme();
+  const { isAurora, mode, skin } = useAppTheme();
   return useMemo(() => {
     if (!isAurora) return DARK_THEME;
 
     const isDark = mode === 'dark';
+    // «Пульт»: тёплые сплошные тона вместо голубых полупрозрачных подложек Aurora light.
+    const isPult = skin === 'pult';
     return {
       pageBg: 'var(--bg)',
-      sidebarBg: isDark ? 'rgba(13,18,38,0.6)' : 'rgba(255,255,255,0.55)',
+      sidebarBg: isPult ? '#F4F3EF' : isDark ? 'rgba(13,18,38,0.6)' : 'rgba(255,255,255,0.55)',
       cardBg: 'var(--glass-bg)',
-      darkAccent: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(60,90,160,0.06)',
+      darkAccent: isPult ? '#EFEDE7' : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(60,90,160,0.06)',
       border: 'var(--glass-border)',
-      darkRows: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(60,90,160,0.04)',
+      darkRows: isPult ? '#EFEDE7' : isDark ? 'rgba(255,255,255,0.025)' : 'rgba(60,90,160,0.04)',
       cyanPrimary: 'var(--accent-1)',
       cyanSecondary: 'var(--accent-2)',
       yellow: 'var(--warn)',
       amber: 'var(--warn)',
-      amberDim: isDark ? '#fbbf24cc' : '#d97706cc',
+      amberDim: isPult ? '#6E4D00' : isDark ? '#fbbf24cc' : '#d97706cc',
       danger: 'var(--bad)',
       success: 'var(--good)',
       textPrimary: 'var(--text)',
       textSecondary: 'var(--text-2)',
       textMuted: 'var(--text-muted)',
       textHint: 'var(--text-muted)',
-      textDim: isDark ? '#5a6a85' : '#8b97b3',
+      textDim: isPult ? '#6E6B64' : isDark ? '#5a6a85' : '#8b97b3',
     };
-  }, [isAurora, mode]);
+  }, [isAurora, mode, skin]);
 }

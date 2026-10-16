@@ -36,9 +36,12 @@ export default function SyncIndicator() {
     return { dot: DARK_THEME.cyanPrimary, label: nowDate ? timeAgo(lastSyncIso, nowDate) : '—', text: DARK_THEME.textSecondary };
   })();
 
+  const state = hasError ? 'error' : lastSyncIso === null ? 'none' : stale ? 'stale' : 'fresh';
+
   return (
     <div
       data-testid="sync-indicator"
+      data-state={state}
       style={{
         display: 'inline-flex',
         alignItems: 'center',

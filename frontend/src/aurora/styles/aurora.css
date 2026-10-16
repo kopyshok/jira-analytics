@@ -2,3 +2,5 @@
 @import './glass.css';
 @import './app.css';
 @import './antdGlass.css';
+/* Обложки поверх Aurora light — строго после остальных слоёв. */
+@import './skins/pult.css';

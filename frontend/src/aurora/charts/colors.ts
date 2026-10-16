@@ -23,3 +23,30 @@ export const CHART_PALETTE_AURORA = [
   CHART_COLORS_AURORA.teal,
   CHART_COLORS_AURORA.neutral,
 ];
+
+/** «Пульт» — цвета индикаторов стиля (плоские, различимы и по светлоте). */
+export const CHART_COLORS_PULT = {
+  blue: '#2F6FDE',
+  violet: '#8E5BC2',
+  green: '#2E9E5B',
+  yellow: '#D99A00',
+  red: '#D9381E',
+  cyan: '#3E8A9E',
+  pink: '#A65E7E',
+  amber: '#E8590C',
+  teal: '#4F8F7A',
+  neutral: '#9A978F',
+} as const;
+
+export const CHART_PALETTE_PULT = [
+  CHART_COLORS_PULT.blue,
+  CHART_COLORS_PULT.amber,
+  CHART_COLORS_PULT.green,
+  CHART_COLORS_PULT.yellow,
+  CHART_COLORS_PULT.violet,
+  CHART_COLORS_PULT.cyan,
+  '#2B2B29',
+  CHART_COLORS_PULT.red,
+  CHART_COLORS_PULT.pink,
+  CHART_COLORS_PULT.neutral,
+];
