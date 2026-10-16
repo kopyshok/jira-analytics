@@ -17,9 +17,22 @@ describe('APP_THEMES Aurora', () => {
     expect(APP_THEMES['aurora-light'].tokens.primary).toBe('#3b6ef5');
   });
 
-  it('AppTheme union — только две темы Aurora', () => {
-    const themes: AppTheme[] = ['aurora-dark', 'aurora-light'];
-    expect(themes).toHaveLength(2);
-    expect(Object.keys(APP_THEMES)).toEqual(['aurora-dark', 'aurora-light']);
+  it('warm-light — скин «Тёплая» поверх Aurora light', () => {
+    expect(APP_THEMES['warm-light'].label).toBe('Тёплая');
+    expect(APP_THEMES['warm-light'].mode).toBe('light');
+    expect(APP_THEMES['warm-light'].skin).toBe('warm');
+    expect(APP_THEMES['warm-light'].tokens.pageBg).toBe('#EFEBE5');
+    expect(APP_THEMES['warm-light'].tokens.primary).toBe('#2F6B5A');
+    // У самих тем Aurora скина нет.
+    expect(APP_THEMES['aurora-dark'].skin).toBeUndefined();
+    expect(APP_THEMES['aurora-light'].skin).toBeUndefined();
+  });
+
+  it('AppTheme union — две темы Aurora и скин «Тёплая»', () => {
+    const themes: AppTheme[] = ['aurora-dark', 'aurora-light', 'warm-light'];
+    expect(themes).toHaveLength(3);
+    expect(Object.keys(APP_THEMES)).toEqual(['aurora-dark', 'aurora-light', 'warm-light']);
+    // Колонка темы в БД — String(20).
+    for (const id of Object.keys(APP_THEMES)) expect(id.length).toBeLessThanOrEqual(20);
   });
 });

@@ -12,9 +12,11 @@ import { DARK_THEME } from '../../utils/constants';
  * stay in sync with theme switches without a re-render.
  */
 export function useThemeTokens() {
-  const { isAurora, mode } = useAppTheme();
+  const { isAurora, mode, skin } = useAppTheme();
   return useMemo(() => {
     if (!isAurora) return DARK_THEME;
+    // Скин: сплошные значения из DARK_THEME (Proxy уже отдаёт набор скина).
+    if (skin) return { ...DARK_THEME };
 
     const isDark = mode === 'dark';
     return {
@@ -37,5 +39,5 @@ export function useThemeTokens() {
       textHint: 'var(--text-muted)',
       textDim: isDark ? '#5a6a85' : '#8b97b3',
     };
-  }, [isAurora, mode]);
+  }, [isAurora, mode, skin]);
 }

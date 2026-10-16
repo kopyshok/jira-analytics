@@ -67,6 +67,24 @@ const CHART_COLORS_AURORA_LIGHT_OVERRIDES: ChartColorsShape = {
   neutral: '#8089a0',
 };
 
+/** «Тёплая» — тёплая палитра данных: синий, бирюза, охра, хвоя, слива, терракота. */
+const CHART_COLORS_WARM: ChartColorsShape = {
+  blue: '#3F6CA8',
+  green: '#3F7D4E',
+  orange: '#D9822B',
+  red: '#B5502A',
+  purple: '#8A4F7D',
+  cyan: '#2E8B8B',
+  cyanSecondary: '#5E9E98',
+  yellow: '#B7791F',
+  neutral: '#8A8174',
+};
+
+/** Палитры графиков «скинов» поверх Aurora light — ключ = `<html data-skin>`. */
+const SKIN_CHART_COLORS: Record<string, ChartColorsShape> = {
+  warm: CHART_COLORS_WARM,
+};
+
 /** Runtime-aware chart colors. Mirrors DARK_THEME Proxy strategy. */
 export const CHART_COLORS: ChartColorsShape = new Proxy(CHART_COLORS_CLASSIC, {
   get(target, prop: string) {
@@ -75,6 +93,8 @@ export const CHART_COLORS: ChartColorsShape = new Proxy(CHART_COLORS_CLASSIC, {
     if (root.getAttribute('data-theme') !== 'aurora') {
       return target[prop as keyof ChartColorsShape];
     }
+    const skin = SKIN_CHART_COLORS[root.getAttribute('data-skin') ?? ''];
+    if (skin) return skin[prop as keyof ChartColorsShape] ?? target[prop as keyof ChartColorsShape];
     const mode = root.getAttribute('data-mode');
     const pool = mode === 'light' ? CHART_COLORS_AURORA_LIGHT_OVERRIDES : CHART_COLORS_AURORA_DARK_OVERRIDES;
     return pool[prop as keyof ChartColorsShape] ?? target[prop as keyof ChartColorsShape];
@@ -170,11 +190,40 @@ const AURORA_LIGHT_TOKENS: DarkThemeShape = {
   textDim: '#7a8298',
 };
 
+/* «Тёплая» — тёплый камень + белые поверхности, хвойный акцент. Только сплошные цвета.
+ * Контраст на белом: textPrimary 14:1, textSecondary 9:1, textMuted 5.9:1, textHint 4.5:1. */
+const WARM_TOKENS: DarkThemeShape = {
+  pageBg: '#EFEBE5',
+  sidebarBg: '#EFEBE5',
+  cardBg: '#FFFFFF',
+  darkAccent: '#F5F1EA',
+  border: '#E3DDD3',
+  darkRows: '#FAF8F4',
+  cyanPrimary: '#2F6B5A',
+  cyanSecondary: '#3F6CA8',
+  yellow: '#B7791F',
+  amber: '#A0650F',
+  amberDim: '#7A4E0C',
+  danger: '#B5502A',
+  success: '#3F7D4E',
+  textPrimary: '#2A2620',
+  textSecondary: '#4A443A',
+  textMuted: '#6B6358',
+  textHint: '#7D7568',
+  textDim: '#857C6F',
+};
+
+/** Наборы токенов «скинов» поверх Aurora light — ключ = `<html data-skin>`. */
+const SKIN_TOKENS: Record<string, DarkThemeShape> = {
+  warm: WARM_TOKENS,
+};
+
 /** Runtime-aware Dark theme tokens.
  *  Reads `<html data-theme="aurora" data-mode="dark|light">` on every access:
  *  - classic: returns DARK_THEME_CLASSIC value
  *  - aurora-dark: returns AURORA_DARK_TOKENS value
  *  - aurora-light: returns AURORA_LIGHT_TOKENS value
+ *  - skin (`data-skin="warm"` поверх aurora-light): returns SKIN_TOKENS[skin] value
  *
  *  This drops in for every existing `DARK_THEME.cardBg` / `DARK_THEME.cyanPrimary`
  *  call without touching consumer code. AppLayout dispatcher remounts the entire
@@ -187,13 +236,15 @@ export const DARK_THEME: DarkThemeShape = new Proxy(DARK_THEME_CLASSIC, {
     if (root.getAttribute('data-theme') !== 'aurora') {
       return target[prop as keyof DarkThemeShape];
     }
+    const skin = SKIN_TOKENS[root.getAttribute('data-skin') ?? ''];
+    if (skin) return skin[prop as keyof DarkThemeShape] ?? target[prop as keyof DarkThemeShape];
     const mode = root.getAttribute('data-mode');
     const pool = mode === 'light' ? AURORA_LIGHT_TOKENS : AURORA_DARK_TOKENS;
     return pool[prop as keyof DarkThemeShape] ?? target[prop as keyof DarkThemeShape];
   },
 });
 
-export type AppTheme = 'aurora-dark' | 'aurora-light';
+export type AppTheme = 'aurora-dark' | 'aurora-light' | 'warm-light';
 
 export interface ThemeTokens {
   pageBg: string;
@@ -210,9 +261,19 @@ export interface ThemeTokens {
   textHint: string;
 }
 
-export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }> = {
+export interface AppThemeDef {
+  label: string;
+  /** Значение `<html data-mode>`. */
+  mode: 'dark' | 'light';
+  /** Значение `<html data-skin>`: стиль поверх Aurora light. У самих тем Aurora — нет. */
+  skin?: string;
+  tokens: ThemeTokens;
+}
+
+export const APP_THEMES: Record<AppTheme, AppThemeDef> = {
   'aurora-dark': {
     label: 'Aurora тёмная',
+    mode: 'dark',
     tokens: {
       pageBg: '#080b16',
       sidebarBg: '#0d1226',
@@ -230,6 +291,7 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
   },
   'aurora-light': {
     label: 'Aurora светлая',
+    mode: 'light',
     tokens: {
       pageBg: '#e6ebf2',
       sidebarBg: '#e6ebf2',
@@ -245,14 +307,54 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
       textHint: '#7a8298',
     },
   },
+  'warm-light': {
+    label: 'Тёплая',
+    mode: 'light',
+    skin: 'warm',
+    tokens: {
+      pageBg: WARM_TOKENS.pageBg,
+      sidebarBg: WARM_TOKENS.sidebarBg,
+      cardBg: WARM_TOKENS.cardBg,
+      darkAccent: WARM_TOKENS.darkAccent,
+      border: WARM_TOKENS.border,
+      darkRows: WARM_TOKENS.darkRows,
+      primary: WARM_TOKENS.cyanPrimary,
+      primarySecondary: WARM_TOKENS.cyanSecondary,
+      textPrimary: WARM_TOKENS.textPrimary,
+      textSecondary: WARM_TOKENS.textSecondary,
+      textMuted: WARM_TOKENS.textMuted,
+      textHint: WARM_TOKENS.textHint,
+    },
+  },
 };
 
+interface FontsShape {
+  display: string;
+  body: string;
+  mono: string;
+}
+
 /** Typography stack — distinctive, not system-font slop */
-export const FONTS = {
+const FONTS_BASE: FontsShape = {
   display: "'Fraunces', 'Georgia', serif",
   body: "'Manrope', -apple-system, 'Segoe UI', sans-serif",
   mono: "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace",
-} as const;
+};
+
+const ONEST = "'Onest', -apple-system, 'Segoe UI', sans-serif";
+/** У «Тёплой» один шрифт на всё: цифры выравнивает tabular-nums, а не моноширинный. */
+const SKIN_FONTS: Record<string, FontsShape> = {
+  warm: { display: ONEST, body: ONEST, mono: ONEST },
+};
+
+/** Runtime-aware fonts: inline `fontFamily: FONTS.mono` follows `<html data-skin>` like DARK_THEME. */
+export const FONTS: Readonly<FontsShape> = new Proxy(FONTS_BASE, {
+  get(target, prop: string) {
+    if (typeof document === 'undefined') return target[prop as keyof FontsShape];
+    const skin = SKIN_FONTS[document.documentElement.getAttribute('data-skin') ?? ''];
+    return skin?.[prop as keyof FontsShape] ?? target[prop as keyof FontsShape];
+  },
+});
 
 export const QUARTER_MONTHS: Record<number, number[]> = {
   1: [1, 2, 3],

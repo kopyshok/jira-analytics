@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useCallback, useLayoutEffect, type ReactNode } from 'react';
-import type { AppTheme } from '../utils/constants';
+import { APP_THEMES, type AppTheme } from '../utils/constants';
 
 interface ThemeContextValue {
   theme: AppTheme;
   setTheme: (t: AppTheme) => void;
   isAurora: boolean;
   mode: 'dark' | 'light' | null;
+  /** Стиль поверх Aurora light (`<html data-skin>`), у самих тем Aurora — null. */
+  skin: string | null;
 }
 
 export const ThemeContext = createContext<ThemeContextValue>({
@@ -13,14 +15,19 @@ export const ThemeContext = createContext<ThemeContextValue>({
   setTheme: () => {},
   isAurora: true,
   mode: 'dark',
+  skin: null,
 });
+
+function isAppTheme(v: string | null): v is AppTheme {
+  return v !== null && Object.prototype.hasOwnProperty.call(APP_THEMES, v);
+}
 
 function readStoredTheme(): AppTheme {
   try {
     const v = localStorage.getItem('app_theme');
-    if (v === 'aurora-dark' || v === 'aurora-light') return v;
+    if (isAppTheme(v)) return v;
     // Все прежние темы (dark-blue, dark, dark-slate, dark-charcoal) сведены
-    // к Aurora — в продукте остались только две.
+    // к Aurora — неизвестное значение даёт тему по умолчанию.
   } catch {
     // localStorage unavailable
   }
@@ -29,8 +36,12 @@ function readStoredTheme(): AppTheme {
 
 function applyDomAttrs(t: AppTheme): void {
   const root = document.documentElement;
+  const def = APP_THEMES[t];
   root.setAttribute('data-theme', 'aurora');
-  root.setAttribute('data-mode', t === 'aurora-light' ? 'light' : 'dark');
+  root.setAttribute('data-mode', def.mode);
+  // Скин — слой поверх Aurora light; у самих тем Aurora атрибута быть не должно.
+  if (def.skin) root.setAttribute('data-skin', def.skin);
+  else root.removeAttribute('data-skin');
 }
 
 // Apply DOM attrs eagerly on module load — before any React render reads the Proxy.
@@ -55,12 +66,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // isAurora остался в контракте контекста ради потребителей (графики, токены),
-  // но других тем в продукте больше нет — всегда true.
+  // но других тем в продукте больше нет — всегда true (скины лежат поверх Aurora light).
   const isAurora = true;
-  const mode: 'dark' | 'light' = theme === 'aurora-light' ? 'light' : 'dark';
+  const mode: 'dark' | 'light' = APP_THEMES[theme].mode;
+  const skin = APP_THEMES[theme].skin ?? null;
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, isAurora, mode }}>
+    <ThemeContext.Provider value={{ theme, setTheme, isAurora, mode, skin }}>
       {children}
     </ThemeContext.Provider>
   );

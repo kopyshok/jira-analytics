@@ -93,7 +93,10 @@ export function buildContext(): FeedbackContext {
     const y = params.get('year');
     const q = params.get('quarter');
     if (y && q) activePeriod = `${y}Q${q}`;
-    theme = document.documentElement.getAttribute('data-theme');
+    const root = document.documentElement;
+    const skin = root.getAttribute('data-skin');
+    theme = root.getAttribute('data-theme');
+    if (theme && skin) theme = `${theme}/${skin}`;
   } catch {
     // ignore
   }

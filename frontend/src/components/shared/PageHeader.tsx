@@ -20,8 +20,10 @@ export default function PageHeader({ eyebrow, title, subtitle, actions }: Props)
   const { isAurora } = useAppTheme();
 
   if (isAurora) {
+    // Классы page-head-* — крючки для скинов (skins/*.css); у Aurora своих правил на них нет.
     return (
       <div
+        className="page-head"
         style={{
           display: 'flex',
           alignItems: 'flex-end',
@@ -32,21 +34,21 @@ export default function PageHeader({ eyebrow, title, subtitle, actions }: Props)
       >
         <div style={{ minWidth: 0, flex: 1 }}>
           {eyebrow && (
-            <div className="eyebrow" style={{ marginBottom: 5 }}>{eyebrow}</div>
+            <div className="eyebrow page-head-eyebrow" style={{ marginBottom: 5 }}>{eyebrow}</div>
           )}
           <div
-            className="serif"
+            className="serif page-head-title"
             style={{ fontSize: 30, fontWeight: 600, letterSpacing: '-0.02em' }}
           >
             {title}
           </div>
           {subtitle && (
-            <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 13 }}>
+            <div className="page-head-subtitle" style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 13 }}>
               {subtitle}
             </div>
           )}
         </div>
-        {actions && <div style={{ flexShrink: 0 }}>{actions}</div>}
+        {actions && <div className="page-head-actions" style={{ flexShrink: 0 }}>{actions}</div>}
       </div>
     );
   }

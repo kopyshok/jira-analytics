@@ -13,6 +13,7 @@ export function Avatar({ name, color = 'var(--accent-1)', size = 28 }: Props) {
     .slice(0, 2);
   return (
     <span
+      className="aurora-avatar"
       style={{
         width: size,
         height: size,
