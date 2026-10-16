@@ -42,9 +42,11 @@ Source-of-truth для текущих роутов — [`routes.tsx`](src/routes
 
 ## Themes
 
-Две темы, обе Aurora: `aurora-dark` (по умолчанию) и `aurora-light`. Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu` — оболочка теперь всегда `aurora/shell/AuroraShell`, меню одно: [`AuroraSidebar.tsx`](src/aurora/shell/AuroraSidebar.tsx). Список пунктов в нём должен совпадать с `SECTIONS` в `VisibilityTab`.
+Две темы, обе Aurora: `aurora-dark` (по умолчанию) и `aurora-light`. Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu` — оболочка теперь всегда `aurora/shell/AuroraShell`. Пункты меню, группы, скрытые разделы и активный пункт — в общем [`aurora/shell/navConfig.ts`](src/aurora/shell/navConfig.ts) (`NAV_GROUPS` + хук `useNavSections()`), им пользуется [`AuroraSidebar.tsx`](src/aurora/shell/AuroraSidebar.tsx) и любая другая оболочка. Список пунктов должен совпадать с `SECTIONS` в `VisibilityTab`.
 
-`ThemeContext` ставит на `<html>` атрибуты `data-theme="aurora"` + `data-mode="dark|light"`; `DARK_THEME` — Proxy в `utils/constants.ts`, читающий их и отдающий нужный набор токенов. Прежние значения тем (`dark-blue`, `dark`, `dark-slate`, `dark-charcoal`) сводятся к `aurora-dark` и на фронте (`normalizeTheme`), и в БД (миграция `td03a`).
+Скин «Тёплая» (`warm-light`) — слой поверх Aurora light: на `<html>` остаются `data-theme="aurora"` + `data-mode="light"` и добавляется `data-skin="warm"` (у тем Aurora атрибута нет). Режим и скин темы берутся из `APP_THEMES[id].mode/skin`; `DARK_THEME`, `CHART_COLORS`, `FONTS` — Proxy, отдающие набор скина. Оболочка та же (AuroraShell), вид — CSS [`aurora/styles/skins/warm.css`](src/aurora/styles/skins/warm.css) под полным префиксом `html[data-theme][data-mode][data-skin]`, AntD — `buildWarmAntdConfig()`. Крючки для скина: классы `app-shell`/`app-main`, `page-head-*`, `aurora-avatar` (у Aurora на них правил нет). Шрифт Onest — локально из `@fontsource/onest`.
+
+`ThemeContext` ставит на `<html>` атрибуты `data-theme="aurora"` + `data-mode="dark|light"` (+ `data-skin` у скина); `DARK_THEME` — Proxy в `utils/constants.ts`, читающий их и отдающий нужный набор токенов. Прежние значения тем (`dark-blue`, `dark`, `dark-slate`, `dark-charcoal`) сводятся к `aurora-dark` и на фронте (`normalizeTheme`), и в БД (миграция `td03a`).
 
 ## Error Tracking
 
