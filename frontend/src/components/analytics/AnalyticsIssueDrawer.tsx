@@ -16,6 +16,8 @@ interface Props {
   periodStart: string;
   periodEnd: string;
   onClose: () => void;
+  /** Встроить карточку в раскладку страницы (обложка), а не выезжающей панелью. */
+  docked?: boolean;
 }
 
 interface DrawerContentProps {
@@ -66,6 +68,7 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
       />
       {/* Worklogs section */}
       <div
+        className="ai-worklogs"
         style={{
           background: 'rgba(255,255,255,0.03)',
           border: '1px solid rgba(255,255,255,0.08)',
@@ -117,6 +120,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
 
   return (
     <div
+      className="ai-head"
       style={{
         padding: '16px 20px 14px',
         borderBottom: '1px solid rgba(255,255,255,0.1)',
@@ -136,6 +140,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
         )}
         <JiraIssueLink
           issueKey={issueKey}
+          className="ai-key"
           style={{
             fontFamily: 'monospace',
             fontSize: 13,
@@ -160,6 +165,9 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
           </Tag>
         )}
         <span
+          className="ai-close"
+          role="button"
+          aria-label="Закрыть"
           onClick={onClose}
           style={{
             marginLeft: 'auto',
@@ -181,7 +189,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
       {isLoading ? (
         <Skeleton active title={{ width: 300 }} paragraph={false} />
       ) : context ? (
-        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text, #e6edf7)', lineHeight: 1.4 }}>
+        <div className="ai-summary" style={{ fontSize: 13, fontWeight: 500, color: 'var(--text, #e6edf7)', lineHeight: 1.4 }}>
           {context.summary}
         </div>
       ) : (
@@ -197,6 +205,7 @@ export default function AnalyticsIssueDrawer({
   periodStart,
   periodEnd,
   onClose,
+  docked = false,
 }: Props) {
   // Back-stack: stack of {id, key} entries. Current is top of stack.
   const [stack, setStack] = useState<Array<{ id: string; key: string }>>([]);
@@ -238,6 +247,33 @@ export default function AnalyticsIssueDrawer({
     // Context will be invalidated by the child components
   };
 
+  const body = currentEntry && (
+    <>
+      <DrawerHeader
+        issueId={currentEntry.id}
+        issueKey={currentEntry.key}
+        canGoBack={stack.length > 1}
+        onBack={handleBack}
+        onClose={handleClose}
+      />
+      <div className="ai-body" style={{ flex: 1, overflowY: 'auto', background: 'var(--bg, #0f2340)' }}>
+        <DrawerContent
+          key={currentEntry.id}
+          issueId={currentEntry.id}
+          issueKey={currentEntry.key}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+          onDrillDown={handleDrillDown}
+          onSaved={handleSaved}
+        />
+      </div>
+    </>
+  );
+
+  if (docked) {
+    return body ? <div className="ai-docked">{body}</div> : null;
+  }
+
   return (
     <Drawer
       open={open}
@@ -250,28 +286,7 @@ export default function AnalyticsIssueDrawer({
         wrapper: { width: 720 },
       }}
     >
-      {currentEntry && (
-        <>
-          <DrawerHeader
-            issueId={currentEntry.id}
-            issueKey={currentEntry.key}
-            canGoBack={stack.length > 1}
-            onBack={handleBack}
-            onClose={handleClose}
-          />
-          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg, #0f2340)' }}>
-            <DrawerContent
-              key={currentEntry.id}
-              issueId={currentEntry.id}
-              issueKey={currentEntry.key}
-              periodStart={periodStart}
-              periodEnd={periodEnd}
-              onDrillDown={handleDrillDown}
-              onSaved={handleSaved}
-            />
-          </div>
-        </>
-      )}
+      {body}
     </Drawer>
   );
 }
