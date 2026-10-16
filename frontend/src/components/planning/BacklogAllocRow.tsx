@@ -383,7 +383,7 @@ function BacklogAllocRowBase({
             marginBottom: 3,
           }}
         >
-          <span style={{ flex: '1 1 auto', minWidth: 0 }}>{a.title}</span>
+          <span className="ba-title" style={{ flex: '1 1 auto', minWidth: 0 }}>{a.title}</span>
           {a.multi_team_progress && <MultiTeamProgressTag progress={a.multi_team_progress} compact />}
           {hasOverride && (
             <Tag color="gold" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>

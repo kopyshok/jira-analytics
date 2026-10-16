@@ -65,7 +65,7 @@ export default function BacklogRoleCell({
         flex: 1,
         minWidth: 52,
         borderRadius: 6,
-        padding: '5px 6px 4px',
+        padding: pair ? '3px 6px 2px' : '5px 6px 4px',
         textAlign: 'center',
         background: empty
           ? (pair ? '#FFFFFF' : `${color}1a`)
@@ -84,6 +84,7 @@ export default function BacklogRoleCell({
     >
       {disputed && <span aria-hidden style={DISPUTE_BADGE}>?</span>}
       <div
+        className="brc-label"
         style={{
           fontSize: 10,
           fontWeight: 800,

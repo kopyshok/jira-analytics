@@ -88,6 +88,10 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .sc-legend i.is-ring { border: 2px solid #D9381E; border-radius: 50%; }
   & .sc-legend i.is-empty { border: 1px solid #5C5A55; }
   & .sc-rules-screen { padding: 12px; }
+  /* строки бэклога: название в одну строку, ячейки ролей без повтора подписи (она в шапке) */
+  & .sc-backlog-screen .ba-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: 13px; }
+  & .sc-backlog-screen .brc-label { display: none; }
+  & .sc-backlog-screen [data-flip-wrapper] > div { border-left-width: 2px !important; }
 
   /* правая колонка: ресурс команды, по ролям, по сотрудникам, внешний QA */
   & .sc-side { flex: 0 0 400px; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
