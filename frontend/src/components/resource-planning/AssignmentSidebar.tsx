@@ -50,6 +50,8 @@ interface Props {
   allAssignments: AssignmentOut[];
   employees: EmployeeCandidate[];
   onChanged?: () => void | Promise<unknown>;
+  /** Встроить панель в раскладку страницы (обложка), а не выезжающей справа. */
+  docked?: boolean;
 }
 
 const fmtDay = (iso: string) => dayjs(iso).format('DD.MM');
@@ -70,6 +72,7 @@ export default function AssignmentSidebar({
   allAssignments,
   employees,
   onChanged,
+  docked = false,
 }: Props) {
   const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
@@ -125,6 +128,7 @@ export default function AssignmentSidebar({
   }, [assignment, employees]);
 
   if (!assignment) {
+    if (docked) return null;
     return (
       <Drawer
         open={open}
@@ -237,27 +241,23 @@ export default function AssignmentSidebar({
     }
   };
 
-  return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      styles={{ wrapper: { width: 920 } }}
-      mask={{ closable: true }}
-      title={
-        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-          <Space>
-            <span>{PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
-            {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
-            {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
-            {assignment.out_of_quarter && <Tag color="orange">Вне квартала</Tag>}
-          </Space>
-          <SectionVisibilityPopover
-            visible={prefs.detail_sections_visible}
-            onChange={(next) => patchPrefs({ detail_sections_visible: next })}
-          />
-        </Space>
-      }
-    >
+  const titleNode = (
+    <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+      <Space>
+        <span>{PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
+        {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
+        {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
+        {assignment.out_of_quarter && <Tag color="orange">Вне квартала</Tag>}
+      </Space>
+      <SectionVisibilityPopover
+        visible={prefs.detail_sections_visible}
+        onChange={(next) => patchPrefs({ detail_sections_visible: next })}
+      />
+    </Space>
+  );
+
+  const body = (
+    <>
       <Typography.Title level={5} style={{ marginTop: 0 }}>
         {assignment.backlog_item_title}
       </Typography.Title>
@@ -265,17 +265,22 @@ export default function AssignmentSidebar({
         <Typography.Text type="secondary">{assignment.backlog_item_key}</Typography.Text>
       )}
       <Divider />
-      <Descriptions size="small" column={1} bordered>
+      <Descriptions
+        size="small"
+        column={docked ? 2 : 1}
+        bordered={!docked}
+        layout={docked ? 'vertical' : undefined}
+      >
         <Descriptions.Item label="Часов">
           {assignment.hours_allocated?.toFixed(0) ?? '—'}
         </Descriptions.Item>
         <Descriptions.Item label="Часть">
           {assignment.part_number}
         </Descriptions.Item>
-        <Descriptions.Item label="Вовлечённость">
+        <Descriptions.Item label="Вовлечённость" span={docked ? 2 : undefined}>
           <InvolvementEditor planId={planId} assignment={assignment} onChanged={onChanged} />
         </Descriptions.Item>
-        <Descriptions.Item label="Сотрудник">
+        <Descriptions.Item label="Сотрудник" span={docked ? 2 : undefined}>
           {assignment.phase === 'qa' ? (
             <Typography.Text type="secondary">QA — без сотрудника</Typography.Text>
           ) : (
@@ -325,7 +330,7 @@ export default function AssignmentSidebar({
             или измените вовлечённость
           </Typography.Text>
         </Descriptions.Item>
-        <Descriptions.Item label="Предшественники">
+        <Descriptions.Item label="Предшественники" span={docked ? 2 : undefined}>
           <Select
             mode="multiple"
             placeholder="Зависит от…"
@@ -481,6 +486,27 @@ export default function AssignmentSidebar({
           </Space>
         )}
       </Modal>
+    </>
+  );
+
+  if (docked) {
+    return (
+      <div className="rp-assign-docked">
+        <div className="rp-assign-head">{titleNode}</div>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      styles={{ wrapper: { width: 920 } }}
+      mask={{ closable: true }}
+      title={titleNode}
+    >
+      {body}
     </Drawer>
   );
 }

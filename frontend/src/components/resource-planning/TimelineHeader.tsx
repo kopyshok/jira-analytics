@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { GanttTimeline, TimelineScale, WorkdayTimeline } from '../../utils/gantt';
 import { getDayLabels, getMonthLabels, getWeekLabels } from '../../utils/gantt';
 import type { ProductionCalendarDayResponse } from '../../types/api';
+import { useSkin } from '../../contexts/ThemeContext';
 
 /** Дата, к которой относится позиция leftPct на timeline.
  *  Для calendar-таймлайна: startDate + leftPct/100*totalDays calendar-days.
@@ -30,6 +31,8 @@ interface Props {
   calendar?: ProductionCalendarDayResponse[];
 }
 
+const ddmmOf = (d: Date) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+
 const MONTH_NAMES = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 
 interface CellTint {
@@ -39,7 +42,7 @@ interface CellTint {
 
 function tintForDow(dow: number): CellTint {
   if (dow === 0 || dow === 6) {
-    return { bg: 'rgba(120, 145, 180, 0.10)', fg: '#7a99c4' };
+    return { bg: 'var(--rp-head-weekend-bg, rgba(120, 145, 180, 0.10))', fg: 'var(--rp-head-weekend-fg, #7a99c4)' };
   }
   return { bg: null, fg: null };
 }
@@ -47,9 +50,9 @@ function tintForDow(dow: number): CellTint {
 function tintForCalendar(row: ProductionCalendarDayResponse, dow: number): CellTint {
   if (!row.is_workday) {
     if (row.kind === 'holiday' || row.kind === 'preholiday') {
-      return { bg: 'rgba(232, 134, 74, 0.18)', fg: '#f0a075' };
+      return { bg: 'var(--rp-head-holiday-bg, rgba(232, 134, 74, 0.18))', fg: 'var(--rp-head-holiday-fg, #f0a075)' };
     }
-    return { bg: 'rgba(120, 145, 180, 0.14)', fg: '#7a99c4' };
+    return { bg: 'var(--rp-head-off-bg, rgba(120, 145, 180, 0.14))', fg: 'var(--rp-head-weekend-fg, #7a99c4)' };
   }
   return tintForDow(dow);
 }
@@ -61,6 +64,8 @@ export default function TimelineHeader({
   trackWidthPx,
   calendar,
 }: Props) {
+  // Обложка подписывает недели датой понедельника («28.09»), а не номером.
+  const skin = useSkin();
   const calMap = useMemo(() => {
     const m = new Map<string, ProductionCalendarDayResponse>();
     (calendar ?? []).forEach(d => m.set(d.date, d));
@@ -120,9 +125,9 @@ export default function TimelineHeader({
   }, [timeline, scale, calendar, lower]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid #1e3a5f' }}>
-      <div style={{ display: 'flex', height: 28, background: '#091829' }}>
-        <div style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid #1e3a5f', position: 'sticky', left: 0, zIndex: 31, background: '#091829' }} />
+    <div className="rp-timeline-head" style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--rp-border, #1e3a5f)' }}>
+      <div style={{ display: 'flex', height: 28, background: 'var(--rp-head-bg, #091829)' }}>
+        <div style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid var(--rp-border, #1e3a5f)', position: 'sticky', left: 0, zIndex: 31, background: 'var(--rp-head-bg, #091829)' }} />
         <div style={{ width: trackWidthPx ?? undefined, flex: trackWidthPx ? '0 0 auto' : 1, position: 'relative' }}>
           {upperRow.map((m, i) => (
             <div
@@ -137,10 +142,10 @@ export default function TimelineHeader({
                 justifyContent: 'center',
                 fontSize: 11,
                 fontWeight: 700,
-                color: '#5a7aaa',
+                color: 'var(--rp-head-fg, #5a7aaa)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.06em',
-                borderRight: '1px solid #1e3a5f',
+                borderRight: '1px solid var(--rp-border, #1e3a5f)',
               }}
             >
               {m.label}
@@ -148,8 +153,10 @@ export default function TimelineHeader({
           ))}
         </div>
       </div>
-      <div style={{ display: 'flex', height: 24, background: '#0a1e35' }}>
-        <div style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid #1e3a5f', position: 'sticky', left: 0, zIndex: 31, background: '#0a1e35' }} />
+      <div style={{ display: 'flex', height: 24, background: 'var(--rp-head-bg2, #0a1e35)' }}>
+        <div className="rp-head-corner" style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid var(--rp-border, #1e3a5f)', position: 'sticky', left: 0, zIndex: 31, background: 'var(--rp-head-bg2, #0a1e35)' }}>
+          {skin && 'Инициатива / фаза'}
+        </div>
         <div style={{ width: trackWidthPx ?? undefined, flex: trackWidthPx ? '0 0 auto' : 1, position: 'relative' }}>
           {lower.map((w, i) => {
             let tint: CellTint = { bg: null, fg: null };
@@ -170,18 +177,18 @@ export default function TimelineHeader({
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 10,
-                  color: tint.fg ?? '#4a6a90',
+                  color: tint.fg ?? 'var(--rp-head-fg2, #4a6a90)',
                   background: tint.bg ?? 'transparent',
-                  borderRight: '1px solid #142a45',
+                  borderRight: '1px solid var(--rp-head-line, #142a45)',
                   overflow: 'hidden',
                   whiteSpace: 'nowrap',
                 }}
               >
-                {w.label}
+                {skin && scale === 'week' ? ddmmOf(dateAtLeftPct(timeline, w.leftPct)) : w.label}
                 {scale === 'week' && weeksWithHoliday.has(w.label) && (
                   <span
                     title="В неделе есть праздничный день"
-                    style={{ position: 'absolute', bottom: 1, right: 4, color: '#f0a075', fontSize: 9, lineHeight: 1 }}
+                    style={{ position: 'absolute', bottom: 1, right: 4, color: 'var(--rp-head-holiday-fg, #f0a075)', fontSize: 9, lineHeight: 1 }}
                   >
                     ●
                   </span>

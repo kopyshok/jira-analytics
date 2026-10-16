@@ -1,35 +1,15 @@
-import { useMemo, useState } from 'react';
-import { Alert, App, Button, Collapse, Dropdown, Segmented, Space, Spin, Tag } from 'antd';
+import { useState } from 'react';
+import { Alert, Button, Collapse, Dropdown, Segmented, Space, Spin, Tag } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import type { ConflictOut } from '../../api/resourcePlanning';
-import { usePatchConflict, useExplainConflict } from '../../hooks/useResourcePlanning';
+import { useExplainConflict } from '../../hooks/useResourcePlanning';
+import { CONFLICT_STATUS_LABEL, isLiveConflict, useConflictBoard, type ConflictGroupBy } from './useConflictBoard';
 
 interface Props {
   conflicts: ConflictOut[];
   planId: string | null;
   onSelectAssignment?: (assignmentId: string) => void;
 }
-
-type GroupBy = 'item' | 'employee' | 'type';
-
-const TYPE_LABELS: Record<string, string> = {
-  OVERLOAD_HIGH: 'Сильная перегрузка',
-  OVERLOAD_MED: 'Средняя перегрузка',
-  OVERLOAD_LIGHT: 'Лёгкая перегрузка',
-  QUARTER_OVERFLOW: 'Не вмещается в квартал',
-  SPLIT_REQUIRED: 'Требуется разбивка',
-  NO_ANALYST: 'Нет аналитика',
-  NO_DEV: 'Нет разработчика',
-  LATE_START: 'Поздний старт',
-  OUT_OF_TEAM: 'Вне команды',
-  CROSS_TEAM_OVERLAP: 'Пересечение с другой командой',
-  PREDECESSOR_VIOLATED: 'Нарушен порядок предшественников',
-  LEVELING_DELAY: 'Сдвиг при выравнивании',
-  LEVELING_REASSIGN: 'Переназначение',
-  UNPLACED_HOURS: 'Часы не размещены',
-  NORMED_OVERUSE: 'Перерасход нормированных работ',
-  NORMED_UNPLACED: 'Квартал не вмещается',
-};
 
 const SEVERITY_TYPE: Record<string, 'error' | 'warning' | 'info'> = {
   critical: 'error',
@@ -44,14 +24,10 @@ const STATUS_COLOR: Record<ConflictOut['status'], string> = {
   resolved: 'green',
 };
 
-const STATUS_LABEL: Record<ConflictOut['status'], string> = {
-  open: 'Открыт',
-  acknowledged: 'Принят',
-  muted: 'Замучен',
-  resolved: 'Решён',
-};
+const STATUS_LABEL = CONFLICT_STATUS_LABEL;
 
-function ConflictAlert({
+/** Карточка конфликта с подробностями перегрузки и сменой статуса. */
+export function ConflictAlert({
   conflict: c,
   planId,
   onSelectAssignment,
@@ -65,7 +41,7 @@ function ConflictAlert({
   const [showDetails, setShowDetails] = useState(false);
   const isOverload = c.type.startsWith('OVERLOAD_');
   // «Живой» конфликт не хранится — статус у него не меняется, сервер ответит отказом.
-  const isLive = !!c.is_live || c.id.startsWith('live:');
+  const isLive = isLiveConflict(c);
   const explain = useExplainConflict(planId, c.id, showDetails && isOverload);
 
   return (
@@ -197,59 +173,12 @@ function ExplainBreakdown({
 }
 
 export default function ConflictPanel({ conflicts, planId, onSelectAssignment }: Props) {
-  const { message } = App.useApp();
-  const patchMutation = usePatchConflict(planId);
-  const [showHidden, setShowHidden] = useState(false);
-  const [groupBy, setGroupBy] = useState<GroupBy>('item');
-
-  const { active, hidden, visible } = useMemo(() => {
-    const nonInfo = conflicts.filter(c => c.severity !== 'info');
-    const a = nonInfo.filter(c => c.status !== 'muted' && c.status !== 'resolved');
-    const h = nonInfo.filter(c => c.status === 'muted' || c.status === 'resolved');
-    return { active: a, hidden: h, visible: showHidden ? [...a, ...h] : a };
-  }, [conflicts, showHidden]);
-
-  const groups = useMemo(() => {
-    const map = new Map<string, { label: string; items: ConflictOut[] }>();
-    for (const c of visible) {
-      let key = 'misc';
-      let label = '—';
-      if (groupBy === 'item') {
-        key = c.backlog_item_id ?? 'misc';
-        label = c.backlog_item_title ?? 'Без инициативы';
-      } else if (groupBy === 'employee') {
-        key = c.employee_id ?? 'misc';
-        label = c.employee_id
-          ? c.employee_name ?? c.employee_id
-          : 'Без сотрудника';
-      } else {
-        // Незнакомые типы (сервер новее фронта) — одной группой «Прочее»,
-        // без служебного кода в подписи.
-        key = TYPE_LABELS[c.type] ? c.type : 'misc';
-        label = TYPE_LABELS[c.type] ?? 'Прочее';
-      }
-      if (!map.has(key)) map.set(key, { label, items: [] });
-      map.get(key)!.items.push(c);
-    }
-    return [...map.entries()]
-      .map(([key, v]) => ({ key, label: v.label, items: v.items }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
-  }, [visible, groupBy]);
+  const {
+    showHidden, setShowHidden, groupBy, setGroupBy,
+    active, hidden, groups, criticals, warnings, handleStatusChange,
+  } = useConflictBoard(conflicts, planId);
 
   if (active.length === 0 && hidden.length === 0) return null;
-
-  const criticals = active.filter(c => c.severity === 'critical');
-  const warnings = active.filter(c => c.severity === 'warning');
-
-  const handleStatusChange = (conflictId: string, status: ConflictOut['status']) => {
-    patchMutation.mutate(
-      { conflictId, status },
-      {
-        onSuccess: () => message.success(`Статус: ${STATUS_LABEL[status]}`),
-        onError: () => message.error('Ошибка изменения статуса'),
-      }
-    );
-  };
 
   return (
     <Collapse
@@ -278,7 +207,7 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
               <Segmented
                 size="small"
                 value={groupBy}
-                onChange={(v) => setGroupBy(v as GroupBy)}
+                onChange={(v) => setGroupBy(v as ConflictGroupBy)}
                 options={[
                   { label: 'По задачам', value: 'item' },
                   { label: 'По сотрудникам', value: 'employee' },

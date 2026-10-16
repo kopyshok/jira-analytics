@@ -5,3 +5,4 @@
 /* Обложки поверх Aurora light — строго после остальных слоёв. */
 @import './skins/pult.css';
 @import './skins/pult-screens.css';
+@import './skins/pult-resource.css';
