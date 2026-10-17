@@ -77,9 +77,8 @@ export function buildZonesAntdConfig(): ThemeConfig {
     components: {
       ...base.components,
       Layout: { siderBg: SURFACE, headerBg: SURFACE, bodyBg: PAGE },
-      // Выключенный переключатель с подписью «Нет» и многоточие страниц — белый/серый текст ≥ 4.5:1.
+      // Выключенный переключатель с подписью «Нет» — белый текст на сером ≥ 4.5:1.
       Switch: { colorTextQuaternary: '#6B7078', colorTextTertiary: '#5A5F66' },
-      Pagination: { colorTextDisabled: '#6B7078' },
       Card: { colorBgContainer: SURFACE, headerBg: SURFACE, borderRadiusLG: 10 },
       Table: {
         colorBgContainer: SURFACE,

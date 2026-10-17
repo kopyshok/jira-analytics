@@ -1552,3 +1552,4 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-result-subt
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-empty-description { color: #5A5F66; }
 /* Меню настроек длиннее окна — листается само, а не уводит короткий раздел за верх экрана */
 html[data-skin="zones"] .settings-nav { max-height: calc(100vh - 150px); overflow-y: auto; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-pagination-item-ellipsis { color: #5A5F66 !important; }

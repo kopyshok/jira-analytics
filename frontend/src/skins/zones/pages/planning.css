@@ -26,7 +26,7 @@ html[data-skin="zones"] .plz-scenario [data-testid="scenario-deficit-badge"] > *
 
 /* --- свёрнутая сводка ресурса одной строкой --- */
 html[data-skin="zones"] .plz-summary { flex: none; }
-html[data-skin="zones"] .plz-summary [aria-hidden="true"] { visibility: hidden; }
+html[data-skin="zones"] .plz-summary [aria-hidden="true"] { visibility: hidden !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz-summary .ant-card { border-radius: 10px !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .scenario-summary-collapsed > .ant-card-body > div { height: 38px !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .scenario-summary-collapsed > .ant-card-body > div > div:first-child {

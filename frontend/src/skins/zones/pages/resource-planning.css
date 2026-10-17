@@ -504,3 +504,7 @@ html[data-skin="zones"] .rpz-gantt-empty .ant-empty-description { color: #5A5F66
 html[data-skin="zones"] .rp-assign-body .ant-row > .ant-col-6 { flex: 0 0 50%; max-width: 50%; margin-bottom: 8px; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .rp-assign-body .ant-statistic-title { letter-spacing: 0 !important; text-transform: none !important; font-size: 11.5px !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .rp-assign-body .ant-statistic-content { font-size: 20px !important; }
+/* невысокое окно (1366×768): диаграмма не сжимается в ноль — экран листается внутри */
+html[data-skin="zones"] .zn-fit.rpz { overflow-y: auto; }
+html[data-skin="zones"] .rpz-main { min-height: 340px; }
+html[data-skin="zones"] .rpz-bottom { min-height: 200px; }
