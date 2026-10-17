@@ -37,6 +37,7 @@ export default function GlobalPeriodPicker() {
       <Select
         size="small"
         style={{ minWidth: 80 }}
+        popupMatchSelectWidth={false}
         value={period.month ?? 'all'}
         onChange={(v) => setPeriod({ ...period, month: v === 'all' ? undefined : Number(v) })}
         options={[
