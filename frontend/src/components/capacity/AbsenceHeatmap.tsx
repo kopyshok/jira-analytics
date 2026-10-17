@@ -69,7 +69,7 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences, com
         monthSep: '#c3cbd9',
         monthLabel: '#3f4860',
         dayHeader: '#5d6680',
-        weekendHeader: '#7a8298',
+        weekendHeader: '#4e5770',
         nameColor: '#2a3142',
       }
     : {

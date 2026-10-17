@@ -243,7 +243,7 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
                         background: DARK_THEME.darkAccent,
                         border: `1px solid ${DARK_THEME.border}`,
                         borderRadius: 6,
-                        opacity: departed ? 0.6 : 1,
+                        opacity: departed ? 'var(--dim-opacity, 0.6)' : 1,
                       }}
                     >
                       <div
