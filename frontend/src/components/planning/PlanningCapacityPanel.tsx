@@ -278,21 +278,29 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
               : 0;
             const normHours = grossHours > 0 ? Math.round(grossHours) : Math.round(hours);
 
+            const empDemand = sectionId !== undefined
+              ? (demandByEmployeeGroup[sectionId]?.[e.employee_id] ?? 0)
+              : (demandByEmployee[e.employee_id] ?? 0);
+            const empCapacity = hours;
+            const empPct = empCapacity > 0 ? Math.min((empDemand / empCapacity) * 100, 100) : 0;
+            const empOver = empDemand > empCapacity && empCapacity > 0;
+
             return (
-              <div key={e.employee_id}>
+              <div key={e.employee_id} className="pl-emp" data-over={empOver || undefined}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span
+                      className="pl-role-chip"
                       style={{
                         width: 26, height: 18, borderRadius: 3,
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        background: roleColor, color: '#00202a',
+                        background: `var(--pl-chip-bg, ${roleColor})`, color: 'var(--pl-chip-ink, #00202a)',
                         fontSize: 11, fontWeight: 700, fontFamily: FONTS.mono,
                       }}
                     >
                       {roleShort}
                     </span>
-                    <span style={{ color: knownRole ? DARK_THEME.textPrimary : DARK_THEME.textMuted, fontSize: 15 }}>
+                    <span className="pl-emp-name" style={{ color: knownRole ? DARK_THEME.textPrimary : DARK_THEME.textMuted, fontSize: 15 }}>
                       {e.display_name}
                     </span>
                     {!!e.shared_with?.length && (
@@ -301,7 +309,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                           + `Заложено всеми командами: ${Math.round(e.committed_hours_all_teams ?? 0)} ч`
                           + (e.is_overcommitted ? ' — больше его нормы' : '')}
                       >
-                        <Tag color={e.is_overcommitted ? 'red' : 'blue'}>общий</Tag>
+                        <Tag className="pl-shared" color={e.is_overcommitted ? 'red' : 'blue'}>общий</Tag>
                       </Tooltip>
                     )}
                     {!!sectionLabel && (
@@ -323,36 +331,24 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                       />
                     )}
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: 14, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
+                  <div className="pl-emp-right" style={{ textAlign: 'right' }}>
+                    <span className="pl-emp-hours" style={{ fontSize: 14, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
                       {Math.round(hours)} ч
                     </span>
-                    <div style={{ fontSize: 12, color: DARK_THEME.textHint }}>
+                    <div className="pl-emp-norm" style={{ fontSize: 12, color: DARK_THEME.textHint }}>
                       норма {normHours} ч{mandPct > 0 ? ` · −${mandPct}%` : ''}
                     </div>
                   </div>
                 </div>
                 {/* Demand / capacity bar */}
-                {(() => {
-                  const empDemand = sectionId !== undefined
-                    ? (demandByEmployeeGroup[sectionId]?.[e.employee_id] ?? 0)
-                    : (demandByEmployee[e.employee_id] ?? 0);
-                  const empCapacity = hours;
-                  const pct = empCapacity > 0 ? Math.min((empDemand / empCapacity) * 100, 100) : 0;
-                  const over = empDemand > empCapacity && empCapacity > 0;
-                  return (
-                    <>
-                      <div style={{ position: 'relative', height: 5, background: DARK_THEME.darkAccent, borderRadius: 2, overflow: 'hidden', marginTop: 4 }}>
-                        <div style={{ position: 'absolute', inset: 0, transform: `scaleX(${pct / 100})`, transformOrigin: 'left', background: over ? DARK_THEME.amber : roleColor, transition: 'transform 0.2s' }} />
-                      </div>
-                      {empDemand > 0 && (
-                        <div style={{ fontSize: 12, color: over ? DARK_THEME.amber : DARK_THEME.textDim, marginTop: 1, textAlign: 'right', fontFamily: FONTS.mono }}>
-                          {Math.round(empDemand)} / {Math.round(empCapacity)} ч
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
+                <div className="pl-emp-track" style={{ position: 'relative', height: 5, background: DARK_THEME.darkAccent, borderRadius: 2, overflow: 'hidden', marginTop: 4 }}>
+                  <div style={{ position: 'absolute', inset: 0, transform: `scaleX(${empPct / 100})`, transformOrigin: 'left', background: empOver ? `var(--pl-over, ${DARK_THEME.amber})` : `var(--pl-fill, ${roleColor})`, transition: 'transform 0.2s' }} />
+                </div>
+                {empDemand > 0 && (
+                  <div className="pl-emp-demand" style={{ fontSize: 12, color: empOver ? `var(--pl-over, ${DARK_THEME.amber})` : DARK_THEME.textDim, marginTop: 1, textAlign: 'right', fontFamily: FONTS.mono }}>
+                    {Math.round(empDemand)} / {Math.round(empCapacity)} ч
+                  </div>
+                )}
               </div>
             );
   };
@@ -360,19 +356,19 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
   return (
     <div data-tour="planning-capacity-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* 1. Overall gauge */}
-      <Card>
+      <Card className="pl-cap-card pl-cap-total">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-          <span style={{ fontSize: 14, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          <span className="pl-cap-title" style={{ fontSize: 14, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
             Ресурс команды · Q{quarter}
           </span>
           {resourceBase.external_qa_hours != null && (
-            <Tag color="purple" style={{ fontSize: 12, lineHeight: '20px' }}>
+            <Tag className="pl-cap-qa" color="purple" style={{ fontSize: 12, lineHeight: '20px' }}>
               внешний QA {Math.round(resourceBase.external_qa_hours)} ч
             </Tag>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-          <span style={{ fontSize: 44, fontWeight: 700, color: overallOver ? DARK_THEME.amber : DARK_THEME.textPrimary, fontFamily: FONTS.mono, lineHeight: 1 }}>
+        <div className="pl-cap-figure" style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+          <span className="pl-cap-big" style={{ fontSize: 44, fontWeight: 700, color: overallOver ? `var(--pl-over, ${DARK_THEME.amber})` : DARK_THEME.textPrimary, fontFamily: FONTS.mono, lineHeight: 1 }}>
             {Math.round(totalDemand)}
           </span>
           <span style={{ fontSize: 18, color: DARK_THEME.textMuted }}>/</span>
@@ -380,20 +376,20 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
             {Math.round(totalCapacity)} ч
           </span>
         </div>
-        <div style={{ fontSize: 14, color: DARK_THEME.textHint, marginBottom: 10 }}>
+        <div className="pl-cap-hint" data-over={overallOver || undefined} style={{ fontSize: 14, color: DARK_THEME.textHint, marginBottom: 10 }}>
           {overallOver
             ? 'Перегруз по одной или нескольким ролям — см. ниже'
             : totalCapacity > 0
               ? `Запас ${freeHours} ч · ${freePct}% свободно · включено ${includedCount} идей`
               : 'Нет данных о ёмкости'}
         </div>
-        <div style={{ position: 'relative', height: 14, background: DARK_THEME.darkAccent, borderRadius: 7, overflow: 'hidden' }}>
+        <div className="pl-cap-track" style={{ position: 'relative', height: 14, background: DARK_THEME.darkAccent, borderRadius: 7, overflow: 'hidden' }}>
           <div
             style={{
               position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
               transform: `scaleX(${plannedPct / 100})`,
               transformOrigin: 'left',
-              background: overallOver ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
+              background: overallOver ? `var(--pl-over, ${DARK_THEME.amber})` : DARK_THEME.cyanPrimary,
               transition: 'transform .2s',
             }}
           />
@@ -402,6 +398,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
 
       {/* 2. Per-role */}
       <Card
+        className="pl-cap-card pl-cap-roles"
         title="Ресурс по ролям"
         styles={{ body: { padding: 0 } }}
         extra={<span style={{ fontSize: 13, color: DARK_THEME.textMuted }}>план / доступно</span>}
@@ -432,7 +429,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
       </Card>
 
       {/* 3. По сотрудникам */}
-      <Card title="По сотрудникам" styles={{ body: { padding: 0 } }}>
+      <Card className="pl-cap-card pl-cap-people" title="По сотрудникам" styles={{ body: { padding: 0 } }}>
         <div
           style={{
             // При секциях внешний отступ снимаем: заголовки групп идут во всю ширину.

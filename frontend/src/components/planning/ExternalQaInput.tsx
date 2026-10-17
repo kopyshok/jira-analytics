@@ -25,7 +25,7 @@ export default function ExternalQaInput({ scenarioId, value, disabled }: Props) 
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div className="pl-ext-qa" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{
         fontSize: 13,
         fontWeight: 500,

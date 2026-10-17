@@ -6,6 +6,8 @@ import { useRoles } from '../../hooks/useRoles';
 import { getRoleLabel, getRoleColor } from '../../utils/roles';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { demandByAssigneeRole, demandByRole } from '../../utils/planning';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readableInk } from '../../utils/readableColor';
 import type { AllocationResponse, ResourceEmployee } from '../../types/api';
 
 interface Props {
@@ -14,6 +16,12 @@ interface Props {
   allocations?: AllocationResponse[];
   employees?: ResourceEmployee[];
   pulsedRoles?: Set<string>;
+  /**
+   * sticky — прилипает к верху и сворачивается при прокрутке (Aurora);
+   * line — строка «Сводка ресурса» с кнопкой «Развернуть» (обложки: экран
+   * не прокручивается целиком).
+   */
+  variant?: 'sticky' | 'line';
 }
 
 const CELL: React.CSSProperties = {
@@ -31,9 +39,30 @@ const CELL_LABEL: React.CSSProperties = {
 
 const ROW_DIVIDER = `1px solid rgba(255,255,255,0.06)`;
 
-function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employees, pulsedRoles }: Props) {
+function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employees, pulsedRoles, variant = 'sticky' }: Props) {
   const { data: summary, isLoading } = useScenarioResourceSummary(scenarioId, enabled);
   const { data: roles = [] } = useRoles();
+  // Цвет роли текстом: в обложке — затемнённый до читаемого на светлом фоне.
+  const skin = useSkin();
+  const roleInk = (role: string) => (skin ? readableInk(getRoleColor(roles, role), '#EEEEEE') : getRoleColor(roles, role));
+  const LINE_KEY = 'planning_resource_line_open';
+  const [lineOpen, setLineOpen] = useState(() => {
+    try {
+      return localStorage.getItem(LINE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const toggleLine = () => {
+    setLineOpen((prev) => {
+      try {
+        localStorage.setItem(LINE_KEY, String(!prev));
+      } catch {
+        // приватный режим браузера — просто не запоминаем
+      }
+      return !prev;
+    });
+  };
 
   const LS_KEY = 'planning_resource_table_collapsed';
   // 3-state override:
@@ -208,7 +237,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
     display: 'grid',
     gridTemplateColumns: gridCols,
     gap: 1,
-    background: DARK_THEME.border,
+    background: `var(--rs-grid-bg, ${DARK_THEME.border})`,
     borderRadius: '6px 6px 0 0',
     overflow: 'hidden',
   };
@@ -217,7 +246,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
     display: 'grid',
     gridTemplateColumns: gridCols,
     gap: 1,
-    background: DARK_THEME.border,
+    background: `var(--rs-grid-bg, ${DARK_THEME.border})`,
     borderTop: opts?.borderTop ?? ROW_DIVIDER,
   });
 
@@ -301,8 +330,8 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
       <div style={{ display: 'flex', alignItems: 'stretch' }}>
         {/* Основная таблица */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Кнопка свернуть — всегда над таблицей */}
-          <div style={{
+          {/* Кнопка свернуть — всегда над таблицей (у строки — своя кнопка) */}
+          {variant === 'sticky' && <div style={{
             display: 'flex',
             justifyContent: 'flex-end',
             padding: '4px 10px',
@@ -322,7 +351,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             >
               ↑ Свернуть
             </button>
-          </div>
+          </div>}
           {/* Header row */}
           <div style={headerStyle}>
             <div style={{ ...CELL_LABEL, background: DARK_THEME.darkAccent }} />
@@ -364,7 +393,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                         style={{
                           fontWeight: 600,
                           fontSize: 13,
-                          color: getRoleColor(roles, role),
+                          color: roleInk(role),
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                         }}
@@ -456,7 +485,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             <div
               style={{
                 ...CELL_LABEL,
-                background: 'rgba(0,201,200,0.08)',
+                background: 'var(--rs-backlog-bg, rgba(0,201,200,0.08))',
                 color: DARK_THEME.cyanPrimary,
                 fontWeight: 700,
                 fontSize: 16,
@@ -484,7 +513,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                   style={{
                     ...CELL,
                     ...roleBorderStyle(role),
-                    background: isDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.1)',
+                    background: isDeficit ? 'var(--rs-deficit-bg, rgba(255,165,0,0.08))' : 'var(--rs-backlog-bg, rgba(0,201,200,0.1))',
                     color: isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
                     fontWeight: 700,
                     fontSize: 17,
@@ -545,7 +574,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                 <div
                   style={{
                     ...CELL,
-                    background: isTotalDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.08)',
+                    background: isTotalDeficit ? 'var(--rs-deficit-bg, rgba(255,165,0,0.08))' : 'var(--rs-backlog-bg, rgba(0,201,200,0.08))',
                     color: isTotalDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
                     fontWeight: 700,
                     fontSize: 17,
@@ -795,7 +824,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                       textAlign: 'center' as const,
                       fontFamily: FONTS.mono,
                       fontSize: 13,
-                      color: getRoleColor(roles, role),
+                      color: roleInk(role),
                     }}
                   >
                     {Math.round(byRole[role] ?? 0).toLocaleString('ru')}
@@ -825,6 +854,38 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
       )}
     </Card>
   );
+
+  if (variant === 'line') {
+    return (
+      <div className="rs-line-wrap">
+        <div className="rs-line">
+          <span className="rs-line-label">Сводка ресурса</span>
+          <span>
+            На бэклог <b>{Math.round(summary.available_for_backlog_total).toLocaleString('ru')} ч</b>
+          </span>
+          <span className="rs-line-muted">остаток по ролям:</span>
+          {summary.roles.map((role) => {
+            const avail = summary.available_for_backlog_by_role[role] ?? 0;
+            const used = roleDemand[role as keyof typeof roleDemand] ?? 0;
+            const remaining = Math.round(avail - used);
+            return (
+              <span
+                key={role}
+                className={pulsedRoles?.has(role) ? 'role-pulse' : undefined}
+                data-deficit={remaining < 0 || undefined}
+              >
+                {getRoleLabel(roles, role)} <b>{(used > 0 ? remaining : Math.round(avail)).toLocaleString('ru')} ч</b>
+              </span>
+            );
+          })}
+          <button type="button" className="rs-line-toggle" onClick={toggleLine} aria-expanded={lineOpen}>
+            {lineOpen ? '↑ Свернуть' : '↓ Развернуть'}
+          </button>
+        </div>
+        {lineOpen && expandedCard}
+      </div>
+    );
+  }
 
   // Высота анимируется через explicit `height` на внешнем wrapper.
   // Пока обе высоты ещё не измерены — fallback на auto, чтобы первый paint

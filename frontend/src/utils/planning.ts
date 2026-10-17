@@ -1,5 +1,6 @@
 import type { AllocationResponse } from '../types/api';
 import { effectiveEstimate } from './allocationEstimates';
+import { foldOpo } from './opo';
 
 /**
  * Возвращает дефицит по ролям: для ролей, где demand > avail, вернёт
@@ -147,4 +148,24 @@ export function demandByAssigneeRole(
     d['qa'] = (d['qa'] ?? 0) + qaPortion;
   }
   return d;
+}
+
+/** Часы включённых идей по типам работ и всего. С квартала отсечки ОПЭ его
+ *  часы показываются внутри анализа и разработки — как в строках сценария. */
+export function includedHours(
+  allocations: AllocationResponse[],
+  opoOff: boolean,
+): { analyst: number; dev: number; qa: number; opo: number; total: number } {
+  const out = { analyst: 0, dev: 0, qa: 0, opo: 0, total: 0 };
+  for (const a of allocations) {
+    if (!a.included) continue;
+    const raw = effectiveEstimate(a);
+    const h = opoOff ? foldOpo(raw, a.opo_analyst_ratio) : raw;
+    out.analyst += h.analyst;
+    out.dev += h.dev;
+    out.qa += h.qa;
+    out.opo += h.opo;
+  }
+  out.total = out.analyst + out.dev + out.qa + out.opo;
+  return out;
 }

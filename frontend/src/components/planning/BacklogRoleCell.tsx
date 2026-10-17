@@ -13,6 +13,7 @@ interface BacklogRoleCellProps {
   durationDays?: number | null;  // calendar duration in days
   disputed?: boolean;  // поля Jira дают разные оценки — пунктирная обводка и «?»
   tooltipHidden?: boolean;  // над ячейкой открыт поповер — подсказку не показываем
+  plain?: boolean;     // только число часов, без плитки (таблица обложки)
 }
 
 const WARN = 'var(--warn, #fa8c16)';
@@ -33,7 +34,7 @@ const DISPUTE_BADGE: CSSProperties = {
 };
 
 export default function BacklogRoleCell({
-  label, hours, total, color, involvement, durationDays, disputed, tooltipHidden,
+  label, hours, total, color, involvement, durationDays, disputed, tooltipHidden, plain,
 }: BacklogRoleCellProps) {
   const pct = total > 0 ? Math.round((hours / total) * 100) : 0;
   const empty = hours === 0;
@@ -56,7 +57,16 @@ export default function BacklogRoleCell({
     </>
   ) : undefined;
 
-  const cell = (
+  const cell = plain ? (
+    <span
+      className="backlog-role-num"
+      data-empty={empty || undefined}
+      data-disputed={disputed || undefined}
+      title={`${label}: ${hours} ч · ${pct}%`}
+    >
+      {hours}
+    </span>
+  ) : (
     <div
       className="backlog-role-cell"
       style={{

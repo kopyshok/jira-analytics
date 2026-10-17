@@ -20,7 +20,7 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
   const roleColor = getRoleColor(roles, role);
 
   return (
-    <div>
+    <div className="pl-role" data-over={over || undefined}>
       <div
         style={{
           display: 'flex',
@@ -31,6 +31,7 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span
+            className="pl-role-dot"
             style={{
               width: 10,
               height: 10,
@@ -39,16 +40,16 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
               display: 'inline-block',
             }}
           />
-          <span style={{ color: DARK_THEME.textPrimary, fontSize: 15, fontWeight: 500 }}>
+          <span className="pl-role-name" style={{ color: DARK_THEME.textPrimary, fontSize: 15, fontWeight: 500 }}>
             {getRoleLabel(roles, role)}
           </span>
-          <span style={{ color: DARK_THEME.textHint, fontSize: 13 }}>· {employeeCount} чел.</span>
+          <span className="pl-role-count" style={{ color: DARK_THEME.textHint, fontSize: 13 }}>· {employeeCount} чел.</span>
         </div>
-        <div style={{ fontFamily: FONTS.mono, fontSize: 14 }}>
+        <div className="pl-role-nums" style={{ fontFamily: FONTS.mono, fontSize: 14 }}>
           <span
             data-testid={`capacity-${role}-demand`}
             style={{
-              color: over ? DARK_THEME.amber : DARK_THEME.textPrimary,
+              color: over ? `var(--pl-over, ${DARK_THEME.amber})` : DARK_THEME.textPrimary,
               fontWeight: 600,
             }}
           >
@@ -58,6 +59,7 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
         </div>
       </div>
       <div
+        className="pl-role-track"
         style={{
           position: 'relative',
           height: 10,
@@ -72,7 +74,7 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
             inset: 0,
             transform: `scaleX(${fillPct / 100})`,
             transformOrigin: 'left',
-            background: over ? DARK_THEME.amber : roleColor,
+            background: over ? `var(--pl-over, ${DARK_THEME.amber})` : `var(--pl-fill, ${roleColor})`,
             borderRadius: 5,
             transition: 'transform .2s',
           }}
@@ -90,6 +92,7 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
         />
       </div>
       <div
+        className="pl-role-foot"
         style={{
           display: 'flex',
           justifyContent: 'space-between',

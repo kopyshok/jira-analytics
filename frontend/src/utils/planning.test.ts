@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AllocationResponse } from '../types/api';
-import { demandByEmployee } from './planning';
+import { demandByEmployee, includedHours } from './planning';
 
 const alloc = (p: Partial<AllocationResponse>): AllocationResponse =>
   ({
@@ -62,5 +62,28 @@ describe('demandByEmployee', () => {
       team,
     );
     expect(d).toEqual({});
+  });
+});
+
+describe('includedHours', () => {
+  it('считает только включённые идеи', () => {
+    const h = includedHours(
+      [alloc({}), alloc({ included: false, estimate_analyst_hours: 500 })],
+      false,
+    );
+    expect(h).toEqual({ analyst: 60, dev: 40, qa: 20, opo: 0, total: 120 });
+  });
+
+  it('после отсечки ОПЭ его часы уходят в анализ и разработку', () => {
+    const h = includedHours([alloc({ estimate_opo_hours: 10, opo_analyst_ratio: 0.3 })], true);
+    expect(h.opo).toBe(0);
+    expect(h.analyst).toBeCloseTo(63);
+    expect(h.dev).toBeCloseTo(47);
+    expect(h.total).toBeCloseTo(130);
+  });
+
+  it('переоценка заменяет оценку из Jira целиком', () => {
+    const h = includedHours([alloc({ override_estimate_dev_hours: 100 })], false);
+    expect(h).toEqual({ analyst: 0, dev: 100, qa: 0, opo: 0, total: 100 });
   });
 });

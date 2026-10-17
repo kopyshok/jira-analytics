@@ -27,6 +27,8 @@ export type BacklogAllocRowProps = {
   /** Включена сортировка по людям — строки не перетаскиваем. */
   dragLocked?: boolean;
   compact: boolean;
+  /** Часы по ролям — числами без плиток (таблица обложки). */
+  plainHours?: boolean;
   flashing: boolean;
   rowStateClass: string;
   gridTemplate: string;
@@ -104,7 +106,7 @@ function PriorityControl({ backlogItemId, priority, onChange }: PriorityControlP
   });
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+    <div className="bl-prio" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
       <InputNumber
         key={resetKey}
         min={1}
@@ -120,8 +122,8 @@ function PriorityControl({ backlogItemId, priority, onChange }: PriorityControlP
           fontSize: 11,
           fontWeight: 700,
           fontFamily: FONTS.mono,
-          color: cyan ? '#003a3a' : DARK_THEME.textMuted,
-          background: cyan ? DARK_THEME.cyanPrimary : DARK_THEME.darkAccent,
+          color: cyan ? 'var(--bl-prio-hot-ink, #003a3a)' : DARK_THEME.textMuted,
+          background: cyan ? `var(--bl-prio-hot-bg, ${DARK_THEME.cyanPrimary})` : `var(--bl-prio-bg, ${DARK_THEME.darkAccent})`,
           padding: 0,
           textAlign: 'center',
         }}
@@ -138,7 +140,7 @@ function PriorityControl({ backlogItemId, priority, onChange }: PriorityControlP
           commit(next);
         }}
       />
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="bl-prio-steps" style={{ display: 'flex', flexDirection: 'column' }}>
         <button
           type="button"
           aria-label="Приоритет: прибавить 1"
@@ -256,6 +258,7 @@ function BacklogAllocRowBase({
   isDraft,
   dragLocked = false,
   compact,
+  plainHours = false,
   flashing,
   rowStateClass,
   gridTemplate,
@@ -317,7 +320,7 @@ function BacklogAllocRowBase({
     display: 'grid',
     gridTemplateColumns: gridTemplate,
     columnGap: gridGap,
-    padding: compact ? '4px 14px' : '12px 14px',
+    padding: compact ? 'var(--bl-row-pad, 4px 14px)' : '12px 14px',
     fontSize: compact ? 13 : 14,
     borderBottom: `1px solid ${DARK_THEME.border}`,
     alignItems: 'center',
@@ -326,9 +329,9 @@ function BacklogAllocRowBase({
       ? 'var(--row-included-bg, rgba(0,201,200,0.06))'
       : 'transparent',
     borderLeft: a.included
-      ? '3px solid var(--accent-1, #00c9c8)'
-      : '3px solid transparent',
-    opacity: a.included ? 1 : 0.85,
+      ? 'var(--bl-edge-w, 3px) solid var(--accent-1, #00c9c8)'
+      : 'var(--bl-edge-w, 3px) solid transparent',
+    opacity: a.included ? 1 : 'var(--bl-off-opacity, 0.85)',
     transform: CSS.Translate.toString(transform),
     transition,
     ...(isDragging ? { opacity: 0.5 } : null),
@@ -340,9 +343,11 @@ function BacklogAllocRowBase({
       ref={setRowRef}
       onClick={() => onToggle(a)}
       className={className}
+      data-included={a.included || undefined}
       style={style}
     >
       <span
+        className="bl-c-handle"
         {...(canDrag ? attributes : {})}
         {...(canDrag ? listeners : {})}
         onClick={(e) => e.stopPropagation()}
@@ -359,10 +364,11 @@ function BacklogAllocRowBase({
       >
         <HolderOutlined />
       </span>
-      <div onClick={(e) => e.stopPropagation()}>
+      <div className="bl-c-check" onClick={(e) => e.stopPropagation()}>
         <Checkbox checked={a.included} disabled={!isDraft} onChange={() => onToggle(a)} />
       </div>
       <div
+        className="bl-c-prio"
         onClick={(e) => e.stopPropagation()}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
@@ -372,8 +378,9 @@ function BacklogAllocRowBase({
           onChange={onPriorityChange}
         />
       </div>
-      <div>
+      <div className="bl-c-idea">
         <div
+          className="bl-idea-top"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -383,15 +390,15 @@ function BacklogAllocRowBase({
             marginBottom: 3,
           }}
         >
-          <span style={{ flex: '1 1 auto', minWidth: 0 }}>{a.title}</span>
+          <span className="bl-title" style={{ flex: '1 1 auto', minWidth: 0 }}>{a.title}</span>
           {a.multi_team_progress && <MultiTeamProgressTag progress={a.multi_team_progress} compact />}
           {hasOverride && (
-            <Tag color="gold" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>
+            <Tag className="bl-flag" color="gold" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>
               переоценка
             </Tag>
           )}
           {isPendingContinuation && (
-            <Tag color="red" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>
+            <Tag className="bl-flag" data-tone="bad" color="red" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>
               ⚠ продолжение
             </Tag>
           )}
@@ -412,6 +419,8 @@ function BacklogAllocRowBase({
         </div>
         {a.status && (
           <Tag
+            className="bl-status"
+            data-cat={a.status_category ?? undefined}
             color={statusTagColor(a.status, a.status_category)}
             style={{ fontSize: 10, margin: '2px 4px 0 0', padding: '0 4px' }}
           >
@@ -425,26 +434,30 @@ function BacklogAllocRowBase({
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
+              className="bl-key"
               style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}
             >
               {a.jira_key}
             </a>
           ) : (
-            <span style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}>
+            <span className="bl-key" style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}>
               {a.jira_key}
             </span>
           ))}
         {a.has_children_in_backlog && a.issue_id && (
           <InfoCircleOutlined
+            className="bl-breakdown"
             onClick={(e) => {
               e.stopPropagation();
               onOpenBreakdown(a.issue_id!, a.jira_key ?? '');
             }}
-            style={{ marginLeft: 6, cursor: 'pointer', color: '#38bdf8', fontSize: 13 }}
+            style={{ marginLeft: 6, cursor: 'pointer', color: 'var(--bl-breakdown, #38bdf8)', fontSize: 13 }}
           />
         )}
         {a.cost_type && (
           <Tag
+            className="bl-cost"
+            data-kind={a.cost_type.toLowerCase().includes('change') ? 'change' : 'run'}
             color={a.cost_type.toLowerCase().includes('change') ? 'blue' : 'green'}
             style={{ fontSize: 10, padding: '0 4px', marginLeft: 4 }}
           >
@@ -452,7 +465,7 @@ function BacklogAllocRowBase({
           </Tag>
         )}
       </div>
-      <div onClick={(e) => e.stopPropagation()}>
+      <div className="bl-c-an" onClick={(e) => e.stopPropagation()}>
         <PersonSelect
           scenarioId={scenarioId}
           backlogItemId={a.backlog_item_id}
@@ -467,7 +480,7 @@ function BacklogAllocRowBase({
           onChange={(id) => onAssigneeChange(a.id, id)}
         />
       </div>
-      <div onClick={(e) => e.stopPropagation()}>
+      <div className="bl-c-dev" onClick={(e) => e.stopPropagation()}>
         <PersonSelect
           scenarioId={scenarioId}
           backlogItemId={a.backlog_item_id}
@@ -483,7 +496,7 @@ function BacklogAllocRowBase({
         />
       </div>
       {subgroupOptions && (
-        <div onClick={(e) => e.stopPropagation()}>
+        <div className="bl-c-group" onClick={(e) => e.stopPropagation()}>
           {/* Группа пишется на саму задачу — идея без задачи её хранить негде. */}
           <Select
             size="small"
@@ -500,6 +513,7 @@ function BacklogAllocRowBase({
         </div>
       )}
       <div
+        className="bl-c-cust"
         style={{
           fontSize: 12,
           color: DARK_THEME.textMuted,
@@ -510,20 +524,20 @@ function BacklogAllocRowBase({
       >
         {a.customer ?? '—'}
       </div>
-      <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-        <BacklogRoleCell label="АН" hours={an} total={total} color={getRoleColor(roles, 'analyst')} />
-        <BacklogRoleCell label="ПР" hours={de} total={total} color={getRoleColor(roles, 'dev')} />
-        <BacklogRoleCell label="ТС" hours={qa} total={total} color={getRoleColor(roles, 'qa')} />
+      <div className="bl-c-hours" style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+        <BacklogRoleCell plain={plainHours} label="АН" hours={an} total={total} color={getRoleColor(roles, 'analyst')} />
+        <BacklogRoleCell plain={plainHours} label="ПР" hours={de} total={total} color={getRoleColor(roles, 'dev')} />
+        <BacklogRoleCell plain={plainHours} label="ТС" hours={qa} total={total} color={getRoleColor(roles, 'qa')} />
         {!opoOff && (
-          <BacklogRoleCell label="ОПЭ" hours={op} total={total} color={OPO_COLOR} />
+          <BacklogRoleCell plain={plainHours} label="ОПЭ" hours={op} total={total} color={OPO_COLOR} />
         )}
       </div>
-      <div style={{ textAlign: 'right' }}>
-        <span style={{ fontFamily: FONTS.mono, fontSize: 14, color: DARK_THEME.textPrimary }}>
+      <div className="bl-c-total" style={{ textAlign: 'right' }}>
+        <span className="bl-total" style={{ fontFamily: FONTS.mono, fontSize: 14, color: DARK_THEME.textPrimary }}>
           {Math.round(total)} ч
         </span>
         {resourceTotalForBacklog > 0 && (
-          <div style={{ fontSize: 10, color: DARK_THEME.textHint, marginTop: 1 }}>
+          <div className="bl-share" style={{ fontSize: 10, color: DARK_THEME.textHint, marginTop: 1 }}>
             {Math.round((total / resourceTotalForBacklog) * 100)}% ресурса
           </div>
         )}

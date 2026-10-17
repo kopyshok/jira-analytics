@@ -46,6 +46,8 @@ export default function MultiTeamProgressTag({
       }
     >
       <Tag
+        className="mt-progress"
+        data-tone={tone}
         // Строка сценария переключает включение по щелчку — плашка его не ловит.
         onClick={(e) => e.stopPropagation()}
         style={{ marginInlineEnd: 0, ...(compact ? COMPACT : null), ...TONE_STYLE[tone] }}
