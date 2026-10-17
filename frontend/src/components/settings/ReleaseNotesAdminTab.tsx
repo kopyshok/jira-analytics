@@ -20,6 +20,8 @@ import type {
   ReleaseNote, ReleaseNoteCreate, ReleaseNoteUpdate, ReleaseNoteType, ReleaseSection,
 } from '../../types/releaseNotes';
 import WhatsNewModal from '../release-notes/WhatsNewModal';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readableTagProps } from '../../utils/readableColor';
 
 export default function ReleaseNotesAdminTab() {
   const { notification } = App.useApp();
@@ -48,6 +50,8 @@ export default function ReleaseNotesAdminTab() {
     });
   };
 
+  // Обложка: цвет вида заметки — читаемой парой на светлом фоне.
+  const skin = useSkin();
   const [editing, setEditing] = useState<ReleaseNote | null>(null);
   const [adding, setAdding] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -58,7 +62,7 @@ export default function ReleaseNotesAdminTab() {
     {
       title: 'Тип', dataIndex: 'note_type', width: 130,
       render: (t: ReleaseNoteType) => (
-        <Tag color={NOTE_TYPE_COLORS[t]}>{NOTE_TYPE_LABELS[t]}</Tag>
+        <Tag {...readableTagProps(NOTE_TYPE_COLORS[t], !!skin)}>{NOTE_TYPE_LABELS[t]}</Tag>
       ),
     },
     {

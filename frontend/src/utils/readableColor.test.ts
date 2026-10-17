@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, readableInk, readablePair, solidFill } from './readableColor';
+import { contrastRatio, readableInk, readablePair, readableTagProps, solidFill } from './readableColor';
 
 // Цвета, на которых жаловались: пастель ролей, яркий розовый, почти белый, мусор.
 const SAMPLES = ['#9bd7f2', '#f48bc4', '#78a49a', '#eb2f96', '#f5f1ea', '#ffffff', '#000000', '#ff9c4a', '#5c82b5', '#fa0', 'not-a-color', '', null, undefined];
@@ -34,5 +34,18 @@ describe('readableColor', () => {
     const [rp, , bp] = [1, 3, 5].map((i) => parseInt(pink.slice(i, i + 2), 16));
     expect(bb).toBeGreaterThan(rb);
     expect(rp).toBeGreaterThan(bp);
+  });
+
+  it('readableTagProps: в обложке — читаемая пара вместо цвета метки', () => {
+    const props = readableTagProps('#1677ff', true, { marginRight: 8 });
+    expect(props.color).toBeUndefined();
+    expect(props.style?.marginRight).toBe(8);
+    expect(contrastRatio(String(props.style?.color), String(props.style?.background))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('readableTagProps: без обложки и для имён цветов AntD — прежний color', () => {
+    expect(readableTagProps('#1677ff', false)).toEqual({ color: '#1677ff', style: undefined });
+    expect(readableTagProps('orange', true)).toEqual({ color: 'orange', style: undefined });
+    expect(readableTagProps(null, true)).toEqual({ color: undefined, style: undefined });
   });
 });

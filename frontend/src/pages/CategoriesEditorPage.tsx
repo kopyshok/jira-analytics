@@ -128,6 +128,8 @@ const CategoryCell = memo(function CategoryCell({
         onChange={(val) => onChange(issueId, val || null)}
         allowClear
         size="small"
+        // Подсказка категории (ещё не выбрана) — приглушённо; класс нужен обложкам.
+        className={!value && placeholderCode ? 'cat-suggested' : undefined}
         style={{
           flex: 1,
           minWidth: 0,
@@ -818,6 +820,7 @@ export default function CategoriesEditorPage() {
               <Select
                 allowClear
                 size="small"
+                className={assigned ? undefined : 'cat-suggested'}
                 style={{ width: '100%', opacity: assigned ? 1 : 0.65 }}
                 placeholder="Группа"
                 value={resolved ?? undefined}

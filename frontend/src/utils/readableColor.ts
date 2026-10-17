@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 /**
  * Читаемые пары цветов для цветов справочников (роли, виды работ, причины
  * отсутствия, аватары): цвет в базе может быть любым — пастельным, ярким,
@@ -92,4 +94,19 @@ export function readablePair(hex: string | null | undefined): { bg: string; fg: 
 /** Сплошная заливка под белый текст (аватары, плотные фишки): тот же тон, контраст ≥ 4.5:1. */
 export function solidFill(hex: string | null | undefined): string {
   return readableInk(hex, '#FFFFFF');
+}
+
+/**
+ * Свойства метки (Tag) для цвета из справочника. В обложке — читаемая пара
+ * (светлая подложка, тёмный текст того же тона); вне обложки и для имён
+ * готовых цветов AntD («orange») — прежний `color`.
+ */
+export function readableTagProps(
+  color: string | null | undefined,
+  skin: boolean,
+  style?: CSSProperties,
+): { color?: string; style?: CSSProperties } {
+  if (!skin || !parseHex(color)) return { color: color ?? undefined, style };
+  const p = readablePair(color);
+  return { color: undefined, style: { ...style, color: p.fg, background: p.bg, borderColor: p.border } };
 }

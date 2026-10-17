@@ -21,6 +21,8 @@ import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
 import { useRoles } from '../hooks/useRoles';
+import { useSkin } from '../contexts/ThemeContext';
+import { readableTagProps } from '../utils/readableColor';
 import type { QuarterCapacityResponse, AbsenceResponse, JiraUserSearchResult, EmployeeTeamItem, EmployeeRole } from '../types/api';
 
 dayjs.extend(minMax);
@@ -547,6 +549,8 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
 
 function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
   const { notification } = App.useApp();
+  // Обложка: цвет причины из справочника — светлой подложкой с тёмным текстом того же тона.
+  const skin = useSkin();
   const { data: absences, isLoading } = useAbsences();
   const { data: employees } = useEmployees();
   const { data: reasons } = useAbsenceReasons();
@@ -661,21 +665,24 @@ function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
             title: `Отсутствия в Q${quarter} ${year}`,
             render: (_: unknown, r: typeof rows[number]) => (
               <Space wrap>
-                {r.absences.map(a => (
-                  <Tag
-                    key={a.id}
-                    color={a.reason_color ?? 'default'}
-                    closable
-                    onClose={(ev) => {
-                      ev.preventDefault();
-                      remove.mutate(a.id);
-                    }}
-                    style={{ cursor: 'default' }}
-                  >
-                    {a.reason_label}: {dayjs(a.start_date).format('DD.MM')}—
-                    {dayjs(a.end_date).format('DD.MM')}
-                  </Tag>
-                ))}
+                {r.absences.map(a => {
+                  const tag = readableTagProps(a.reason_color ?? 'default', !!skin, { cursor: 'default' });
+                  return (
+                    <Tag
+                      key={a.id}
+                      color={tag.color}
+                      closable
+                      onClose={(ev) => {
+                        ev.preventDefault();
+                        remove.mutate(a.id);
+                      }}
+                      style={tag.style}
+                    >
+                      {a.reason_label}: {dayjs(a.start_date).format('DD.MM')}—
+                      {dayjs(a.end_date).format('DD.MM')}
+                    </Tag>
+                  );
+                })}
                 <Button size="small" icon={<PlusOutlined />} onClick={() => openAddForEmp(r.employee_id)}>
                   добавить
                 </Button>
