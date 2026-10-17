@@ -101,7 +101,7 @@ export function DeveloperTable({
         );
         return (
           <Tooltip title={`Свободно ${roundHours(load.available_hours)} ч на неделю вперёд`}>
-            <div style={{ color: load.overloaded ? '#ff6b6b' : undefined }}>
+            <div style={{ color: load.overloaded ? 'var(--ink-bad, #ff6b6b)' : undefined }}>
               {line('all', load.queue_hours, load.queue_days, load.without_estimate)}
               {line(
                 'assigned',

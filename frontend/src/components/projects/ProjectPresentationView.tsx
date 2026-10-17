@@ -106,10 +106,12 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
         {detail.employees.length > 0 ? (
           detail.employees.map((e, i) => {
             const color = COLORS[i % COLORS.length];
+            // Приглушённый кружок: в светлых темах — светлая подложка под тёмные инициалы.
+            const avatarBg = i % COLORS.length >= 4 ? `var(--avatar-muted-bg, ${color})` : color;
             return (
               <div key={e.employee_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
                 <div style={{
-                  width: 32, height: 32, borderRadius: '50%', background: color,
+                  width: 32, height: 32, borderRadius: '50%', background: avatarBg,
                   color: DARK_THEME.textPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 12, fontWeight: 700, flexShrink: 0,
                 }}>
