@@ -3,7 +3,8 @@ import { FlagOutlined } from '@ant-design/icons';
 import { useOnboarding } from './OnboardingContext';
 import { progress } from './steps';
 
-export default function OnboardingButton() {
+/** withLabel — подпись «Первые шаги» рядом со счётчиком (обложка «Швейцарская»). */
+export default function OnboardingButton({ withLabel = false }: { withLabel?: boolean }) {
   const { status, team, openPanel } = useOnboarding();
   if (!status || status.me.hidden) return null;
   const { done, total } = progress(status, team !== null);
@@ -20,7 +21,7 @@ export default function OnboardingButton() {
       data-tour="header-onboarding"
       style={{ color: 'var(--text-2)' }}
     >
-      {done}/{total}
+      {withLabel ? `Первые шаги · ${done}/${total}` : `${done}/${total}`}
     </Button>
   );
 }

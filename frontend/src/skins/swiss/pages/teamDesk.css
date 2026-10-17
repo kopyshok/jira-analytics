@@ -132,6 +132,19 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     line-height: 0.9;
     letter-spacing: -0.02em;
   }
+  /* «задач всего» — подписью под крупной цифрой, как в макете */
+  & .desk-card .desk-card-total::after {
+    content: 'задач\A всего';
+    display: block;
+    margin-top: 6px;
+    white-space: pre;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.2;
+    letter-spacing: 0;
+    color: #5E5E5E;
+  }
+  & .desk-card .desk-card-total-caption { display: none; }
   & .desk-card .desk-card-split { grid-column: 2; font-size: 11px !important; color: #111111 !important; }
   & .desk-card .desk-card-split b { font-weight: 400; }
   & .desk-card .desk-scale { grid-column: 2; min-width: 0 !important; }
@@ -188,9 +201,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
 
   & .desk-filters-stack { display: flex; flex-direction: column; gap: 12px; }
   & .sw-desk-issues { flex: 1; min-height: 0; display: flex; }
-  & .desk-issues .ant-table table { width: max-content !important; min-width: 100%; }
-  & .desk-issues .ant-table-thead > tr > th:first-child,
-  & .desk-issues .ant-table-tbody > tr > td:first-child { min-width: 300px; max-width: 400px; }
+  & .desk-issues .ant-table table { table-layout: fixed !important; }
   & .desk-issues.ant-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   & .desk-issues.ant-card > .ant-card-head { flex: none; min-height: 32px; padding: 0 !important; border-bottom: 0 !important; }
   & .desk-issues .ant-card-head-title { font-size: 16px !important; }
@@ -212,9 +223,19 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     padding: 6px 8px !important;
   }
   & .desk-issues .ant-table-tbody > tr > td { padding: 6px 8px !important; font-size: 12px; }
+  /* Узкие колонки: заголовок в одну строку, стрелка сортировки — только у активной колонки */
+  & .desk-issues .ant-table-thead > tr > th { white-space: nowrap; padding-inline: 6px !important; }
+  & .desk-issues .ant-table-thead .ant-table-column-sorters { gap: 2px; }
+  & .desk-issues .ant-table-thead th:not(.ant-table-column-sort) .ant-table-column-sorter { display: none; }
+  & .desk-issues .ant-table-thead th:not(.ant-table-column-sort):hover .ant-table-column-sorter { display: inline-flex; }
+  /* Ключ и название — одним абзацем: название переносится под ключ, как в макете */
+  & .desk-issues .desk-task-cell { display: block !important; }
+  & .desk-issues .desk-task-cell > .desk-key { margin-right: 4px; }
+  /* Строка человека: имя и счётчики — в одну строку, поверх пустых ячеек справа */
+  & .desk-issues .ant-table-tbody > tr.desk-group-row > td:first-child { white-space: nowrap; overflow: visible; position: relative; z-index: 1; }
   & .desk-issues .ant-table-tbody > tr.desk-group-row > td { background: #F4F4F4 !important; font-weight: 700; }
   & .desk-issues .desk-group-row .desk-group-name { display: inline; }
-  & .desk-issues .desk-group-row .desk-group-statuses { display: inline-flex; margin: 0 0 0 12px !important; vertical-align: baseline; }
+  & .desk-issues .desk-group-row .desk-group-statuses { display: flex; flex-wrap: wrap; margin: 4px 0 0 !important; white-space: normal; font-weight: 400; }
   & .desk-issues .desk-key a,
   & .desk-issues .desk-key .ant-typography { font-weight: 700; color: #111111; text-decoration: underline; text-underline-offset: 2px; }
   & .desk-issues .desk-mark.ant-tag {

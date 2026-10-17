@@ -171,6 +171,26 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     font-size: 10px;
     line-height: 14px;
   }
+  /* Статус проекта — цветом текста с квадратиком, без плашки (как в списке 1.1) */
+  & .sw-pj-table .ant-table-cell .ant-tag:not(:first-child) {
+    padding: 0;
+    border: 0 !important;
+    background: none !important;
+    color: #6E6E6E !important;
+    font-size: 11px;
+  }
+  & .sw-pj-table .ant-table-cell .ant-tag:not(:first-child)::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 4px;
+    border: 1px solid currentColor;
+  }
+  & .sw-pj-table .ant-table-cell .ant-tag-processing:not(:first-child) { color: #1F4FD1 !important; }
+  & .sw-pj-table .ant-table-cell .ant-tag-success:not(:first-child) { color: #1E7A3E !important; }
+  & .sw-pj-table .ant-table-cell .ant-tag-processing:not(:first-child)::before,
+  & .sw-pj-table .ant-table-cell .ant-tag-success:not(:first-child)::before { background: currentColor; }
   & .sw-pj-table .ant-table-summary td { border-top: 1px solid #111111 !important; font-weight: 700; }
   & .sw-pj-timeline {
     flex: 1;
@@ -180,7 +200,46 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     --pj-stage-dev: #1F4FD1;
     --pj-stage-qa: #C75B00;
     --pj-stage-opo: #7A3E9A;
+    position: relative;
   }
+  /* Таймлайн по макету: легенда — в строке заголовка, подпись строки — в одну строку,
+     месяцы — от левого края своей колонки, «сегодня ДД.ММ» — акцентом над линией. */
+  & .sw-pj-timeline .pj-tl-legend {
+    position: absolute;
+    top: 6px;
+    right: 0;
+    margin: 0 !important;
+    gap: 4px 14px !important;
+    color: #111111 !important;
+  }
+  & .sw-pj-timeline .pj-tl-row { grid-template-columns: 210px minmax(0, 1fr) !important; }
+  & .sw-pj-timeline .pj-tl-label {
+    display: block !important;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12px !important;
+    color: #111111 !important;
+  }
+  & .sw-pj-timeline .pj-tl-months { height: 20px; border-bottom: 1px solid #111111; }
+  & .sw-pj-timeline .pj-tl-months > div {
+    padding-left: 4px;
+    border-left: 1px solid #111111;
+    text-align: left !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    font-size: 11px !important;
+    font-weight: 700;
+    color: #111111 !important;
+  }
+  & .sw-pj-timeline .pj-tl-today {
+    margin-left: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 20px;
+    color: var(--sw-accent-ink);
+    white-space: nowrap;
+  }
+  & .sw-pj-timeline .pj-tl-now { width: 1px !important; background: var(--sw-accent) !important; }
   & .sw-pj-table .ant-table table { width: 100% !important; min-width: 0 !important; table-layout: fixed !important; }
   & .sw-pj-table .ant-table colgroup col:nth-child(1) { width: 28px !important; }
   & .sw-pj-table .ant-table colgroup col:nth-child(2) { width: auto !important; }
@@ -195,6 +254,16 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-pj-table .ant-table-cell { overflow: hidden; }
 }
 
+
+/* Любой таймлайн фаз (портфель, «План и сроки» проекта): фазы — цветом стадии,
+   легенда различима; подпись внутри полосы не нужна — фаза названа в строке. */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pj-tl {
+  --pj-stage-analyst: #0E7C86;
+  --pj-stage-dev: #1F4FD1;
+  --pj-stage-qa: #C75B00;
+  --pj-stage-opo: #7A3E9A;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pj-tl .pj-tl-bar { font-size: 0 !important; border-radius: 0 !important; }
 @media (max-width: 1500px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pj-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 12px; }
 }

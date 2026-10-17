@@ -353,6 +353,33 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-pl-side .pl-emp-norm { font-size: 11px !important; color: #5E5E5E !important; }
   & .sw-pl-side .pl-emp-track { height: 3px !important; border-radius: 0 !important; background: #E2E2E2 !important; }
   & .sw-pl-side .pl-emp-demand { font-family: var(--sw-font) !important; font-size: 11px !important; }
+  /* Строка сотрудника по макету: «Имя · роль» и «план / доступно» в одну строку, полоса, под ней норма. */
+  & .sw-pl-side .pl-cap-people .ant-card-head-wrapper::after {
+    content: 'план / доступно';
+    margin-left: auto;
+    align-self: flex-end;
+    padding-bottom: 2px;
+    font-size: 11px;
+    color: #5E5E5E;
+  }
+  & .sw-pl-side .pl-emp { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; }
+  & .sw-pl-side .pl-emp > div:first-child,
+  & .sw-pl-side .pl-emp .pl-emp-right { display: contents !important; }
+  & .sw-pl-side .pl-emp > div:first-child > div:first-child { grid-column: 1; grid-row: 1; min-width: 0; flex-wrap: wrap; row-gap: 2px; }
+  & .sw-pl-side .pl-emp .pl-emp-hours { grid-column: 2; grid-row: 1; align-self: center; }
+  & .sw-pl-side .pl-emp:has(.pl-emp-demand) .pl-emp-hours { display: none; }
+  & .sw-pl-side .pl-emp .pl-emp-demand {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    margin: 0 !important;
+    font-size: 12px !important;
+    font-weight: 700;
+    color: #111111 !important;
+  }
+  & .sw-pl-side .pl-emp[data-over] .pl-emp-demand { color: var(--sw-accent-ink) !important; }
+  & .sw-pl-side .pl-emp .pl-emp-track { grid-column: 1 / -1; grid-row: 2; margin-top: 2px !important; }
+  & .sw-pl-side .pl-emp .pl-emp-norm { grid-column: 1 / -1; grid-row: 3; text-align: left; }
 
   & .sw-pl-ext { flex: none; }
   & .sw-pl-ext .pl-ext-qa > div:first-child { font-size: 12px !important; color: #111111 !important; }

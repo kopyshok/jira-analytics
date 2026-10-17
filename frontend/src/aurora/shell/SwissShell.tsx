@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router';
-import { LogOut } from 'lucide-react';
+import { Dropdown, Popover } from 'antd';
+import { Contrast, LogOut } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { trackAction } from '../../lib/usage/track';
 import FeedbackButton from '../../components/feedback/FeedbackButton';
@@ -9,13 +10,54 @@ import GlobalTeamFilterButton from '../../components/Layout/GlobalTeamFilterButt
 import GlobalPeriodPicker from '../../components/shared/GlobalPeriodPicker';
 import GlobalHelpButton from '../../components/Layout/GlobalHelpButton';
 import SyncIndicator from '../../components/Layout/SyncIndicator';
-import ThemeSelect from '../../components/Layout/ThemeSelect';
 import OnboardingButton from '../../onboarding/OnboardingButton';
 import { HelpProvider } from '../../contexts/HelpContext';
+import { useAppTheme } from '../../contexts/ThemeContext';
 import { useEventStream } from '../../hooks/useEventStream';
-import { useThemeSync } from '../../hooks/useTheme';
+import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
+import { useSaveTheme, useThemeSync } from '../../hooks/useTheme';
+import { APP_THEMES, type AppTheme } from '../../utils/constants';
 import { UsageTracker } from './AuroraShell';
 import { NAV_GROUPS, findGroupForPath, useNavSections, type NavGroup } from './navConfig';
+
+const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+/** Период строкой «2026 · Q4 · Весь Q»; щелчок открывает обычные три списка. */
+function PeriodLink() {
+  const { period } = useGlobalPeriod();
+  const label = `${period.year} · Q${period.quarter} · ${period.month ? MONTHS_SHORT[period.month - 1] : 'Весь Q'}`;
+  return (
+    <Popover trigger="click" placement="bottom" content={<GlobalPeriodPicker />}>
+      <button type="button" className="sw-link-btn" aria-label={`Период: ${label}`}>{label}</button>
+    </Popover>
+  );
+}
+
+/** Тема — значком «◐»; список тем — в выпадающем меню. */
+function ThemeMenu() {
+  const { theme } = useAppTheme();
+  const saveTheme = useSaveTheme();
+  const items = (Object.entries(APP_THEMES) as [AppTheme, typeof APP_THEMES[AppTheme]][]).map(([key, def]) => ({
+    key,
+    label: (
+      <span className="sw-theme-opt">
+        <i style={{ background: def.tokens.primary }} aria-hidden="true" />
+        {def.label}
+      </span>
+    ),
+  }));
+  return (
+    <Dropdown
+      trigger={['click']}
+      placement="bottomRight"
+      menu={{ items, selectable: true, selectedKeys: [theme], onClick: ({ key }) => saveTheme(key as AppTheme) }}
+    >
+      <button type="button" className="sw-icon-btn" title={`Тема: ${APP_THEMES[theme].label}`} aria-label="Тема оформления">
+        <Contrast size={18} strokeWidth={1.5} />
+      </button>
+    </Dropdown>
+  );
+}
 
 /** Постоянный номер группы («01 Обзор») — не сдвигается, если группа скрыта. */
 function groupNumber(id: NavGroup['id']): string {
@@ -92,10 +134,10 @@ export default function SwissShell() {
             {user && (
               <>
                 <span data-tour="header-team" style={{ display: 'inline-flex' }}><GlobalTeamFilterButton /></span>
-                <span data-tour="header-period" style={{ display: 'inline-flex' }}><GlobalPeriodPicker /></span>
-                <OnboardingButton />
+                <span data-tour="header-period" style={{ display: 'inline-flex' }}><PeriodLink /></span>
+                <OnboardingButton withLabel />
                 <span data-tour="header-help" style={{ display: 'inline-flex' }}><GlobalHelpButton /></span>
-                <span className="sw-theme" style={{ display: 'inline-flex' }}><ThemeSelect width={150} /></span>
+                <span className="sw-theme" style={{ display: 'inline-flex' }}><ThemeMenu /></span>
                 <span className="sw-user" title={user.display_name}>
                   <span className="sw-avatar" aria-hidden="true">{initials(user.display_name)}</span>
                   <span className="sw-user-name">{user.display_name}</span>

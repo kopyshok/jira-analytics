@@ -15,6 +15,12 @@ import { deskTaskCount, developersWord, tasksWord, teamAccuracy } from '../../..
 import { BlockHead, Figure, Figures, PassSection, Passport, SwissData, SwissPage } from '../components/Passport';
 import './teamDesk.css';
 
+/** Колонки списка задач под ширину зоны данных (макет: видно до «Дней», дальше — прокрутка в блоке). */
+const COLUMN_WIDTHS: Record<string, number> = {
+  task: 240, developer: 120, status: 112, sprint: 92, release: 68, est: 58,
+  daily_rate: 74, fact: 46, left: 70, scale: 104, days: 46, flags: 120,
+};
+
 const TABS: { key: DeskLayout; num: string; label: string }[] = [
   { key: 'cards', num: '1.1', label: 'Светофор' },
   { key: 'table', num: '1.2', label: 'Ведомость' },
@@ -57,6 +63,8 @@ export default function SwissTeamDeskLayout({ vm }: { vm: TeamDeskPageModel }) {
         queueScope={queueScope}
         onDailyRate={setDailyRate}
         groupToggle="segmented"
+        // «Недобор / перебор» в разрезе «Проблемы вперёд» — шкала в обе стороны, ей нужно шире.
+        defaultWidths={layout === 'grouped' ? { ...COLUMN_WIDTHS, scale: 150 } : COLUMN_WIDTHS}
         {...(layout === 'grouped'
           ? { statuses: shownStatuses, statusGroups, onStatusFilter: pickStatus }
           : {})}

@@ -140,6 +140,7 @@ export default function SwissProjectsLayout({ vm }: { vm: ProjectsPageModel }) {
                 <PhaseTimeline
                   timeline={data.timeline}
                   mode="by-project"
+                  todayCaption
                   maxHeight="calc(100vh - 880px)"
                   onRowClick={openProject}
                 />

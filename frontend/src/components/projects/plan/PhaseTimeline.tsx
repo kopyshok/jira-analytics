@@ -48,9 +48,11 @@ interface Props {
   /** Высота области строк; всё, что выше — прокручивается внутри блока.
    *  Нужна портфелю: строк там столько же, сколько проектов у выбранных команд. */
   maxHeight?: number | string;
+  /** Подпись «сегодня ДД.ММ» над линией текущего дня (обложка «Швейцарская»). */
+  todayCaption?: boolean;
 }
 
-export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight }) => {
+export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight, todayCaption = false }) => {
   if (!timeline.start || !timeline.end || timeline.rows.length === 0) {
     return (
       <Empty
@@ -91,19 +93,30 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
         bars: r.bars,
       }));
 
+  const now = new Date();
+  const todayText = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}`;
+
   return (
-    <div>
-      <div style={{
+    <div className="pj-tl">
+      <div className="pj-tl-row pj-tl-head" style={{
         display: 'grid', gridTemplateColumns: `${labelW}px 1fr`, gap: 8, marginBottom: 4,
       }}>
         <div />
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)` }}>
+        <div className="pj-tl-months" style={{
+          display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)`,
+          ...(todayCaption ? { position: 'relative' as const } : {}),
+        }}>
           {labels.map((m, i) => (
             <div key={i} style={{
               fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em',
               color: DARK_THEME.textMuted, textAlign: 'center',
             }}>{m}</div>
           ))}
+          {todayCaption && nowLeft !== null && (
+            <span className="pj-tl-today" title="Сегодня" style={{ position: 'absolute', top: 0, left: `${nowLeft}%` }}>
+              {todayText}
+            </span>
+          )}
         </div>
       </div>
 
@@ -111,6 +124,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
       {rows.map((row, ri) => (
         <div
           key={`${row.key ?? ''}-${ri}`}
+          className="pj-tl-row"
           style={{
             display: 'grid', gridTemplateColumns: `${labelW}px 1fr`,
             gap: 8, marginBottom: 3, alignItems: 'center',
@@ -124,6 +138,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
               if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row.key!); }
             } : undefined}
             title={row.label}
+            className="pj-tl-label"
             style={{
               fontSize: 11, lineHeight: 1.3, color: DARK_THEME.textPrimary,
               // Две строки максимум: третья растянула бы строку таймлайна и
@@ -162,7 +177,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
                   mouseEnterDelay={0.2}
                   title={`${b.label}: ${b.start_date} — ${b.end_date}`}
                 >
-                  <div style={{
+                  <div className="pj-tl-bar" style={{
                     position: 'absolute', top: 3, height: LANE_H,
                     left: `${left}%`, width: `${width}%`,
                     background: PHASE_COLOR[b.phase] ?? DARK_THEME.cyanPrimary,
@@ -175,7 +190,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
               );
             })}
             {nowLeft !== null && (
-              <div style={{
+              <div className="pj-tl-now" style={{
                 position: 'absolute', top: 0, bottom: 0, left: `${nowLeft}%`,
                 width: 2, background: DARK_THEME.cyanPrimary,
               }} />
@@ -185,7 +200,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
       ))}
       </div>
 
-      <div style={{
+      <div className="pj-tl-legend" style={{
         display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8,
         fontSize: 11, color: DARK_THEME.textMuted,
       }}>

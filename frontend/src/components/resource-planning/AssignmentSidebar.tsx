@@ -256,6 +256,13 @@ export default function AssignmentSidebar({
     </Space>
   );
 
+  const endHint = (
+    <Typography.Text type="secondary" className="rp-assign-end-hint" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
+      Окончание рассчитывается по часам и свободным дням; чтобы сдвинуть — перетащите начало
+      или измените вовлечённость
+    </Typography.Text>
+  );
+
   const body = (
     <>
       <Typography.Title level={5} style={{ marginTop: 0 }}>
@@ -310,6 +317,8 @@ export default function AssignmentSidebar({
         <Descriptions.Item label="Начало">
           <DatePicker
             value={assignment.start_date ? dayjs(assignment.start_date) : null}
+            // Встроенная панель обложки: дата начала — в том же виде, что окончание.
+            format={docked ? 'DD.MM.YYYY' : undefined}
             disabled={saving}
             allowClear={false}
             onChange={(d) => d && updateField({ start_date: d.format('YYYY-MM-DD') })}
@@ -320,10 +329,7 @@ export default function AssignmentSidebar({
           <Typography.Text>
             {assignment.end_date ? dayjs(assignment.end_date).format('DD.MM.YYYY') : '—'}
           </Typography.Text>
-          <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
-            Окончание рассчитывается по часам и свободным дням; чтобы сдвинуть — перетащите начало
-            или измените вовлечённость
-          </Typography.Text>
+          {!docked && endHint}
         </Descriptions.Item>
         <Descriptions.Item label="Предшественники">
           <Select
@@ -340,6 +346,8 @@ export default function AssignmentSidebar({
           />
         </Descriptions.Item>
       </Descriptions>
+      {/* Во встроенной панели поля стоят сеткой в две колонки — пояснение на всю ширину под ними. */}
+      {docked && endHint}
 
       <AssignmentExplainSection planId={planId} assignmentId={assignment.id} />
 

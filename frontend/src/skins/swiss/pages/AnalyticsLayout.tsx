@@ -139,7 +139,13 @@ export default function SwissAnalyticsLayout({ vm }: { vm: AnalyticsPageModel })
             />
             {data.subgroup_flow && data.subgroup_flow.length > 0 && (
               <div className="sw-an-flow">
-                <SubgroupFlowLine items={data.subgroup_flow} />
+                {data.subgroup_flow.some((i) => i.out_hours > 0 || i.in_hours > 0) ? (
+                  <SubgroupFlowLine items={data.subgroup_flow} />
+                ) : (
+                  <span className="sw-an-flow-empty">
+                    <b>Переток внутри команды</b> — группы часами не обменивались
+                  </span>
+                )}
               </div>
             )}
             <div className={`sw-an-main${showIssuePanel ? '' : ' is-wide'}`}>

@@ -133,7 +133,7 @@ export function DeveloperCards({
                   {dev.total_issues}
                 </span>
                 <Typography.Text type="secondary" className="desk-card-split" style={{ fontSize: 11.5 }}>
-                  задач всего<br />
+                  <span className="desk-card-total-caption">задач всего<br /></span>
                   <b>{dev.in_dev}</b> у него · <b>{dev.waiting}</b> ждут не его · <b>{dev.todo}</b> не начаты
                 </Typography.Text>
               </div>

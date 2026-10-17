@@ -61,6 +61,8 @@ interface Props {
   releaseFilter?: string[];
   /** Ширины колонок, растянутых мышкой. Пусто — ширина по умолчанию. */
   columnWidths?: Record<string, number>;
+  /** Ширины по умолчанию вместо обычных — для узкой колонки обложки. */
+  defaultWidths?: Record<string, number>;
   onColumnWidthsChange?: (widths: Record<string, number>) => void;
   /** Настройка рабочего места: какие колонки показывать и группировать ли. */
   onHiddenColumnsChange?: (hidden: string[]) => void;
@@ -193,7 +195,7 @@ export function GroupedIssues({
   statuses = [], statusGroups, onStatusFilter,
   hiddenColumns = [], groupByDeveloper = true,
   sprintFilter = [], releaseFilter = [],
-  columnWidths = {}, onColumnWidthsChange,
+  columnWidths = {}, defaultWidths, onColumnWidthsChange,
   onHiddenColumnsChange, onGroupByDeveloperChange, onRefreshVisible, refreshing = false, refreshBlocked = false,
   groupToggle = 'switch',
 }: Props) {
@@ -346,7 +348,7 @@ export function GroupedIssues({
         ) : (
           // Ключ отдельной колонкой внутри ячейки: перенос длинного названия
           // начинается под первой строкой названия, а не под ключом.
-          <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+          <span className="desk-task-cell" style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
             <span className="desk-key" style={{ flex: '0 0 auto', whiteSpace: 'nowrap' }}>
               <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} />
             </span>
@@ -537,7 +539,7 @@ export function GroupedIssues({
     .filter((col) => !hiddenColumns.includes(String(col.key)))
     .map((col) => {
       const key = String(col.key);
-      const width = widths[key] ?? (col.width as number | undefined);
+      const width = widths[key] ?? defaultWidths?.[key] ?? (col.width as number | undefined);
       return {
         ...col,
         width,

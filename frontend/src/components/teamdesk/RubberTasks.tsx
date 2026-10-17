@@ -19,7 +19,20 @@ interface Props {
  */
 export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate, compact = false }: Props) {
   const rows = issues.filter((issue) => issue.daily_rate);
-  if (!rows.length) return null;
+  // В узкой колонке обложки блок стоит всегда — пустым он говорит, что таких задач нет.
+  if (!rows.length) {
+    return compact ? (
+      <section className="desk-rubber">
+        <div className="sw-block-title">
+          <span className="sw-block-num">1.5</span>
+          <b>Резиновые задачи · 0</b>
+        </div>
+        <p className="desk-rubber-note">
+          Резиновых задач в срезе нет. Задача становится резиновой, когда в списке задач ей задана норма в колонке «DevForDay».
+        </p>
+      </section>
+    ) : null;
+  }
 
   const left = (row: DeskIssue) =>
     row.est_hours == null ? null : Math.max(0, row.est_hours - row.fact_hours);

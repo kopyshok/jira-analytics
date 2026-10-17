@@ -61,7 +61,7 @@ function initialsOf(name: string): string {
 
 function indent(depth: number, content: React.ReactNode): React.ReactNode {
   return (
-    <div style={{ paddingLeft: depth * 14, lineHeight: 1.35 }}>{content}</div>
+    <div className="an-indent" style={{ paddingLeft: depth * 14, lineHeight: 1.35 }}>{content}</div>
   );
 }
 
@@ -140,6 +140,7 @@ function buildIssueNode(
       depth,
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <div
+          className="an-issue-line"
           style={{
             display: 'flex',
             alignItems: 'flex-start',
@@ -721,6 +722,10 @@ export default function AnalyticsTable({
   onIssueOpen,
 }: Props) {
   const skin = useSkin();
+  // Обложка — числа по-русски («1 240,5»), как в её макете; Aurora — как раньше.
+  const dec = (v: number, digits: number) => (skin
+    ? v.toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+    : v.toFixed(digits));
   const { visible } = useAnalyticsColumns();
   const visibleSet = new Set(visible);
   const navigate = useNavigate();
@@ -826,7 +831,7 @@ export default function AnalyticsTable({
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
               <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
-                {r.totals.fact_hours.toFixed(1)}
+                {dec(r.totals.fact_hours, 1)}
               </span>
               {r.kind !== 'issue' && <ForeignChip totals={r.totals} />}
             </span>
@@ -887,7 +892,7 @@ export default function AnalyticsTable({
         isBlock(r)
           ? null
           : r.totals.pct_in_group != null
-            ? `${r.totals.pct_in_group.toFixed(1)}%`
+            ? `${dec(r.totals.pct_in_group, 1)}%`
             : '—',
       width: 100,
       align: 'right',
@@ -895,7 +900,7 @@ export default function AnalyticsTable({
     {
       title: '% от итога',
       key: 'pct_total',
-      render: (_, r) => (isBlock(r) ? null : `${r.totals.pct_total.toFixed(1)}%`),
+      render: (_, r) => (isBlock(r) ? null : `${dec(r.totals.pct_total, 1)}%`),
       width: 100,
       align: 'right',
     },

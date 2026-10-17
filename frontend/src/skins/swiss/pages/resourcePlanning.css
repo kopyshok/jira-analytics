@@ -333,6 +333,17 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .rp-assign-docked-meta .ant-space { gap: 6px !important; }
   & .rp-assign-docked-meta .ant-tag { margin: 0; font-size: 10px; line-height: 16px; padding: 0 4px; }
   & .rp-assign-docked-body { font-size: 12px; }
+  /* Цифры расчёта в узкой колонке: подписи без разрядки и с переносом,
+     значения выровнены по нижнему краю, чтобы подписи не налезали друг на друга */
+  & .rp-assign-docked-body .ant-row:has(> .ant-col > .ant-statistic) { align-items: flex-end; row-gap: 8px; }
+  & .rp-assign-docked-body .ant-statistic-title {
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    font-size: 11px !important;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  & .rp-assign-docked-body .ant-statistic-content { font-size: 24px !important; }
   & .rp-assign-docked-body h5.ant-typography { font-size: 14px !important; margin-bottom: 2px !important; }
   & .rp-assign-docked-body .ant-divider { margin: 12px 0 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
   & .rp-assign-docked-body .ant-divider-horizontal.ant-divider-with-text { border-block-start-color: #111111; }
@@ -418,6 +429,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-rp-load .rp-hm-title { font-size: 14px !important; font-weight: 700 !important; }
   & .sw-rp-load .rp-hm-title::before { content: '2.5'; margin-right: 8px; font-size: 11px; color: #5E5E5E; }
   & .sw-rp-load .rp-hm-tools { flex-direction: row-reverse; }
+  /* Код роли у имени (dev / analyst) — служебный; в макете строки без роли */
+  & .sw-rp-load .rp-hm-role { display: none; }
   & .sw-rp-load .rp-hm-tools .ant-btn { height: 24px; padding: 0 12px; font-size: 12px; font-weight: 400; }
   & .sw-rp-load .rp-hm-period { color: #5E5E5E !important; }
   & .sw-rp-load .rp-hm-desc {
