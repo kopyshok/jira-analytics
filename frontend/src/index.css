@@ -129,7 +129,19 @@ kbd,
 .tree-row-depth-4 > td { background-color: rgba(0, 201, 200, 0.16) !important; }
 .tree-row-depth-5 > td { background-color: rgba(0, 201, 200, 0.20) !important; }
 .tree-row-has-children > td { font-weight: 600; }
-.tree-row-context > td { opacity: var(--dim-opacity, 0.55); font-style: italic; }
+/* Светлые темы снимают прозрачность (--dim-opacity: 1) — строку-контекст
+   приглушает цвет текста: ячейки и обычные подписи в них (название, даты);
+   ссылки и второстепенные подписи — своим цветом. Селекторы сильнее общего
+   цвета ячеек Aurora и цвета подписей светлой темы (он с !important).
+   В тёмной теме цвет прежний: подписи и так в цвет ячейки. */
+.ant-table-tbody > tr.tree-row-context > td {
+  opacity: var(--dim-opacity, 0.55);
+  color: var(--dim-text, inherit);
+  font-style: italic;
+}
+.ant-table-tbody > tr.tree-row-context > td .ant-typography:not(.ant-typography-secondary):not(.ant-typography-link) {
+  color: var(--dim-text, inherit) !important;
+}
 
 /* ---------- Involvement defaults: row being edited (InvolvementDefaultsDrawer) ---------- */
 .involvement-row-editing > td { background-color: rgba(0, 201, 200, 0.12) !important; }

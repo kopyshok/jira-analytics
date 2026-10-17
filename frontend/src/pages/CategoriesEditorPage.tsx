@@ -819,6 +819,9 @@ export default function CategoriesEditorPage() {
                 allowClear
                 size="small"
                 style={{ width: '100%', opacity: assigned ? 1 : 'var(--dim-opacity, 0.65)' }}
+                // Унаследованная или предположенная группа бледнее явной; в светлых
+                // темах прозрачности нет — приглушает цвет текста.
+                styles={assigned ? undefined : { content: { color: 'var(--dim-text, inherit)' } }}
                 placeholder="Группа"
                 value={resolved ?? undefined}
                 options={subgroupOptions}
