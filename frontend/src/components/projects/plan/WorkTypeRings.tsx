@@ -3,9 +3,9 @@ import type { PlanWorkType } from '../../../types/projects';
 import { DARK_THEME } from '../../../utils/constants';
 
 const WT_COLOR: Record<string, string> = {
-  analyst: '#00c9c8',
-  dev: '#378ADD',
-  qa: '#EF9F27',
+  analyst: 'var(--pj-stage-analyst, #00c9c8)',
+  dev: 'var(--pj-stage-dev, #378ADD)',
+  qa: 'var(--pj-stage-qa, #EF9F27)',
 };
 
 const RING_CIRC = 2 * Math.PI * 14;
@@ -19,12 +19,14 @@ interface Props {
   totalPlan: number | null;
   totalFact: number;
   totalPct: number | null;
+  /** rings — кольца (Aurora); bars — колонки «факт / план» с полосой (обложки, итоги — в паспорте). */
+  variant?: 'rings' | 'bars';
 }
 
 function pctColor(pct: number | null): string {
   if (pct === null) return DARK_THEME.textMuted;
-  if (pct > 110) return '#ff4d4f';
-  if (pct >= 70) return '#67d68d';
+  if (pct > 110) return 'var(--pj-over, #ff4d4f)';
+  if (pct >= 70) return 'var(--pj-ok, #67d68d)';
   return DARK_THEME.textPrimary;
 }
 
@@ -54,7 +56,8 @@ const Ring: React.FC<{ wt: PlanWorkType }> = ({ wt }) => {
           <circle cx="19" cy="19" r="14" fill="none" strokeWidth="4"
                   stroke="rgba(255,255,255,0.08)" />
           <circle cx="19" cy="19" r="14" fill="none" strokeWidth="4" strokeLinecap="round"
-                  stroke={over ? '#ff4d4f' : color}
+                  // Цвет — свойством стиля: атрибут SVG переменные CSS не понимает.
+                  style={{ stroke: over ? 'var(--pj-over, #ff4d4f)' : color }}
                   strokeDasharray={RING_CIRC.toFixed(2)}
                   strokeDashoffset={over ? 0 : offset.toFixed(2)}
                   transform="rotate(-90 19 19)" />
@@ -62,7 +65,7 @@ const Ring: React.FC<{ wt: PlanWorkType }> = ({ wt }) => {
         <div style={{
           position: 'absolute', inset: 0, display: 'flex',
           alignItems: 'center', justifyContent: 'center',
-          fontSize: 10, fontWeight: 600, color: over ? '#ff4d4f' : DARK_THEME.textPrimary,
+          fontSize: 10, fontWeight: 600, color: over ? 'var(--pj-over, #ff4d4f)' : DARK_THEME.textPrimary,
         }}>
           {wt.pct === null ? '—' : `${wt.pct}%`}
         </div>
@@ -82,9 +85,36 @@ const Ring: React.FC<{ wt: PlanWorkType }> = ({ wt }) => {
   );
 };
 
+/** Стадия колонкой: метка, «факт / план» крупно, полоса и процент. */
+const StageBar: React.FC<{ wt: PlanWorkType }> = ({ wt }) => {
+  const over = wt.pct !== null && wt.pct > 110;
+  const width = Math.max(0, Math.min(100, wt.pct ?? 0));
+  return (
+    <div className="pj-stage" data-stage={wt.code} data-over={over ? '' : undefined}>
+      <div className="pj-stage-label"><i aria-hidden="true" />{wt.label}</div>
+      <div className="pj-stage-hours">{Math.round(wt.fact_hours).toLocaleString('ru-RU')} / {Math.round(wt.plan_hours).toLocaleString('ru-RU')} ч</div>
+      <div className="pj-stage-bar">
+        <span className="pj-stage-track"><span style={{ width: `${width}%` }} /></span>
+        <b className="pj-stage-pct" data-level={wt.pct === null ? 'none' : over ? 'over' : wt.pct >= 70 ? 'ok' : 'low'}>
+          {wt.pct === null ? '—' : `${wt.pct}%`}
+        </b>
+      </div>
+    </div>
+  );
+};
+
 export const WorkTypeRings: React.FC<Props> = ({
-  countLabel, count, workTypes, externalHours, totalPlan, totalFact, totalPct,
-}) => (
+  countLabel, count, workTypes, externalHours, totalPlan, totalFact, totalPct, variant = 'rings',
+}) => variant === 'bars' ? (
+  <div className="pj-stages">
+    {workTypes.map((wt) => <StageBar key={wt.code} wt={wt} />)}
+    <div className="pj-stage" data-stage="external" title="Часы сотрудников не из команды — вне плана и факта">
+      <div className="pj-stage-label"><i aria-hidden="true" />Внешние</div>
+      <div className="pj-stage-hours">{Math.round(externalHours).toLocaleString('ru-RU')} ч</div>
+      <div className="pj-stage-note">без плана</div>
+    </div>
+  </div>
+) : (
   <div style={{ display: 'flex', alignItems: 'stretch', gap: 10, flexWrap: 'wrap' }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 20, paddingRight: 8, flex: '0 0 auto' }}>
       {countLabel && count !== undefined && (
@@ -117,8 +147,8 @@ export const WorkTypeRings: React.FC<Props> = ({
       title={externalHours > 0 ? 'Часы сотрудников не из команды — вне плана и факта' : undefined}
       style={{
         flex: '0 0 96px', padding: '8px 10px', borderRadius: 8,
-        background: 'rgba(0,0,0,0.22)',
-        border: '1px solid rgba(255,255,255,0.04)',
+        background: 'var(--pj-ext-bg, rgba(0,0,0,0.22))',
+        border: '1px solid var(--pj-chip-bg, rgba(255,255,255,0.04))',
         display: 'flex', flexDirection: 'column', justifyContent: 'center',
       }}
     >

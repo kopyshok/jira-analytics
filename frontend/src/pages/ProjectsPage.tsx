@@ -1,37 +1,14 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
 import { ProjectsList } from '../components/projects/ProjectsList';
 import { ProjectDetailPanel } from '../components/projects/ProjectDetailPanel';
 import { PortfolioView } from '../components/projects/PortfolioView';
-import type { ProjectListFiltersState } from '../types/projects';
-import { useRegisterHelp } from '../contexts/HelpContext';
-import projectsHelp from '../../../docs/help/projects.md?raw';
 import { DARK_THEME } from '../utils/constants';
+import { useSkin } from '../contexts/ThemeContext';
+import { useProjectsPage, type ProjectsPageModel } from '../hooks/useProjectsPage';
+import SwissProjectsLayout from '../skins/swiss/pages/ProjectsLayout';
 
-const CURRENT_YEAR = new Date().getFullYear();
-const CURRENT_QUARTER = (Math.floor(new Date().getMonth() / 3) + 1) as 1 | 2 | 3 | 4;
-
-export default function ProjectsPage() {
-  const navigate = useNavigate();
-  const { key } = useParams<{ key?: string }>();
-  useRegisterHelp('Проекты', projectsHelp);
-  const [filters, setFilters] = useState<ProjectListFiltersState>({
-    search: '',
-    statusCategory: '',
-    category: '',
-    year: CURRENT_YEAR,
-    quarter: CURRENT_QUARTER,
-  });
-
-  const handleSelect = (selectedKey: string) => {
-    // Повторный клик по выбранной карточке возвращает к сводке.
-    if (selectedKey === key) {
-      navigate('/projects');
-      return;
-    }
-    navigate(`/projects/${encodeURIComponent(selectedKey)}`);
-  };
-
+/** Раскладка Aurora: список проектов слева, справа сводка портфеля или карточка проекта. */
+function AuroraProjectsLayout({ vm }: { vm: ProjectsPageModel }) {
+  const { key, filters, setFilters, handleSelect, showPortfolio } = vm;
   return (
     <div
       className="projects-master-detail"
@@ -47,7 +24,7 @@ export default function ProjectsPage() {
         onSelect={handleSelect}
         filters={filters}
         onFiltersChange={setFilters}
-        onShowPortfolio={() => navigate('/projects')}
+        onShowPortfolio={showPortfolio}
       />
 
       {key ? (
@@ -61,4 +38,10 @@ export default function ProjectsPage() {
       )}
     </div>
   );
+}
+
+export default function ProjectsPage() {
+  const vm = useProjectsPage();
+  const skin = useSkin();
+  return skin === 'swiss' ? <SwissProjectsLayout vm={vm} /> : <AuroraProjectsLayout vm={vm} />;
 }

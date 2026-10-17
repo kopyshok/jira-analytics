@@ -30,9 +30,20 @@ interface Props {
   item: ProjectListItem;
   selected: boolean;
   onClick: () => void;
+  /** card — плиткой (Aurora); line — строкой списка с линией (обложки). */
+  variant?: 'card' | 'line';
 }
 
-export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) => {
+/** Число задач со склонением: «1 задача», «3 задачи», «5 задач». */
+function tasksLabel(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return `${n} задача`;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return `${n} задачи`;
+  return `${n} задач`;
+}
+
+export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick, variant = 'card' }) => {
   const statusColor = item.status_category
     ? (STATUS_CATEGORY_COLOR[item.status_category] ?? DARK_THEME.textMuted)
     : DARK_THEME.textMuted;
@@ -52,6 +63,49 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
       onClick();
     }
   };
+
+  if (variant === 'line') {
+    const rating = [item.rating_quality, item.rating_speed, item.rating_result].filter((v): v is number => v != null);
+    const avgExact = rating.length ? rating.reduce((a, b) => a + b, 0) / rating.length : null;
+    return (
+      <div
+        data-testid="project-card"
+        role="button"
+        tabIndex={0}
+        aria-pressed={selected}
+        onClick={onClick}
+        onKeyDown={handleKeyDown}
+        className={`pj-line${selected ? ' is-selected' : ''}`}
+        data-status={item.status_category ?? 'none'}
+      >
+        <span className="pj-line-mark" aria-hidden="true" />
+        <span className="pj-line-body">
+          <span className="pj-line-top">
+            <span>
+              <b>{item.key}</b>{' '}
+              {item.status_category && (
+                <span className="pj-line-status">
+                  {STATUS_CATEGORY_LABEL[item.status_category] ?? item.status_category}
+                </span>
+              )}
+            </span>
+            <b className="pj-line-hours">{Math.round(item.total_hours)} ч</b>
+          </span>
+          <span className="pj-line-title">{item.summary}</span>
+          <span className="pj-line-meta">
+            {formatDate(item.period_start)} – {formatDate(item.period_end)} · {tasksLabel(item.child_count)}
+            {' · '}{item.employee_count} участн. · {CATEGORY_LABEL[item.category] ?? item.category}
+          </span>
+          {avgRating != null && avgExact != null && (
+            <span className="pj-line-rating">
+              <StarRating value={avgRating} size={12} />
+              <span>{avgExact.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} из 5</span>
+            </span>
+          )}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -132,7 +186,7 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
                 fontSize: 11,
                 padding: '1px 8px',
                 borderRadius: 10,
-                background: 'rgba(126,148,184,0.12)',
+                background: 'var(--pj-cat-bg, rgba(126,148,184,0.12))',
                 color: DARK_THEME.textMuted,
               }}
             >

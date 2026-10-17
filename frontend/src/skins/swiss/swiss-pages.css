@@ -137,7 +137,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
 
   /* Переключатели режимов в паспорте — на всю ширину */
   & .sw-passport .ant-segmented.ant-segmented-block .ant-segmented-item-label {
-    padding: 4px 4px;
+    min-height: 28px;
+    line-height: 28px;
+    padding: 0 4px;
     font-size: 12px;
   }
   & .sw-checks {

@@ -3,22 +3,24 @@ import type { PortfolioSignal } from '../../../types/projects';
 import { DARK_THEME } from '../../../utils/constants';
 
 const DOT_COLOR: Record<string, string> = {
-  warn: '#faad14',
+  warn: 'var(--pj-warn, #faad14)',
   info: DARK_THEME.cyanPrimary,
 };
 
 export const PortfolioSignals: React.FC<{ signals: PortfolioSignal[] }> = ({ signals }) => {
   if (signals.length === 0) return null;
   return (
-    <div data-testid="portfolio-signals" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+    <div data-testid="portfolio-signals" className="pj-signals" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       {signals.map((s) => (
         <span
           key={s.kind}
+          className="pj-signal"
+          data-severity={s.severity}
           style={{
             display: 'flex', alignItems: 'center', gap: 7,
             fontSize: 12, color: DARK_THEME.textPrimary,
             padding: '5px 12px', borderRadius: 14,
-            background: 'rgba(255,255,255,0.04)',
+            background: 'var(--pj-chip-bg, rgba(255,255,255,0.04))',
             border: `1px solid ${DARK_THEME.border}`,
           }}
         >

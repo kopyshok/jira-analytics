@@ -5,6 +5,7 @@ import type { ProjectListFiltersState } from '../../types/projects';
 import { ProjectListCard } from './ProjectListCard';
 import { ProjectListFilters } from './ProjectListFilters';
 import { DARK_THEME } from '../../utils/constants';
+import { projectYearOptions } from './projectYears';
 
 interface Props {
   selectedKey: string | null;
@@ -12,12 +13,13 @@ interface Props {
   filters: ProjectListFiltersState;
   onFiltersChange: (next: ProjectListFiltersState) => void;
   onShowPortfolio: () => void;
+  /** panel — колонка с отбором и плитками (Aurora); column — блок «1.1 Проекты» строками, отбор в паспорте (обложки). */
+  variant?: 'panel' | 'column';
 }
 
-const CURRENT_YEAR = new Date().getFullYear();
 
 export const ProjectsList: React.FC<Props> = ({
-  selectedKey, onSelect, filters, onFiltersChange, onShowPortfolio,
+  selectedKey, onSelect, filters, onFiltersChange, onShowPortfolio, variant = 'panel',
 }) => {
   const patch = (part: Partial<ProjectListFiltersState>) =>
     onFiltersChange({ ...filters, ...part });
@@ -30,10 +32,44 @@ export const ProjectsList: React.FC<Props> = ({
     quarter: filters.quarter,
   });
 
-  const yearOptions = Array.from({ length: 5 }, (_, i) => {
-    const y = CURRENT_YEAR - 1 + i;
-    return { value: y, label: String(y) };
-  });
+  const yearOptions = projectYearOptions();
+
+  if (variant === 'column') {
+    return (
+      <section className="pj-column" data-testid="projects-list">
+        <div className="sw-block-head pj-column-head">
+          <div className="sw-block-title"><span className="sw-block-num">1.1</span><b className="is-lg">Проекты</b></div>
+          <span className="pj-column-count">{projects ? projects.length : '—'}</span>
+        </div>
+        <button
+          type="button"
+          aria-pressed={!selectedKey}
+          className={`pj-summary-btn${selectedKey ? '' : ' is-active'}`}
+          onClick={onShowPortfolio}
+        >
+          <span>Сводка</span>
+          <span className="pj-summary-hint">{selectedKey ? 'вернуться к портфелю' : 'проект не выбран'}</span>
+        </button>
+        <div className="pj-column-list">
+          {isLoading && Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} active paragraph={{ rows: 2 }} style={{ marginBottom: 8 }} />
+          ))}
+          {!isLoading && (!projects || projects.length === 0) && (
+            <Empty description="Нет проектов" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          )}
+          {!isLoading && projects?.map((item) => (
+            <ProjectListCard
+              key={item.key}
+              variant="line"
+              item={item}
+              selected={item.key === selectedKey}
+              onClick={() => onSelect(item.key)}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div

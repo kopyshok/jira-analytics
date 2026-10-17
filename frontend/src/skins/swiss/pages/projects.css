@@ -1,0 +1,205 @@
+/* ============================================================
+   «Проекты» (сводка портфеля) в обложке «Швейцарская» (макет G-projects).
+   ============================================================ */
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
+  /* Цвета портфеля — переменными (у Aurora прежние значения по умолчанию) */
+  --pj-stage-analyst: #111111;
+  --pj-stage-dev: #111111;
+  --pj-stage-qa: #111111;
+  --pj-stage-opo: #111111;
+  --pj-over: #D9391A;
+  --pj-ok: #1E7A3E;
+  --pj-warn: #9A6400;
+  --pj-bar-fg: #FFFFFF;
+  --pj-track: #E2E2E2;
+  --pj-lane: #FFFFFF;
+  --pj-quarter: #FFFFFF;
+  --pj-quarter-line: #BDBDBD;
+  --pj-grid: #E2E2E2;
+  --pj-chip-bg: #FFFFFF;
+  --pj-ext-bg: #FFFFFF;
+  --pj-cat-bg: #F4F4F4;
+  --pj-line: #E2E2E2;
+  --pj-star: #111111;
+  --pj-star-off: #FFFFFF;
+
+  /* ---------- Паспорт ---------- */
+  & .sw-pj-figures {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #111111;
+  }
+  & .sw-pj-fig-inline { display: flex; align-items: flex-end; gap: 16px; }
+  & .sw-pj-big { font-size: 56px; font-weight: 800; line-height: 0.9; letter-spacing: -0.02em; }
+  & .sw-pj-big.is-ok { color: #1E7A3E; }
+  & .sw-pj-big.is-over { color: var(--sw-accent-ink); }
+  & .sw-pj-mid { font-size: 40px; font-weight: 800; line-height: 0.95; letter-spacing: -0.02em; white-space: nowrap; }
+  & .sw-pj-cap { font-size: 11px; color: #5E5E5E; padding-bottom: 4px; }
+  & .sw-pj-fig-inline + div .sw-pj-cap { display: block; margin-top: 4px; padding: 0; }
+  & .pj-filters-stack { display: flex; flex-direction: column; gap: 12px; }
+  & .pj-filters-period { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 24px; align-items: end; }
+
+  /* ---------- Каркас данных ---------- */
+  & .sw-pj-data {
+    display: grid;
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: stretch;
+  }
+  & .pj-column { grid-column: span 3; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+  & .sw-pj-main { grid-column: span 6; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: auto; scrollbar-width: thin; }
+
+  /* 1.1 Проекты: строки списка */
+  & .pj-column-head { border-top: 2px solid #111111; padding-top: 8px; align-items: baseline; }
+  & .pj-column-count { font-size: 28px; font-weight: 800; line-height: 1; }
+  & .pj-summary-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #FFFFFF;
+    color: #111111;
+    border: 1px solid #111111;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+  }
+  & .pj-summary-btn.is-active { background: #111111; color: #FFFFFF; border-bottom: 3px solid var(--sw-accent); }
+  & .pj-summary-hint { font-size: 11px; font-weight: 400; }
+  & .pj-column-list { flex: 1; min-height: 0; overflow: auto; border-bottom: 1px solid #111111; scrollbar-width: thin; }
+  & .pj-line {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    padding: 10px 0;
+    border-bottom: 1px solid #E2E2E2;
+    color: #111111;
+    cursor: pointer;
+  }
+  & .pj-line:last-child { border-bottom: 0; }
+  & .pj-line:hover .pj-line-title { text-decoration: underline; }
+  & .pj-line.is-selected { background: #F4F4F4; box-shadow: inset 2px 0 0 #111111; }
+  & .pj-line-mark { width: 8px; height: 8px; margin-top: 5px; background: #6E6E6E; }
+  & .pj-line[data-status="indeterminate"] .pj-line-mark { background: #1F4FD1; }
+  & .pj-line[data-status="done"] .pj-line-mark { background: #1E7A3E; }
+  & .pj-line[data-status="new"] .pj-line-mark,
+  & .pj-line[data-status="none"] .pj-line-mark { width: 6px; height: 6px; background: none; border: 1px solid #6E6E6E; }
+  & .pj-line-body { display: block; min-width: 0; }
+  & .pj-line-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  & .pj-line-status { font-size: 11px; font-weight: 500; color: #5E5E5E; }
+  & .pj-line[data-status="indeterminate"] .pj-line-status { color: #1F4FD1; }
+  & .pj-line[data-status="done"] .pj-line-status { color: #1E7A3E; }
+  & .pj-line-hours { font-size: 16px; white-space: nowrap; }
+  & .pj-line-title { display: block; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .pj-line-meta { display: block; font-size: 11px; color: #5E5E5E; }
+  & .pj-line-rating { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; font-weight: 500; }
+  & .star-rating-star:not([data-on]) path { stroke: #111111 !important; }
+
+  /* ---------- Сводка портфеля ---------- */
+  & .sw-pj-portfolio { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+  & .sw-pj-summary { flex: none; gap: 10px; }
+  & .pj-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
+  & .pj-stage-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  & .pj-stage-label i { width: 8px; height: 8px; display: inline-block; background: #111111; box-sizing: border-box; }
+  & .pj-stage[data-stage="analyst"] .pj-stage-label i { background: #0E7C86; }
+  & .pj-stage[data-stage="dev"] .pj-stage-label i { background: #1F4FD1; }
+  & .pj-stage[data-stage="qa"] .pj-stage-label i { background: #C75B00; }
+  & .pj-stage[data-stage="external"] .pj-stage-label i { background: none; border: 1px solid #111111; }
+  & .pj-stage-hours { font-size: 22px; font-weight: 800; line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; }
+  & .pj-stage-bar { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  & .pj-stage-track { display: block; flex: 1; height: 4px; background: #E2E2E2; }
+  & .pj-stage-track > span { display: block; height: 4px; background: #111111; }
+  & .pj-stage[data-over] .pj-stage-track > span { background: var(--sw-accent); }
+  & .pj-stage-pct { font-size: 12px; }
+  & .pj-stage-pct[data-level="ok"] { color: #1E7A3E; }
+  & .pj-stage-pct[data-level="low"] { color: #9A6400; }
+  & .pj-stage-pct[data-level="over"] { color: var(--sw-accent-ink); }
+  & .pj-stage-note { font-size: 11px; color: #5E5E5E; margin-top: 4px; }
+
+  & .sw-pj-signals {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 24px;
+    padding-top: 8px;
+    border-top: 1px solid #E2E2E2;
+  }
+  & .sw-pj-signals-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+  & .pj-signals { gap: 4px 24px !important; }
+  & .pj-signal {
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    color: #111111 !important;
+    font-size: 12px !important;
+  }
+  & .pj-signal > span:first-child {
+    width: 14px !important;
+    height: 14px !important;
+    border-radius: 0 !important;
+    background: center / 14px 14px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%239A6400' stroke-width='1.5'%3E%3Cpath d='M8 2l6.25 11H1.75z'/%3E%3Cpath d='M8 6.5v3.2M8 11.6v.1'/%3E%3C/svg%3E") !important;
+  }
+  & .pj-signal[data-severity="info"] > span:first-child {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23111111' stroke-width='1.5'%3E%3Ccircle cx='8' cy='8' r='6.25'/%3E%3Cpath d='M8 7.2v4M8 4.9v.1'/%3E%3C/svg%3E") !important;
+  }
+
+  /* 1.3 Проекты портфеля и 1.4 Таймлайн */
+  & .sw-pj-table { flex: none; }
+  & .sw-pj-table .ant-table-thead > tr > th,
+  & .sw-pj-table .ant-table-tbody > tr > td,
+  & .sw-pj-table .ant-table-summary td { padding: 6px 8px !important; font-size: 12px; }
+  & .sw-pj-table .ant-table-cell .ant-tag {
+    margin: 0;
+    padding: 0 4px;
+    border: 1px solid #111111 !important;
+    background: #FFFFFF !important;
+    color: #111111 !important;
+    font-size: 10px;
+    line-height: 14px;
+  }
+  & .sw-pj-table .ant-table-summary td { border-top: 1px solid #111111 !important; font-weight: 700; }
+  & .sw-pj-timeline {
+    flex: 1;
+    min-height: 120px;
+    /* в таймлайне фазы — цветом стадии, в таблице — чёрной полосой */
+    --pj-stage-analyst: #0E7C86;
+    --pj-stage-dev: #1F4FD1;
+    --pj-stage-qa: #C75B00;
+    --pj-stage-opo: #7A3E9A;
+  }
+  & .sw-pj-table .ant-table table { width: 100% !important; min-width: 0 !important; table-layout: fixed !important; }
+  & .sw-pj-table .ant-table colgroup col:nth-child(1) { width: 28px !important; }
+  & .sw-pj-table .ant-table colgroup col:nth-child(2) { width: auto !important; }
+  & .sw-pj-table .ant-table colgroup col:nth-child(3) { width: 92px !important; }
+  & .sw-pj-table .ant-table colgroup col:nth-child(4) { width: 84px !important; }
+  & .sw-pj-table .ant-table colgroup col:nth-child(5),
+  & .sw-pj-table .ant-table colgroup col:nth-child(6),
+  & .sw-pj-table .ant-table colgroup col:nth-child(7) { width: 112px !important; }
+  & .sw-pj-table .ant-table colgroup col:nth-child(8) { width: 78px !important; }
+  & .sw-pj-table .ant-table-thead > tr > th { white-space: nowrap; font-size: 11px; }
+  & .sw-pj-table .ant-table-column-sorters { gap: 2px; }
+  & .sw-pj-table .ant-table-cell { overflow: hidden; }
+}
+
+@media (max-width: 1500px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pj-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 12px; }
+}
+@media (max-width: 1100px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pj-column,
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-pj-main { grid-column: 1 / -1; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pj-column-list { max-height: 50vh; }
+}

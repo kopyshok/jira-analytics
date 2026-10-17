@@ -6,11 +6,11 @@ import { statusTagColor } from '../../../utils/status';
 import { DARK_THEME } from '../../../utils/constants';
 
 const WT_COLOR: Record<string, string> = {
-  analyst: '#00c9c8',
-  dev: '#378ADD',
-  qa: '#EF9F27',
+  analyst: 'var(--pj-stage-analyst, #00c9c8)',
+  dev: 'var(--pj-stage-dev, #378ADD)',
+  qa: 'var(--pj-stage-qa, #EF9F27)',
 };
-const OVER = '#ff4d4f';
+const OVER = 'var(--pj-over, #ff4d4f)';
 /** Выше этого процента загрузка считается перегрузом — та же граница, что в кольцах и Capacity. */
 const OVERLOAD_PCT = 110;
 
@@ -23,7 +23,7 @@ const STAGES: Array<{ code: string; label: string }> = [
 function pctColor(pct: number | null): string {
   if (pct === null) return DARK_THEME.textMuted;
   if (pct > OVERLOAD_PCT) return OVER;
-  if (pct >= 70) return '#67d68d';
+  if (pct >= 70) return 'var(--pj-ok, #67d68d)';
   return DARK_THEME.textPrimary;
 }
 
@@ -61,7 +61,7 @@ const StageCell: React.FC<{ wt: PlanWorkType | undefined }> = ({ wt }) => {
           {wt.pct === null ? '—' : `${wt.pct}%`}
         </span>
       </div>
-      <div style={{ width: '100%', minWidth: 64, height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.08)' }}>
+      <div style={{ width: '100%', minWidth: 64, height: 5, borderRadius: 3, background: 'var(--pj-track, rgba(255,255,255,0.08))' }}>
         <div style={{ width: `${width}%`, height: '100%', borderRadius: 3, background: color }} />
       </div>
     </div>
