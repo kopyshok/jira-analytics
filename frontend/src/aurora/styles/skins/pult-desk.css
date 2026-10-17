@@ -73,7 +73,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .td-note { margin: 0; font-size: 11px; color: var(--text-muted); }
   & .pc-count.is-small { font-size: 12px; padding: 1px 7px; }
 
-  /* М1 · Светофор — ряд плиток, лишние уходят в прокрутку вбок */
+  /* Светофор — ряд плиток, лишние уходят в прокрутку вбок */
   & .td-lights { flex: none; }
   & .td-cards { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
   & .td-card {

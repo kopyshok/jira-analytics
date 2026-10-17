@@ -15,7 +15,7 @@ const SEV_LABEL: Record<ConflictOut['severity'], string> = {
 };
 
 /**
- * М1 · Конфликты: счётчики, группировка и лента карточек; «Подробности» —
+ * Конфликты: счётчики, группировка и лента карточек; «Подробности» —
  * полный разбор (тот же, что в Aurora: расчёт перегрузки, смена статуса).
  */
 export default function PultConflicts({ conflicts, planId, onSelectAssignment }: {
@@ -30,7 +30,6 @@ export default function PultConflicts({ conflicts, planId, onSelectAssignment }:
 
   return (
     <PModule
-      n={1}
       title="Конфликты"
       className="rp-conflicts"
       ariaLabel="Конфликты"

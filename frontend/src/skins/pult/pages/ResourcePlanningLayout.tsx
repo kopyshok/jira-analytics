@@ -29,7 +29,7 @@ const LEFT_COL = 380;
 
 /**
  * «Ресурсное планирование» в обложке «Пульт»: панель управления экраном,
- * модули М1 конфликты · М2 Гант · М3 назначение · М4 загрузка · М5 нормированные работы.
+ * модули: конфликты · Гант · назначение · загрузка · нормированные работы.
  * Данные и обработчики — общий хук страницы, раскладка только рисует.
  */
 export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlanningPageState }) {
@@ -243,7 +243,7 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
       )}
 
       <div className="rp-mid">
-        <PModule n={2} title="Диаграмма Ганта" className="rp-gantt-module" ariaLabel="Диаграмма Ганта">
+        <PModule title="Диаграмма Ганта" className="rp-gantt-module" ariaLabel="Диаграмма Ганта">
           {ganttBody}
           {gantt && (
             <div className="pm-legend">
@@ -260,7 +260,6 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
         </PModule>
 
         <PModule
-          n={3}
           title="Назначение"
           as="aside"
           className="rp-assign-module"
@@ -298,7 +297,7 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
             <section className="pm rp-heat-module" aria-label="Загрузка сотрудников по дням" data-tour="rp-load">
               <PlanLoadHeatmap
                 docked
-                title={<span className="pm-cap"><b>М4</b> · Загрузка сотрудников по дням</span>}
+                title={<span className="pm-cap">Загрузка сотрудников по дням</span>}
                 planId={gantt.plan.id}
                 rows={gantt.employee_load}
                 subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
@@ -311,7 +310,7 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
             </section>
           )}
           {gantt.reserve && gantt.plan.team && (
-            <PModule n={5} title="Нормированные работы — запас квартала" className="rp-reserve-module" ariaLabel="Нормированные работы">
+            <PModule title="Нормированные работы — запас квартала" className="rp-reserve-module" ariaLabel="Нормированные работы">
               <div className="pm-screen rp-reserve-screen">
                 <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} docked />
               </div>

@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from 'react';
  * Кирпичики экранов обложки «Пульт».
  *
  * Экран = «панель управления» сверху (заголовок + органы экрана с подписями
- * над ними) и тело — сетка модулей «М1 · …», «М2 · …». Экран занимает всю
+ * над ними) и тело — сетка модулей с подписью в углу. Экран занимает всю
  * рабочую область без прокрутки страницы: длинное прокручивается внутри модуля.
  */
 
@@ -75,9 +75,8 @@ export function PcLamp({ color, children, dark, title }: {
   );
 }
 
-/** Модуль стойки с подписью «М{n} · …» в левом верхнем углу. */
-export function PModule({ n, title, extra, children, className, style, as = 'section', ariaLabel }: {
-  n: number | string;
+/** Модуль стойки с подписью в левом верхнем углу. */
+export function PModule({ title, extra, children, className, style, as = 'section', ariaLabel }: {
   title: ReactNode;
   extra?: ReactNode;
   children?: ReactNode;
@@ -90,7 +89,7 @@ export function PModule({ n, title, extra, children, className, style, as = 'sec
   return (
     <Tag className={`pm${className ? ` ${className}` : ''}`} style={style} aria-label={ariaLabel}>
       <div className="pm-head">
-        <span className="pm-cap"><b>М{n}</b> · {title}</span>
+        <span className="pm-cap">{title}</span>
         {extra}
       </div>
       {children}

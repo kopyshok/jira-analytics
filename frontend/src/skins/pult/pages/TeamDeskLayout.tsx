@@ -22,9 +22,8 @@ const LAYOUTS: { key: DeskLayout; label: string }[] = [
   { key: 'grouped', label: 'Проблемы вперёд' },
 ];
 
-/** М · Резиновые задачи: по каждой — дневная норма (правится) и что из неё уходит в очередь. */
-function PultRubber({ n, issues, rubberDays, jiraBaseUrl, onDailyRate }: {
-  n: number;
+/** Резиновые задачи: по каждой — дневная норма (правится) и что из неё уходит в очередь. */
+function PultRubber({ issues, rubberDays, jiraBaseUrl, onDailyRate }: {
   issues: DeskIssue[];
   rubberDays: number;
   jiraBaseUrl: string;
@@ -33,7 +32,6 @@ function PultRubber({ n, issues, rubberDays, jiraBaseUrl, onDailyRate }: {
   const rows = issues.filter((issue) => issue.daily_rate);
   return (
     <PModule
-      n={n}
       title="Резиновые задачи"
       className="td-rubber"
       extra={<span className="pm-push pc-count is-small">{rows.length}</span>}
@@ -121,11 +119,9 @@ export default function PultTeamDeskLayout({ desk }: { desk: TeamDeskPageState }
 
   const loading = overview.isLoading || filterPrefs.isLoading;
   const flagged = data ? FLAG_ORDER.filter((f) => data.flag_counts[f]) : [];
-  let mod = 0;
-  const next = () => ++mod;
 
   const top = data && layout === 'cards' && (
-    <PModule n={next()} title="Светофор" className="td-lights">
+    <PModule title="Светофор" className="td-lights">
       <div className="td-cards">
         {data.developers.map((dev) => {
           const isSelected = selectedDev === dev.developer_id;
@@ -153,7 +149,7 @@ export default function PultTeamDeskLayout({ desk }: { desk: TeamDeskPageState }
   );
 
   const summary = data && layout === 'table' && (
-    <PModule n={next()} title="Сводка по разработчикам" className="td-summary">
+    <PModule title="Сводка по разработчикам" className="td-summary">
       <div className="pm-screen td-summary-screen">
         <DeveloperTable
           developers={data.developers}
@@ -172,11 +168,10 @@ export default function PultTeamDeskLayout({ desk }: { desk: TeamDeskPageState }
     </PModule>
   );
 
-  const filtersNo = data ? next() : 0;
   const filters = data && (
     <section className="pm td-filters-module" data-tour="desk-flags" aria-label="Отборы и статусы">
       <div className="td-filters-line">
-        <span className="pm-cap td-filters-cap"><b>М{filtersNo}</b> · Отборы</span>
+        <span className="pm-cap td-filters-cap">Отборы</span>
         <div className="td-flagbar">
           <span className="pc-cap">Требует внимания</span>
           {flagged.length === 0 && <span className="td-note">Замечаний нет</span>}
@@ -220,13 +215,12 @@ export default function PultTeamDeskLayout({ desk }: { desk: TeamDeskPageState }
     </section>
   );
 
-  const tasksNo = data ? next() : 0;
   const tasks = data && (
     <div className="td-tasks" data-tour="desk-issues">
       {layout === 'grouped' ? (
         <GroupedIssues
           docked
-          title={<span className="pm-cap"><b>М{tasksNo}</b> · Задачи по разработчикам</span>}
+          title={<span className="pm-cap">Задачи по разработчикам</span>}
           developers={data.developers}
           issues={data.issues}
           overrunPct={overrunPct}
@@ -245,7 +239,7 @@ export default function PultTeamDeskLayout({ desk }: { desk: TeamDeskPageState }
       ) : (
         <GroupedIssues
           docked
-          title={<span className="pm-cap"><b>М{tasksNo}</b> · Задачи</span>}
+          title={<span className="pm-cap">Задачи</span>}
           developers={data.developers}
           issues={data.issues}
           overrunPct={overrunPct}
@@ -291,14 +285,12 @@ export default function PultTeamDeskLayout({ desk }: { desk: TeamDeskPageState }
             </div>
             <div className="td-side">
               <PultRubber
-                n={next()}
                 issues={data.issues}
                 rubberDays={rubberDays}
                 jiraBaseUrl={jiraBaseUrl}
                 onDailyRate={setDailyRate}
               />
               <PModule
-                n={next()}
                 title="Задач в работе одновременно"
                 className="td-wip"
                 extra={<span className="pm-push num td-note">лимит {wipLimit}</span>}
@@ -309,7 +301,7 @@ export default function PultTeamDeskLayout({ desk }: { desk: TeamDeskPageState }
                   limit={wipLimit}
                 />
               </PModule>
-              <PModule n={next()} title="Отсутствия" className="td-absence">
+              <PModule title="Отсутствия" className="td-absence">
                 <div className="td-absence-body">
                   <AbsenceStrip employeeIds={data.employee_ids ?? {}} />
                 </div>

@@ -66,8 +66,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     line-height: 12px;
     white-space: nowrap;
   }
-  & .pc-cap b,
-  & .pm-cap b { color: var(--text); font-weight: 700; }
+  & .pc-cap b { color: var(--text); font-weight: 700; }
   & .pc-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   & .pc-lamp {
     height: 30px;

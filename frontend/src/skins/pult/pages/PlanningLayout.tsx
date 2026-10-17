@@ -28,8 +28,8 @@ import { PcField, PcRow, PcTitle, PModule, PultScreen } from '../ui';
 const nf = (v: number) => Math.round(v).toLocaleString('ru-RU');
 
 /**
- * «Сценарии» в обложке «Пульт» (D-scenarios): панель управления, М1 сценарий,
- * М2 сводка ресурса, М3 элементы бэклога, справа ресурс команды / по ролям /
+ * «Сценарии» в обложке «Пульт» (D-scenarios): панель управления, сценарий,
+ * сводка ресурса, элементы бэклога, справа ресурс команды / по ролям /
  * по сотрудникам / внешний QA. Данные и обработчики — общий хук страницы.
  */
 export default function PultPlanningLayout({ p }: { p: PlanningPageState }) {
@@ -184,9 +184,8 @@ export default function PultPlanningLayout({ p }: { p: PlanningPageState }) {
 
   return (
     <PultScreen panel={panel} bodyClassName="sc-pult">
-      {/* М1 · Сценарий: имя, статус, действия */}
+      {/* Сценарий: имя, статус, действия */}
       <PModule
-        n={1}
         title="Сценарий"
         className="sc-head"
         extra={
@@ -261,9 +260,9 @@ export default function PultPlanningLayout({ p }: { p: PlanningPageState }) {
         {isApproved && <CapacityDriftIndicator scenarioId={scenarioId} />}
       </PModule>
 
-      {/* М2 · Сводка ресурса — та же таблица, что в Aurora (сворачивается) */}
+      {/* Сводка ресурса — та же таблица, что в Aurora (сворачивается) */}
       <section className="pm sc-resource" aria-label="Сводка ресурса">
-        <span className="pm-cap sc-resource-cap"><b>М2</b> · Сводка ресурса</span>
+        <span className="pm-cap sc-resource-cap">Сводка ресурса</span>
         <ScenarioResourceSummary
           scenarioId={scenarioId}
           enabled={!!scenario.team}
@@ -323,7 +322,6 @@ export default function PultPlanningLayout({ p }: { p: PlanningPageState }) {
       <div className="sc-main">
         {activeTab === 'distribution' ? (
           <PModule
-            n={3}
             title="Элементы бэклога"
             className="sc-backlog"
             extra={
@@ -374,7 +372,7 @@ export default function PultPlanningLayout({ p }: { p: PlanningPageState }) {
             </div>
           </PModule>
         ) : (
-          <PModule n={3} title="Правила обязательных работ" className="sc-rules">
+          <PModule title="Правила обязательных работ" className="sc-rules">
             <div className="pm-screen sc-rules-screen" data-tour="planning-rules-card">
               <ScenarioRulesEditor scenarioId={scenarioId} />
             </div>
@@ -389,7 +387,7 @@ export default function PultPlanningLayout({ p }: { p: PlanningPageState }) {
             scenarioId={scenarioId}
             summary={resourceSummary}
           />
-          <PModule n={7} title="Внешний QA" className="sc-qa">
+          <PModule title="Внешний QA" className="sc-qa">
             <ExternalQaInput scenarioId={scenarioId} value={scenario.external_qa_hours} disabled={!isDraft} />
           </PModule>
         </div>

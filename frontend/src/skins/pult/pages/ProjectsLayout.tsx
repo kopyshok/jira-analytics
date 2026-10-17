@@ -63,7 +63,7 @@ function PultProjectCard({ item, selected, onClick }: { item: ProjectListItem; s
   );
 }
 
-/** М2–М5: сводка портфеля, сигналы, таблица и таймлайн — те же данные, что у сводки Aurora. */
+/** Сводка портфеля, сигналы, таблица и таймлайн — те же данные, что у сводки Aurora. */
 function PortfolioModules({ filters, onOpen }: { filters: ProjectListFiltersState; onOpen: (key: string) => void }) {
   const { data, isLoading } = usePortfolio(projectQueryParams(filters));
   if (isLoading || !data) return <div className="pm pp-right-empty"><Spin /></div>;
@@ -79,7 +79,7 @@ function PortfolioModules({ filters, onOpen }: { filters: ProjectListFiltersStat
   return (
     <div className="pp-right">
       <div className="pp-row">
-        <PModule n={2} title="Сводка портфеля" className="pp-summary">
+        <PModule title="Сводка портфеля" className="pp-summary">
           <div className="pp-screens">
             <div className="pp-screen">
               <span className="pc-cap">Проектов</span>
@@ -126,7 +126,7 @@ function PortfolioModules({ filters, onOpen }: { filters: ProjectListFiltersStat
             </div>
           </div>
         </PModule>
-        <PModule n={3} title="Сигналы" className="pp-signals">
+        <PModule title="Сигналы" className="pp-signals">
           {data.signals.length === 0 && <div className="pm-empty">Сигналов нет</div>}
           <div className="pp-signal-list" data-testid="portfolio-signals">
             {data.signals.map((s) => (
@@ -144,7 +144,7 @@ function PortfolioModules({ filters, onOpen }: { filters: ProjectListFiltersStat
         </PModule>
       </div>
 
-      <PModule n={4} title="Проекты портфеля" className="pp-table">
+      <PModule title="Проекты портфеля" className="pp-table">
         <div className="pm-screen pp-table-screen">
           <PortfolioProjectsTable
             projects={data.projects}
@@ -162,7 +162,7 @@ function PortfolioModules({ filters, onOpen }: { filters: ProjectListFiltersStat
         </div>
       </PModule>
 
-      <PModule n={5} title="Таймлайн портфеля" className="pp-timeline">
+      <PModule title="Таймлайн портфеля" className="pp-timeline">
         <div className="pm-screen pp-timeline-screen">
           <PhaseTimeline timeline={data.timeline} mode="by-project" onRowClick={onOpen} />
         </div>
@@ -172,7 +172,7 @@ function PortfolioModules({ filters, onOpen }: { filters: ProjectListFiltersStat
 }
 
 /**
- * «Проекты» в обложке «Пульт» (D-projects): панель с отборами, М1 список проектов,
+ * «Проекты» в обложке «Пульт» (D-projects): панель с отборами, список проектов,
  * справа — сводка портфеля (без выбранного проекта) или карточка проекта.
  */
 export default function PultProjectsLayout({ page }: { page: ProjectsPageState }) {
@@ -223,7 +223,6 @@ export default function PultProjectsLayout({ page }: { page: ProjectsPageState }
   return (
     <PultScreen panel={panel} bodyClassName="pp-pult">
       <PModule
-        n={1}
         title="Проекты"
         className="pp-list"
         extra={<span className="pm-push pc-count is-small">{projects?.length ?? '—'}</span>}

@@ -12,7 +12,7 @@ const fmt1 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 1
 
 /**
  * «Иерархический отчёт по часам» в обложке «Пульт» (D-analytics):
- * М1 сводка · М2 переток · М3 команды и отборы · М4 дерево · М5 задача.
+ * Модули: сводка · переток · команды и отборы · дерево · задача.
  * Данные и действия — общий хук страницы.
  */
 export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState }) {
@@ -103,7 +103,7 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
       {!isLoading && data && totals && data.teams.length > 0 && (
         <>
           <div className="an-top">
-            <PModule n={1} title="Сводка за период" className="an-summary">
+            <PModule title="Сводка за период" className="an-summary">
               <div className="an-screens" data-tour="analytics-kpi">
                 <div className="an-screen">
                   <span className="pc-cap">Σ часов факт</span>
@@ -138,7 +138,7 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
               </div>
             </PModule>
             {flows.length > 0 && (
-              <PModule n={2} title="Переток внутри команды" className="an-flow">
+              <PModule title="Переток внутри команды" className="an-flow">
                 <div className="an-flow-list" title="Часы, которыми группы обменялись внутри команды. Помощь извне считается отдельно.">
                   {flows.map((r) => (
                     <div key={r.subgroup_id} className="an-flow-row">
@@ -152,7 +152,7 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
             )}
           </div>
 
-          <PModule n={flows.length > 0 ? 3 : 2} title="Команды" className="an-teams">
+          <PModule title="Команды" className="an-teams">
             <div className="an-teams-line">
               <div className="an-team-keys" role="group" aria-label="Команды">
                 <button
@@ -187,7 +187,6 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
 
           <div className="an-main">
             <PModule
-              n={flows.length > 0 ? 4 : 3}
               title="Дерево: команда → группа → роль → сотрудник → вид работ → категория → задача"
               className="an-tree"
             >
@@ -203,7 +202,7 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
                 />
               </div>
             </PModule>
-            <PModule n={flows.length > 0 ? 5 : 4} title="Задача" as="aside" className="an-issue">
+            <PModule title="Задача" as="aside" className="an-issue">
               {issue ? (
                 <AnalyticsIssueDrawer
                   docked

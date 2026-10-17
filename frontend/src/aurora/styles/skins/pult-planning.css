@@ -9,7 +9,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .sc-empty { flex: 1; align-items: center; justify-content: center; }
   & .sc-team-pick { display: flex; flex-direction: column; gap: 16px; width: min(560px, 100%); }
 
-  /* М1 · сценарий — одна строка */
+  /* сценарий — одна строка */
   & .sc-head { flex: none; padding: 6px 10px; }
   & .sc-head .pm-head { gap: 14px; }
   & .sc-name .ant-typography { margin: 0 !important; font-size: 16px; font-weight: 600; color: var(--text); }
@@ -32,7 +32,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .sc-actions .ant-btn.is-key { background: var(--p-key) !important; border-color: var(--p-key) !important; color: #FFFFFF !important; width: 32px; }
   & .sc-lift { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 
-  /* М2 · сводка ресурса */
+  /* сводка ресурса */
   & .sc-resource { flex: none; padding: 5px 10px; gap: 4px; max-height: 38vh; overflow: auto; }
   & .sc-resource-cap { display: block; }
   & .sc-resource > div { margin: 0 !important; }

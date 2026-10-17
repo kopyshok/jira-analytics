@@ -131,7 +131,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     background: var(--p-accent);
   }
 
-  /* ---------- М1 · конфликты ---------- */
+  /* ---------- конфликты ---------- */
   & .rp-conflicts { flex: none; }
   & .rp-conf-counts { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
   & .rp-conf-none { font-size: 12px; color: var(--text-muted); }
@@ -173,7 +173,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .rp-conf-details { max-height: 260px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
   & .rp-conf-group { display: flex; flex-direction: column; gap: 6px; }
 
-  /* ---------- М2 · диаграмма Ганта ---------- */
+  /* ---------- диаграмма Ганта ---------- */
   & .rp-gantt-screen { position: relative; }
   & .rp-gantt-screen .rp-sticky-header-track,
   & .rp-gantt-screen [data-tour="rp-gantt"] { border: 0 !important; border-radius: 0 !important; }
@@ -291,7 +291,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .rp-gantt-module .pm-legend .lg-ooq { background: repeating-linear-gradient(45deg, #6F6D67 0 1.4px, transparent 1.4px 4px); }
   & .rp-gantt-module .pm-legend .lg-absence { background: repeating-linear-gradient(45deg, #1C1C1A 0 1.4px, transparent 1.4px 4px); }
 
-  /* ---------- М3 · назначение (встроенная панель) ---------- */
+  /* ---------- назначение (встроенная панель) ---------- */
   & .rp-assign-docked { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
   & .rp-assign-head { font-size: 13px; font-weight: 600; }
   & .rp-assign-head .ant-space { flex-wrap: wrap; }
@@ -314,7 +314,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .rp-assign-docked .ant-descriptions-item-content .ant-picker { width: 100% !important; font-family: var(--font-body); }
   & .rp-assign-docked .ant-btn-block { justify-content: flex-start; }
 
-  /* ---------- М4 · загрузка по дням ---------- */
+  /* ---------- загрузка по дням ---------- */
   & .rp-heatmap.is-docked { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 5px; }
   & .rp-heatmap.is-docked .rp-heat-head { margin-bottom: 0 !important; gap: 12px; min-height: 18px; }
   & .rp-heatmap.is-docked .rp-heat-head .ant-btn { height: 24px; font-size: 12px; }
@@ -341,7 +341,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .rp-heat-legend > span:first-child { font-family: var(--font-mono); font-weight: 400 !important; letter-spacing: 0.12em !important; font-size: 9px !important; }
   & .rp-heat-legend > span > span { border-radius: 0 !important; width: 12px !important; height: 10px !important; }
 
-  /* ---------- М5 · нормированные работы ---------- */
+  /* ---------- нормированные работы ---------- */
   & .rp-reserve-screen { padding: 0; }
   & .rp-reserve.is-docked { font-size: 12px; }
   & .rp-reserve.is-docked table { font-size: 12px; }
