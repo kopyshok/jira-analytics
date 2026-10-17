@@ -5,12 +5,13 @@ import type { PlanChild, PlanWorkType, PortfolioProject, PlanTimeline } from '..
 import { statusTagColor } from '../../../utils/status';
 import { DARK_THEME } from '../../../utils/constants';
 
+// Цвета — через CSS-переменные скина; без скина берётся прежнее значение.
 const WT_COLOR: Record<string, string> = {
-  analyst: '#00c9c8',
-  dev: '#378ADD',
-  qa: '#EF9F27',
+  analyst: 'var(--pf-wt-analyst, #00c9c8)',
+  dev: 'var(--pf-wt-dev, #378ADD)',
+  qa: 'var(--pf-wt-qa, #EF9F27)',
 };
-const OVER = '#ff4d4f';
+const OVER = 'var(--pf-over, #ff4d4f)';
 /** Выше этого процента загрузка считается перегрузом — та же граница, что в кольцах и Capacity. */
 const OVERLOAD_PCT = 110;
 
@@ -23,8 +24,8 @@ const STAGES: Array<{ code: string; label: string }> = [
 function pctColor(pct: number | null): string {
   if (pct === null) return DARK_THEME.textMuted;
   if (pct > OVERLOAD_PCT) return OVER;
-  if (pct >= 70) return '#67d68d';
-  return DARK_THEME.textPrimary;
+  if (pct >= 70) return 'var(--pf-pct-ok, #67d68d)';
+  return `var(--pf-pct-low, ${DARK_THEME.textPrimary})`;
 }
 
 /** '2026-07-01' → '01.07'. Пустая строка, если даты нет. */
@@ -57,11 +58,11 @@ const StageCell: React.FC<{ wt: PlanWorkType | undefined }> = ({ wt }) => {
         <span style={{ color: DARK_THEME.textMuted }}>
           {Math.round(wt.fact_hours)} / {Math.round(wt.plan_hours)} ч
         </span>
-        <span style={{ color, fontWeight: 600, marginLeft: 8 }}>
+        <span style={{ color: over ? color : `var(--pf-wt-text, ${color})`, fontWeight: 600, marginLeft: 8 }}>
           {wt.pct === null ? '—' : `${wt.pct}%`}
         </span>
       </div>
-      <div style={{ width: '100%', minWidth: 64, height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.08)' }}>
+      <div style={{ width: '100%', minWidth: 64, height: 5, borderRadius: 3, background: 'var(--pf-track, rgba(255,255,255,0.08))' }}>
         <div style={{ width: `${width}%`, height: '100%', borderRadius: 3, background: color }} />
       </div>
     </div>
@@ -124,9 +125,11 @@ interface Props {
   onRowClick: (key: string) => void;
   /** Высота области строк; всё, что выше — прокручивается внутри таблицы. */
   maxHeight?: number | string;
+  /** Ширина колонки «Проект»: задана — остальные колонки помещаются без прокрутки вбок. */
+  titleWidth?: number;
 }
 
-export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, totals, onRowClick, maxHeight }) => {
+export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, totals, onRowClick, maxHeight, titleWidth }) => {
   const dates = React.useMemo(() => datesByKey(timeline), [timeline]);
   const hasExternal = projects.some((p) => p.external_hours > 0) || totals.externalHours > 0;
 
@@ -145,6 +148,7 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
       dataIndex: 'title',
       key: 'title',
       ellipsis: true,
+      width: titleWidth,
       sorter: (a, b) => (a.title ?? '').localeCompare(b.title ?? ''),
       render: (_: unknown, p: PortfolioProject) => {
         const d = dates[p.key];
@@ -158,7 +162,7 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 3 }}>
               {p.priority !== null && (
-                <Tag style={{ margin: 0, fontSize: 11, lineHeight: '16px' }}>P{p.priority}</Tag>
+                <Tag className="pf-prio" data-prio={p.priority} style={{ margin: 0, fontSize: 11, lineHeight: '16px' }}>P{p.priority}</Tag>
               )}
               <span style={{ fontSize: 11, color: DARK_THEME.cyanPrimary }}>{p.key}</span>
               {d && (
@@ -234,7 +238,8 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
       pagination={false}
       // Своя вертикальная прокрутка: шапка и итоги остаются на месте, а список
       // не растягивается на всю длину при нескольких выбранных командах.
-      scroll={{ x: 'max-content', y: maxHeight }}
+      // Ширина «Проекта» задана — таблица укладывается в блок без прокрутки вбок.
+      scroll={{ x: titleWidth ? undefined : 'max-content', y: maxHeight }}
       expandable={{
         // Иначе AntD принимает поле children за вложенные строки-дерево и
         // рендерит подзадачи как обычные строки таблицы — без плана и стадий.

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Skeleton, Empty, Select, Tag, Button } from 'antd';
+import { Skeleton, Empty, Select, Tag, Button, Segmented } from 'antd';
+import { LayoutGrid } from 'lucide-react';
 import { useProjectsList } from '../../hooks/useProjects';
 import type { ProjectListFiltersState } from '../../types/projects';
 import { ProjectListCard } from './ProjectListCard';
@@ -12,12 +13,14 @@ interface Props {
   filters: ProjectListFiltersState;
   onFiltersChange: (next: ProjectListFiltersState) => void;
   onShowPortfolio: () => void;
+  /** Скин «Цветовые зоны»: белая колонка-блок, «Сводка» во всю ширину, кварталы сегментами. */
+  variant?: 'default' | 'zones';
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
 
 export const ProjectsList: React.FC<Props> = ({
-  selectedKey, onSelect, filters, onFiltersChange, onShowPortfolio,
+  selectedKey, onSelect, filters, onFiltersChange, onShowPortfolio, variant = 'default',
 }) => {
   const patch = (part: Partial<ProjectListFiltersState>) =>
     onFiltersChange({ ...filters, ...part });
@@ -34,6 +37,83 @@ export const ProjectsList: React.FC<Props> = ({
     const y = CURRENT_YEAR - 1 + i;
     return { value: y, label: String(y) };
   });
+
+  const list = (
+    <>
+      {isLoading && (
+        <>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} active paragraph={{ rows: 2 }} style={{ marginBottom: 8 }} />
+          ))}
+        </>
+      )}
+      {!isLoading && (!projects || projects.length === 0) && (
+        <Empty
+          description="Нет проектов"
+          style={{ marginTop: 48, color: DARK_THEME.textMuted }}
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
+      )}
+      {!isLoading &&
+        projects?.map((item) => (
+          <ProjectListCard
+            key={item.key}
+            item={item}
+            selected={item.key === selectedKey}
+            onClick={() => onSelect(item.key)}
+            variant={variant}
+          />
+        ))}
+    </>
+  );
+
+  if (variant === 'zones') {
+    return (
+      <section className="zn-card pz-list" aria-label="Проекты">
+        <div className="pz-list-head">
+          <div className="pz-list-title">
+            Проекты
+            {projects && <span className="pz-count">{projects.length}</span>}
+          </div>
+          <Button
+            block
+            type={selectedKey ? 'default' : 'primary'}
+            icon={<LayoutGrid size={15} strokeWidth={1.7} />}
+            onClick={onShowPortfolio}
+          >
+            Сводка
+          </Button>
+          <div className="pz-period">
+            <span className="pz-period-label">год</span>
+            <Select
+              value={filters.year}
+              onChange={(y) => patch({ year: y })}
+              options={yearOptions}
+              style={{ width: 78 }}
+            />
+            <Segmented
+              block
+              value={filters.quarter}
+              onChange={(q) => patch({ quarter: q as 1 | 2 | 3 | 4 })}
+              options={([1, 2, 3, 4] as const).map((q) => ({
+                value: q,
+                label: <span data-testid="projects-quarter-tag" data-quarter={q}>Q{q}</span>,
+              }))}
+            />
+          </div>
+        </div>
+        <ProjectListFilters
+          search={filters.search}
+          onSearchChange={(v) => patch({ search: v })}
+          statusCategory={filters.statusCategory}
+          onStatusCategoryChange={(v) => patch({ statusCategory: v })}
+          category={filters.category}
+          onCategoryChange={(v) => patch({ category: v })}
+        />
+        <div className="pz-list-items">{list}</div>
+      </section>
+    );
+  }
 
   return (
     <div
@@ -101,29 +181,7 @@ export const ProjectsList: React.FC<Props> = ({
       />
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 8px' }}>
-        {isLoading && (
-          <>
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} active paragraph={{ rows: 2 }} style={{ marginBottom: 8 }} />
-            ))}
-          </>
-        )}
-        {!isLoading && (!projects || projects.length === 0) && (
-          <Empty
-            description="Нет проектов"
-            style={{ marginTop: 48, color: DARK_THEME.textMuted }}
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-          />
-        )}
-        {!isLoading &&
-          projects?.map((item) => (
-            <ProjectListCard
-              key={item.key}
-              item={item}
-              selected={item.key === selectedKey}
-              onClick={() => onSelect(item.key)}
-            />
-          ))}
+        {list}
       </div>
     </div>
   );

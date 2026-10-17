@@ -3,6 +3,8 @@ import { Card, Empty } from 'antd';
 import { useNavigate } from 'react-router';
 import type { EmployeeBreakdown } from '../../../types/projects';
 import { DARK_THEME } from '../../../utils/constants';
+import { useSkin } from '../../../contexts/ThemeContext';
+import { readablePair } from '../../../skins/zones/readableColor';
 
 interface Props {
   employees: EmployeeBreakdown[];
@@ -20,6 +22,8 @@ function initials(name: string): string {
 
 export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey }) => {
   const navigate = useNavigate();
+  // В скине буквы на аватаре — тёмные на светлой подложке того же оттенка.
+  const skin = useSkin();
 
   if (!employees || employees.length === 0) {
     return (
@@ -66,13 +70,15 @@ export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey })
                   width: 28,
                   height: 28,
                   borderRadius: '50%',
-                  background: AVATAR_COLORS[i % AVATAR_COLORS.length],
+                  background: skin
+                    ? readablePair(AVATAR_COLORS[i % AVATAR_COLORS.length]).bg
+                    : AVATAR_COLORS[i % AVATAR_COLORS.length],
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 11,
                   fontWeight: 700,
-                  color: DARK_THEME.textPrimary,
+                  color: skin ? readablePair(AVATAR_COLORS[i % AVATAR_COLORS.length]).fg : DARK_THEME.textPrimary,
                   flexShrink: 0,
                 }}
               >

@@ -3,12 +3,13 @@ import { Tooltip, Empty } from 'antd';
 import type { PlanTimeline } from '../../../types/projects';
 import { DARK_THEME, MONTH_NAMES } from '../../../utils/constants';
 
+// Цвета — через CSS-переменные скина; без скина берётся прежнее значение.
 const PHASE_COLOR: Record<string, string> = {
-  analyst: '#00c9c8',
-  cons: '#00c9c8',
-  dev: '#378ADD',
-  qa: '#EF9F27',
-  opo: '#7F77DD',
+  analyst: 'var(--pf-wt-analyst, #00c9c8)',
+  cons: 'var(--pf-wt-analyst, #00c9c8)',
+  dev: 'var(--pf-wt-dev, #378ADD)',
+  qa: 'var(--pf-wt-qa, #EF9F27)',
+  opo: 'var(--pf-wt-opo, #7F77DD)',
 };
 
 const LANE_H = 20;
@@ -99,7 +100,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
         <div />
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)` }}>
           {labels.map((m, i) => (
-            <div key={i} style={{
+            <div key={i} className="pf-tl-month" style={{
               fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em',
               color: DARK_THEME.textMuted, textAlign: 'center',
             }}>{m}</div>
@@ -135,22 +136,22 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
           >
             {row.label}
           </div>
-          <div style={{
+          <div className="pf-tl-lane" style={{
             position: 'relative', height: LANE_H + 6,
-            background: 'rgba(255,255,255,0.02)', borderRadius: 4,
+            background: 'var(--pf-lane-bg, rgba(255,255,255,0.02))', borderRadius: 4,
             overflow: 'hidden',
           }}>
             <div style={{
               position: 'absolute', top: 0, bottom: 0,
               left: `${qLeft}%`, width: `${Math.max(0, qRight - qLeft)}%`,
-              background: 'rgba(255,255,255,0.035)',
-              borderLeft: '1px dashed rgba(255,255,255,0.14)',
-              borderRight: '1px dashed rgba(255,255,255,0.14)',
+              background: 'var(--pf-q-bg, rgba(255,255,255,0.035))',
+              borderLeft: '1px dashed var(--pf-q-edge, rgba(255,255,255,0.14))',
+              borderRight: '1px dashed var(--pf-q-edge, rgba(255,255,255,0.14))',
             }} />
             {gridlines.map((g, i) => (
               <div key={i} style={{
                 position: 'absolute', top: 0, bottom: 0, left: `${g}%`,
-                width: 1, background: 'rgba(255,255,255,0.05)',
+                width: 1, background: 'var(--pf-grid, rgba(255,255,255,0.05))',
               }} />
             ))}
             {row.bars.map((b, bi) => {
@@ -166,7 +167,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
                     position: 'absolute', top: 3, height: LANE_H,
                     left: `${left}%`, width: `${width}%`,
                     background: PHASE_COLOR[b.phase] ?? DARK_THEME.cyanPrimary,
-                    borderRadius: 4, color: '#0d1c33', fontSize: 10, lineHeight: `${LANE_H}px`,
+                    borderRadius: 4, color: 'var(--pf-bar-text, #0d1c33)', fontSize: 10, lineHeight: `${LANE_H}px`,
                     padding: '0 5px', overflow: 'hidden', whiteSpace: 'nowrap',
                   }}>
                     {width > 8 ? b.label : ''}
@@ -177,7 +178,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
             {nowLeft !== null && (
               <div style={{
                 position: 'absolute', top: 0, bottom: 0, left: `${nowLeft}%`,
-                width: 2, background: DARK_THEME.cyanPrimary,
+                width: 2, background: `var(--pf-today, ${DARK_THEME.cyanPrimary})`,
               }} />
             )}
           </div>
@@ -200,7 +201,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
           ),
         )}
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ width: 2, height: 11, background: DARK_THEME.cyanPrimary }} />
+          <span style={{ width: 2, height: 11, background: `var(--pf-today, ${DARK_THEME.cyanPrimary})` }} />
           сегодня
         </span>
         <span>Затенено — границы квартала</span>

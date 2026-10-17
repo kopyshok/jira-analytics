@@ -8,6 +8,7 @@ import { PhaseTimeline } from './plan/PhaseTimeline';
 import { PortfolioProjectsTable } from './plan/PortfolioProjectsTable';
 import { PortfolioSignals } from './plan/PortfolioSignals';
 import { DARK_THEME } from '../../utils/constants';
+import { PortfolioZones } from '../../skins/zones/pages/projects/PortfolioZones';
 
 /** Склонение слова «проект» под число: 1 проект, 3 проекта, 5 проектов. */
 function pluralProjects(n: number): string {
@@ -18,7 +19,11 @@ function pluralProjects(n: number): string {
   return 'проектов';
 }
 
-export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ filters }) => {
+export const PortfolioView: React.FC<{
+  filters: ProjectListFiltersState;
+  /** Скин «Цветовые зоны»: итоги в полосе зоны, таблица и таймлайн — блоками. */
+  variant?: 'default' | 'zones';
+}> = ({ filters, variant = 'default' }) => {
   const navigate = useNavigate();
   const { data, isLoading } = usePortfolio({
     search: filters.search || undefined,
@@ -50,6 +55,18 @@ export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ 
             <span style={{ color: DARK_THEME.textMuted }}>Нет проектов за выбранный квартал</span>
           }
           image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
+      </div>
+    );
+  }
+
+  if (variant === 'zones') {
+    return (
+      <div data-testid="portfolio-view" className="pz-portfolio">
+        <PortfolioZones
+          data={data}
+          countLabel={pluralProjects(data.project_count)}
+          onOpen={(key) => navigate(`/projects/${encodeURIComponent(key)}`)}
         />
       </div>
     );

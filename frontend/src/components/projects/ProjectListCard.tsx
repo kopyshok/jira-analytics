@@ -30,9 +30,11 @@ interface Props {
   item: ProjectListItem;
   selected: boolean;
   onClick: () => void;
+  /** Скин «Цветовые зоны»: точка статуса, ключ, статус справа, сведения строкой без значков. */
+  variant?: 'default' | 'zones';
 }
 
-export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) => {
+export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick, variant = 'default' }) => {
   const statusColor = item.status_category
     ? (STATUS_CATEGORY_COLOR[item.status_category] ?? DARK_THEME.textMuted)
     : DARK_THEME.textMuted;
@@ -52,6 +54,38 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
       onClick();
     }
   };
+
+  if (variant === 'zones') {
+    const status = item.status_category ?? 'new';
+    return (
+      <div
+        data-testid="project-card"
+        role="button"
+        tabIndex={0}
+        aria-pressed={selected}
+        onClick={onClick}
+        onKeyDown={handleKeyDown}
+        className={`pz-card${selected ? ' is-selected' : ''}`}
+        data-status={status}
+      >
+        <span className="pz-card-dot" aria-hidden />
+        <div className="pz-card-body">
+          <div className="pz-card-top">
+            <span className="pz-card-key">{item.key}</span>
+            <span className="pz-card-status">{STATUS_CATEGORY_LABEL[status] ?? status}</span>
+          </div>
+          <div className="pz-card-title" title={item.summary}>{item.summary}</div>
+          <div className="pz-card-meta">
+            {formatDate(item.period_start)} – {formatDate(item.period_end)} · {Math.round(item.total_hours)} ч · {item.child_count} задач · {item.employee_count} участн.
+          </div>
+          <div className="pz-card-foot">
+            <span className="pz-card-cat">{CATEGORY_LABEL[item.category] ?? item.category}</span>
+            {avgRating != null && <StarRating value={avgRating} size={13} />}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
