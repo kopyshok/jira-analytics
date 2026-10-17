@@ -88,7 +88,7 @@ function MonthCalendar({
         </div>
         <div style={{
           fontSize: 11, padding: '2px 6px', borderRadius: 4,
-          color: balanceColor(balance), background: 'rgba(255,255,255,.05)',
+          color: balanceColor(balance), background: 'var(--faint-fill, rgba(255,255,255,.05))',
         }}>
           {balance > 0 ? '+' : ''}{Math.round(balance)}ч
         </div>

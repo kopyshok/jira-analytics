@@ -78,7 +78,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
                     <span
                       style={{
                         flexShrink: 0,
-                        color: c.done ? '#67d68d' : 'rgba(255,255,255,0.25)',
+                        color: c.done ? 'var(--ink-good, #67d68d)' : 'var(--dim-text, rgba(255,255,255,0.25))',
                         fontWeight: 700,
                         width: 20,
                       }}
@@ -118,7 +118,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
                 <div style={{ flex: 1, fontSize: 14, color: i < 2 ? DARK_THEME.textPrimary : 'var(--text-2, #cfd8e5)', fontWeight: i < 2 ? 600 : 400 }}>
                   {e.name}
                 </div>
-                <div style={{ flex: 2, height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4 }}>
+                <div style={{ flex: 2, height: 8, background: 'var(--faint-fill, rgba(255,255,255,0.05))', borderRadius: 4 }}>
                   <div style={{ width: `${(e.hours / empMax) * 100}%`, height: '100%', background: color, borderRadius: 4 }} />
                 </div>
                 <div style={{ width: 110, textAlign: 'right', fontSize: 14, color: 'var(--text-2, #cfd8e5)' }}>
@@ -168,7 +168,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
                         <b>{s.hours}</b> ч ({s.pct}%)
                       </span>
                     </div>
-                    <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, marginTop: 4 }}>
+                    <div style={{ height: 6, background: 'var(--faint-fill, rgba(255,255,255,0.05))', borderRadius: 3, marginTop: 4 }}>
                       <div style={{ width: `${s.pct}%`, height: '100%', background: s.color, borderRadius: 3 }} />
                     </div>
                   </div>

@@ -34,7 +34,7 @@ const CELL_LABEL: React.CSSProperties = {
   color: DARK_THEME.textMuted,
 };
 
-const ROW_DIVIDER = `1px solid rgba(255,255,255,0.06)`;
+const ROW_DIVIDER = `1px solid var(--hairline, rgba(255,255,255,0.06))`;
 
 function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employees, pulsedRoles, defaultCollapsed = false }: Props) {
   const { data: summary, isLoading } = useScenarioResourceSummary(scenarioId, enabled);
@@ -629,7 +629,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                     alignItems: 'center',
                     gap: 8,
                     padding: '3px 0',
-                    borderBottom: `1px solid rgba(255,255,255,0.04)`,
+                    borderBottom: `1px solid var(--hairline, rgba(255,255,255,0.04))`,
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
                       <div style={{

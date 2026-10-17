@@ -16,8 +16,8 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
     <Card
       size="small"
       title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Основной результат</span>}
-      style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
-      styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
+      style={{ background: DARK_THEME.cardBg, border: '1px solid var(--hairline, rgba(255,255,255,0.06))' }}
+      styles={{ header: { borderColor: 'var(--hairline, rgba(255,255,255,0.06))' }, body: { padding: 12 } }}
     >
       {!summary && isFetchingSummary ? (
         <Skeleton active paragraph={{ rows: 3 }} title={false} />
@@ -31,7 +31,7 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
                 <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                   <CheckCircleFilled
                     style={{
-                      color: item.done ? '#67d68d' : 'rgba(255,255,255,0.2)',
+                      color: item.done ? 'var(--ink-good, #67d68d)' : 'var(--dim-text, rgba(255,255,255,0.2))',
                       fontSize: 14,
                       marginTop: 1,
                       flexShrink: 0,
@@ -47,7 +47,7 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
               style={{
                 marginTop: 4,
                 paddingTop: 8,
-                borderTop: '1px solid rgba(255,255,255,0.06)',
+                borderTop: '1px solid var(--hairline, rgba(255,255,255,0.06))',
                 color: 'var(--text-2, #cfd8e5)',
                 fontSize: 12,
                 lineHeight: 1.5,

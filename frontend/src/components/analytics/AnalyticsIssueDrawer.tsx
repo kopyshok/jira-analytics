@@ -74,8 +74,8 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
       <div
         className="an-drawer-worklogs"
         style={{
-          background: 'var(--an-panel-bg, rgba(255,255,255,0.03))',
-          border: '1px solid var(--an-panel-border, rgba(255,255,255,0.08))',
+          background: 'var(--an-panel-bg, var(--faint-fill, rgba(255,255,255,0.03)))',
+          border: '1px solid var(--an-panel-border, var(--hairline, rgba(255,255,255,0.08)))',
           borderRadius: 8,
           overflow: 'hidden',
         }}
@@ -88,7 +88,7 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
             textTransform: 'uppercase',
             color: 'var(--text-muted, #64748b)',
             padding: '10px 14px 8px',
-            borderBottom: '1px solid var(--an-panel-line, rgba(255,255,255,0.06))',
+            borderBottom: '1px solid var(--an-panel-line, var(--hairline, rgba(255,255,255,0.06)))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -127,7 +127,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
       className="an-drawer-head"
       style={{
         padding: '16px 20px 14px',
-        borderBottom: '1px solid var(--an-panel-line-2, rgba(255,255,255,0.1))',
+        borderBottom: '1px solid var(--an-panel-line-2, var(--hairline, rgba(255,255,255,0.1)))',
         background: 'var(--an-panel-head-bg, var(--bg, #0d1c33))',
       }}
     >

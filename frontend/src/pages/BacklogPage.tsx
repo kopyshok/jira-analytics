@@ -1111,7 +1111,7 @@ export default function BacklogPage() {
           <div key={key} style={{ marginBottom: 16 }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
-              padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)',
+              padding: '6px 0', borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.06))',
             }}>
               {key === '__none__'
                 ? <span style={{ color: 'var(--text-muted, #4a6a80)', fontWeight: 600 }}>Без квартала</span>
