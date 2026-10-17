@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { DownOutlined, RightOutlined } from '@ant-design/icons';
-import { effectiveEstimate } from '../../utils/allocationEstimates';
 import { getRoleColor } from '../../utils/roles';
-import { OPO_COLOR, foldOpo } from '../../utils/opo';
+import { OPO_COLOR } from '../../utils/opo';
+import { roleHoursTotals } from '../../utils/scenarioView';
+import { pluralRu } from '../../utils/projectsView';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import type { AllocationResponse, Role } from '../../types/api';
 
@@ -14,27 +15,15 @@ type Props = {
   /** Квартал сценария не раньше отсечки ОПЭ — колонки ОПЭ нет. */
   opoOff?: boolean;
   onToggle: () => void;
+  /** Таблица скина: строка секции в классах plc-*, числа без цвета ролей. */
+  flat?: boolean;
 };
 
 /** Заголовок секции группы в списке идей: название, счёт идей и часы по ролям. */
-export default function SubgroupSectionHeader({ name, items, collapsed, roles, opoOff = false, onToggle }: Props) {
-  const totals = useMemo(() => {
-    let analyst = 0;
-    let dev = 0;
-    let qa = 0;
-    let opo = 0;
-    let included = 0;
-    for (const a of items) {
-      const raw = effectiveEstimate(a);
-      const eff = opoOff ? foldOpo(raw, a.opo_analyst_ratio) : raw;
-      analyst += eff.analyst;
-      dev += eff.dev;
-      qa += eff.qa;
-      opo += eff.opo;
-      if (a.included) included += 1;
-    }
-    return { analyst, dev, qa, opo, included, total: analyst + dev + qa + opo };
-  }, [items, opoOff]);
+export default function SubgroupSectionHeader({
+  name, items, collapsed, roles, opoOff = false, onToggle, flat = false,
+}: Props) {
+  const totals = useMemo(() => roleHoursTotals(items, opoOff), [items, opoOff]);
 
   const cells: Array<[string, number, string]> = [
     ['АН', totals.analyst, getRoleColor(roles, 'analyst')],
@@ -42,6 +31,37 @@ export default function SubgroupSectionHeader({ name, items, collapsed, roles, o
     ['ТС', totals.qa, getRoleColor(roles, 'qa')],
   ];
   if (!opoOff) cells.push(['ОПЭ', totals.opo, OPO_COLOR]);
+
+  if (flat) {
+    return (
+      <div
+        data-tour="planning-subgroup-section"
+        className="plc-section"
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+      >
+        {collapsed ? <RightOutlined aria-hidden /> : <DownOutlined aria-hidden />}
+        <span className="plc-section-name">{name}</span>
+        <span className="plc-section-count">
+          {items.length} {pluralRu(items.length, ['идея', 'идеи', 'идей'])} · включено {totals.included}
+        </span>
+        <span className="plc-section-sums">
+          {cells.map(([label, hours]) => (
+            <span key={label}>{label} <b>{Math.round(hours).toLocaleString('ru')}</b></span>
+          ))}
+          <b className="plc-section-total">{Math.round(totals.total).toLocaleString('ru')} ч</b>
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -173,7 +173,17 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function ItemColumn({ title, color, items }: { title: string; color: string; items: string[] }) {
   return (
     <div style={{ flex: 1 }}>
-      <div style={{ fontSize: 12, color, fontWeight: 600, marginBottom: 6 }}>{title}</div>
+      {/* Цвет подписи — через переменные: светлые скины задают свой, читаемый на белом. */}
+      <div
+        style={{
+          fontSize: 12,
+          color: color === '#1d9e75' ? 'var(--pl-hist-added, #1d9e75)' : 'var(--pl-hist-removed, #f5222d)',
+          fontWeight: 600,
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </div>
       {items.length === 0 ? (
         <div style={{ fontSize: 12, color: DARK_THEME.textMuted }}>—</div>
       ) : (
@@ -245,7 +255,7 @@ function CapacityTable({ rows }: { rows: RevisionDiffEmployee[] }) {
       fontFamily: FONTS.mono,
       fontSize: 12,
       fontWeight: 600,
-      color: d > 0 ? '#22c55e' : d < 0 ? '#f87171' : DARK_THEME.textMuted,
+      color: d > 0 ? 'var(--pl-drift-good, #22c55e)' : d < 0 ? 'var(--pl-drift-bad, #f87171)' : DARK_THEME.textMuted,
     }}>
       {d === 0 ? '—' : `${d > 0 ? '+' : ''}${Math.round(d)}`}
     </span>

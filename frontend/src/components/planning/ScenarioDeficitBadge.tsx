@@ -1,13 +1,16 @@
 import { Tooltip } from 'antd';
+import { WarningOutlined } from '@ant-design/icons';
 import { FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
 import { getRoleLabel, getRoleColor } from '../../utils/roles';
 
 interface Props {
   deficit: Record<string, number>; // role_code -> hours short
+  /** Скин: сплошные пилюли «−35 ч ПР» со значком (классы plc-deficit в CSS скина). */
+  pill?: boolean;
 }
 
-export default function ScenarioDeficitBadge({ deficit }: Props) {
+export default function ScenarioDeficitBadge({ deficit, pill = false }: Props) {
   const { data: roles = [] } = useRoles();
   const entries = Object.entries(deficit);
   if (entries.length === 0) return null;
@@ -24,6 +27,16 @@ export default function ScenarioDeficitBadge({ deficit }: Props) {
           role === 'qa' ? 'ТС' :
           role === 'consultant' ? 'КС' :
           (label || role).slice(0, 2);
+        if (pill) {
+          return (
+            <Tooltip key={role} title={`${label}: дефицит ${hours} ч`}>
+              <span className="plc-deficit" tabIndex={0}>
+                <WarningOutlined aria-hidden />
+                −{hours.toLocaleString('ru')} ч {shortLabel}
+              </span>
+            </Tooltip>
+          );
+        }
         return (
           <Tooltip key={role} title={`${label}: дефицит ${hours} ч`}>
             <span

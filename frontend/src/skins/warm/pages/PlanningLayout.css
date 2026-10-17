@@ -1,0 +1,614 @@
+/* ============================================================
+   «Сценарии» в скине «Тёплая» (макет C-scenarios).
+   1) Каркас: шапка, карточка сценария, строка «Сводка ресурса»,
+      вкладки с полосой предупреждений, тело — таблица идей слева
+      и колонка ресурса справа (plc-page, plc-body, plc-side).
+   2) Вид компонентов с prop flat / compact / docked / pill (классы plc-*):
+      строки таблицы, заголовки групп, полосы ролей и сотрудников,
+      развёрнутая сводка, внешний QA, пилюли дефицита.
+   3) Переменные --pl-drift-* (индикатор «Доступность изменилась», разница
+      часов в истории ревизий) и --pl-hist-* (добавлено / убрано в истории);
+      у Aurora их нет — действуют прежние значения.
+   ============================================================ */
+
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
+  --pl-drift-name: #2A2620;
+  --pl-drift-warn: #7A4E0C;
+  --pl-drift-bad: #8F3A18;
+  --pl-drift-good: #2D6140;
+  --pl-hist-added: #2D6140;
+  --pl-hist-removed: #8F3A18;
+}
+
+/* ---------- Шапка ---------- */
+html[data-skin="warm"] .plc-head { align-items: flex-end; }
+html[data-skin="warm"] .plc-subtitle { margin: 2px 0 0; line-height: 1.4; }
+html[data-skin="warm"] .plc-head-actions { gap: 8px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .plc-head .ant-btn { height: 40px; padding-inline: 16px; }
+html[data-skin="warm"] .plc-scn-field { height: 40px; padding: 0 4px 0 12px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-scn-field .ant-select-selection-item { font-size: 14px; }
+
+html[data-skin="warm"] .plc-empty,
+html[data-skin="warm"] .plc-team {
+  flex: none;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---------- Карточка сценария ---------- */
+html[data-skin="warm"] .plc-scn {
+  flex: none;
+  padding: 10px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 20px;
+}
+html[data-skin="warm"] .plc-scn-info { gap: 8px 12px; }
+html[data-skin="warm"] .plc-scn-actions { gap: 8px; }
+html[data-skin="warm"] .plc-scn-name { display: inline-flex; align-items: center; min-width: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-scn-name .ant-typography {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2A2620;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-scn-name .ant-typography-edit {
+  margin-inline-start: 10px;
+  color: #6B6358;
+}
+html[data-skin="warm"] .plc-scn-q { font-size: 14px; color: #6B6358; }
+html[data-skin="warm"] .plc-scn-count { font-size: 14px; color: #6B6358; }
+html[data-skin="warm"] .plc-scn-count b { font-weight: 700; color: #2A2620; }
+html[data-skin="warm"] .plc-scn-drift { flex: 1 1 100%; }
+html[data-skin="warm"] .plc-scn-drift:empty { display: none; }
+html[data-skin="warm"] .plc-scn-drift > div { margin-top: 0 !important; border-radius: 12px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .wr-card .ant-btn.plc-del {
+  width: 36px;
+  padding-inline: 0;
+  color: #8F3A18;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .wr-card .ant-btn.plc-del:hover { border-color: #B5502A; color: #7A2F12; }
+
+/* Пилюли дефицита: сплошная терракота со значком */
+html[data-skin="warm"] .plc-deficit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: #B5502A;
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+html[data-skin="warm"] .plc-deficit:focus-visible { outline: 2px solid #2F6B5A; outline-offset: 2px; }
+
+/* Переключатель с подписью: «поднимать наверх», «Показать только их» */
+html[data-skin="warm"] .plc-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 6px;
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ---------- Сводка ресурса ---------- */
+html[data-skin="warm"] .plc-rs { flex: none; padding: 6px 8px 6px 16px; }
+/* Развёрнутая сводка забирает до половины высоты, таблица ниже сжимается и листается сама */
+html[data-skin="warm"] .plc-rs.is-open { flex: 0 0 auto; display: flex; flex-direction: column; max-height: 48%; }
+html[data-skin="warm"] .plc-rs-row {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+html[data-skin="warm"] .plc-rs-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  font-size: 14px;
+  color: #6B6358;
+}
+html[data-skin="warm"] .plc-rs-info b { color: #2A2620; font-weight: 600; }
+html[data-skin="warm"] .plc-rs-title { font-size: 14px; }
+html[data-skin="warm"] .plc-rs-rest { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+html[data-skin="warm"] .plc-rs-rest .wr-pill { height: 24px; border-radius: 12px; padding: 0 10px; }
+html[data-skin="warm"] .plc-rs-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #6B6358;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+html[data-skin="warm"] .plc-rs-toggle:hover { background: #F3EFE8; color: #2A2620; }
+html[data-skin="warm"] .plc-rs-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin: 6px 0 4px -8px;
+  border: 1px solid #EEE9E1;
+  border-radius: 10px;
+}
+html[data-skin="warm"] .plc-rs-table { font-size: 13px; }
+
+/* ---------- Вкладки и полосы предупреждений ---------- */
+html[data-skin="warm"] .plc-tabs-row {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .ant-segmented.plc-tabs {
+  background: #FFFFFF !important;
+  border: 1px solid #E3DDD3 !important;
+  border-radius: 12px !important;
+  padding: 3px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .plc-tabs .ant-segmented-item { border-radius: 9px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .plc-tabs .ant-segmented-item-label {
+  min-height: 34px;
+  line-height: 34px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .plc-tabs .ant-segmented-item-selected,
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .plc-tabs .ant-segmented-thumb {
+  background: #E2ECE7 !important;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .plc-tabs .ant-segmented-item-selected .ant-segmented-item-label {
+  color: #24584A;
+  font-weight: 600;
+}
+html[data-skin="warm"] .plc-strip {
+  flex: 1 1 420px;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 14px;
+  min-height: 40px;
+  padding: 4px 14px;
+  border-radius: 12px;
+  box-sizing: border-box;
+  font-size: 14px;
+}
+html[data-skin="warm"] .plc-strip.is-warn { background: #F6EAD2; border: 1px solid #EAD6AE; color: #7A4E0C; }
+html[data-skin="warm"] .plc-strip.is-bad { background: #F6E1D8; border: 1px solid #EBC6B6; color: #8F3A18; }
+html[data-skin="warm"] .plc-strip-text { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-weight: 500; }
+html[data-skin="warm"] .plc-strip .wr-link { color: inherit; font-size: 14px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-strip .ant-switch:not(.ant-switch-checked) { background: #C9BFA9; }
+
+/* ---------- Тело ---------- */
+html[data-skin="warm"] .plc-body {
+  flex: 1 1 0;
+  min-height: 220px;
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+html[data-skin="warm"] .plc-backlog,
+html[data-skin="warm"] .plc-rules {
+  flex: 1 1 700px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html[data-skin="warm"] .plc-rules { padding: 12px 16px; gap: 10px; }
+html[data-skin="warm"] .plc-rules-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+html[data-skin="warm"] .plc-side {
+  flex: 0 1 400px;
+  min-width: 300px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+}
+
+/* ---------- Таблица идей ---------- */
+html[data-skin="warm"] .plc-backlog-head {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 14px;
+  padding: 10px 16px;
+}
+html[data-skin="warm"] .plc-backlog-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+html[data-skin="warm"] .plc-backlog-sums {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 13px;
+  color: #2A2620;
+}
+html[data-skin="warm"] .plc-backlog-sums > b { font-weight: 600; }
+html[data-skin="warm"] .plc-sum {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: #F3EFE8;
+}
+html[data-skin="warm"] .plc-sum.is-total { background: #E2ECE7; color: #24584A; font-weight: 600; }
+html[data-skin="warm"] .plc-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid #EEE9E1;
+}
+html[data-skin="warm"] .plc-table { font-size: 13px; color: #2A2620; }
+html[data-skin="warm"] .plc-thead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  align-items: center;
+  height: 38px;
+  padding: 0 10px;
+  background: #FFFFFF;
+  border-bottom: 1px solid #E3DDD3;
+  font-weight: 500;
+  color: #6B6358;
+  line-height: 1.15;
+}
+html[data-skin="warm"] .plc-thead .is-center { text-align: center; }
+html[data-skin="warm"] .plc-thead .is-num { text-align: right; }
+html[data-skin="warm"] .plc-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: #6B6358;
+  cursor: pointer;
+}
+html[data-skin="warm"] .plc-sort.is-active { color: #2A2620; font-weight: 600; }
+html[data-skin="warm"] .plc-sort .anticon { font-size: 11px; }
+html[data-skin="warm"] .plc-sort-dir { font-size: 11px; font-weight: 500; color: #6B6358; }
+html[data-skin="warm"] .plc-table-loading,
+html[data-skin="warm"] .plc-table-empty { padding: 20px 16px; color: #6B6358; text-align: center; }
+
+/* Заголовок группы внутри таблицы */
+html[data-skin="warm"] .plc-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 16px 0 14px;
+  background: #FAF8F4;
+  border-bottom: 1px solid #EEE9E1;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: #2A2620;
+}
+html[data-skin="warm"] .plc-section:focus-visible { outline: 2px solid #2F6B5A; outline-offset: -2px; }
+html[data-skin="warm"] .plc-section > .anticon { font-size: 11px; color: #6B6358; }
+html[data-skin="warm"] .plc-section-name { font-weight: 600; }
+html[data-skin="warm"] .plc-section-count { font-size: 12px; color: #5E564A; }
+html[data-skin="warm"] .plc-section-sums {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: #5E564A;
+}
+html[data-skin="warm"] .plc-section-sums b { font-weight: 600; color: #2A2620; }
+html[data-skin="warm"] .plc-section-total { min-width: 64px; text-align: right; font-size: 13px; }
+
+/* Строка идеи */
+html[data-skin="warm"] .plc-row {
+  min-height: 64px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  align-items: center;
+  border-bottom: 1px solid #EEE9E1;
+  background: #FFFFFF;
+  color: #2A2620;
+  transition: background-color 0.15s ease;
+  /* Вне видимой части браузер не считает разметку строки; «auto» помнит
+     настоящую высоту уже показанной строки — прокрутка не прыгает */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+html[data-skin="warm"] .plc-row.is-editable { cursor: pointer; }
+html[data-skin="warm"] .plc-row.is-excluded { background: #FBF9F5; color: #4A443A; }
+html[data-skin="warm"] .plc-row.is-in-work { background: #F4F8FC; }
+html[data-skin="warm"] .plc-row.is-deficit { background: #FCF4EF; }
+html[data-skin="warm"] .plc-row.is-editable:hover { background: #F5F1EA; }
+html[data-skin="warm"] .plc-row > * { min-width: 0; }
+/* Галочка — скруглённый квадрат, как в макете (общий радиус скина делал её кругом) */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-row .ant-checkbox { border-radius: 5px; }
+@keyframes plc-flash {
+  0% { background-color: #E2ECE7; }
+  100% { background-color: transparent; }
+}
+html[data-skin="warm"] .plc-row.plc-flash { animation: plc-flash 0.6s ease-out; }
+html[data-skin="warm"] .plc-cell-center { display: flex; align-items: center; justify-content: center; }
+html[data-skin="warm"] .plc-drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 30px;
+  color: #8A8174;
+  cursor: grab;
+  touch-action: none;
+}
+html[data-skin="warm"] .plc-drag.is-off { cursor: default; opacity: 0.35; }
+
+/* Приоритет: − число + */
+html[data-skin="warm"] .plc-prio { display: inline-flex; align-items: center; gap: 2px; }
+html[data-skin="warm"] .plc-prio-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #E3DDD3;
+  border-radius: 7px;
+  background: #FFFFFF;
+  color: #2A2620;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+html[data-skin="warm"] .plc-prio-btn:hover:not(:disabled) { border-color: #2F6B5A; color: #2F6B5A; }
+html[data-skin="warm"] .plc-prio-btn:disabled { cursor: default; opacity: 0.4; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-prio-input.ant-input-number {
+  width: 26px;
+  height: 22px;
+  background: transparent !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-prio-input .ant-input-number-input {
+  height: 22px;
+  padding: 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2A2620;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-prio-input .ant-input-number-input::placeholder { color: #4A443A; }
+
+/* Идея: название с метками, ниже статус, ключ, разбивка и тип затрат */
+html[data-skin="warm"] .plc-idea { display: flex; flex-direction: column; gap: 3px; }
+/* Длинное название — в две строки, метки остаются справа от него, как в макете */
+html[data-skin="warm"] .plc-idea-line { display: flex; align-items: center; gap: 8px; }
+html[data-skin="warm"] .plc-idea-line > :not(.plc-idea-title) { flex: none; }
+html[data-skin="warm"] .plc-idea-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-idea-meta .ant-btn { height: 22px; width: 22px; min-width: 22px; color: #6B6358; }
+html[data-skin="warm"] .plc-idea-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  font-size: 12px;
+  color: #6B6358;
+}
+html[data-skin="warm"] .plc-row.is-excluded .plc-idea-meta { color: #5E564A; }
+html[data-skin="warm"] .plc-key { color: #2A4F82; text-decoration: underline; text-underline-offset: 2px; }
+html[data-skin="warm"] a.plc-key:hover { color: #1E3A62; }
+html[data-skin="warm"] .plc-icon-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6B6358;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+html[data-skin="warm"] .plc-icon-btn:hover { background: #F3EFE8; color: #2A2620; }
+html[data-skin="warm"] .plc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+html[data-skin="warm"] .plc-tag.is-info { background: #E3EBF6; color: #2A4F82; }
+html[data-skin="warm"] .plc-tag.is-good { background: #E1EFE4; color: #2D6140; }
+html[data-skin="warm"] .plc-tag.is-gold { background: #F3E6B8; color: #6B5300; }
+html[data-skin="warm"] .plc-tag.is-bad { background: #F6E1D8; color: #8F3A18; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-idea-line .ant-tag { height: 20px; line-height: 18px; border-radius: 10px; font-size: 12px !important; padding: 0 8px !important; }
+
+/* Люди и заказчик */
+html[data-skin="warm"] .plc-person-text { font-size: 13px; color: #2A2620; overflow-wrap: anywhere; }
+html[data-skin="warm"] .plc-person-text.is-empty { color: #6B6358; }
+/* Человек в черновике — выпадающий список, но выглядит как текст макета: имя в две
+   строки, стрелка появляется при наведении и фокусе */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-person.ant-select {
+  height: auto;
+  min-height: 28px;
+  padding-inline: 4px;
+  margin-inline: -4px;
+  width: calc(100% + 8px) !important;
+  font-size: 13px;
+  line-height: 1.3;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-person .ant-select-content {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: #2A2620;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-person .ant-select-placeholder { color: #4A443A; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-person:not(:hover, .ant-select-focused, .ant-select-open) .ant-select-suffix { opacity: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-person:is(:hover, .ant-select-focused) { background: #F3EFE8; }
+html[data-skin="warm"] .plc-customer {
+  font-size: 13px;
+  line-height: 1.3;
+  color: #6B6358;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+html[data-skin="warm"] .plc-row.is-excluded .plc-customer { color: #5E564A; }
+
+/* Часы */
+html[data-skin="warm"] .plc-num { text-align: right; font-variant-numeric: tabular-nums; }
+html[data-skin="warm"] .plc-num.is-zero { color: #6B6358; }
+html[data-skin="warm"] .plc-row:is(.is-excluded, .is-in-work, .is-deficit) .plc-num.is-zero { color: #5E564A; }
+html[data-skin="warm"] .plc-total { text-align: right; font-variant-numeric: tabular-nums; line-height: 1.25; }
+html[data-skin="warm"] .plc-total b { font-weight: 700; }
+html[data-skin="warm"] .plc-total-pct { font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] .plc-row:is(.is-excluded, .is-in-work, .is-deficit) .plc-total-pct { color: #5E564A; }
+
+/* Состояние: точка + подпись */
+html[data-skin="warm"] .plc-state { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; line-height: 1.25; }
+html[data-skin="warm"] .plc-state-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; }
+html[data-skin="warm"] .plc-state.is-in-work .plc-state-dot { border-radius: 2px; background: #3F6CA8; }
+html[data-skin="warm"] .plc-state.is-included .plc-state-dot { background: #3F7D4E; }
+html[data-skin="warm"] .plc-state.is-deficit { color: #8F3A18; font-weight: 500; }
+html[data-skin="warm"] .plc-state.is-deficit .plc-state-dot { background: #B5502A; }
+html[data-skin="warm"] .plc-state.is-no-estimates .plc-state-dot { border: 1.5px solid #8A8174; }
+html[data-skin="warm"] .plc-state.is-none { color: #5E564A; }
+
+/* ---------- Правая колонка: ресурс ---------- */
+html[data-skin="warm"] .plc-cap { display: flex; flex-direction: column; gap: 10px; }
+html[data-skin="warm"] .plc-cap-card { flex: none; padding: 12px 16px; }
+html[data-skin="warm"] .plc-cap-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+html[data-skin="warm"] .plc-cap-big { font-size: 26px; font-weight: 700; line-height: 1; color: #2A2620; white-space: nowrap; }
+html[data-skin="warm"] .plc-cap-note { display: flex; align-items: center; gap: 7px; margin-top: 6px; font-size: 13px; color: #6B6358; }
+html[data-skin="warm"] .plc-cap-note.is-over { color: #8F3A18; }
+html[data-skin="warm"] .plc-cap-ext { margin-top: 8px; }
+html[data-skin="warm"] .plc-cap-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+html[data-skin="warm"] .plc-cap-group + .plc-cap-group { border-top: 1px solid #EEE9E1; }
+html[data-skin="warm"] .plc-cap-group { padding-bottom: 6px; }
+html[data-skin="warm"] .plc-cap-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: #2A2620;
+  cursor: pointer;
+  text-align: left;
+}
+html[data-skin="warm"] .plc-cap-section > .anticon { font-size: 10px; color: #6B6358; }
+html[data-skin="warm"] .plc-cap-section-name { font-weight: 600; }
+html[data-skin="warm"] .plc-cap-section.is-danger .plc-cap-section-name { color: #8F3A18; }
+html[data-skin="warm"] .plc-cap-section-val { margin-left: auto; font-size: 12px; color: #6B6358; font-variant-numeric: tabular-nums; }
+html[data-skin="warm"] .plc-cap-foot { margin: 10px 0 0; font-size: 12px; color: #6B6358; }
+
+/* Полосы «план / доступно» — роли и сотрудники */
+html[data-skin="warm"] .plc-bar-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+html[data-skin="warm"] .plc-bar-val { font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; color: #2A2620; }
+html[data-skin="warm"] .plc-bar-val b { font-weight: 700; }
+html[data-skin="warm"] .plc-track { position: relative; height: 8px; margin-top: 5px; border-radius: 4px; background: #EEE9E1; }
+html[data-skin="warm"] .plc-track.is-thin { height: 5px; margin-top: 4px; border-radius: 3px; }
+html[data-skin="warm"] .plc-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: #3F6CA8;
+  transition: width 0.2s ease;
+}
+html[data-skin="warm"] .plc-marker { position: absolute; top: -3px; width: 2px; height: 14px; margin-left: -1px; background: #2A2620; }
+html[data-skin="warm"] .plc-track.is-thin .plc-marker { top: -2px; height: 9px; }
+html[data-skin="warm"] .plc-bar-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6B6358;
+}
+html[data-skin="warm"] .plc-rolebar-name { font-weight: 600; color: #2A2620; }
+html[data-skin="warm"] .plc-rolebar-count { font-weight: 400; font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] :is(.plc-rolebar, .plc-emp).is-over { padding: 8px 10px; margin: 0 -10px; border-radius: 10px; background: #FCF4EF; }
+html[data-skin="warm"] .plc-rolebar.is-over { border: 1px solid #F0D5C8; margin: 0; }
+html[data-skin="warm"] :is(.plc-rolebar, .plc-emp).is-over .plc-fill { background: #B5502A; }
+html[data-skin="warm"] :is(.plc-rolebar, .plc-emp).is-over .plc-bar-val b,
+html[data-skin="warm"] .plc-emp.is-over .plc-bar-val { color: #8F3A18; font-weight: 600; }
+html[data-skin="warm"] :is(.plc-rolebar, .plc-emp).is-over .plc-bar-foot,
+html[data-skin="warm"] :is(.plc-rolebar, .plc-emp).is-over .plc-rolebar-count,
+html[data-skin="warm"] .plc-emp.is-over .plc-emp-role { color: #8F3A18; }
+html[data-skin="warm"] .plc-rolebar.is-over .plc-bar-foot { font-weight: 600; }
+
+html[data-skin="warm"] .plc-emp-who { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; min-width: 0; }
+html[data-skin="warm"] .plc-avatar {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+}
+html[data-skin="warm"] .plc-emp-name { font-weight: 500; color: #2A2620; }
+html[data-skin="warm"] .plc-emp-role { font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] .plc-emp .wr-pill.is-sm { height: 18px; padding: 0 7px; border-radius: 9px; font-size: 11px; }
+
+/* Внешний QA */
+html[data-skin="warm"] .plc-qa-card { flex: none; padding: 12px 16px; }
+html[data-skin="warm"] .plc-qa { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+html[data-skin="warm"] .plc-qa-label { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600; color: #2A2620; }
+html[data-skin="warm"] .plc-qa-hint { font-size: 13px; color: #6B6358; cursor: help; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-qa-input.ant-input-number { width: 150px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-qa-input .ant-input-number-input { text-align: right; }
+
+/* Узкий экран: колонка ресурса уходит под таблицу */
+@media (max-width: 1100px) {
+  html[data-skin="warm"] .plc-body { flex-direction: column; }
+  html[data-skin="warm"] .plc-backlog { min-height: 520px; }
+  html[data-skin="warm"] .plc-side { flex: none; overflow: visible; }
+}

@@ -1,10 +1,12 @@
 import { memo, useMemo, useState } from 'react';
 import { Card, Select, Skeleton, Tag, Tooltip } from 'antd';
-import { DownOutlined, RightOutlined } from '@ant-design/icons';
+import { DownOutlined, RightOutlined, WarningOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
-import { getRoleColor } from '../../utils/roles';
+import { getRoleColor, getRoleLabel } from '../../utils/roles';
+import { readablePair } from '../../utils/readableColor';
+import { capacityBar, personInitials } from '../../utils/scenarioView';
 import type { AllocationResponse, ResourceBase, ResourceEmployee, ResourceSummaryOut } from '../../types/api';
 import RoleCapacityBar from './RoleCapacityBar';
 import { patchEmployee } from '../../api/employees';
@@ -35,6 +37,12 @@ interface Props {
   quarter: string;
   scenarioId: string;
   summary?: ResourceSummaryOut;
+  /**
+   * Скин: отдельные карточки в классах wr-card / plc-* — «Ресурс команды»
+   * с крупным числом, полосы ролей с отметкой доступного, люди с инициалами
+   * и полосой «план / доступно»; перегруз — подсвеченной плашкой.
+   */
+  compact?: boolean;
 }
 
 function getRoleShort(role: string): string {
@@ -42,7 +50,7 @@ function getRoleShort(role: string): string {
 }
 
 
-function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter, scenarioId }: Props) {
+function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter, scenarioId, compact = false }: Props) {
   const { data: roles = [] } = useRoles();
   const qc = useQueryClient();
   const setRoleMutation = useMutation({
@@ -112,6 +120,14 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
   const [collapsedEmpGroups, setCollapsedEmpGroups] = useState<Set<string>>(new Set());
 
   if (!resourceBase) {
+    if (compact) {
+      return (
+        <div data-tour="planning-capacity-panel" className="plc-cap">
+          <section className="wr-card plc-cap-card"><Skeleton active paragraph={{ rows: 2 }} /></section>
+          <section className="wr-card plc-cap-card"><Skeleton active paragraph={{ rows: 4 }} /></section>
+        </div>
+      );
+    }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <Card><Skeleton active paragraph={{ rows: 3 }} /></Card>
@@ -217,7 +233,10 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
     demand: Record<string, number>,
     employees: ResourceEmployee[],
   ) => (
-    <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div
+      className={compact ? 'plc-cap-list' : undefined}
+      style={compact ? undefined : { padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}
+    >
       {CORE_ROLE_KEYS.map((r) => (
         <RoleCapacityBar
           key={r}
@@ -225,6 +244,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
           demand={demand[r] ?? 0}
           capacity={capacity[r] ?? 0}
           employeeCount={employees.filter((e) => e.role === r).length}
+          compact={compact}
         />
       ))}
       {infoRoles.map((r) => (
@@ -234,6 +254,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
           demand={demand[r.code] ?? 0}
           capacity={capacity[r.code] ?? 0}
           employeeCount={employees.filter((e) => e.role === r.code).length}
+          compact={compact}
         />
       ))}
     </div>
@@ -256,27 +277,115 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
       return d !== 0 ? d : a.display_name.localeCompare(b.display_name, 'ru');
     });
 
+  // Цифры строки сотрудника — общие для обеих раскладок.
+  const employeeFigures = (e: ResourceEmployee, sectionId?: string) => {
+    const sectionLabel = sectionId !== undefined ? e.subgroup_labels?.[sectionId] : undefined;
+    const knownRole = e.role && roles.some(r => r.code === e.role && r.is_active) ? e.role : null;
+    const roleColor = knownRole ? getRoleColor(roles, knownRole) : DARK_THEME.textDim;
+    const roleShort = knownRole ? getRoleShort(knownRole) : '—';
+
+    // В секции группы — только часы сотрудника в этой группе (по доле и дням).
+    const hours = sectionId !== undefined
+      ? (e.subgroup_hours?.[sectionId] ?? e.total_hours)
+      : e.total_hours;
+
+    // Норма-часы до вычета обязательных работ — личная, не средняя по
+    // роли (у человека может быть свой процент обязательных работ).
+    // В секции группы норму делим в той же пропорции, что и часы.
+    const grossHours = sectionId !== undefined && e.total_hours > 0
+      ? (e.gross_hours ?? 0) * (hours / e.total_hours)
+      : (e.gross_hours ?? 0);
+    const mandPct = grossHours > 0 && hours >= 0
+      ? Math.max(0, Math.round((1 - hours / grossHours) * 100))
+      : 0;
+    const normHours = grossHours > 0 ? Math.round(grossHours) : Math.round(hours);
+
+    const empDemand = sectionId !== undefined
+      ? (demandByEmployeeGroup[sectionId]?.[e.employee_id] ?? 0)
+      : (demandByEmployee[e.employee_id] ?? 0);
+    const empCapacity = hours;
+    const pct = empCapacity > 0 ? Math.min((empDemand / empCapacity) * 100, 100) : 0;
+    const over = empDemand > empCapacity && empCapacity > 0;
+    return {
+      sectionLabel, knownRole, roleColor, roleShort, hours, mandPct, normHours, empDemand, empCapacity, pct, over,
+    };
+  };
+
+  const roleSelect = (e: ResourceEmployee) => (
+    <Select
+      size="small"
+      placeholder="роль"
+      style={{ width: 110, fontSize: 11 }}
+      options={roles.filter((r) => r.is_active).map((r) => ({ label: r.label, value: r.code }))}
+      loading={setRoleMutation.isPending}
+      onChange={(value: string) =>
+        setRoleMutation.mutate({ employeeId: e.employee_id, role: value })
+      }
+      onClick={(ev) => ev.stopPropagation()}
+    />
+  );
+
+  const sharedTooltip = (e: ResourceEmployee) =>
+    `Делит время с командами: ${(e.shared_with ?? []).join(', ')}. `
+    + `Заложено всеми командами: ${Math.round(e.committed_hours_all_teams ?? 0)} ч`
+    + (e.is_overcommitted ? ' — больше его нормы' : '');
+
+  // Скин: строка сотрудника — инициалы, имя, роль, метки, «план / доступно» и полоса.
+  const renderEmployeeCompact = (e: ResourceEmployee, sectionId?: string) => {
+    const f = employeeFigures(e, sectionId);
+    const pair = readablePair(f.roleColor);
+    const bar = capacityBar(f.empDemand, f.empCapacity, 1.4);
+    const norm = `норма ${f.normHours.toLocaleString('ru')} ч${f.mandPct > 0 ? ` · −${f.mandPct}%` : ''}`;
+    return (
+      <div key={e.employee_id} className={`plc-emp${f.over ? ' is-over' : ''}`}>
+        <div className="plc-bar-head">
+          <span className="plc-emp-who">
+            <span className="plc-avatar" style={{ background: pair.bg, color: pair.fg }} aria-hidden>
+              {personInitials(e.display_name)}
+            </span>
+            <b className="plc-emp-name">{e.display_name}</b>
+            <span className="plc-emp-role">{f.knownRole ? getRoleLabel(roles, f.knownRole) : 'роль не задана'}</span>
+            {!!e.shared_with?.length && (
+              <Tooltip title={sharedTooltip(e)}>
+                <span className={`wr-pill is-sm ${e.is_overcommitted ? 'is-bad' : 'is-neutral'}`} tabIndex={0}>общий</span>
+              </Tooltip>
+            )}
+            {!!f.sectionLabel && (
+              <Tooltip title="Часть времени сотрудника в этой группе">
+                <span className="wr-pill is-sm is-neutral" tabIndex={0}>
+                  {/^\d/.test(f.sectionLabel) ? `общий ${f.sectionLabel}` : `в группе ${f.sectionLabel}`}
+                </span>
+              </Tooltip>
+            )}
+            {!f.knownRole && roleSelect(e)}
+          </span>
+          <Tooltip
+            title={`План ${Math.round(f.empDemand).toLocaleString('ru')} ч из доступных ${Math.round(f.empCapacity).toLocaleString('ru')} ч · ${norm}`}
+          >
+            <span className="plc-bar-val" tabIndex={0}>
+              {Math.round(f.empDemand).toLocaleString('ru')} / {Math.round(f.empCapacity).toLocaleString('ru')}
+            </span>
+          </Tooltip>
+        </div>
+        <div className="plc-track is-thin">
+          <span className="plc-fill" style={{ width: `${bar.fillPct}%` }} />
+          {bar.markerPct != null && <span className="plc-marker" style={{ left: `${bar.markerPct}%` }} />}
+        </div>
+        {f.over && (
+          <div className="plc-bar-foot">
+            <span>{norm}</span>
+            <span>перегруз</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderEmployee = (e: ResourceEmployee, sectionId?: string) => {
-            const sectionLabel = sectionId !== undefined ? e.subgroup_labels?.[sectionId] : undefined;
-            const knownRole = e.role && roles.some(r => r.code === e.role && r.is_active) ? e.role : null;
-            const roleColor = knownRole ? getRoleColor(roles, knownRole) : DARK_THEME.textDim;
-            const roleShort = knownRole ? getRoleShort(knownRole) : '—';
-
-            // В секции группы — только часы сотрудника в этой группе (по доле и дням).
-            const hours = sectionId !== undefined
-              ? (e.subgroup_hours?.[sectionId] ?? e.total_hours)
-              : e.total_hours;
-
-            // Норма-часы до вычета обязательных работ — личная, не средняя по
-            // роли (у человека может быть свой процент обязательных работ).
-            // В секции группы норму делим в той же пропорции, что и часы.
-            const grossHours = sectionId !== undefined && e.total_hours > 0
-              ? (e.gross_hours ?? 0) * (hours / e.total_hours)
-              : (e.gross_hours ?? 0);
-            const mandPct = grossHours > 0 && hours >= 0
-              ? Math.max(0, Math.round((1 - hours / grossHours) * 100))
-              : 0;
-            const normHours = grossHours > 0 ? Math.round(grossHours) : Math.round(hours);
+            const {
+              sectionLabel, knownRole, roleColor, roleShort, hours, mandPct, normHours,
+              empDemand, empCapacity, pct, over,
+            } = employeeFigures(e, sectionId);
 
             return (
               <div key={e.employee_id}>
@@ -296,11 +405,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                       {e.display_name}
                     </span>
                     {!!e.shared_with?.length && (
-                      <Tooltip
-                        title={`Делит время с командами: ${e.shared_with.join(', ')}. `
-                          + `Заложено всеми командами: ${Math.round(e.committed_hours_all_teams ?? 0)} ч`
-                          + (e.is_overcommitted ? ' — больше его нормы' : '')}
-                      >
+                      <Tooltip title={sharedTooltip(e)}>
                         <Tag color={e.is_overcommitted ? 'red' : 'blue'}>общий</Tag>
                       </Tooltip>
                     )}
@@ -309,19 +414,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                         <Tag>{/^\d/.test(sectionLabel) ? `общий ${sectionLabel}` : `в группе ${sectionLabel}`}</Tag>
                       </Tooltip>
                     )}
-                    {!knownRole && (
-                      <Select
-                        size="small"
-                        placeholder="роль"
-                        style={{ width: 110, fontSize: 11 }}
-                        options={roles.filter((r) => r.is_active).map((r) => ({ label: r.label, value: r.code }))}
-                        loading={setRoleMutation.isPending}
-                        onChange={(value: string) =>
-                          setRoleMutation.mutate({ employeeId: e.employee_id, role: value })
-                        }
-                        onClick={(ev) => ev.stopPropagation()}
-                      />
-                    )}
+                    {!knownRole && roleSelect(e)}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <span style={{ fontSize: 14, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
@@ -334,12 +427,6 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                 </div>
                 {/* Demand / capacity bar */}
                 {(() => {
-                  const empDemand = sectionId !== undefined
-                    ? (demandByEmployeeGroup[sectionId]?.[e.employee_id] ?? 0)
-                    : (demandByEmployee[e.employee_id] ?? 0);
-                  const empCapacity = hours;
-                  const pct = empCapacity > 0 ? Math.min((empDemand / empCapacity) * 100, 100) : 0;
-                  const over = empDemand > empCapacity && empCapacity > 0;
                   return (
                     <>
                       <div style={{ position: 'relative', height: 5, background: DARK_THEME.darkAccent, borderRadius: 2, overflow: 'hidden', marginTop: 4 }}>
@@ -356,6 +443,106 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
               </div>
             );
   };
+
+  if (compact) {
+    const sectionToggle = (name: string, right: string, collapsed: boolean, onToggle: () => void, danger?: boolean) => (
+      <button
+        type="button"
+        className={`plc-cap-section${danger ? ' is-danger' : ''}`}
+        aria-expanded={!collapsed}
+        onClick={onToggle}
+      >
+        {collapsed ? <RightOutlined aria-hidden /> : <DownOutlined aria-hidden />}
+        <span className="plc-cap-section-name">{name}</span>
+        <span className="plc-cap-section-val">{right}</span>
+      </button>
+    );
+    return (
+      <div data-tour="planning-capacity-panel" className="plc-cap">
+        <section className="wr-card plc-cap-card" aria-label="Ресурс команды">
+          <div className="plc-cap-head">
+            <h2 className="rpc-card-title">Ресурс команды · Q{quarter}</h2>
+            <span className="plc-cap-big">{Math.round(totalCapacity).toLocaleString('ru')} ч</span>
+          </div>
+          <div className={`plc-cap-note${overallOver ? ' is-over' : ''}`}>
+            {overallOver && <WarningOutlined aria-hidden />}
+            {overallOver
+              ? 'Перегруз по одной или нескольким ролям — см. ниже'
+              : totalCapacity > 0
+                ? `Запас ${freeHours.toLocaleString('ru')} ч · ${freePct}% свободно · включено ${includedCount} идей`
+                : 'Нет данных о ёмкости'}
+          </div>
+          {resourceBase.external_qa_hours != null && (
+            <span className="wr-pill is-sm is-violet plc-cap-ext">
+              внешний QA {Math.round(resourceBase.external_qa_hours).toLocaleString('ru')} ч
+            </span>
+          )}
+        </section>
+
+        <section className="wr-card plc-cap-card" aria-label="Ресурс по ролям">
+          <div className="plc-cap-head">
+            <h2 className="rpc-card-title">Ресурс по ролям</h2>
+            <span className="wr-muted">план / доступно</span>
+          </div>
+          {hasSubgroups
+            ? groupSections.map((sec) => {
+                const collapsed = collapsedRoleGroups.has(sec.id);
+                const capacity = summary?.available_by_subgroup_role?.[sec.id] ?? {};
+                const demand = demandBySubgroupRole[sec.id] ?? {};
+                const capTotal = Object.values(capacity).reduce((acc, v) => acc + v, 0);
+                const demTotal = Object.values(demand).reduce((acc, v) => acc + v, 0);
+                return (
+                  <div key={sec.id || '__none__'} className="plc-cap-group">
+                    {sectionToggle(
+                      sec.name,
+                      `${Math.round(demTotal).toLocaleString('ru')} / ${Math.round(capTotal).toLocaleString('ru')} ч`,
+                      collapsed,
+                      () => toggleIn(setCollapsedRoleGroups, sec.id),
+                      sec.id === '',
+                    )}
+                    {!collapsed && roleBars(capacity, demand, sec.employees)}
+                  </div>
+                );
+              })
+            : roleBars(availableByRole, demandByEmployeeRole, resourceBase.employees)}
+          <p className="plc-cap-foot">Часы ОПЭ делятся между АН и ПР — по умолчанию поровну</p>
+        </section>
+
+        <section className="wr-card plc-cap-card" aria-label="По сотрудникам">
+          <div className="plc-cap-head">
+            <h2 className="rpc-card-title">По сотрудникам</h2>
+            <span className="wr-muted">план / доступно</span>
+          </div>
+          {hasSubgroups
+            ? groupSections.map((sec) => {
+                const collapsed = collapsedEmpGroups.has(sec.id);
+                return (
+                  <div key={sec.id || '__none__'} className="plc-cap-group">
+                    {sectionToggle(
+                      sec.name,
+                      `${sec.employees.length} чел.`,
+                      collapsed,
+                      () => toggleIn(setCollapsedEmpGroups, sec.id),
+                      sec.id === '',
+                    )}
+                    {!collapsed && (
+                      <div className="plc-cap-list">
+                        {sortedEmployees(sec.employees).map((e) => renderEmployeeCompact(e, sec.id))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            : (
+              <div className="plc-cap-list">
+                {sortedEmployees(resourceBase.employees).map((e) => renderEmployeeCompact(e))}
+              </div>
+            )}
+          {resourceBase.employees.length === 0 && <div className="wr-muted">Нет сотрудников в команде.</div>}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div data-tour="planning-capacity-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

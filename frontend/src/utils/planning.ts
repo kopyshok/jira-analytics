@@ -148,3 +148,27 @@ export function demandByAssigneeRole(
   }
   return d;
 }
+
+/** Роли, чей остаток меняется при включении/снятии строки: анализ (или
+ *  заменяющая его роль исполнителя), разработка, тестирование. */
+export function rolesAffectedByAllocation(
+  a: AllocationResponse,
+  employees: { employee_id: string; role: string | null }[] | undefined,
+): string[] {
+  const eff = effectiveEstimate(a);
+  const ea = eff.analyst;
+  const ed = eff.dev;
+  const eq = eff.qa;
+  const eo = eff.opo;
+  const r = a.opo_analyst_ratio ?? 0.5;
+  const emp = employees?.find((e) => e.employee_id === a.assignee_employee_id);
+  const role = emp?.role ?? a.assignee_role ?? null;
+  const isAnalystSubstitute =
+    role === 'RP' || role === 'project_manager' || role === 'consultant';
+  const analystTarget = isAnalystSubstitute ? (role as string) : 'analyst';
+  const out: string[] = [];
+  if (ea + eo * r > 0) out.push(analystTarget);
+  if (ed + eo * (1 - r) > 0) out.push('dev');
+  if (eq > 0) out.push('qa');
+  return out;
+}

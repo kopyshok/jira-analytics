@@ -6,6 +6,7 @@ import { useRoles } from '../../hooks/useRoles';
 import { getRoleLabel, getRoleColor } from '../../utils/roles';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { demandByAssigneeRole, demandByRole } from '../../utils/planning';
+import { readableText } from '../../utils/readableColor';
 import type { AllocationResponse, ResourceEmployee } from '../../types/api';
 
 interface Props {
@@ -14,6 +15,12 @@ interface Props {
   allocations?: AllocationResponse[];
   employees?: ResourceEmployee[];
   pulsedRoles?: Set<string>;
+  /**
+   * Скин: только развёрнутая таблица, без своей карточки, прилипания и
+   * кнопки «Свернуть» (свёрнутую строку и переключатель рисует раскладка);
+   * цвета ролей — тёмные читаемые, подложки — сплошные светлые.
+   */
+  docked?: boolean;
 }
 
 const CELL: React.CSSProperties = {
@@ -31,7 +38,7 @@ const CELL_LABEL: React.CSSProperties = {
 
 const ROW_DIVIDER = `1px solid rgba(255,255,255,0.06)`;
 
-function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employees, pulsedRoles }: Props) {
+function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employees, pulsedRoles, docked = false }: Props) {
   const { data: summary, isLoading } = useScenarioResourceSummary(scenarioId, enabled);
   const { data: roles = [] } = useRoles();
 
@@ -185,6 +192,12 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
   // по содержимому давал расхождение между строкой шапки и «На бэклог»).
   const gridCols = `300px repeat(${summary.roles.length}, minmax(0, 1fr)) 140px`;
 
+  // Цвет роли как текст: у скина — тёмный вариант того же оттенка (читается на светлом).
+  const roleText = (role: string, on?: string) =>
+    (docked ? readableText(getRoleColor(roles, role), on) : getRoleColor(roles, role));
+  // Приглушённый текст на подкрашенных ячейках скина — темнее обычного серого.
+  const tintMuted = docked ? '#5E564A' : DARK_THEME.textHint;
+
   const roleBorderStyle = (role: string): React.CSSProperties => {
     const color = getRoleColor(roles, role);
     const isLast = role === summary.roles[summary.roles.length - 1];
@@ -200,7 +213,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
     return {
       borderLeft: `2px solid ${color}`,
       ...(isLast ? { borderRight: `2px solid ${color}` } : {}),
-      background: `${color}08`,
+      background: docked ? '#FFFFFF' : `${color}08`,
     };
   };
 
@@ -296,13 +309,13 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
     </Card>
   );
 
-  const expandedCard = (
-    <Card styles={{ body: { padding: 0, overflow: 'hidden', borderRadius: 8 } }}>
+  const expandedInner = (
+    <>
       <div style={{ display: 'flex', alignItems: 'stretch' }}>
         {/* Основная таблица */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Кнопка свернуть — всегда над таблицей */}
-          <div style={{
+          {!docked && <div style={{
             display: 'flex',
             justifyContent: 'flex-end',
             padding: '4px 10px',
@@ -322,7 +335,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             >
               ↑ Свернуть
             </button>
-          </div>
+          </div>}
           {/* Header row */}
           <div style={headerStyle}>
             <div style={{ ...CELL_LABEL, background: DARK_THEME.darkAccent }} />
@@ -342,6 +355,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                     style={{
                       ...CELL,
                       ...roleCellStyle(role),
+                      ...(docked ? { background: '#FAF8F4' } : null),
                       textAlign: 'center',
                       color: DARK_THEME.textSecondary,
                       cursor: 'default',
@@ -364,14 +378,14 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                         style={{
                           fontWeight: 600,
                           fontSize: 13,
-                          color: getRoleColor(roles, role),
+                          color: roleText(role, '#FAF8F4'),
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                         }}
                       >
                         {label}
                       </span>
-                      <span style={{ fontSize: 10, color: DARK_THEME.textHint, flexShrink: 0 }}>
+                      <span style={{ fontSize: 10, color: tintMuted, flexShrink: 0 }}>
                         · {names.length}
                       </span>
                     </div>
@@ -438,7 +452,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                   <div key={role} style={{ ...CELL, ...roleCellStyle(role), color: DARK_THEME.textMuted }}>
                     {h > 0 ? Math.round(h).toLocaleString('ru') : '—'}
                     {pct != null && h > 0 && (
-                      <span style={{ marginLeft: 4, fontSize: 10, color: DARK_THEME.textHint }}>
+                      <span style={{ marginLeft: 4, fontSize: 10, color: tintMuted }}>
                         {pct}%
                       </span>
                     )}
@@ -456,8 +470,8 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             <div
               style={{
                 ...CELL_LABEL,
-                background: 'rgba(0,201,200,0.08)',
-                color: DARK_THEME.cyanPrimary,
+                background: docked ? '#E2ECE7' : 'rgba(0,201,200,0.08)',
+                color: docked ? '#24584A' : DARK_THEME.cyanPrimary,
                 fontWeight: 700,
                 fontSize: 16,
                 boxShadow: `inset 2px 0 0 ${DARK_THEME.cyanPrimary}`,
@@ -474,18 +488,23 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
               const isExternal = role === 'qa' && summary.external_qa_hours != null;
               const hasUsed = used > 0;
               const utilPct = avail > 0 ? Math.min(150, (used / avail) * 100) : 0;
-              const barColor =
-                utilPct > 110 ? '#f5222d' :
-                utilPct > 100 ? '#fa8c16' :
-                DARK_THEME.cyanPrimary;
+              const barColor = docked
+                ? (utilPct > 100 ? '#B5502A' : '#2F6B5A')
+                : utilPct > 110 ? '#f5222d' :
+                  utilPct > 100 ? '#fa8c16' :
+                  DARK_THEME.cyanPrimary;
               return (
                 <div
                   key={role}
                   style={{
                     ...CELL,
                     ...roleBorderStyle(role),
-                    background: isDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.1)',
-                    color: isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
+                    background: docked
+                      ? (isDeficit ? '#FCF4EF' : '#EEF4F1')
+                      : isDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.1)',
+                    color: docked
+                      ? (isDeficit ? '#8F3A18' : '#24584A')
+                      : isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
                     fontWeight: 700,
                     fontSize: 17,
                     whiteSpace: 'nowrap' as const,
@@ -497,7 +516,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                     {hasUsed ? (
                       <>
                         {remaining.toLocaleString('ru')}
-                        <span style={{ fontSize: 12, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
+                        <span style={{ fontSize: 12, color: tintMuted, fontWeight: 400, marginLeft: 6 }}>
                           из {Math.round(avail).toLocaleString('ru')}
                         </span>
                       </>
@@ -506,7 +525,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                     )}
                   </span>
                   {isExternal && (
-                    <span style={{ fontSize: 11, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
+                    <span style={{ fontSize: 11, color: tintMuted, fontWeight: 400, marginLeft: 6 }}>
                       внешний
                     </span>
                   )}
@@ -518,7 +537,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                         left: 8,
                         right: 8,
                         height: 4,
-                        background: 'rgba(255,255,255,0.06)',
+                        background: docked ? '#E3DDD3' : 'rgba(255,255,255,0.06)',
                         borderRadius: 2,
                         overflow: 'hidden',
                       }}
@@ -545,8 +564,12 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                 <div
                   style={{
                     ...CELL,
-                    background: isTotalDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.08)',
-                    color: isTotalDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
+                    background: docked
+                      ? (isTotalDeficit ? '#FCF4EF' : '#EEF4F1')
+                      : isTotalDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.08)',
+                    color: docked
+                      ? (isTotalDeficit ? '#8F3A18' : '#24584A')
+                      : isTotalDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
                     fontWeight: 700,
                     fontSize: 17,
                     whiteSpace: 'nowrap' as const,
@@ -555,7 +578,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                   {totalDemand > 0 ? (
                     <>
                       {totalRemaining.toLocaleString('ru')}
-                      <span style={{ fontSize: 12, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
+                      <span style={{ fontSize: 12, color: tintMuted, fontWeight: 400, marginLeft: 6 }}>
                         из {Math.round(summary.available_for_backlog_total).toLocaleString('ru')}
                       </span>
                     </>
@@ -795,7 +818,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                       textAlign: 'center' as const,
                       fontFamily: FONTS.mono,
                       fontSize: 13,
-                      color: getRoleColor(roles, role),
+                      color: roleText(role),
                     }}
                   >
                     {Math.round(byRole[role] ?? 0).toLocaleString('ru')}
@@ -823,6 +846,14 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
           )}
         </div>
       )}
+    </>
+  );
+
+  if (docked) return <div className="plc-rs-table">{expandedInner}</div>;
+
+  const expandedCard = (
+    <Card styles={{ body: { padding: 0, overflow: 'hidden', borderRadius: 8 } }}>
+      {expandedInner}
     </Card>
   );
 

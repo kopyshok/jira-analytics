@@ -1,23 +1,60 @@
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
 import { getRoleLabel, getRoleColor } from '../../utils/roles';
+import { capacityBar } from '../../utils/scenarioView';
 
 interface Props {
   role: string;
   demand: number;
   capacity: number;
   employeeCount: number;
+  /**
+   * Скин: подпись роли, «план / доступно», тонкая полоса с отметкой доступного
+   * (шкала на 20 % длиннее — перегруз виден правее отметки), строка
+   * «запас / загрузка»; перегруженная роль — в подсвеченной плашке (классы plc-*).
+   */
+  compact?: boolean;
 }
 
 /** Одна из трёх строк в карточке «Ресурс по ролям» — прогресс-бар с
  *  маркером 100 %, оранжевой «перегруз»-зоной и подписью запас/перегруз.
  *  Mirrors Prototype.html lines 1444-1491. */
-export default function RoleCapacityBar({ role, demand, capacity, employeeCount }: Props) {
+export default function RoleCapacityBar({ role, demand, capacity, employeeCount, compact = false }: Props) {
   const { data: roles = [] } = useRoles();
   const over = demand > capacity;
   const fillPct = capacity > 0 ? Math.min(100, (demand / capacity) * 100) : 0;
   const loadPct = capacity > 0 ? Math.round((demand / capacity) * 100) : 0;
   const roleColor = getRoleColor(roles, role);
+
+  if (compact) {
+    const bar = capacityBar(demand, capacity, 1.2);
+    return (
+      <div className={`plc-rolebar${over ? ' is-over' : ''}`}>
+        <div className="plc-bar-head">
+          <span className="plc-rolebar-name">
+            {getRoleLabel(roles, role)}
+            <span className="plc-rolebar-count"> · {employeeCount} чел.</span>
+          </span>
+          <span className="plc-bar-val">
+            <b data-testid={`capacity-${role}-demand`}>{Math.round(demand).toLocaleString('ru')}</b>
+            {' / '}{Math.round(capacity).toLocaleString('ru')} ч
+          </span>
+        </div>
+        <div className="plc-track">
+          <span className="plc-fill" style={{ width: `${bar.fillPct}%` }} />
+          {bar.markerPct != null && <span className="plc-marker" style={{ left: `${bar.markerPct}%` }} />}
+        </div>
+        <div className="plc-bar-foot">
+          <span>
+            {over
+              ? `перегруз +${Math.round(demand - capacity).toLocaleString('ru')} ч`
+              : `запас ${Math.round(capacity - demand).toLocaleString('ru')} ч`}
+          </span>
+          <span>загрузка {capacity > 0 ? `${loadPct}%` : '—'}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

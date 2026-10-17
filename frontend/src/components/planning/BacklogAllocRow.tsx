@@ -1,9 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { App, Checkbox, InputNumber, Select, Spin, Tag } from 'antd';
+import { App, Checkbox, InputNumber, Select, Spin, Tag, Tooltip } from 'antd';
 import type { SelectProps } from 'antd';
-import { CaretDownOutlined, CaretUpOutlined, HolderOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import {
+  BarChartOutlined, CaretDownOutlined, CaretUpOutlined, HolderOutlined, InfoCircleOutlined, WarningOutlined,
+} from '@ant-design/icons';
+import { formatHours, scenarioRowState } from '../../utils/scenarioView';
 import { createLatestSaver } from '../../utils/latestSaver';
 import { canStepPriority, parsePriorityInput, stepPriority } from '../../utils/priorityStep';
 import { AllocationOverridePopover } from './AllocationOverridePopover';
@@ -48,16 +51,24 @@ export type BacklogAllocRowProps = {
   onDeveloperChange: (allocId: string, employeeId: string | null) => void;
   onSubgroupChange?: (issueId: string, subgroupId: string | null) => void;
   onOpenBreakdown: (issueId: string, issueKey: string) => void;
+  /**
+   * Строка-таблица скина: часы ролей — числами в своих колонках (доля — в
+   * подсказке), колонка «Состояние» с точкой, приоритет с кнопками − / +,
+   * цвета — из классов plc-* в CSS скина. Сетка — от вызывающего.
+   */
+  flat?: boolean;
 };
 
 type PriorityControlProps = {
   backlogItemId: string;
   priority: number | null;
   onChange: (backlogItemId: string, priority: number | null) => void | Promise<unknown>;
+  /** Кнопки − и + по бокам числа (таблица скина) вместо стрелок справа. */
+  stepper?: boolean;
 };
 
 /** Приоритет: число (ручной ввод) и кнопки ▲ / ▼. Значение меняется сразу, сохранения идут по одному. */
-function PriorityControl({ backlogItemId, priority, onChange }: PriorityControlProps) {
+function PriorityControl({ backlogItemId, priority, onChange, stepper = false }: PriorityControlProps) {
   const [value, setValue] = useState<number | null>(priority);
   const [resetKey, setResetKey] = useState(0);
   const cyan = value != null && value <= 3;
@@ -102,6 +113,60 @@ function PriorityControl({ backlogItemId, priority, onChange }: PriorityControlP
     cursor: canStepPriority(value, dir) ? 'pointer' : 'default',
     opacity: canStepPriority(value, dir) ? 1 : 0.25,
   });
+
+  const input = (className: string, style?: CSSProperties) => (
+    <InputNumber
+      key={resetKey}
+      min={1}
+      max={10}
+      value={value}
+      variant="borderless"
+      size="small"
+      controls={false}
+      style={style}
+      className={className}
+      placeholder="—"
+      aria-label="Приоритет"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
+      }}
+      onBlur={(e) => {
+        // Очистка поля не поддерживается: пустое возвращает прежнее значение.
+        const raw = e.target.value;
+        const next = parsePriorityInput(raw, value);
+        if (raw === '') setResetKey((k) => k + 1); // перерисовать поле с прежним числом
+        commit(next);
+      }}
+    />
+  );
+
+  if (stepper) {
+    return (
+      <div className="plc-prio">
+        <button
+          type="button"
+          className="plc-prio-btn"
+          aria-label="Приоритет: убавить 1"
+          title="Убавить 1"
+          disabled={!canStepPriority(value, -1)}
+          onClick={() => commit(stepPriority(value, -1))}
+        >
+          −
+        </button>
+        {input(`plc-prio-input${value != null && value <= 3 ? ' is-top' : ''}`)}
+        <button
+          type="button"
+          className="plc-prio-btn"
+          aria-label="Приоритет: прибавить 1"
+          title="Прибавить 1"
+          disabled={!canStepPriority(value, 1)}
+          onClick={() => commit(stepPriority(value, 1))}
+        >
+          +
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -177,12 +242,14 @@ type PersonSelectProps = {
   teamAssigneeOptions: { label: string; value: string }[];
   roleLabels: ReadonlyMap<string, string>;
   onChange: (employeeId: string | null) => void;
+  /** Таблица скина: поле без рамки, а вне черновика — просто имя. */
+  flat?: boolean;
 };
 
 /** Выбор человека строки — аналитика или разработчика. */
 function PersonSelect({
   scenarioId, backlogItemId, phase, isDraft, value, displayName, busyId, busyHint,
-  teamAssigneeOptions, roleLabels, onChange,
+  teamAssigneeOptions, roleLabels, onChange, flat = false,
 }: PersonSelectProps) {
   const { notification } = App.useApp();
   // Кандидаты — все, кто в квартале сценария состоит в какой-либо команде.
@@ -216,17 +283,22 @@ function PersonSelect({
     });
   }, [candidatesError, notification]);
 
+  if (flat && !isDraft) {
+    return <span className={`plc-person-text${displayName ? '' : ' is-empty'}`}>{displayName ?? '—'}</span>;
+  }
   if (!isDraft && !value) {
     return <span style={{ fontSize: 12, color: DARK_THEME.textMuted }}>{displayName ?? '—'}</span>;
   }
   return (
     <Select
       size="small"
+      variant={flat ? 'borderless' : undefined}
+      className={flat ? 'plc-person' : undefined}
       value={value ?? undefined}
       placeholder={displayName ?? '—'}
       allowClear
       disabled={!isDraft}
-      style={{ width: '100%', fontSize: 12 }}
+      style={flat ? { width: '100%' } : { width: '100%', fontSize: 12 }}
       // Шире колонки: подпись с названием команды и загрузкой целиком
       // помещается почти у всех. Числом, а не false — иначе AntD
       // выключает виртуальный список.
@@ -274,6 +346,7 @@ function BacklogAllocRowBase({
   onDeveloperChange,
   onSubgroupChange,
   onOpenBreakdown,
+  flat = false,
 }: BacklogAllocRowProps) {
   const { setNodeRef, transform, transition, isDragging, attributes, listeners } = useSortable({ id: a.id });
 
@@ -305,6 +378,202 @@ function BacklogAllocRowBase({
     a.override_estimate_qa_hours !== null ||
     a.override_estimate_opo_hours !== null;
   const isPendingContinuation = !!continuationInfo?.is_continuation && !hasOverride;
+
+  const overridePopover = (
+    <AllocationOverridePopover
+      scenarioId={scenarioId}
+      allocationId={a.id}
+      scenarioStatus={scenarioStatus}
+      currentOverride={{
+        analyst: a.override_estimate_analyst_hours,
+        dev: a.override_estimate_dev_hours,
+        qa: a.override_estimate_qa_hours,
+        opo: a.override_estimate_opo_hours,
+      }}
+      continuation={continuationInfo}
+      opoOff={opoOff}
+      opoAnalystRatio={a.opo_analyst_ratio}
+    />
+  );
+
+  if (flat) {
+    const state = scenarioRowState(rowStateClass, a.included);
+    const roleCols: Array<[string, number]> = [['АН', an], ['ПР', de], ['ТС', qa]];
+    if (!opoOff) roleCols.push(['ОПЭ', op]);
+    const isChange = !!a.cost_type?.toLowerCase().includes('change');
+    return (
+      <div data-flip-wrapper="" data-alloc-id={a.id}>
+        <div
+          ref={setRowRef}
+          onClick={() => onToggle(a)}
+          className={[
+            'plc-row',
+            `is-${state.key}`,
+            a.included ? 'is-included' : 'is-excluded',
+            isDraft ? 'is-editable' : '',
+            flashing ? 'plc-flash' : '',
+          ].filter(Boolean).join(' ')}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: gridTemplate,
+            columnGap: gridGap,
+            transform: CSS.Translate.toString(transform),
+            transition,
+            ...(isDragging ? { opacity: 0.5 } : null),
+          }}
+        >
+          <span
+            {...(canDrag ? attributes : {})}
+            {...(canDrag ? listeners : {})}
+            onClick={(e) => e.stopPropagation()}
+            className={`plc-drag${canDrag ? '' : ' is-off'}`}
+            aria-label="Перетащить"
+            title={dragLocked && isDraft ? 'Сброс сортировки — щелчок по заголовку' : isDraft ? 'Перетащить' : ''}
+          >
+            <HolderOutlined />
+          </span>
+          <div className="plc-cell-center" onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={a.included}
+              disabled={!isDraft}
+              onChange={() => onToggle(a)}
+              aria-label={`Включить ${a.jira_key ?? a.title}`}
+            />
+          </div>
+          <div className="plc-cell-center" onClick={(e) => e.stopPropagation()}>
+            <PriorityControl
+              stepper
+              backlogItemId={a.backlog_item_id}
+              priority={a.priority}
+              onChange={onPriorityChange}
+            />
+          </div>
+          <div className="plc-idea">
+            <div className="plc-idea-line">
+              <span className="plc-idea-title" title={a.title}>{a.title}</span>
+              {a.multi_team_progress && <MultiTeamProgressTag progress={a.multi_team_progress} compact />}
+              {hasOverride && <span className="plc-tag is-gold">переоценка</span>}
+              {isPendingContinuation && (
+                <span className="plc-tag is-bad"><WarningOutlined aria-hidden />продолжение</span>
+              )}
+            </div>
+            <div className="plc-idea-meta">
+              {a.status && <span>{a.status}</span>}
+              {a.jira_key &&
+                (jiraBaseUrl ? (
+                  <a
+                    className="plc-key"
+                    href={`${jiraBaseUrl}/browse/${a.jira_key}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {a.jira_key}
+                  </a>
+                ) : (
+                  <span className="plc-key">{a.jira_key}</span>
+                ))}
+              {a.has_children_in_backlog && a.issue_id && (
+                <button
+                  type="button"
+                  className="plc-icon-btn"
+                  aria-label="Разбивка часов"
+                  title="Разбивка часов"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenBreakdown(a.issue_id!, a.jira_key ?? '');
+                  }}
+                >
+                  <BarChartOutlined />
+                </button>
+              )}
+              {overridePopover}
+              {a.cost_type && (
+                <span className={`plc-tag ${isChange ? 'is-info' : 'is-good'}`}>{a.cost_type}</span>
+              )}
+            </div>
+          </div>
+          <div className="plc-cell-person" onClick={(e) => e.stopPropagation()}>
+            <PersonSelect
+              flat
+              scenarioId={scenarioId}
+              backlogItemId={a.backlog_item_id}
+              phase="analyst"
+              isDraft={isDraft}
+              value={a.assignee_employee_id}
+              displayName={a.assignee_display_name}
+              busyId={a.developer_employee_id}
+              busyHint="уже разработчик этой задачи"
+              teamAssigneeOptions={teamAssigneeOptions}
+              roleLabels={roleLabels}
+              onChange={(id) => onAssigneeChange(a.id, id)}
+            />
+          </div>
+          <div className="plc-cell-person" onClick={(e) => e.stopPropagation()}>
+            <PersonSelect
+              flat
+              scenarioId={scenarioId}
+              backlogItemId={a.backlog_item_id}
+              phase="dev"
+              isDraft={isDraft}
+              value={a.developer_employee_id}
+              displayName={a.developer_display_name}
+              busyId={a.assignee_employee_id}
+              busyHint="уже аналитик этой задачи"
+              teamAssigneeOptions={teamAssigneeOptions}
+              roleLabels={roleLabels}
+              onChange={(id) => onDeveloperChange(a.id, id)}
+            />
+          </div>
+          {subgroupOptions && (
+            <div className="plc-cell-person" onClick={(e) => e.stopPropagation()}>
+              {/* Группа пишется на саму задачу — идея без задачи её хранить негде. */}
+              {isDraft && a.issue_id ? (
+                <Select
+                  size="small"
+                  variant="borderless"
+                  className="plc-person"
+                  value={a.subgroup_id ?? undefined}
+                  placeholder="—"
+                  allowClear
+                  style={{ width: '100%' }}
+                  options={subgroupOptions}
+                  onChange={(value: string | undefined) =>
+                    a.issue_id && onSubgroupChange?.(a.issue_id, value ?? null)
+                  }
+                />
+              ) : (
+                <span className="plc-person-text">
+                  {subgroupOptions.find((o) => o.value === a.subgroup_id)?.label ?? '—'}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="plc-customer" title={a.customer ?? undefined}>{a.customer ?? '—'}</div>
+          {roleCols.map(([label, hours]) => (
+            <Tooltip
+              key={label}
+              title={`${label}: ${formatHours(hours)} ч · ${total > 0 ? Math.round((hours / total) * 100) : 0}% часов идеи`}
+            >
+              <span className={`plc-num${hours === 0 ? ' is-zero' : ''}`}>{formatHours(hours)}</span>
+            </Tooltip>
+          ))}
+          <div className="plc-total">
+            <b>{Math.round(total).toLocaleString('ru')} ч</b>
+            <div className="plc-total-pct">
+              {resourceTotalForBacklog > 0 && total > 0
+                ? `${Math.round((total / resourceTotalForBacklog) * 100)}% ресурса`
+                : '—'}
+            </div>
+          </div>
+          <div className={`plc-state is-${state.key}`}>
+            {state.key !== 'none' && <span className="plc-state-dot" aria-hidden />}
+            <span>{state.label}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const className = ['backlog-row', flashing ? 'cyan-flash' : '', rowStateClass]
     .filter(Boolean)
@@ -396,20 +665,7 @@ function BacklogAllocRowBase({
               ⚠ продолжение
             </Tag>
           )}
-          <AllocationOverridePopover
-            scenarioId={scenarioId}
-            allocationId={a.id}
-            scenarioStatus={scenarioStatus}
-            currentOverride={{
-              analyst: a.override_estimate_analyst_hours,
-              dev: a.override_estimate_dev_hours,
-              qa: a.override_estimate_qa_hours,
-              opo: a.override_estimate_opo_hours,
-            }}
-            continuation={continuationInfo}
-            opoOff={opoOff}
-            opoAnalystRatio={a.opo_analyst_ratio}
-          />
+          {overridePopover}
         </div>
         {a.status && (
           <Tag
