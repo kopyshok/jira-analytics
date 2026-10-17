@@ -692,6 +692,7 @@ export function GroupedIssues({
       <Table<Row>
         size="small"
         rowKey="rowKey"
+        rowClassName={(row) => (row.isGroup ? 'desk-group-row' : '')}
         dataSource={data}
         columns={columns}
         pagination={false}

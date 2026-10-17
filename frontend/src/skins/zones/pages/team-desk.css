@@ -268,6 +268,18 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .desk-issues-car
   font-size: 13.5px;
 }
 html[data-skin="zones"][data-zone="planning"] .desk-issues-card .ant-table-row-level-0 > td { background: #FBF7EC !important; }
+/* имя разработчика в строке группы не обрезается: соседние ячейки строки пустые */
+html[data-skin="zones"] .desk-issues-card .desk-group-row > td:first-child { overflow: visible; position: relative; z-index: 1; }
+/* спринт, релиз, длинные метки — многоточием, а не срезом */
+html[data-skin="zones"] .desk-issues-card td.ant-table-cell-ellipsis > span:not(.ant-tag) { display: inline-flex; align-items: center; max-width: 100%; }
+html[data-skin="zones"] .desk-issues-card td.ant-table-cell-ellipsis .ant-tag {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+html[data-skin="zones"] .desk-issues-card .ant-input-number { width: 60px !important; }
 /* спринт и релиз — простым текстом */
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .desk-issues-card .ant-tag:not([data-group]):not([data-flag]) {
   background: none !important;

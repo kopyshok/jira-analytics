@@ -8,6 +8,8 @@ import IssueContextBlock from './IssueContextBlock';
 import IssueCategorizer from './IssueCategorizer';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
 import JiraIssueLink from '../shared/JiraIssueLink';
+import { useSkin } from '../../contexts/ThemeContext';
+import { isoDateToRu } from '../../utils/format';
 
 
 interface Props {
@@ -32,6 +34,8 @@ interface DrawerContentProps {
 function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }: DrawerContentProps) {
   const { data: context, isLoading, isError, refetch } = useIssueContext(issueId);
   const { items: categories } = useCategories();
+  // В скине период — по-русски («01.10.2026 – 31.10.2026»), в Aurora — как прежде.
+  const ru = !!useSkin();
 
   if (isLoading) {
     return (
@@ -92,7 +96,7 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
         >
           <span>Ворклоги за период</span>
           <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--text-muted, #64748b)' }}>
-            {periodStart} – {periodEnd}
+            {ru ? `${isoDateToRu(periodStart)} – ${isoDateToRu(periodEnd)}` : `${periodStart} – ${periodEnd}`}
           </span>
         </div>
         <div style={{ padding: '8px 0' }}>

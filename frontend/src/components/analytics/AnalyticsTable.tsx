@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Table, Tag, Tooltip } from 'antd';
+import { Button, Empty, Table, Tag, Tooltip } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
@@ -20,6 +20,7 @@ import { statusTagColor } from '../../utils/status';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
 import AnalyticsIssueDrawer from './AnalyticsIssueDrawer';
 import { useSkin } from '../../contexts/ThemeContext';
+import { formatNumber } from '../../utils/format';
 import { readablePair } from '../../skins/zones/readableColor';
 
 type RowKind = 'team' | 'role' | 'emp' | 'wt' | 'cat' | 'issue' | 'worklog-block';
@@ -721,6 +722,8 @@ export default function AnalyticsTable({
   docked = false,
 }: Props) {
   const skin = useSkin();
+  // В скине числа — по-русски («1 240,0»), в Aurora — как прежде.
+  const num = (v: number, digits: number) => formatNumber(v, digits, !!skin);
   const { visible } = useAnalyticsColumns();
   const visibleSet = new Set(visible);
   const navigate = useNavigate();
@@ -826,7 +829,7 @@ export default function AnalyticsTable({
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
               <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
-                {r.totals.fact_hours.toFixed(1)}
+                {num(r.totals.fact_hours, 1)}
               </span>
               {r.kind !== 'issue' && <ForeignChip totals={r.totals} />}
             </span>
@@ -860,7 +863,11 @@ export default function AnalyticsTable({
       title: 'Часы план',
       key: 'plan_hours',
       render: (_, r) =>
-        isBlock(r) ? null : r.totals.plan_hours != null ? Math.round(r.totals.plan_hours) : '—',
+        isBlock(r)
+          ? null
+          : r.totals.plan_hours != null
+            ? (skin ? num(r.totals.plan_hours, 0) : Math.round(r.totals.plan_hours))
+            : '—',
       width: 100,
       align: 'right',
     },
@@ -873,7 +880,7 @@ export default function AnalyticsTable({
           : r.totals.pct_plan != null
             ? (
                 <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
-                  {r.totals.pct_plan.toFixed(0)}%
+                  {num(r.totals.pct_plan, 0)}%
                 </span>
               )
             : '—',
@@ -887,7 +894,7 @@ export default function AnalyticsTable({
         isBlock(r)
           ? null
           : r.totals.pct_in_group != null
-            ? `${r.totals.pct_in_group.toFixed(1)}%`
+            ? `${num(r.totals.pct_in_group, 1)}%`
             : '—',
       width: 100,
       align: 'right',
@@ -895,7 +902,7 @@ export default function AnalyticsTable({
     {
       title: '% от итога',
       key: 'pct_total',
-      render: (_, r) => (isBlock(r) ? null : `${r.totals.pct_total.toFixed(1)}%`),
+      render: (_, r) => (isBlock(r) ? null : `${num(r.totals.pct_total, 1)}%`),
       width: 100,
       align: 'right',
     },
@@ -982,7 +989,7 @@ export default function AnalyticsTable({
     return (
       <div className="an-split">
         <section className="zn-card an-table-card" data-tour="analytics-table">{table}</section>
-        {drawerIssue && (
+        {drawerIssue ? (
           <AnalyticsIssueDrawer
             docked
             issueId={drawerIssue.id}
@@ -991,6 +998,11 @@ export default function AnalyticsTable({
             periodEnd={periodEnd}
             onClose={() => setDrawerIssue(null)}
           />
+        ) : worklogMode === 'drawer' && (
+          // Карточка задачи закреплена в раскладке: пока задача не выбрана — подсказка на её месте.
+          <aside className="an-drawer-docked an-drawer-empty" aria-label="Карточка задачи">
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Выберите задачу в таблице — здесь откроется её карточка" />
+          </aside>
         )}
       </div>
     );

@@ -28,7 +28,7 @@ interface Props {
   scale?: TimelineScale;
   trackWidthPx?: number;
   calendar?: ProductionCalendarDayResponse[];
-  /** Плотный режим: шапка ниже, месяцы — подписью слева. */
+  /** Плотный режим: шапка ниже, месяцы — подписью слева без года, недели — датами понедельников. */
   compact?: boolean;
 }
 
@@ -76,20 +76,22 @@ export default function TimelineHeader({
   const lower = useMemo(() => {
     if (scale === 'day') return days.map(d => ({ label: d.label, leftPct: d.leftPct, widthPct: d.widthPct }));
     if (scale === 'month') return getMonthLabels(timeline);
-    return getWeekLabels(timeline);
-  }, [timeline, scale, days]);
+    return getWeekLabels(timeline, compact ? 'monday' : 'num');
+  }, [timeline, scale, days, compact]);
 
   const months = useMemo(() => {
     const map = new Map<string, { label: string; leftPct: number; rightPct: number }>();
     lower.forEach(w => {
       const approxDate = dateAtLeftPct(timeline, w.leftPct);
       const key = `${approxDate.getFullYear()}-${approxDate.getMonth()}`;
-      const label = `${MONTH_NAMES[approxDate.getMonth()]} ${approxDate.getFullYear()}`;
+      const label = compact
+        ? MONTH_NAMES[approxDate.getMonth()]
+        : `${MONTH_NAMES[approxDate.getMonth()]} ${approxDate.getFullYear()}`;
       if (!map.has(key)) map.set(key, { label, leftPct: w.leftPct, rightPct: w.leftPct + w.widthPct });
       else map.get(key)!.rightPct = w.leftPct + w.widthPct;
     });
     return [...map.values()];
-  }, [lower, timeline]);
+  }, [lower, timeline, compact]);
 
   const years = useMemo(() => {
     if (scale !== 'month') return [];

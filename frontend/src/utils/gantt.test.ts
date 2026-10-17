@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildTimeline, buildWorkdayTimeline, dateToLeft, datesToWidth, findAssignmentByKey,
-  shiftByColumns, startMovedNotice,
+  getWeekLabels, shiftByColumns, startMovedNotice,
 } from './gantt';
 
 describe('buildWorkdayTimeline', () => {
@@ -113,5 +113,22 @@ describe('findAssignmentByKey', () => {
   it('returns null when the phase is gone (merged away) or no key', () => {
     expect(findAssignmentByKey([{ id: 'x', backlog_item_id: 'i1', phase: 'dev', part_number: 1 }], key)).toBeNull();
     expect(findAssignmentByKey([], null)).toBeNull();
+  });
+});
+
+describe('getWeekLabels', () => {
+  const q4 = buildTimeline(new Date(2026, 9, 1), new Date(2026, 11, 31));
+
+  it('numbers weeks by default', () => {
+    const labels = getWeekLabels(q4).map((w) => w.label);
+    expect(labels[0]).toBe('W1');
+    expect(labels[1]).toBe('W2');
+  });
+
+  it('labels weeks with their Monday date', () => {
+    const labels = getWeekLabels(q4, 'monday').map((w) => w.label);
+    // 1 октября 2026 — четверг: первая неделя начинается в понедельник 28.09.
+    expect(labels.slice(0, 3)).toEqual(['28.09', '05.10', '12.10']);
+    expect(labels[labels.length - 1]).toBe('28.12');
   });
 });

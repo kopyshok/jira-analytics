@@ -370,7 +370,7 @@ export default function GanttChart({
 
           {/* Quarter-end divider (shows when timeline is extended for out_of_quarter assignments) */}
           {hasOoQ && (
-            <div style={{
+            <div className="rp-ooq-divider" style={{
               position: 'absolute',
               left: LEFT_COL + (dateToLeft(qEndIso, timeline) / 100) * trackWidthPx,
               top: 0,

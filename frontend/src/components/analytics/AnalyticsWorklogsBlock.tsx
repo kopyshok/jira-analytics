@@ -2,6 +2,8 @@ import { Spin, Table, Empty } from 'antd';
 import type { ColumnsType } from 'antd/es/table/interface';
 import type { IssueWorklogItem } from '../../types/api';
 import { useIssueWorklogs } from '../../hooks/useIssueWorklogs';
+import { useSkin } from '../../contexts/ThemeContext';
+import { formatNumber, isoDateToRu } from '../../utils/format';
 
 interface Props {
   issueId: string;
@@ -9,13 +11,14 @@ interface Props {
   periodEnd: string;
 }
 
-const columns: ColumnsType<IssueWorklogItem> = [
+// В скине дата и часы — по-русски («14.10.2026», «4,0»), в Aurora — как прежде.
+const buildColumns = (ru: boolean): ColumnsType<IssueWorklogItem> => [
   {
     title: 'Когда',
     dataIndex: 'started_at',
     key: 'started_at',
     width: 110,
-    render: (v: string) => v?.slice(0, 10) ?? '—',
+    render: (v: string) => (v ? (ru ? isoDateToRu(v) : v.slice(0, 10)) : '—'),
   },
   {
     title: 'Кто',
@@ -29,7 +32,7 @@ const columns: ColumnsType<IssueWorklogItem> = [
     key: 'hours',
     width: 70,
     align: 'right',
-    render: (v: number) => v.toFixed(1),
+    render: (v: number) => formatNumber(v, 1, ru),
   },
   {
     title: 'Комментарий',
@@ -41,6 +44,7 @@ const columns: ColumnsType<IssueWorklogItem> = [
 
 export default function AnalyticsWorklogsBlock({ issueId, periodStart, periodEnd }: Props) {
   const { data, isLoading } = useIssueWorklogs(issueId, periodStart, periodEnd);
+  const ru = !!useSkin();
 
   if (isLoading) return <Spin size="small" style={{ margin: 16 }} />;
   if (!data?.length) return <Empty description="Нет ворклогов за период" style={{ margin: 16 }} />;
@@ -48,7 +52,7 @@ export default function AnalyticsWorklogsBlock({ issueId, periodStart, periodEnd
   return (
     <Table<IssueWorklogItem>
       dataSource={data}
-      columns={columns}
+      columns={buildColumns(ru)}
       rowKey="worklog_id"
       pagination={false}
       size="small"

@@ -19,6 +19,8 @@ import {
 interface Props {
   /** Запас нормированных работ команды плана на квартал. */
   reserve: ReserveOut;
+  /** Блок всегда раскрыт, заголовок — без сворачивания (панель, закреплённая в раскладке). */
+  alwaysOpen?: boolean;
 }
 
 /** Ключ строки таблицы запаса (React `key`) — уникален по задаче+команде+роли. */
@@ -33,13 +35,14 @@ const tdStyle: React.CSSProperties = {
   borderBottom: '1px solid var(--rp-row-line-2, rgba(30,58,95,0.4))',
 };
 
-export default function NormedReserveSummary({ reserve }: Props) {
+export default function NormedReserveSummary({ reserve, alwaysOpen = false }: Props) {
   const { message } = App.useApp();
   const setOverride = useSetWorkTypeOverride();
   const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
   // При каждом открытии плана: развёрнут, если у команды есть часы других команд
   // (видно, сколько запаса они заняли), иначе свёрнут. Состояние не персистится.
-  const [expanded, setExpanded] = useState(() => hasOtherTeamHours(reserve));
+  const [expandedState, setExpanded] = useState(() => hasOtherTeamHours(reserve));
+  const expanded = alwaysOpen || expandedState;
   // Раскрытые строки видов работ (задачи других команд) — ключ «роль::вид работ».
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   // Вид работ хранится на сервере per задача (backlog_item_id), а не per задача+роль — задача с
@@ -142,6 +145,29 @@ export default function NormedReserveSummary({ reserve }: Props) {
     </div>
   );
 
+  const headStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+  };
+  const headContent = (
+    <>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {!alwaysOpen && (
+          <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 11, color: 'var(--rp-text-3, #7a9ab8)' }}>
+            {expanded ? '▾' : '▸'}
+          </span>
+        )}
+        <span className="rp-reserve-title" style={{ fontSize: 13, fontWeight: 600, color: 'var(--rp-heat-text, #fff)' }}>
+          Нормированные работы — запас квартала
+        </span>
+      </span>
+      {overuseNote ? (
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rp-bad-2, #ff6b6b)' }}>⚠ {overuseNote}</span>
+      ) : (
+        <span style={{ fontSize: 11, color: 'var(--rp-text-3, #7a9ab8)' }}>перерасхода нет</span>
+      )}
+    </>
+  );
+
   return (
     <div
       data-testid="rp-reserve-summary"
@@ -153,31 +179,25 @@ export default function NormedReserveSummary({ reserve }: Props) {
         marginTop: 'var(--rp-block-gap, 16px)',
       }}
     >
-      <button
-        type="button"
-        data-testid="rp-reserve-toggle"
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
-          background: 'transparent', border: 'none', padding: 0, margin: 0, cursor: 'pointer',
-          font: 'inherit', color: 'inherit', textAlign: 'left',
-        }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 11, color: 'var(--rp-text-3, #7a9ab8)' }}>
-            {expanded ? '▾' : '▸'}
-          </span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--rp-heat-text, #fff)' }}>
-            Нормированные работы — запас квартала
-          </span>
-        </span>
-        {overuseNote ? (
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rp-bad-2, #ff6b6b)' }}>⚠ {overuseNote}</span>
-        ) : (
-          <span style={{ fontSize: 11, color: 'var(--rp-text-3, #7a9ab8)' }}>перерасхода нет</span>
-        )}
-      </button>
+      {alwaysOpen ? (
+        <div className="rp-reserve-head" style={headStyle}>
+          {headContent}
+        </div>
+      ) : (
+        <button
+          type="button"
+          data-testid="rp-reserve-toggle"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          style={{
+            ...headStyle,
+            background: 'transparent', border: 'none', padding: 0, margin: 0, cursor: 'pointer',
+            font: 'inherit', color: 'inherit', textAlign: 'left',
+          }}
+        >
+          {headContent}
+        </button>
+      )}
 
       {expanded && (
         <div style={{ marginTop: 8 }}>
@@ -190,7 +210,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
               Заблокированных периодов и работы в других командах нет — запас не расходуется
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <table className="rp-reserve-table" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <colgroup>
                 <col />
                 <col style={{ width: 90 }} />

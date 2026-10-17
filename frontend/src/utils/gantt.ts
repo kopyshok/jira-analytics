@@ -117,7 +117,14 @@ export function startMovedNotice(requested: string, actual: string | null | unde
   return `Начало перенесено на первый свободный день: ${actual.slice(8, 10)}.${actual.slice(5, 7)}`;
 }
 
-export function getWeekLabels(tl: GanttTimeline | WorkdayTimeline): Array<{ label: string; leftPct: number; widthPct: number }> {
+/**
+ * Недели шкалы. Подпись — номер недели («W1») или дата её понедельника
+ * («28.09», `format: 'monday'`) — так шкала читается без перевода номеров в даты.
+ */
+export function getWeekLabels(
+  tl: GanttTimeline | WorkdayTimeline,
+  format: 'num' | 'monday' = 'num',
+): Array<{ label: string; leftPct: number; widthPct: number }> {
   const weeks: Array<{ label: string; leftPct: number; widthPct: number }> = [];
   const d = new Date(tl.startDate);
   const dow = d.getDay();
@@ -132,7 +139,10 @@ export function getWeekLabels(tl: GanttTimeline | WorkdayTimeline): Array<{ labe
     const clampedEnd = weekEnd > tl.endDate ? tl.endDate : weekEnd;
     const left = dateToLeft(fmtLocalIso(clampedStart), tl);
     const width = datesToWidth(fmtLocalIso(clampedStart), fmtLocalIso(clampedEnd), tl);
-    weeks.push({ label: `W${weekNum}`, leftPct: left, widthPct: width });
+    const label = format === 'monday'
+      ? `${String(weekStart.getDate()).padStart(2, '0')}.${String(weekStart.getMonth() + 1).padStart(2, '0')}`
+      : `W${weekNum}`;
+    weeks.push({ label, leftPct: left, widthPct: width });
     d.setDate(d.getDate() + 7);
     weekNum++;
   }

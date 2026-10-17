@@ -35,8 +35,8 @@ import ZonesBand, { BandField, BandTabs } from '../ZonesBand';
 
 const SUBTITLE = 'Отметьте галочками задачи из бэклога — сформируется план квартала';
 // Плотная сетка таблицы скина: часы ролей — числами, «Идея» забирает остаток.
-const GRID_Z = '20px 30px 64px minmax(200px, 1fr) 118px 118px 130px 192px 76px';
-const GRID_Z_SUB = '20px 30px 64px minmax(200px, 1fr) 118px 118px 104px 130px 192px 76px';
+const GRID_Z = '20px 44px 64px minmax(200px, 1fr) 118px 118px 130px 192px 76px';
+const GRID_Z_SUB = '20px 44px 64px minmax(200px, 1fr) 118px 118px 104px 130px 192px 76px';
 
 /**
  * «Сценарии» в скине «Цветовые зоны»: выбор сценария, сравнение, вовлечённость

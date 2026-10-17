@@ -168,8 +168,8 @@ html[data-skin="zones"] .pz-card-cat { padding: 1px 6px; border-radius: 4px; bac
 
 /* --- таблица и таймлайн --- */
 html[data-skin="zones"] .pz-portfolio {
-  --pz-table-h: max(140px, calc((100vh - 240px) * 0.45 - 114px));
-  --pz-timeline-h: max(140px, calc((100vh - 240px) * 0.55 - 120px));
+  --pz-table-h: max(140px, calc((100vh - 240px) * 0.55 - 114px));
+  --pz-timeline-h: max(140px, calc((100vh - 240px) * 0.45 - 120px));
 }
 html[data-skin="zones"] .pz-card-head { padding: 12px 14px 8px; }
 html[data-skin="zones"] .pz-card-head h2 { font-size: 16px; }
@@ -186,3 +186,43 @@ html[data-skin="zones"] { --pf-wt-text: #17191C; }
 html[data-skin="zones"] .pz-table .ant-table-column-sorter { display: none; }
 html[data-skin="zones"] .pz-table .ant-table-column-sort .ant-table-column-sorter,
 html[data-skin="zones"] .pz-table th:hover .ant-table-column-sorter { display: inline-flex; }
+
+/* --- таймлайн по макету: легенда в шапке блока, «сегодня» над шкалой, ключ ссылкой --- */
+html[data-skin="zones"] .pz-timeline { position: relative; }
+html[data-skin="zones"] .pz-timeline .pf-tl-legend {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  margin: 0 !important;
+  max-width: calc(100% - 240px);
+  justify-content: flex-end;
+  color: #3F444B !important;
+}
+html[data-skin="zones"] .pz-timeline .pf-tl-label {
+  -webkit-line-clamp: 1 !important;
+  font-size: 12px !important;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  display: block !important;
+}
+html[data-skin="zones"] .pf-tl-key { color: var(--za-ink); text-decoration: underline; text-underline-offset: 2px; font-weight: 600; }
+html[data-skin="zones"] .pf-tl-today {
+  position: absolute;
+  top: -2px;
+  transform: translateX(-50%);
+  height: 16px;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #17191C;
+  color: #FFFFFF;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* цвет фазы точкой у заголовка колонки */
+html[data-skin="zones"] .pf-stage-head { display: inline-flex; align-items: center; gap: 6px; }
+html[data-skin="zones"] .pf-stage-head::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--pf-wt-dev); }
+html[data-skin="zones"] .pf-stage-head[data-stage="analyst"]::before { background: var(--pf-wt-analyst); }
+html[data-skin="zones"] .pf-stage-head[data-stage="qa"]::before { background: var(--pf-wt-qa); }

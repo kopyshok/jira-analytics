@@ -313,6 +313,7 @@ export default function AssignmentSidebar({
         <Descriptions.Item label="Начало">
           <DatePicker
             value={assignment.start_date ? dayjs(assignment.start_date) : null}
+            format={docked ? 'DD.MM.YYYY' : undefined}
             disabled={saving}
             allowClear={false}
             onChange={(d) => d && updateField({ start_date: d.format('YYYY-MM-DD') })}

@@ -110,8 +110,12 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
                 </Button>
               )}
               {planId && gantt && <BulkResetDropdown planId={planId} counts={gantt.reset_counts} />}
-              {gantt?.plan.parent_plan_id && (
-                <Button onClick={() => navigate(`/resource-planning/compare?base=${gantt.plan.parent_plan_id}&scen=${planId}`)}>
+              {/* Без базового плана сравнение открывается с выбором базы на месте. */}
+              {planId && gantt && (
+                <Button
+                  onClick={() => navigate(`/resource-planning/compare?base=${gantt.plan.parent_plan_id ?? ''}&scen=${planId}`)}
+                  title={gantt.plan.parent_plan_id ? undefined : 'Базовый план выбирается на странице сравнения'}
+                >
                   Сравнить с базовым
                 </Button>
               )}
@@ -251,9 +255,10 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
                 <span><i className="rpz-lg-ooq" />за пределами квартала</span>
                 <span><i className="rpz-lg-absence" />отсутствие</span>
                 <span><i className="rpz-lg-busy" />занят в другой команде</span>
+                <span><i className="rpz-lg-holiday" aria-hidden>●</i>праздник</span>
               </div>
             </section>
-            {selectedAssignment && (
+            {selectedAssignment ? (
               <AssignmentSidebar
                 docked
                 open
@@ -264,12 +269,20 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
                 employees={candidateEmployees}
                 onChanged={onAssignmentChanged}
               />
+            ) : (
+              <aside className="rp-assign-docked rpz-assign-empty" aria-label="Назначение">
+                <div className="rp-assign-head">
+                  <div className="rp-assign-head-main"><h2>Назначение</h2></div>
+                </div>
+                <div className="rp-assign-body">
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Выберите фазу на диаграмме" />
+                </div>
+              </aside>
             )}
           </div>
         )}
 
-        {gantt && !ganttLoading && planId && viewMode === 'two-level'
-          && ((gantt.employee_load?.length ?? 0) > 0 || (gantt.reserve && gantt.plan.team)) && (
+        {gantt && !ganttLoading && planId && viewMode === 'two-level' && (
           <div className="rpz-bottom">
             {gantt.employee_load && gantt.employee_load.length > 0 && (
               <div className="rpz-load" data-tour="rp-load">
@@ -286,12 +299,16 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
                 />
               </div>
             )}
-            {gantt.reserve && gantt.plan.team && (
-              <div className="rpz-reserve">
-                {/* key — план: при открытии другого плана сводка заново решает, развернуться ли. */}
-                <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} />
-              </div>
-            )}
+            <div className="rpz-reserve">
+              {gantt.reserve && gantt.plan.team ? (
+                <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} alwaysOpen />
+              ) : (
+                <div className="rpz-reserve-empty">
+                  <h2>Нормированные работы — запас квартала</h2>
+                  <p>Нормированных работ в квартале нет</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

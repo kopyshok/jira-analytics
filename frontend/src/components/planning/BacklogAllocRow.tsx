@@ -341,6 +341,7 @@ function BacklogAllocRowBase({
       onClick={() => onToggle(a)}
       className={className}
       style={style}
+      data-included={a.included ? '' : undefined}
     >
       <span
         {...(canDrag ? attributes : {})}
@@ -359,7 +360,7 @@ function BacklogAllocRowBase({
       >
         <HolderOutlined />
       </span>
-      <div onClick={(e) => e.stopPropagation()}>
+      <div className="backlog-row-check" onClick={(e) => e.stopPropagation()}>
         <Checkbox checked={a.included} disabled={!isDraft} onChange={() => onToggle(a)} />
       </div>
       <div
@@ -425,6 +426,7 @@ function BacklogAllocRowBase({
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
+              className="backlog-row-key"
               style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}
             >
               {a.jira_key}

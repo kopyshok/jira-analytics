@@ -149,6 +149,8 @@ html[data-skin="zones"] .an-drawer-docked {
   border: 1px solid #E1E3E8;
   border-radius: 10px;
 }
+html[data-skin="zones"] .an-drawer-empty { box-sizing: border-box; align-items: center; justify-content: center; padding: 24px; text-align: center; }
+html[data-skin="zones"] .an-drawer-empty .ant-empty-description { color: #5A5F66; font-size: 12.5px; }
 html[data-skin="zones"] .an-drawer-docked .an-drawer-head { padding: 12px 14px 10px !important; }
 html[data-skin="zones"] .an-drawer-docked .an-drawer-head a {
   font-family: var(--font-display) !important;

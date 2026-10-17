@@ -49,9 +49,11 @@ interface Props {
   /** Высота области строк; всё, что выше — прокручивается внутри блока.
    *  Нужна портфелю: строк там столько же, сколько проектов у выбранных команд. */
   maxHeight?: number | string;
+  /** Подпись «сегодня 16.10» над шкалой (раскладка скина). */
+  todayPill?: boolean;
 }
 
-export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight }) => {
+export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight, todayPill = false }) => {
   if (!timeline.start || !timeline.end || timeline.rows.length === 0) {
     return (
       <Empty
@@ -85,10 +87,14 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
   // 'by-phase': каждая полоса становится своей строкой, подпись — название фазы.
   const rows = mode === 'by-phase'
     ? timeline.rows.flatMap((r) =>
-        r.bars.map((b) => ({ key: r.key, label: b.label, bars: [b] })))
+        r.bars.map((b) => ({ key: r.key, label: b.label, node: null as React.ReactNode, bars: [b] })))
     : timeline.rows.map((r) => ({
         key: r.key,
         label: `${r.key ?? ''} · ${r.title ?? ''}`.trim(),
+        // Ключ — отдельным элементом: скин красит его как ссылку; текст тот же.
+        node: r.key
+          ? <><span className="pf-tl-key">{r.key}</span>{` · ${r.title ?? ''}`.trimEnd()}</>
+          : null,
         bars: r.bars,
       }));
 
@@ -98,13 +104,18 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
         display: 'grid', gridTemplateColumns: `${labelW}px 1fr`, gap: 8, marginBottom: 4,
       }}>
         <div />
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)` }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)`, position: 'relative' }}>
           {labels.map((m, i) => (
             <div key={i} className="pf-tl-month" style={{
               fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em',
               color: DARK_THEME.textMuted, textAlign: 'center',
             }}>{m}</div>
           ))}
+          {todayPill && nowLeft !== null && (
+            <span className="pf-tl-today" style={{ left: `${nowLeft}%` }}>
+              сегодня {new Date(nowTime).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+            </span>
+          )}
         </div>
       </div>
 
@@ -125,6 +136,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
               if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row.key!); }
             } : undefined}
             title={row.label}
+            className="pf-tl-label"
             style={{
               fontSize: 11, lineHeight: 1.3, color: DARK_THEME.textPrimary,
               // Две строки максимум: третья растянула бы строку таймлайна и
@@ -134,7 +146,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
               cursor: onRowClick && row.key ? 'pointer' : 'default',
             }}
           >
-            {row.label}
+            {row.node ?? row.label}
           </div>
           <div className="pf-tl-lane" style={{
             position: 'relative', height: LANE_H + 6,
@@ -186,7 +198,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
       ))}
       </div>
 
-      <div style={{
+      <div className="pf-tl-legend" style={{
         display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8,
         fontSize: 11, color: DARK_THEME.textMuted,
       }}>

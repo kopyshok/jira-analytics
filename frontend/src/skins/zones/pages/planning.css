@@ -112,10 +112,32 @@ html[data-skin="zones"] .plz-legend {
   color: #3F444B;
 }
 html[data-skin="zones"] .plz-legend span { display: inline-flex; align-items: center; gap: 6px; }
-html[data-skin="zones"] .plz-legend i { display: inline-block; width: 3px; height: 12px; border-radius: 1px; background: var(--za); }
-html[data-skin="zones"] .plz-legend i.is-deficit { background: #D1382A; }
-html[data-skin="zones"] .plz-legend i.is-in-work { background: #2E8B57; }
-html[data-skin="zones"] .plz-legend i.is-no-est { background: #B85C00; }
+/* метка включения — точкой после галочки, как в макете (вместо полосы слева) */
+html[data-skin="zones"] .plz-legend i,
+html[data-skin="zones"] .plz .backlog-row-check::after {
+  display: inline-block;
+  flex: none;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+html[data-skin="zones"] .plz .backlog-row-check { display: flex; align-items: center; gap: 9px; }
+html[data-skin="zones"] .plz .backlog-row-check::after { content: ''; }
+html[data-skin="zones"] .plz-legend i.is-included,
+html[data-skin="zones"] .plz .backlog-row[data-included] .backlog-row-check::after { background: #2F6FDE; }
+html[data-skin="zones"] .plz-legend i.is-in-work,
+html[data-skin="zones"] .plz .backlog-row.row-state-in-work .backlog-row-check::after { background: #2E8B57; border-radius: 2px; }
+html[data-skin="zones"] .plz-legend i.is-deficit,
+html[data-skin="zones"] .plz .backlog-row.row-state-deficit .backlog-row-check::after {
+  width: 12px;
+  height: 12px;
+  background: #D1382A;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 0 0 1.5px #D1382A;
+}
+html[data-skin="zones"] .plz-legend i.is-no-est,
+html[data-skin="zones"] .plz .backlog-row.row-state-no-estimates .backlog-row-check::after { background: #FFFFFF; border: 1.5px solid #7B8088; }
 
 /* строки бэклога: плоско, без приглушения невключённых */
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row:not(.is-dragging) { opacity: 1 !important; }
@@ -126,9 +148,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-ro
   padding-top: 6px !important;
   padding-bottom: 6px !important;
 }
-html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row.row-state-deficit { background: #FDF3F1 !important; border-left-color: #D1382A !important; }
-html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row.row-state-in-work { border-left-color: #2E8B57 !important; }
-html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row.row-state-no-estimates { border-left-color: #B85C00 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row:hover { border-left-color: transparent !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row.row-state-deficit { background: #FDF3F1 !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row > div:nth-child(4) > div:first-child { font-size: 12.5px !important; font-weight: 600; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row > div:nth-child(4) > div:first-child > span:first-child {
   overflow: hidden;
@@ -183,4 +205,13 @@ html[data-skin="zones"] {
   --rev-removed: #B42A1E;
   --rev-up: #1E6B43;
   --rev-down: #B42A1E;
+}
+
+/* ключ задачи — ссылкой цвета зоны, как в макете */
+html[data-skin="zones"] .plz .backlog-row-key {
+  color: var(--za-ink) !important;
+  font-family: var(--font-body) !important;
+  font-size: 12px !important;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

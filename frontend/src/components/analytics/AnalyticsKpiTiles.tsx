@@ -1,5 +1,7 @@
 import type React from 'react';
 import type { NodeTotals } from '../../types/api';
+import { useSkin } from '../../contexts/ThemeContext';
+import { formatNumber } from '../../utils/format';
 
 interface Props {
   totals: NodeTotals;
@@ -30,6 +32,8 @@ const VALUE: React.CSSProperties = {
 };
 
 export default function AnalyticsKpiTiles({ totals }: Props) {
+  // В скине числа — по-русски («3 412,5»), в Aurora — как прежде.
+  const ru = !!useSkin();
   const pct = totals.plan_hours && totals.plan_hours > 0
     ? (totals.fact_hours / totals.plan_hours) * 100
     : null;
@@ -37,12 +41,12 @@ export default function AnalyticsKpiTiles({ totals }: Props) {
     <div style={{ display: 'flex', gap: 12, marginBottom: 16 }} data-tour="analytics-kpi">
       <div style={TILE}>
         <div style={LABEL}>Σ Часов факт</div>
-        <div style={VALUE}>{totals.fact_hours.toFixed(1)}</div>
+        <div style={VALUE}>{formatNumber(totals.fact_hours, 1, ru)}</div>
       </div>
       <div style={TILE}>
         <div style={LABEL}>Σ Часов план</div>
         <div style={VALUE}>
-          {totals.plan_hours != null ? totals.plan_hours.toFixed(0) : '—'}
+          {totals.plan_hours != null ? formatNumber(totals.plan_hours, 0, ru) : '—'}
         </div>
       </div>
       <div style={TILE}>
@@ -58,7 +62,7 @@ export default function AnalyticsKpiTiles({ totals }: Props) {
       <div style={TILE}>
         <div style={LABEL} data-foreign={totals.foreign_hours > 0 || undefined}>Чужих часов</div>
         <div style={{ ...VALUE, color: totals.foreign_hours > 0 ? 'var(--an-foreign, #ff9c4a)' : 'var(--text, #e6edf7)' }}>
-          {totals.foreign_hours.toFixed(1)}
+          {formatNumber(totals.foreign_hours, 1, ru)}
           {totals.foreign_hours > 0 && (
             <span style={{ fontSize: 13, marginLeft: 6, color: 'var(--an-foreign, #ff9c4a)', fontWeight: 500 }}>
               ({totals.foreign_pct.toFixed(0)}%)

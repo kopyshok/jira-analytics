@@ -97,6 +97,7 @@ export function PortfolioZones({ data, countLabel, onOpen }: Props) {
             mode="by-project"
             maxHeight="var(--pz-timeline-h)"
             onRowClick={onOpen}
+            todayPill
           />
         </div>
       </section>

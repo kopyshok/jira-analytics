@@ -158,8 +158,8 @@ html[data-skin="zones"] .rpz-bottom {
 html[data-skin="zones"] .rpz-load { flex: 999 1 600px; min-width: 0; min-height: 0; display: flex; }
 html[data-skin="zones"] .rpz-load > .rp-heat { flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: 10px !important; border-color: #E1E3E8 !important; }
 html[data-skin="zones"] .rpz-reserve {
-  flex: 1 1 380px;
-  max-width: 420px;
+  flex: 0 1 410px;
+  max-width: 410px;
   min-width: 0;
   min-height: 0;
   overflow: auto;
@@ -168,6 +168,21 @@ html[data-skin="zones"] .rpz-reserve {
   border-radius: 10px;
 }
 html[data-skin="zones"] .rpz-reserve > [data-testid="rp-reserve-summary"] { border: 0 !important; padding: 8px 14px !important; }
+html[data-skin="zones"] .rpz-reserve .rp-reserve-head { flex-wrap: wrap; justify-content: flex-start !important; gap: 2px 10px; }
+html[data-skin="zones"] .rpz-reserve .rp-reserve-title { white-space: nowrap; }
+html[data-skin="zones"] .rpz-reserve .rp-reserve-title,
+html[data-skin="zones"] .rpz-reserve-empty h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700 !important;
+  font-size: 15px !important;
+  color: #17191C !important;
+}
+html[data-skin="zones"] .rpz-reserve .rp-reserve-table col:nth-child(2) { width: 62px !important; }
+html[data-skin="zones"] .rpz-reserve .rp-reserve-table col:nth-child(3) { width: 108px !important; }
+html[data-skin="zones"] .rpz-reserve .rp-reserve-table col:nth-child(4) { width: 72px !important; }
+html[data-skin="zones"] .rpz-reserve-empty { padding: 10px 14px; }
+html[data-skin="zones"] .rpz-reserve-empty p { margin: 18px 0 0; font-size: 12.5px; color: #5A5F66; text-align: center; }
 
 /* --- легенда диаграммы --- */
 html[data-skin="zones"] .rpz-legend {
@@ -189,6 +204,16 @@ html[data-skin="zones"] .rpz-legend .rpz-lg-pin { width: 14px; background: #2F5F
 html[data-skin="zones"] .rpz-legend .rpz-lg-ooq { width: 14px; background: var(--rp-ooq-fill); border: 1px solid #D1382A; }
 html[data-skin="zones"] .rpz-legend .rpz-lg-absence { width: 14px; background: #2F5FD0; background-image: var(--rp-unavail-absence); }
 html[data-skin="zones"] .rpz-legend .rpz-lg-busy { width: 14px; background: var(--rp-busy-fill); border: 1px solid #C9CDD4; }
+html[data-skin="zones"] .rpz-legend .rpz-lg-holiday { width: auto; height: auto; font-style: normal; font-size: 9px; line-height: 1; color: var(--rp-th-holiday-fg); }
+
+/* за пределами квартала — серая зона от конца квартала до края шкалы */
+html[data-skin="zones"] .rp-ooq-divider {
+  right: 0;
+  width: auto !important;
+  border-right: 0 !important;
+  border-left: var(--rp-ooq-line);
+  background: rgba(23, 25, 28, 0.045);
+}
 
 /* --- шапка шкалы --- */
 html[data-skin="zones"] .rp-th-compact .rp-th-corner {
@@ -402,6 +427,8 @@ html[data-skin="zones"] .rp-assign-head h2 {
 html[data-skin="zones"] .rp-assign-head .ant-space { font-size: 12.5px; }
 html[data-skin="zones"] .rp-assign-head .ant-btn { width: 28px; height: 28px; padding: 0; }
 html[data-skin="zones"] .rp-assign-body { flex: 1; min-height: 0; overflow: auto; padding: 10px 14px; }
+html[data-skin="zones"] .rpz-assign-empty .rp-assign-body { display: flex; align-items: center; justify-content: center; }
+html[data-skin="zones"] .rpz-assign-empty .ant-empty-description { color: #5A5F66; font-size: 12.5px; }
 html[data-skin="zones"] .rp-assign-body h5.ant-typography { font-size: 13.5px; margin-bottom: 2px; }
 html[data-skin="zones"] .rp-assign-body .ant-divider { margin: 10px 0; }
 html[data-skin="zones"] .rp-assign-body .ant-descriptions-item-label {

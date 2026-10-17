@@ -1051,6 +1051,38 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-typography.
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-typography.ant-typography-success { color: #237A4B !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-typography.ant-typography-warning { color: #94600A !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-typography.ant-typography-secondary { color: #5A5F66 !important; }
+/* раскрытие строк таблиц — шеврон, как в макете, вместо «плюса в квадрате» */
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-table-row-expand-icon {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: #3F444B;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-table-row-expand-icon:hover { color: var(--za-ink); }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-table-row-expand-icon::before {
+  inset: auto !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: 6px !important;
+  height: 6px !important;
+  margin: -4px 0 0 -4px;
+  background: transparent !important;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg) !important;
+  transition: transform .15s;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-table-row-expand-icon-expanded::before { transform: rotate(45deg) !important; margin-top: -5px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-table-row-expand-icon::after { display: none !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-table-row-expand-icon:focus-visible { outline: 2px solid var(--za-ink); outline-offset: 1px; }
+/* ссылки (ключи задач) — цветом зоны с подчёркиванием, как в макете; в таблицах — размером строки */
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] a.ant-typography {
+  color: var(--za-ink) !important;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] a.ant-typography:hover { text-decoration-thickness: 2px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-table a.ant-typography { font-size: inherit; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-statistic-content-value,
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-statistic-content-suffix,
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-statistic-content-prefix {

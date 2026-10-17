@@ -1,3 +1,18 @@
+/**
+ * Число с заданным числом знаков после запятой: по-русски — с пробелом между
+ * разрядами и запятой («3 412,5»), иначе — как прежде («3412.5»).
+ */
+export function formatNumber(value: number, digits: number, ru = false): string {
+  return ru
+    ? value.toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+    : value.toFixed(digits);
+}
+
+/** «2026-10-14…» → «14.10.2026»: дата из строки как есть, без пересчёта часового пояса. */
+export function isoDateToRu(iso: string): string {
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+}
+
 export function formatHours(hours: number | null | undefined): string {
   if (hours == null) return '—';
   return hours.toFixed(1);

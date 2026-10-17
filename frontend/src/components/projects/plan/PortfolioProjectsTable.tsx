@@ -134,7 +134,7 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
   const hasExternal = projects.some((p) => p.external_hours > 0) || totals.externalHours > 0;
 
   const stageColumns: ColumnsType<PortfolioProject> = STAGES.map((s) => ({
-    title: s.label,
+    title: <span className="pf-stage-head" data-stage={s.code}>{s.label}</span>,
     key: s.code,
     align: 'right' as const,
     width: 132,
