@@ -143,7 +143,7 @@ export default function GlobalTeamFilterButton() {
                   padding: '6px 8px',
                   borderRadius: 6,
                   cursor: 'pointer',
-                  background: checked ? 'rgba(0,201,200,0.08)' : 'transparent',
+                  background: checked ? 'var(--option-selected-bg, rgba(0,201,200,0.08))' : 'transparent',
                   transition: 'background 0.15s',
                 }}
                 onMouseEnter={(e) => {
@@ -157,7 +157,7 @@ export default function GlobalTeamFilterButton() {
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {team}
                 </span>
-                {checked && <CheckOutlined style={{ color: '#00c9c8', fontSize: 12 }} />}
+                {checked && <CheckOutlined style={{ color: 'var(--accent-text, #00c9c8)', fontSize: 12 }} />}
               </div>
             );
           })

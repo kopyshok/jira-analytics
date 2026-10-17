@@ -35,7 +35,7 @@ export default function GlobalHelpButton() {
           icon={<QuestionCircleOutlined />}
           onClick={() => setOpen(true)}
           title={title}
-          style={{ color: 'rgba(255,255,255,0.55)' }}
+          style={{ color: 'var(--dim-text, rgba(255,255,255,0.55))' }}
         />
       </Badge>
       <HelpDrawer

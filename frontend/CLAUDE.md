@@ -46,7 +46,7 @@ Source-of-truth для текущих роутов — [`routes.tsx`](src/routes
 
 `ThemeContext` ставит на `<html>` атрибуты `data-theme="aurora"` + `data-mode="dark|light"`; `DARK_THEME` — Proxy в `utils/constants.ts`, читающий их и отдающий нужный набор токенов. Прежние значения тем (`dark-blue`, `dark`, `dark-slate`, `dark-charcoal`) сводятся к `aurora-dark` и на фронте (`normalizeTheme`), и в БД (миграция `td03a`).
 
-**Цвета, зашитые под тёмную тему.** Компонент пишет `var(--имя, <цвет тёмной темы>)`; в Aurora тёмной этих переменных нет — остаётся прежний цвет, Aurora light задаёт свои в `aurora/styles/glass.css`: `--hairline` (рамки, разделители), `--faint-fill` (слабая подложка, дорожки полос), `--tile-bg` (строка-плитка в окне), `--dim-opacity` + `--dim-text` (приглушение: в светлой прозрачность 1 и приглушённый цвет текста), `--accent-text`, смысловые цвета текста `--ink-info/-good/-bad/-warn/-violet`, `--avatar-bg`/`--avatar-muted-bg`, подложки сводки ресурса `--rs-*`. Новые подобные цвета — так же, без селекторов по строке inline-стиля.
+**Цвета, зашитые под тёмную тему.** Компонент пишет `var(--имя, <цвет тёмной темы>)`; в Aurora тёмной этих переменных нет — остаётся прежний цвет, Aurora light задаёт свои в `aurora/styles/glass.css`: `--hairline` (рамки, разделители), `--faint-fill` (слабая подложка, дорожки полос), `--tile-bg` (строка-плитка в окне), `--dim-opacity` + `--dim-text` (приглушение: в светлой прозрачность 1 и приглушённый цвет текста), `--accent-text`, смысловые цвета текста `--ink-info/-good/-bad/-warn/-violet`, `--avatar-bg`/`--avatar-muted-bg`, подложки сводки ресурса `--rs-*`, выбранный пункт списка `--option-selected-bg`. Новые подобные цвета — так же, без селекторов по строке inline-стиля.
 
 ## Error Tracking
 
