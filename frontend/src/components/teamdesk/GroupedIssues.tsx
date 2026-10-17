@@ -107,11 +107,20 @@ const SORT_VALUE: Record<string, (row: Row) => string | number | null> = {
 type SortState = { key: string; order: 'ascend' | 'descend' } | null;
 
 /**
- * В «Все задачи» в списке тысячи строк: таблица рисует только видимые строки
- * и листается внутри себя. Высота — экран минус шапка карточки и таблицы,
- * короткий список занимает своё место без пустоты.
+ * Сколько строк на экране (люди + задачи + раскрытые подзадачи) список
+ * рисует целиком. Строка — около 55 элементов страницы: 300 строк — это
+ * ~16 тыс. элементов, браузер рисует их за доли секунды, а обычные срезы
+ * («Открытые сейчас», «Проблемы вперёд») укладываются с запасом. В «Все
+ * задачи» строк тысячи — полная отрисовка съедала гигабайты памяти, поэтому
+ * выше порога таблица рисует только видимые строки. Ниже порога — обычный
+ * список: работают поиск браузера, выделение и копирование, переход по Tab.
  */
-const LIST_VIEWPORT_OFFSET = 120;
+export const VIRTUAL_ROW_THRESHOLD = 300;
+/**
+ * Большой список листается внутри себя. Высота — доля экрана, а не весь
+ * экран: иначе колесо мыши крутит только список и блоки под ним недостижимы.
+ */
+const LIST_VIEWPORT_SHARE = 0.6;
 /** Без растянутых колонок «Задача» забирает остаток ширины, но не уже этого. */
 const TASK_MIN_WIDTH = 320;
 
@@ -141,8 +150,9 @@ function ResizableHeaderCell({
     const move = (ev: MouseEvent) => {
       // Меньше 60 не даём: заголовок перестаёт читаться.
       latest = Math.max(60, Math.round(startWidth + ev.clientX - startX));
-      // Таблица рисует только видимые строки, поэтому ширину можно менять
-      // на экране сразу — но не чаще раза за кадр.
+      // Дерево задач не пересобирается, а большой список рисует только
+      // видимые строки, поэтому ширину можно менять на экране сразу — но не
+      // чаще раза за кадр.
       if (!frame) {
         frame = requestAnimationFrame(() => {
           frame = 0;
@@ -213,9 +223,8 @@ export function GroupedIssues({
   // когда кнопку отпустили — иначе на каждый пиксель шёл бы запрос.
   const [draggedWidths, setDraggedWidths] = useState<Record<string, number> | null>(null);
   // Нужна, чтобы при перетаскивании снять фактические размеры колонок
-  // и чтобы померить высоту видимой области под список.
+  // и чтобы померить высоту видимой области под большой список.
   const [tableEl, setTableEl] = useState<HTMLDivElement | null>(null);
-  const listHeight = useStickyViewportHeight(tableEl, LIST_VIEWPORT_OFFSET);
   const widths = draggedWidths ?? columnWidths;
   // Люди развёрнуты по умолчанию, задачи — свёрнуты; здесь только отклонения
   // от этого правила, чтобы не пересобирать состояние на каждой загрузке.
@@ -335,6 +344,17 @@ export function GroupedIssues({
   const expandedRowKeys = expandableKeys.filter(
     (key) => key.startsWith('group-') !== toggled.has(key),
   );
+  // Строки, которые таблица нарисовала бы целиком: свёрнутые ветки не в счёт.
+  const expanded = new Set(expandedRowKeys);
+  const countRendered = (rows: Row[]): number =>
+    rows.reduce(
+      (n, row) =>
+        n + 1 + (row.children && expanded.has(row.rowKey) ? countRendered(row.children) : 0),
+      0,
+    );
+  const virtual = countRendered(data) > VIRTUAL_ROW_THRESHOLD;
+  const viewportHeight = useStickyViewportHeight(virtual ? tableEl : null, 0);
+  const listHeight = viewportHeight ? Math.round(viewportHeight * LIST_VIEWPORT_SHARE) : 600;
 
   const allColumns: ColumnsType<Row> = [
     {
@@ -693,6 +713,11 @@ export function GroupedIssues({
         </Space>
       }
     >
+      {virtual && (
+        <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+          Список большой — показываются только видимые строки; для поиска используйте фильтры
+        </Typography.Text>
+      )}
       <div ref={setTableEl}>
       <Table<Row>
         size="small"
@@ -700,19 +725,24 @@ export function GroupedIssues({
         dataSource={data}
         columns={columns}
         pagination={false}
-        // Рисуются только строки в видимой области: на тысячах задач иначе
-        // браузеру не хватало памяти. Шапка таблицы остаётся на месте.
-        virtual
+        // Большой список: рисуются только строки в видимой области — на
+        // тысячах задач иначе браузеру не хватало памяти. Шапка остаётся на месте.
+        virtual={virtual}
         onChange={(_p, _f, sorter) => {
           const single = Array.isArray(sorter) ? sorter[0] : sorter;
           const key = single?.columnKey ? String(single.columnKey) : null;
           setSort(key && single?.order ? { key, order: single.order } : null);
         }}
-        // По умолчанию прокрутки вправо нет: таблица ужимается под ширину
-        // экрана, длинные значения обрезаются многоточием с подсказкой.
-        // Колонки растянули мышкой — уважаем ширину и включаем прокрутку.
+        // По умолчанию таблица ужимается под ширину экрана, длинные значения
+        // обрезаются многоточием с подсказкой; вбок листается, только если
+        // «Задаче» не осталось TASK_MIN_WIDTH — иначе название шло по букве
+        // в строку. Колонки растянули мышкой — уважаем их ширину.
+        // Вниз листается внутри себя только большой список.
         tableLayout={resized ? 'fixed' : undefined}
-        scroll={{ x: resized ? totalWidth : fitWidth, y: listHeight ?? 600 }}
+        scroll={{
+          x: resized ? totalWidth : fitWidth,
+          ...(virtual ? { y: listHeight } : {}),
+        }}
         components={
           onColumnWidthsChange
             ? { header: { cell: ResizableHeaderCell } }
