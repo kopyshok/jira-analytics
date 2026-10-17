@@ -95,7 +95,7 @@ export default function SyncSchedule() {
       title: 'Команда',
       dataIndex: 'team',
       key: 'team',
-      render: (v: string | null) => v ?? <span style={{ color: '#888' }}>—</span>,
+      render: (v: string | null) => v ?? <span style={{ color: 'var(--empty-ink, #888)' }}>—</span>,
     },
     {
       title: 'Вкл',

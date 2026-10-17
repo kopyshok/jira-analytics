@@ -106,7 +106,7 @@ export default function GlobalTeamFilterButton() {
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '4px 4px 8px',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.08))',
           marginBottom: 4,
         }}
       >
@@ -143,11 +143,11 @@ export default function GlobalTeamFilterButton() {
                   padding: '6px 8px',
                   borderRadius: 6,
                   cursor: 'pointer',
-                  background: checked ? 'rgba(0,201,200,0.08)' : 'transparent',
+                  background: checked ? 'var(--option-selected-bg, rgba(0,201,200,0.08))' : 'transparent',
                   transition: 'background 0.15s',
                 }}
                 onMouseEnter={(e) => {
-                  if (!checked) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                  if (!checked) e.currentTarget.style.background = 'var(--option-hover-bg, rgba(255,255,255,0.04))';
                 }}
                 onMouseLeave={(e) => {
                   if (!checked) e.currentTarget.style.background = 'transparent';
@@ -157,7 +157,7 @@ export default function GlobalTeamFilterButton() {
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {team}
                 </span>
-                {checked && <CheckOutlined style={{ color: '#00c9c8', fontSize: 12 }} />}
+                {checked && <CheckOutlined style={{ color: 'var(--check-ink, #00c9c8)', fontSize: 12 }} />}
               </div>
             );
           })
@@ -165,7 +165,7 @@ export default function GlobalTeamFilterButton() {
       </div>
 
       {splitTeams.length > 0 && (
-        <div data-testid="team-filter-subgroups" style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <div data-testid="team-filter-subgroups" style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--hairline, rgba(255,255,255,0.08))' }}>
           <Text type="secondary" style={{ fontSize: 12 }}>Группы</Text>
           <div style={{ maxHeight: 180, overflowY: 'auto', margin: '4px -4px 0' }}>
             {splitTeams.map((team) => (
@@ -225,7 +225,7 @@ export default function GlobalTeamFilterButton() {
           alignItems: 'center',
           paddingTop: 10,
           marginTop: 8,
-          borderTop: '1px solid rgba(255,255,255,0.08)',
+          borderTop: '1px solid var(--hairline, rgba(255,255,255,0.08))',
         }}
       >
         <Button type="link" size="small" onClick={reset} disabled={draft.length === 0 && subgroupDraft.length === 0} style={{ padding: 0 }}>

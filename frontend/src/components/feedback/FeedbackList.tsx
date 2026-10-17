@@ -38,7 +38,7 @@ export default function FeedbackList({
       render: (t: string, r) => (
         <div>
           <Typography.Text strong>{t}</Typography.Text>
-          <div style={{ color: '#888', fontSize: 12 }}>
+          <div style={{ color: 'var(--empty-ink, #888)', fontSize: 12 }}>
             {r.body.slice(0, 120)}
             {r.body.length > 120 ? '…' : ''}
           </div>

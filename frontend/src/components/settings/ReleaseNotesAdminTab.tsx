@@ -145,7 +145,7 @@ export default function ReleaseNotesAdminTab() {
             label: (
               <Space>
                 <strong>{feed.version}</strong>
-                <span style={{ color: '#888' }}>({feed.notes.length} зап.)</span>
+                <span style={{ color: 'var(--empty-ink, #888)' }}>({feed.notes.length} зап.)</span>
               </Space>
             ),
             children: (

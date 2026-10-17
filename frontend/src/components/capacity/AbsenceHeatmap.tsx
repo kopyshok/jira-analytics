@@ -71,7 +71,8 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences, com
         monthSep: '#c3cbd9',
         monthLabel: '#3f4860',
         dayHeader: '#5d6680',
-        weekendHeader: '#7a8298',
+        // #7a8298 давал 3.2:1 на светлом фоне — подпись не читалась.
+        weekendHeader: '#5d6680',
         nameColor: '#2a3142',
       }
     : {
