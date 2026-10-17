@@ -200,7 +200,8 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
     return {
       borderLeft: `2px solid ${color}`,
       ...(isLast ? { borderRight: `2px solid ${color}` } : {}),
-      background: `${color}08`,
+      // Полупрозрачная подложка просвечивает серую сетку таблицы — в светлых темах берём сплошную.
+      background: `var(--rs-role-cell-bg, ${color}08)`,
     };
   };
 
@@ -456,7 +457,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
             <div
               style={{
                 ...CELL_LABEL,
-                background: 'rgba(0,201,200,0.08)',
+                background: 'var(--rs-ok-bg, rgba(0,201,200,0.08))',
                 color: DARK_THEME.cyanPrimary,
                 fontWeight: 700,
                 fontSize: 16,
@@ -484,7 +485,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                   style={{
                     ...CELL,
                     ...roleBorderStyle(role),
-                    background: isDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.1)',
+                    background: isDeficit ? 'var(--rs-deficit-bg, rgba(255,165,0,0.08))' : 'var(--rs-ok-bg, rgba(0,201,200,0.1))',
                     color: isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
                     fontWeight: 700,
                     fontSize: 17,
@@ -545,7 +546,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                 <div
                   style={{
                     ...CELL,
-                    background: isTotalDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.08)',
+                    background: isTotalDeficit ? 'var(--rs-deficit-bg, rgba(255,165,0,0.08))' : 'var(--rs-ok-bg, rgba(0,201,200,0.08))',
                     color: isTotalDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
                     fontWeight: 700,
                     fontSize: 17,
