@@ -45,7 +45,7 @@ class DashboardProjectsResponse(BaseModel):
     total_fact_hours: float
     total_plan_hours: float
     avg_load_pct: float          # total_fact / total_plan * 100
-    silent_count: int            # проекты с silent_days > 14
+    silent_count: int            # незакрытые проекты: silent_days > 14 или списаний не было (None)
     forecast_done: int
     forecast_pct: float
     projects: list[ProjectItem]
