@@ -570,7 +570,15 @@ export default function ProjectsWidget({ data, loading }: Props) {
             <span />
             <span>Проект</span>
             {visibleCols.map((c) => (
-              <span key={c.key} style={c.align === 'right' ? { textAlign: 'right' } : undefined}>
+              // Узкая колонка (минимум 0) не должна вылезать подписью на соседнюю.
+              <span
+                key={c.key}
+                title={c.label}
+                style={{
+                  minWidth: 0, overflow: 'hidden',
+                  ...(c.align === 'right' ? { textAlign: 'right' as const } : {}),
+                }}
+              >
                 {c.label}
               </span>
             ))}
