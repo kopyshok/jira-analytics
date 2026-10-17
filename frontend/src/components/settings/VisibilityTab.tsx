@@ -11,19 +11,19 @@ interface SectionDef {
 
 // Должен совпадать со списком в меню (см. aurora/shell/AuroraSidebar.tsx).
 const SECTIONS: SectionDef[] = [
-  { group: 'ОБЗОР', key: '/', label: 'Дашборд' },
-  { group: 'ОБЗОР', key: '/projects', label: 'Проекты' },
-  { group: 'ОБЗОР', key: '/analytics', label: 'Аналитика' },
-  { group: 'ОБЗОР', key: '/analytics/work-type-report', label: 'Тематический отчёт' },
-  { group: 'ОБЗОР', key: '/executive', label: 'Сводка для руководителя' },
-  { group: 'ОБЗОР', key: '/kpi', label: 'KPI' },
-  { group: 'ОБЗОР', key: '/team-desk', label: 'Стол тимлида' },
-  { group: 'ПЛАНИРОВАНИЕ', key: '/capacity', label: 'Ресурсы' },
-  { group: 'ПЛАНИРОВАНИЕ', key: '/backlog', label: 'Целевые задачи' },
-  { group: 'ПЛАНИРОВАНИЕ', key: '/planning', label: 'Сценарии' },
-  { group: 'ПЛАНИРОВАНИЕ', key: '/resource-planning', label: 'Ресурс. планир.' },
-  { group: 'ДАННЫЕ', key: '/sync', label: 'Синхронизация' },
-  { group: 'ДАННЫЕ', key: '/categories', label: 'Категории задач' },
+  { group: 'Обзор', key: '/', label: 'Дашборд' },
+  { group: 'Обзор', key: '/projects', label: 'Проекты' },
+  { group: 'Обзор', key: '/analytics', label: 'Аналитика' },
+  { group: 'Обзор', key: '/analytics/work-type-report', label: 'Тематический отчёт' },
+  { group: 'Обзор', key: '/executive', label: 'Сводка для руководителя' },
+  { group: 'Обзор', key: '/kpi', label: 'KPI' },
+  { group: 'Обзор', key: '/team-desk', label: 'Стол тимлида' },
+  { group: 'Планирование', key: '/capacity', label: 'Ресурсы' },
+  { group: 'Планирование', key: '/backlog', label: 'Целевые задачи' },
+  { group: 'Планирование', key: '/planning', label: 'Сценарии' },
+  { group: 'Планирование', key: '/resource-planning', label: 'Ресурс. планир.' },
+  { group: 'Данные', key: '/sync', label: 'Синхронизация' },
+  { group: 'Данные', key: '/categories', label: 'Категории задач' },
 ];
 
 function Editor({ initialKeys }: { initialKeys: string[] }) {
@@ -57,7 +57,8 @@ function Editor({ initialKeys }: { initialKeys: string[] }) {
         Отметьте разделы, которые нужно скрыть из бокового меню. Изменения применяются для всех пользователей после перезагрузки страницы.
       </Typography.Paragraph>
       {groups.map((g) => (
-        <Card key={g} size="small" title={g}>
+        // Регистр подписи — стилем: в Aurora заглавными, как раньше; скины показывают обычным регистром.
+        <Card key={g} size="small" title={<span style={{ textTransform: 'uppercase' }}>{g}</span>}>
           <Space orientation="vertical">
             {SECTIONS.filter((s) => s.group === g).map((s) => (
               <Checkbox

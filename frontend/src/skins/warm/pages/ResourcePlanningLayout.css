@@ -150,6 +150,8 @@ html[data-skin="warm"] .wr-rp-assign {
   display: flex;
   flex-direction: column;
 }
+html[data-skin="warm"] .wr-rp-assign-empty { padding: 16px 18px; gap: 8px; }
+html[data-skin="warm"] .wr-rp-empty-text { margin: 0; font-size: 13px; line-height: 1.5; color: #6B6358; }
 html[data-skin="warm"] .wr-rp-bottom {
   flex: none;
   height: 228px;
@@ -460,3 +462,8 @@ html[data-skin="warm"] .rpc-ext-row { border-bottom: 1px solid #F5F1EA; }
 html[data-skin="warm"] .rpc-ext-cell { background: #FFFFFF; border-right: 1px solid #EEE9E1; color: #2A2620; }
 html[data-skin="warm"] .rpc-ext-name { color: #5E564A; }
 html[data-skin="warm"] .rpc-ext-team { color: #6B6358; }
+
+/* Невысокий экран: страница прокручивается целиком (warm-layout.css), главный блок — своей высоты */
+@media (max-height: 860px) and (min-width: 1101px) {
+  html[data-skin="warm"] .wr-rp-mid { flex: none; height: 520px; }
+}

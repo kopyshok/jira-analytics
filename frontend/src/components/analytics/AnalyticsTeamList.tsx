@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Card } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
 import type { AnalyticsReportResponse } from '../../types/api';
@@ -19,8 +20,29 @@ const rowStyle = (active: boolean): React.CSSProperties => ({
   borderRadius: 6,
 });
 
+/** Ряд команд скина: есть ли что листать вправо (тогда край ряда гаснет) и колесо мыши листает вбок. */
+function useRowScroll() {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [more, setMore] = useState(false);
+  const measure = (n: HTMLDivElement) => setMore(n.scrollLeft + n.clientWidth < n.scrollWidth - 2);
+  useEffect(() => {
+    if (!el) return undefined;
+    // Наблюдатель срабатывает и сразу после подключения — первый замер тоже здесь.
+    const ro = new ResizeObserver(() => measure(el));
+    ro.observe(el);
+    for (const child of Array.from(el.children)) ro.observe(child);
+    return () => ro.disconnect();
+  }, [el]);
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const n = e.currentTarget;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && n.scrollWidth > n.clientWidth) n.scrollLeft += e.deltaY;
+  };
+  return { setEl, more, onScroll: (e: React.UIEvent<HTMLDivElement>) => measure(e.currentTarget), onWheel };
+}
+
 export default function AnalyticsTeamList({ data, selected, onSelect, compact = false }: Props) {
   const teams = data?.teams || [];
+  const { setEl: setRowEl, more: rowMore, onScroll: onRowScroll, onWheel: onRowWheel } = useRowScroll();
   if (compact) {
     const tab = (key: string, label: string, hours: number | null) => (
       <button
@@ -35,7 +57,14 @@ export default function AnalyticsTeamList({ data, selected, onSelect, compact = 
       </button>
     );
     return (
-      <div className="anc-teams" role="group" aria-label="Команды">
+      <div
+        ref={setRowEl}
+        className={`anc-teams${rowMore ? ' has-more' : ''}`}
+        role="group"
+        aria-label="Команды"
+        onScroll={onRowScroll}
+        onWheel={onRowWheel}
+      >
         {tab('all', 'Все команды', data?.grand_totals.fact_hours ?? null)}
         {teams.map((t) => tab(t.team || '_none_', t.team || 'Без команды', t.totals.fact_hours))}
       </div>

@@ -541,3 +541,8 @@ html[data-skin="warm"] .pjc-tl-card.is-plan { max-height: none; flex: none; }
   html[data-skin="warm"] .pjc-table-card { flex: none; max-height: 70vh; }
   html[data-skin="warm"] .pjc-kpi-roles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; }
 }
+
+/* Невысокий экран: страница прокручивается целиком (warm-layout.css), главный блок — своей высоты */
+@media (max-height: 860px) and (min-width: 1101px) {
+  html[data-skin="warm"] .pjc-body { flex: none; height: 640px; }
+}

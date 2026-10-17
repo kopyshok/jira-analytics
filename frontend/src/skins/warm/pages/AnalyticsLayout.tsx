@@ -11,13 +11,16 @@ import AnalyticsKpiTiles from '../../../components/analytics/AnalyticsKpiTiles';
 import AnalyticsIssueDrawer from '../../../components/analytics/AnalyticsIssueDrawer';
 import SubgroupFlowLine from '../../../components/common/SubgroupFlowLine';
 
+/** 2026-10-01 → 01.10.2026: подсказка в пустых полях дат — границы выбранного периода. */
+const ruDate = (iso: string) => iso.split('-').reverse().join('.');
+
 /**
  * «Иерархический отчёт по часам» в скине «Тёплая» (макет C-analytics): шапка
  * одной строкой с уточнением дат, режимом ворклогов, иерархией, настройкой и
- * выгрузкой; сводка одной карточкой (и переток внутри команды, если он есть);
+ * выгрузкой; сводка одной карточкой и рядом — переток внутри команды;
  * команды горизонтальным рядом-переключателем, справа — фильтры; ниже —
- * таблица-дерево с закреплённой шапкой и, по клику на задачу, её карточка
- * справа. Страница помещается в экран, длинное прокручивается внутри блоков.
+ * таблица-дерево с закреплённой шапкой и справа карточка задачи (в режиме
+ * drawer она на месте всегда: без выбора — подсказка «Выберите задачу»). Страница помещается в экран, длинное прокручивается внутри блоков.
  * Данные и обработчики — общие с раскладкой Aurora (useAnalyticsPage).
  */
 export default function WarmAnalyticsLayout({ state }: { state: AnalyticsPageState }) {
@@ -33,7 +36,6 @@ export default function WarmAnalyticsLayout({ state }: { state: AnalyticsPageSta
     periodStart, periodEnd,
     exportXlsx,
   } = state;
-  const hasFlow = (data?.subgroup_flow ?? []).some((f) => f.out_hours > 0 || f.in_hours > 0);
 
   return (
     <div className="wr-fit anc-page">
@@ -50,7 +52,7 @@ export default function WarmAnalyticsLayout({ state }: { state: AnalyticsPageSta
               onChange={setLocalRange}
               prefix={<span className="anc-ctl-label">Уточнить с</span>}
               separator={<span className="anc-ctl-label">по</span>}
-              placeholder={['дд.мм.гггг', 'дд.мм.гггг']}
+              placeholder={[ruDate(periodStart), ruDate(periodEnd)]}
               format="DD.MM.YYYY"
               suffixIcon={null}
               allowClear
@@ -112,7 +114,7 @@ export default function WarmAnalyticsLayout({ state }: { state: AnalyticsPageSta
         <>
           <div className="anc-summary-row">
             <AnalyticsKpiTiles compact totals={data.grand_totals} />
-            {hasFlow && <SubgroupFlowLine compact items={data.subgroup_flow} />}
+            <SubgroupFlowLine compact items={data.subgroup_flow} />
           </div>
 
           <div className="anc-teams-row">
@@ -144,6 +146,15 @@ export default function WarmAnalyticsLayout({ state }: { state: AnalyticsPageSta
                 openIssueId={openedIssue?.id ?? null}
               />
             </section>
+            {!openedIssue && worklogMode === 'drawer' && (
+              <aside className="wr-card anc-panel anc-panel-empty" aria-label="Карточка задачи">
+                <h2 className="rpc-card-title">Карточка задачи</h2>
+                <p className="anc-panel-empty-text">
+                  Выберите задачу в таблице — здесь появятся её категория, родитель,
+                  соседние задачи и ворклоги за период.
+                </p>
+              </aside>
+            )}
             <AnalyticsIssueDrawer
               docked
               issueId={openedIssue?.id ?? null}

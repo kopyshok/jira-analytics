@@ -220,7 +220,7 @@ export default function ExecutiveDashboardPage() {
               fontWeight: 600,
             }}
           >
-            ОБЗОР
+            Обзор
           </span>
           <Typography.Title
             level={1}

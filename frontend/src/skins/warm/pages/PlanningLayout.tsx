@@ -4,8 +4,8 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { Alert, Button, Empty, Popconfirm, Segmented, Select, Skeleton, Switch, Tooltip, Typography } from 'antd';
 import {
-  ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, DownOutlined, PlusOutlined, SwapOutlined, UpOutlined,
-  WarningOutlined,
+  ArrowDownOutlined, ArrowUpOutlined, CheckOutlined, DeleteOutlined, DownOutlined, PlusOutlined, SwapOutlined,
+  UpOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import '../warm-layout.css';
 import './PlanningLayout.css';
@@ -336,6 +336,14 @@ export default function WarmPlanningLayout({ state }: { state: PlanningPageState
                   />
                   Показать только их
                 </label>
+              </div>
+            )}
+            {activeTab === 'distribution' && neighborsTakenIds.size === 0 && (
+              <div role="status" className="plc-strip is-calm">
+                <span className="plc-strip-text">
+                  <CheckOutlined aria-hidden />
+                  Нет задач, которые соседние команды взяли, а у вас они не включены
+                </span>
               </div>
             )}
             {isDraft && ungrouped.length > 0 && (

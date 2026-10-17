@@ -11,11 +11,12 @@ const { Text } = Typography;
  */
 export default function SubgroupFlowLine({ items, compact = false }: {
   items?: SubgroupFlowItem[];
-  /** Вид скина: отдельная карточка, группы — пилюлями «Группа: −12 ч к соседям · +8 ч от них». */
+  /** Вид скина: отдельная карточка, группы — пилюлями «Группа: −12 ч к соседям · +8 ч от них»;
+   *  карточка есть всегда, без перетока — со спокойной подписью. */
   compact?: boolean;
 }) {
   const rows = (items ?? []).filter((i) => i.out_hours > 0 || i.in_hours > 0);
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !compact) return null;
 
   if (compact) {
     return (
@@ -24,6 +25,9 @@ export default function SubgroupFlowLine({ items, compact = false }: {
           <div className="anc-flow-title">Переток внутри команды</div>
         </Tooltip>
         <div className="anc-flow-list">
+          {rows.length === 0 && (
+            <span className="anc-flow-empty">Группы команды часами между собой не обменивались</span>
+          )}
           {rows.map((r) => (
             <span key={r.subgroup_id} className="anc-flow-pill">
               <b>{r.subgroup_name}:</b>

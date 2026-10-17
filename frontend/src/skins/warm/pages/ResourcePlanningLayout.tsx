@@ -46,8 +46,9 @@ function GanttLegend() {
 
 /**
  * «Ресурсное планирование» в скине «Тёплая» (макет C-resource): панель плана,
- * конфликты, диаграмма Ганта с встроенной панелью назначения справа, внизу —
- * загрузка по дням и запас нормированных работ. Страница помещается в экран,
+ * конфликты, диаграмма Ганта с встроенной панелью назначения справа (без
+ * выбранной фазы — подсказка), внизу — загрузка по дням и запас нормированных
+ * работ (оба блока есть всегда, без данных — со спокойной подписью). Страница помещается в экран,
  * длинные части прокручиваются внутри своих блоков. Данные и обработчики —
  * общие с раскладкой Aurora (useResourcePlanningPage).
  */
@@ -254,6 +255,15 @@ export default function WarmResourcePlanningLayout({ state }: { state: ResourceP
           {gantt && !ganttLoading && <GanttLegend />}
         </section>
 
+        {!selectedAssignment && gantt && twoLevel && !ganttLoading && (
+          <aside className="wr-card wr-rp-assign wr-rp-assign-empty" aria-label="Назначение">
+            <h2 className="rpc-card-title">Назначение</h2>
+            <p className="wr-rp-empty-text">
+              Выберите фазу на диаграмме — здесь можно поменять исполнителя, часы,
+              даты и вовлечённость.
+            </p>
+          </aside>
+        )}
         {selectedAssignment && (
           <div className="wr-card wr-rp-assign">
             <AssignmentSidebar
@@ -270,9 +280,9 @@ export default function WarmResourcePlanningLayout({ state }: { state: ResourceP
         )}
       </div>
 
-      {gantt && twoLevel && ((gantt.employee_load?.length ?? 0) > 0 || (gantt.reserve && gantt.plan.team)) && (
+      {gantt && twoLevel && !ganttLoading && (
         <div className="wr-rp-bottom">
-          {gantt.employee_load && gantt.employee_load.length > 0 && (
+          {gantt.employee_load && gantt.employee_load.length > 0 ? (
             <section className="wr-card wr-rp-heat" data-tour="rp-load" aria-label="Загрузка сотрудников по дням">
               <PlanLoadHeatmap
                 compact
@@ -286,13 +296,23 @@ export default function WarmResourcePlanningLayout({ state }: { state: ResourceP
                 onEmployeeClick={togglePerson}
               />
             </section>
-          )}
-          {gantt.reserve && gantt.plan.team && (
-            <section className="wr-card wr-rp-norm" aria-label="Нормированные работы">
-              {/* key — план: при открытии другого плана сводка заново решает, развернуться ли. */}
-              <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} compact />
+          ) : (
+            <section className="wr-card wr-rp-heat" aria-label="Загрузка сотрудников по дням">
+              <h2 className="rpc-card-title">Загрузка сотрудников по дням</h2>
+              <p className="wr-rp-empty-text">Загрузки пока нет — нажмите «Распределить», чтобы рассчитать план.</p>
             </section>
           )}
+          <section className="wr-card wr-rp-norm" aria-label="Нормированные работы">
+            {gantt.reserve && gantt.plan.team ? (
+              /* key — план: при открытии другого плана сводка заново решает, развернуться ли. */
+              <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} compact />
+            ) : (
+              <>
+                <h2 className="rpc-card-title">Нормированные работы — запас квартала</h2>
+                <p className="wr-rp-empty-text">Нормированных работ в квартале нет</p>
+              </>
+            )}
+          </section>
         </div>
       )}
 

@@ -19,6 +19,13 @@ html[data-skin="warm"] .wr-fit {
   gap: 10px;
   padding-bottom: 10px;
 }
+/* Невысокий экран (ноутбук 1366×768): в один экран всё не помещается — страница
+   прокручивается целиком, а главный блок каждой раскладки получает свою высоту
+   (задаётся в CSS страницы) и прокручивается внутри себя. */
+@media (max-height: 860px) {
+  html[data-skin="warm"] .app-main > .scroll-y:has(> .wr-fit) { overflow: auto; }
+  html[data-skin="warm"] .wr-fit { height: auto; }
+}
 /* Узкий экран: раскладка складывается в колонку и прокручивается целиком. */
 @media (max-width: 1100px) {
   html[data-skin="warm"] .app-main > .scroll-y:has(> .wr-fit) { overflow: auto; }

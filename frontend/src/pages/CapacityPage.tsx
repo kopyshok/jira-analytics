@@ -4,6 +4,8 @@ import { Tabs, Table, Button, Space, App, Checkbox, DatePicker, Select, Form, Mo
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons';
 import capacityHelp from '../../../docs/help/capacity.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
+import { useSkin } from '../contexts/ThemeContext';
+import { readablePair } from '../utils/readableColor';
 import dayjs from 'dayjs';
 import minMax from 'dayjs/plugin/minMax';
 import PageHeader from '../components/shared/PageHeader';
@@ -547,6 +549,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
 
 function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
   const { notification } = App.useApp();
+  const skin = useSkin();
   const { data: absences, isLoading } = useAbsences();
   const { data: employees } = useEmployees();
   const { data: reasons } = useAbsenceReasons();
@@ -661,21 +664,25 @@ function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
             title: `Отсутствия в Q${quarter} ${year}`,
             render: (_: unknown, r: typeof rows[number]) => (
               <Space wrap>
-                {r.absences.map(a => (
+                {r.absences.map(a => {
+                  // В скине цвет причины из справочника — светлой подложкой с тёмным текстом того же оттенка.
+                  const pair = skin && a.reason_color ? readablePair(a.reason_color) : null;
+                  return (
                   <Tag
                     key={a.id}
-                    color={a.reason_color ?? 'default'}
+                    color={pair ? undefined : (a.reason_color ?? 'default')}
                     closable
                     onClose={(ev) => {
                       ev.preventDefault();
                       remove.mutate(a.id);
                     }}
-                    style={{ cursor: 'default' }}
+                    style={pair ? { cursor: 'default', background: pair.bg, color: pair.fg } : { cursor: 'default' }}
                   >
                     {a.reason_label}: {dayjs(a.start_date).format('DD.MM')}—
                     {dayjs(a.end_date).format('DD.MM')}
                   </Tag>
-                ))}
+                  );
+                })}
                 <Button size="small" icon={<PlusOutlined />} onClick={() => openAddForEmp(r.employee_id)}>
                   добавить
                 </Button>

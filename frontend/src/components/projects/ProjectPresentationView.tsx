@@ -5,6 +5,8 @@ import { DonutChart } from './shared/DonutChart';
 import { StarRating } from './shared/StarRating';
 import type { ProjectDetail, ProjectSummary } from '../../types/projects';
 import { DARK_THEME } from '../../utils/constants';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readablePair } from '../../utils/readableColor';
 
 interface Props {
   detail: ProjectDetail | undefined;
@@ -34,6 +36,7 @@ const AI_PLACEHOLDER_STYLE: React.CSSProperties = {
 };
 
 export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) => {
+  const skin = useSkin();
   if (!detail) return null;
 
   const empMax = Math.max(1, detail.employees[0]?.hours ?? 1);
@@ -106,11 +109,13 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
         {detail.employees.length > 0 ? (
           detail.employees.map((e, i) => {
             const color = COLORS[i % COLORS.length];
+            // В скине инициалы — тёмным текстом на светлой подложке того же оттенка (≥ 4.5:1).
+            const pair = skin ? readablePair(color.startsWith('var(') ? null : color) : null;
             return (
               <div key={e.employee_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
                 <div style={{
-                  width: 32, height: 32, borderRadius: '50%', background: color,
-                  color: DARK_THEME.textPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 32, height: 32, borderRadius: '50%', background: pair?.bg ?? color,
+                  color: pair?.fg ?? DARK_THEME.textPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 12, fontWeight: 700, flexShrink: 0,
                 }}>
                   {initials(e.name)}

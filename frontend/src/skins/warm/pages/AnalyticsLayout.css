@@ -165,6 +165,11 @@ html[data-skin="warm"] .anc-teams {
   scrollbar-width: thin;
   scrollbar-color: #D9D2C6 transparent;
 }
+/* Есть что листать вправо — край ряда мягко гаснет, чтобы обрезанная команда не выглядела ошибкой */
+html[data-skin="warm"] .anc-teams.has-more {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+}
 html[data-skin="warm"] .anc-team {
   flex: none;
   display: inline-flex;
@@ -363,6 +368,9 @@ html[data-skin="warm"] .anc-panel {
   font-size: 14px;
   color: #2A2620;
 }
+html[data-skin="warm"] .anc-panel-empty { padding: 16px 18px; gap: 8px; }
+html[data-skin="warm"] .anc-panel-empty-text { margin: 0; font-size: 13px; line-height: 1.5; color: #6B6358; }
+html[data-skin="warm"] .anc-flow-empty { align-self: center; font-size: 13px; color: #6B6358; }
 html[data-skin="warm"] .anc-panel-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px 18px; }
 html[data-skin="warm"] .anc-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 html[data-skin="warm"] .anc-panel-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
@@ -485,3 +493,8 @@ html[data-skin="warm"] .anc-cat-subtree { display: flex; align-items: flex-start
 html[data-skin="warm"] .anc-cat-subtree .ant-switch { margin-top: 2px; flex: none; }
 html[data-skin="warm"] .anc-cat-actions { display: flex; justify-content: flex-end; gap: 8px; }
 html[data-skin="warm"] .anc-cat-alert { font-size: 12px; }
+
+/* Невысокий экран: страница прокручивается целиком (warm-layout.css), главный блок — своей высоты */
+@media (max-height: 860px) and (min-width: 1101px) {
+  html[data-skin="warm"] .anc-body { flex: none; height: 560px; }
+}

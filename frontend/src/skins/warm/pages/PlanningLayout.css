@@ -195,6 +195,9 @@ html[data-skin="warm"] .plc-strip {
   font-size: 14px;
 }
 html[data-skin="warm"] .plc-strip.is-warn { background: #F6EAD2; border: 1px solid #EAD6AE; color: #7A4E0C; }
+html[data-skin="warm"] .plc-strip.is-calm { background: #FFFFFF; border: 1px solid #E3DDD3; color: #4A443A; }
+html[data-skin="warm"] .plc-strip.is-calm .plc-strip-text { font-weight: 400; }
+html[data-skin="warm"] .plc-strip.is-calm .anticon { color: #2F6B5A; }
 html[data-skin="warm"] .plc-strip.is-bad { background: #F6E1D8; border: 1px solid #EBC6B6; color: #8F3A18; }
 html[data-skin="warm"] .plc-strip-text { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-weight: 500; }
 html[data-skin="warm"] .plc-strip .wr-link { color: inherit; font-size: 14px; }
@@ -611,4 +614,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .plc-qa-input .an
   html[data-skin="warm"] .plc-body { flex-direction: column; }
   html[data-skin="warm"] .plc-backlog { min-height: 520px; }
   html[data-skin="warm"] .plc-side { flex: none; overflow: visible; }
+}
+
+/* Невысокий экран: страница прокручивается целиком (warm-layout.css), главный блок — своей высоты */
+@media (max-height: 860px) and (min-width: 1101px) {
+  html[data-skin="warm"] .plc-body { flex: none; height: 560px; }
 }

@@ -37,6 +37,12 @@ const COLS: { key: ColKey; label: string; width: string; align?: 'right' }[] = [
   { key: 'pct', label: '%', width: '50px', align: 'right' },
 ];
 
+/** Наименьшая ширина колонки сетки в px: «120px» → 120, «minmax(90px,150px)» → 90. */
+const minPx = (w: string) => Number(/(\d+)px/.exec(w)?.[1] ?? 0);
+const GRID_GAP = 10;
+/** Колонки таблицы в скине: «Проект» уже, «Статус» не схлопывается под соседний заголовок. */
+const SKIN_WIDTH: Partial<Record<ColKey, string>> = { status: 'minmax(90px,150px)' };
+
 const BLOCKS: { key: BlockKey; label: string }[] = [
   { key: 'donut', label: 'Сводка по статусам' },
   { key: 'kpi', label: 'KPI плитки' },
@@ -535,6 +541,7 @@ interface Props {
 
 export default function ProjectsWidget({ data, loading }: Props) {
   const navigate = useNavigate();
+  const skin = useSkin();
   const [prefs, setPrefsState] = useState<Prefs>(() => loadPrefs());
 
   const setPrefs = (p: Prefs) => {
@@ -548,7 +555,16 @@ export default function ProjectsWidget({ data, loading }: Props) {
   if (!data) return <Card title="Проекты квартала" extra={extra}><Empty description="Нет данных" /></Card>;
 
   const visibleCols = COLS.filter((c) => prefs.cols[c.key]);
-  const tableGrid = ['12px', 'minmax(220px,1.3fr)', ...visibleCols.map((c) => c.width)].join(' ');
+  const gridCols = [
+    '12px',
+    skin ? 'minmax(180px,1.3fr)' : 'minmax(220px,1.3fr)',
+    ...visibleCols.map((c) => (skin && SKIN_WIDTH[c.key]) || c.width),
+  ];
+  const tableGrid = gridCols.join(' ');
+  // Скин: таблица не сжимается уже суммы своих колонок — на узком экране листается вбок.
+  const tableMinWidth = skin
+    ? gridCols.reduce((sum, w) => sum + minPx(w), 0) + GRID_GAP * (gridCols.length - 1)
+    : undefined;
 
   const outerCols = [
     prefs.blocks.donut ? '220px' : null,
@@ -556,13 +572,24 @@ export default function ProjectsWidget({ data, loading }: Props) {
     prefs.blocks.kpi ? '280px' : null,
     prefs.blocks.sparklines ? '280px' : null,
   ].filter(Boolean).join(' ');
+  // Скин: сводка, плитки и активность — одной колонкой слева; в четыре колонки
+  // таблица не помещается, и правый блок уезжает за край карточки.
+  const hasAside = prefs.blocks.donut || prefs.blocks.kpi || prefs.blocks.sparklines;
+  const skinCols = hasAside ? '280px minmax(0, 1fr)' : 'minmax(0, 1fr)';
 
   return (
     <Card title="Проекты квартала" extra={extra}>
-      <div style={{ display: 'grid', gridTemplateColumns: outerCols, gap: 20, alignItems: 'flex-start' }}>
-        {prefs.blocks.donut && <Donut data={data} />}
+      <div style={{ display: 'grid', gridTemplateColumns: skin ? skinCols : outerCols, gap: 20, alignItems: 'flex-start' }}>
+        {skin ? hasAside && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+            {prefs.blocks.donut && <Donut data={data} />}
+            {prefs.blocks.kpi && <KpiTiles data={data} />}
+            {prefs.blocks.sparklines && <Sparklines projects={data.projects} />}
+          </div>
+        ) : prefs.blocks.donut && <Donut data={data} />}
 
-        <div>
+        <div style={skin ? { overflowX: 'auto', minWidth: 0 } : undefined}>
+          <div style={skin ? { minWidth: tableMinWidth } : undefined}>
           <div style={{
             display: 'grid',
             gridTemplateColumns: tableGrid,
@@ -594,11 +621,12 @@ export default function ProjectsWidget({ data, loading }: Props) {
           {data.projects.length === 0 && (
             <div style={{ padding: 16, color: DARK_THEME.textMuted, fontSize: 13 }}>Нет проектов в утверждённом сценарии квартала</div>
           )}
+          </div>
         </div>
 
-        {prefs.blocks.kpi && <KpiTiles data={data} />}
+        {!skin && prefs.blocks.kpi && <KpiTiles data={data} />}
 
-        {prefs.blocks.sparklines && <Sparklines projects={data.projects} />}
+        {!skin && prefs.blocks.sparklines && <Sparklines projects={data.projects} />}
       </div>
     </Card>
   );

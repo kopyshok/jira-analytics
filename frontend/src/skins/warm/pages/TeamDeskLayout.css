@@ -83,8 +83,9 @@ html[data-skin="warm"] .tdc-filters-row {
 html[data-skin="warm"] .tdc-field { height: 40px; padding: 0 6px 0 12px; gap: 6px; }
 html[data-skin="warm"] .tdc-field.is-teams { flex: 1 1 300px; max-width: 400px; }
 html[data-skin="warm"] .tdc-field.is-people { flex: 1 1 260px; max-width: 320px; }
-html[data-skin="warm"] .tdc-field.is-sprint,
-html[data-skin="warm"] .tdc-field.is-release { flex: 0 1 180px; }
+/* «Все спринты» / «Все релизы» не обрезаются: поле не сжимается уже подписи (макет — 178 / 165 px) */
+html[data-skin="warm"] .tdc-field.is-sprint { flex: 0 0 190px; }
+html[data-skin="warm"] .tdc-field.is-release { flex: 0 0 176px; }
 html[data-skin="warm"] .tdc-field .ant-select { flex: 1 1 auto; min-width: 0; }
 html[data-skin="warm"] .tdc-field.is-period { height: 32px; padding: 0 2px 0 10px; }
 html[data-skin="warm"] .tdc-field.is-period .ant-select { flex: none; }
@@ -468,7 +469,16 @@ html[data-skin="warm"] .tdc-flag {
 html[data-skin="warm"] .tdc-flag.is-reviewed { text-decoration: line-through; }
 html[data-skin="warm"] .tdc-issues .tdc-flags { gap: 3px 4px; }
 html[data-skin="warm"] .tdc-issues .tdc-flag.wr-pill.is-sm { height: 20px; padding: 0 7px; font-size: 11.5px; }
-html[data-skin="warm"] .tdc-status { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+/* Пилюля статуса — блочная строка: иначе многоточие у длинного статуса не рисуется (у flex его нет) */
+html[data-skin="warm"] .wr-pill.tdc-status {
+  display: inline-block;
+  max-width: 100%;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  font-weight: 500;
+}
 html[data-skin="warm"] .tdc-scale { display: inline-flex; align-items: center; gap: 8px; }
 html[data-skin="warm"] .tdc-scale-track {
   display: flex;
@@ -590,3 +600,8 @@ html[data-skin="warm"] .tdc-abs-legend {
 }
 html[data-skin="warm"] .tdc-abs-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 html[data-skin="warm"] .tdc-abs-legend-sq { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* Невысокий экран: страница прокручивается целиком (warm-layout.css), главный блок — своей высоты */
+@media (max-height: 860px) and (min-width: 1101px) {
+  html[data-skin="warm"] .tdc-body { flex: none; height: 600px; }
+}
