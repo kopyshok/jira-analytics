@@ -37,7 +37,7 @@ export function DeveloperTable({
         <>
           <Typography.Text strong>{v ?? 'Без имени'}</Typography.Text>
           {row.team && (
-            <div style={{ fontSize: 11, opacity: 0.55 }}>{row.team}</div>
+            <div style={{ fontSize: 11, opacity: 'var(--dim-opacity, 0.55)', color: 'var(--dim-text, inherit)' }}>{row.team}</div>
           )}
         </>
       ),

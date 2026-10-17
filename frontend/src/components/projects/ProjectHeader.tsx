@@ -23,8 +23,8 @@ interface Props {
 
 const STATUS_COLOR: Record<string, string> = {
   new: 'var(--text-muted, #7e94b8)',
-  indeterminate: '#00c9c8',
-  done: '#67d68d',
+  indeterminate: 'var(--ink-info, #00c9c8)',
+  done: 'var(--ink-good, #67d68d)',
 };
 
 function formatDate(iso: string | null): string {
@@ -110,7 +110,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
         zIndex: 5,
         background: 'var(--bg, #0d1c33)',
         padding: '12px 20px',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.06))',
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'space-between',
@@ -139,7 +139,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
           {detail?.key && (
             <JiraIssueLink
               issueKey={detail.key}
-              style={{ color: 'var(--accent-1, #00c9c8)', fontSize: 12, textDecoration: 'none' }}
+              style={{ color: 'var(--accent-text, var(--accent-1, #00c9c8))', fontSize: 12, textDecoration: 'none' }}
             >
               {detail.key}
             </JiraIssueLink>

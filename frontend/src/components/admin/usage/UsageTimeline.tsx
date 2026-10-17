@@ -41,13 +41,13 @@ export default function UsageTimeline({ days }: Props) {
               type="monotone"
               dataKey="views"
               name="Заходов"
-              stroke="#00c9c8"
+              stroke="var(--ink-info, #00c9c8)"
             />
             <Line
               type="monotone"
               dataKey="active_users"
               name="Активных пользователей"
-              stroke="#52c41a"
+              stroke="var(--ink-good, #52c41a)"
             />
           </LineChart>
         </ResponsiveContainer>

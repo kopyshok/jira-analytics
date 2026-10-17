@@ -48,7 +48,7 @@ export default function AnalyticsReportSettings({ open, onClose }: Props) {
       <h4 style={{ marginTop: 0, color: 'var(--text, #e6edf7)' }}>Группировка</h4>
       <GroupingEditor />
 
-      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '20px 0' }} />
+      <div style={{ height: 1, background: 'var(--hairline, rgba(255,255,255,0.06))', margin: '20px 0' }} />
 
       <h4 style={{ color: 'var(--text, #e6edf7)' }}>Столбцы</h4>
       <Checkbox.Group
@@ -58,7 +58,7 @@ export default function AnalyticsReportSettings({ open, onClose }: Props) {
         style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
       />
 
-      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '20px 0' }} />
+      <div style={{ height: 1, background: 'var(--hairline, rgba(255,255,255,0.06))', margin: '20px 0' }} />
 
       <h4 style={{ color: 'var(--text, #e6edf7)' }}>Визуализация</h4>
       <Checkbox

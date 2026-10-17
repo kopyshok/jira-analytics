@@ -63,15 +63,15 @@ function SortableLevel({ level, hidden, onToggleVisible }: SortableLevelProps) {
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    background: hidden ? 'var(--an-level-hidden-bg, rgba(68, 90, 130, 0.18))' : 'var(--an-level-bg, #162f54)',
-    border: '1px solid var(--an-level-border, rgba(255,255,255,0.06))',
+    background: hidden ? 'var(--an-level-hidden-bg, var(--faint-fill, rgba(68, 90, 130, 0.18)))' : 'var(--an-level-bg, var(--tile-bg, #162f54))',
+    border: '1px solid var(--an-level-border, var(--hairline, rgba(255,255,255,0.06)))',
     borderRadius: 6,
     padding: '8px 12px',
     marginBottom: 6,
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    opacity: hidden ? 'var(--an-level-hidden-opacity, 0.55)' : 1,
+    opacity: hidden ? 'var(--an-level-hidden-opacity, var(--dim-opacity, 0.55))' : 1,
     cursor: isDragging ? 'grabbing' : 'default',
   };
   return (

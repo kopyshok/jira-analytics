@@ -24,7 +24,7 @@ export default function NoteCard({ note }: Props) {
       }}
     >
       <div style={{ marginBottom: 4 }}>
-        <Tag color={typeTag.color} style={{ ...typeTag.style, marginRight: 8 }}>
+        <Tag color={typeTag.color} className={`note-type-tag note-type-${note.note_type}`} style={{ ...typeTag.style, marginRight: 8 }}>
           {NOTE_TYPE_LABELS[note.note_type]}
         </Tag>
         <Tag style={{ marginRight: 8 }}>{SECTION_LABELS[note.section]}</Tag>

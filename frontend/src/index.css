@@ -129,7 +129,7 @@ kbd,
 .tree-row-depth-4 > td { background-color: rgba(0, 201, 200, 0.16) !important; }
 .tree-row-depth-5 > td { background-color: rgba(0, 201, 200, 0.20) !important; }
 .tree-row-has-children > td { font-weight: 600; }
-.tree-row-context > td { opacity: 0.55; font-style: italic; }
+.tree-row-context > td { opacity: var(--dim-opacity, 0.55); font-style: italic; }
 
 /* ---------- Involvement defaults: row being edited (InvolvementDefaultsDrawer) ---------- */
 .involvement-row-editing > td { background-color: rgba(0, 201, 200, 0.12) !important; }
