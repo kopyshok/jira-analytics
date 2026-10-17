@@ -51,7 +51,7 @@ export function FlagChip({ issueId, flag, signature, reviewed, count, withLabel 
         <Tooltip title={title}>
           <Tag
             color={reviewed ? 'default' : FLAG_COLOR[flag]}
-            style={{ cursor: 'pointer', opacity: reviewed ? 0.45 : 1, marginInlineEnd: 4 }}
+            style={{ cursor: 'pointer', opacity: reviewed ? 'var(--dim-opacity, 0.45)' : 1, marginInlineEnd: 4 }}
           >
             {FLAG_ICON[flag]}
             {withLabel ? ` ${label}` : ''}

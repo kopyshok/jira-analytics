@@ -207,7 +207,7 @@ function useColumns(table: KpiBreakdownTable, good: string, bad: string): Column
       title: 'План', dataIndex: 'planned_end_date', width: 110,
       render: (v: string | null, row) => (
         <span className="num">
-          {v ? shortDay(v) : <span style={{ opacity: 0.45 }}>нет</span>}
+          {v ? shortDay(v) : <span style={{ opacity: 'var(--dim-opacity, 0.45)', color: 'var(--dim-text, inherit)' }}>нет</span>}
           {row.overdue_days != null && row.overdue_days > 0 && (
             <span style={{ color: bad, marginLeft: 6 }}>+{row.overdue_days} дн</span>
           )}

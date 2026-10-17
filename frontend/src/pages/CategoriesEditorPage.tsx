@@ -131,7 +131,7 @@ const CategoryCell = memo(function CategoryCell({
         style={{
           flex: 1,
           minWidth: 0,
-          opacity: !value && placeholderCode ? 0.6 : 1,
+          opacity: !value && placeholderCode ? 'var(--dim-opacity, 0.6)' : 1,
           boxShadow: hasPending ? `0 0 4px ${DARK_THEME.cyanPrimary}` : undefined,
         }}
         options={categoryOptions}
@@ -818,7 +818,7 @@ export default function CategoriesEditorPage() {
               <Select
                 allowClear
                 size="small"
-                style={{ width: '100%', opacity: assigned ? 1 : 0.65 }}
+                style={{ width: '100%', opacity: assigned ? 1 : 'var(--dim-opacity, 0.65)' }}
                 placeholder="Группа"
                 value={resolved ?? undefined}
                 options={subgroupOptions}

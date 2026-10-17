@@ -58,7 +58,7 @@ export default function ReleaseNotesAdminTab() {
     {
       title: 'Тип', dataIndex: 'note_type', width: 130,
       render: (t: ReleaseNoteType) => (
-        <Tag color={NOTE_TYPE_COLORS[t]}>{NOTE_TYPE_LABELS[t]}</Tag>
+        <Tag color={NOTE_TYPE_COLORS[t]} className={`note-type-tag note-type-${t}`}>{NOTE_TYPE_LABELS[t]}</Tag>
       ),
     },
     {
@@ -145,7 +145,7 @@ export default function ReleaseNotesAdminTab() {
             label: (
               <Space>
                 <strong>{feed.version}</strong>
-                <span style={{ color: '#888' }}>({feed.notes.length} зап.)</span>
+                <span style={{ color: 'var(--dim-text, #888)' }}>({feed.notes.length} зап.)</span>
               </Space>
             ),
             children: (
