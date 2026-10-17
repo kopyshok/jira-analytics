@@ -68,6 +68,10 @@ export function buildWarmAntdConfig(): ThemeConfig {
       controlHeightSM: 28,
       controlHeightLG: 40,
       controlOutline: 'rgba(47, 107, 90, 0.18)',
+      // Выбранный пункт выпадающих меню и списков — бледно-зелёная заливка, текст акцентом.
+      controlItemBgActive: W.accentSoft,
+      controlItemBgActiveHover: '#D6E5DD',
+      controlItemBgHover: W.sunken,
       boxShadow: OVERLAY_SHADOW,
       boxShadowSecondary: OVERLAY_SHADOW,
       boxShadowTertiary: 'none',
@@ -136,7 +140,8 @@ export function buildWarmAntdConfig(): ThemeConfig {
       Input: { activeShadow: '0 0 0 3px rgba(47, 107, 90, 0.15)', hoverBorderColor: W.accent, activeBorderColor: W.accent },
       InputNumber: { activeShadow: '0 0 0 3px rgba(47, 107, 90, 0.15)', hoverBorderColor: W.accent, activeBorderColor: W.accent },
       // Выключенный переключатель с подписью внутри — белый текст на тёмном камне читается.
-      Switch: { colorTextQuaternary: '#8A8174', colorTextTertiary: '#6B6358' },
+      // Выключенный переключатель: белая подпись «Нет» на дорожке должна читаться (≥ 4.5:1).
+      Switch: { colorTextQuaternary: '#756D61', colorTextTertiary: '#5E564A' },
       Tooltip: { colorBgSpotlight: W.text, colorTextLightSolid: '#FFFFFF' },
       Pagination: { itemActiveBg: W.accentSoft },
       Collapse: { headerBg: W.subtle, contentBg: W.surface },

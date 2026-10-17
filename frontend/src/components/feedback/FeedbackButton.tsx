@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
-import { FloatButton, App } from 'antd';
+import { FloatButton, App, Badge, Tooltip } from 'antd';
 import { CommentOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import {
   buildContext,
@@ -45,7 +45,8 @@ function buildQuickMarkdown(ctx: FeedbackContext): string {
   return lines.join('\n');
 }
 
-export default function FeedbackButton() {
+/** `pills` — две подписанные пилюли в правом нижнем углу (оболочки скинов); по умолчанию — плавающая кнопка. */
+export default function FeedbackButton({ variant = 'float' }: { variant?: 'float' | 'pills' }) {
   const { notification } = App.useApp();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -78,6 +79,26 @@ export default function FeedbackButton() {
       setBusy(false);
     }
   };
+
+  if (variant === 'pills') {
+    return (
+      <>
+        <div className="feedback-pills" role="group" aria-label="Обратная связь">
+          <button type="button" className="feedback-pill" onClick={() => setOpen(true)}>
+            Открыть форму
+          </button>
+          <Tooltip title="Скопировать отчёт в буфер и отправить админу" placement="topRight">
+            <Badge count={count} overflowCount={99} size="small" offset={[-4, 2]}>
+              <button type="button" className="feedback-pill" onClick={handleQuickBug} disabled={busy}>
+                Быстрый баг
+              </button>
+            </Badge>
+          </Tooltip>
+        </div>
+        <FeedbackDrawer open={open} onClose={() => setOpen(false)} />
+      </>
+    );
+  }
 
   return (
     <>

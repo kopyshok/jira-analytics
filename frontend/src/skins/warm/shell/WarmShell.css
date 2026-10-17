@@ -1,0 +1,286 @@
+/* ============================================================
+   Оболочка скина «Тёплая» (WarmShell) — значения из макетов C-*.dc.html:
+   меню 232px на фоне страницы, пункты-пилюли 36px со значком 18px,
+   подписи групп 12px обычным регистром, монограмма 38px в квадрате акцента;
+   верхняя полоса — подпись слева и пилюли 36px справа.
+   ============================================================ */
+
+html[data-skin="warm"] .wm-shell {
+  display: flex;
+  height: 100vh;
+  box-sizing: border-box;
+  background: #EFEBE5;
+  color: #2A2620;
+}
+
+/* ---------------- Меню ---------------- */
+html[data-skin="warm"] .wm-side {
+  flex: 0 0 232px;
+  width: 232px;
+  box-sizing: border-box;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+html[data-skin="warm"] .wm-logo { display: flex; align-items: center; gap: 12px; padding: 0 8px 4px; }
+html[data-skin="warm"] .wm-logo-mark {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: #2F6B5A;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+html[data-skin="warm"] .wm-logo-text { display: flex; flex-direction: column; min-width: 0; }
+html[data-skin="warm"] .wm-logo-name { font-size: 16px; font-weight: 700; line-height: 1.2; color: #2A2620; white-space: nowrap; }
+html[data-skin="warm"] .wm-logo-ver { font-size: 12px; line-height: 1.4; color: #6B6358; }
+html[data-skin="warm"] .wm-group { font-size: 12px; line-height: 1.3; color: #6B6358; padding: 14px 12px 4px; }
+html[data-skin="warm"] .wm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.2;
+  color: #2A2620;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+html[data-skin="warm"] .wm-item > svg { flex: none; }
+html[data-skin="warm"] .wm-item:hover { background: #E7E2DA; }
+html[data-skin="warm"] .wm-item.is-active { background: #E2ECE7; color: #2F6B5A; font-weight: 600; }
+html[data-skin="warm"] .wm-item:focus-visible { outline: 2px solid #2F6B5A; outline-offset: -2px; }
+html[data-skin="warm"] .wm-item-label { min-width: 0; }
+
+/* ---------------- Правая часть: полоса + страница ---------------- */
+html[data-skin="warm"] .wm-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 20px 0 8px;
+  box-sizing: border-box;
+}
+/* Снизу — место под пилюли обратной связи: в конце прокрутки они не закрывают последние строки */
+html[data-skin="warm"] .wm-scroll { flex: 1 1 auto; min-height: 0; padding-bottom: 52px; }
+
+html[data-skin="warm"] .wm-topbar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 40px;
+}
+html[data-skin="warm"] .wm-caption { font-size: 14px; color: #6B6358; white-space: nowrap; }
+html[data-skin="warm"] .wm-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+html[data-skin="warm"] .wm-slot { display: inline-flex; }
+
+/* Синхронизация — белая пилюля с точкой */
+html[data-skin="warm"] .wm-topbar [data-testid="sync-indicator"] {
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 14px !important;
+  border-radius: 18px !important;
+  background: #FFFFFF !important;
+  border: 1px solid #E3DDD3 !important;
+  font-size: 13px !important;
+  color: #2A2620 !important;
+}
+html[data-skin="warm"] .wm-topbar [data-testid="sync-indicator"] > span { font-weight: 400 !important; }
+html[data-skin="warm"] .wm-topbar [data-testid="sync-indicator"] > span:first-child { box-shadow: none !important; }
+html[data-skin="warm"] .wm-topbar [data-testid="sync-indicator"] > span:not(:first-child) { color: inherit !important; }
+
+/* Кнопки (команды, «Первые шаги», справка) — пилюли 36px */
+/* :not(:disabled) — чтобы перебить общее правило скина для .ant-btn-default */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-btn:not(:disabled) {
+  height: 36px;
+  border-radius: 18px;
+  padding: 0 12px 0 14px;
+  background: #FFFFFF !important;
+  border: 1px solid #E3DDD3 !important;
+  color: #2A2620 !important;
+  font-size: 13px;
+  font-weight: 400;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-btn:not(:disabled):hover { border-color: #2F6B5A !important; color: #2F6B5A !important; }
+/* Команды — без значка, со стрелкой */
+html[data-skin="warm"] .wm-topbar [data-tour="header-team"] .ant-btn-icon:has(> .anticon-team) { display: none; }
+html[data-skin="warm"] .wm-topbar [data-tour="header-team"] .anticon-down { font-size: 12px !important; color: #6B6358; }
+/* «Первые шаги» — мягкая акцентная пилюля */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-btn[data-testid="onboarding-button"]:not(:disabled) {
+  padding: 0 16px;
+  background: #E2ECE7 !important;
+  border-color: #E2ECE7 !important;
+  color: #2F6B5A !important;
+  font-weight: 600;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-btn[data-testid="onboarding-button"]:not(:disabled):hover { background: #D6E5DD !important; border-color: #D6E5DD !important; color: #24584A !important; }
+/* Справка — круглая кнопка-значок */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar [data-tour="header-help"] .ant-btn:not(:disabled) {
+  width: 36px;
+  padding: 0;
+  font-size: 18px;
+}
+/* Год / квартал / месяц — пилюли */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar [data-tour="header-period"] .ant-space { gap: 8px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-select {
+  height: 36px !important;
+  border-radius: 18px !important;
+  background: #FFFFFF !important;
+  border: 1px solid #E3DDD3 !important;
+  padding-inline: 14px 10px !important;
+  font-size: 13px;
+  box-shadow: none !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-select:hover,
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-select-focused { border-color: #2F6B5A !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-select-suffix { color: #6B6358; }
+
+/* Тема — круглая кнопка-значок с меню */
+html[data-skin="warm"] .wm-topbar .theme-select-icon {
+  width: 36px;
+  height: 36px;
+  box-sizing: border-box;
+  border-radius: 18px;
+  background: #FFFFFF;
+  border: 1px solid #E3DDD3;
+  color: #2A2620;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+html[data-skin="warm"] .wm-topbar .theme-select-icon:hover { border-color: #2F6B5A; color: #2F6B5A; }
+
+/* Пользователь: аватар, имя и выход — одной пилюлей */
+html[data-skin="warm"] .wm-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border-radius: 18px;
+  background: #FFFFFF;
+  border: 1px solid #E3DDD3;
+}
+html[data-skin="warm"] .wm-user-avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #EADFC8;
+  color: #6B4E1E;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+html[data-skin="warm"] .wm-user-name { font-size: 13px; color: #2A2620; white-space: nowrap; }
+html[data-skin="warm"] .wm-user-logout {
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  border: 0;
+  background: transparent;
+  color: #6B6358;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+html[data-skin="warm"] .wm-user-logout:hover { background: #F3EFE8; color: #2A2620; }
+
+/* Обратная связь — две подписанные пилюли в правом нижнем углу */
+html[data-skin="warm"] .feedback-pills {
+  position: fixed;
+  right: 20px;
+  bottom: 10px;
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+html[data-skin="warm"] .feedback-pill {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  background: #FFFFFF;
+  border: 1px solid #E3DDD3;
+  color: #2A2620;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+html[data-skin="warm"] .feedback-pill:hover { border-color: #2F6B5A; color: #2F6B5A; }
+html[data-skin="warm"] .feedback-pill:disabled { cursor: progress; color: #4A443A; }
+
+/* ---------------- Узкие экраны ---------------- */
+/* Ноутбук: подпись сервиса уходит, полоса — одной строкой справа */
+@media (max-width: 1600px) {
+  html[data-skin="warm"] .wm-caption { display: none; }
+}
+/* Слово «Синхронизация» и имя пользователя прячутся (в подсказке — время и имя) */
+@media (max-width: 1440px) {
+  html[data-skin="warm"] .wm-topbar [data-testid="sync-indicator"] > span:nth-child(2),
+  html[data-skin="warm"] .wm-topbar [data-testid="sync-indicator"] > span:nth-child(3),
+  html[data-skin="warm"] .wm-user-name { display: none; }
+}
+/* Меню — колонка значков */
+@media (max-width: 1100px) {
+  html[data-skin="warm"] .wm-side { flex-basis: 68px; width: 68px; padding: 16px 10px; }
+  html[data-skin="warm"] .wm-logo { padding: 0 0 4px; justify-content: center; }
+  html[data-skin="warm"] .wm-logo-text { display: none; }
+  html[data-skin="warm"] .wm-group { font-size: 0; padding: 10px 0 0; margin: 0 8px 6px; border-bottom: 1px solid #DDD7CC; }
+  html[data-skin="warm"] .wm-item { justify-content: center; padding: 0; }
+  html[data-skin="warm"] .wm-item-label { display: none; }
+}
+/* Телефон: меню — полоса значков над содержимым, страница прокручивается целиком */
+@media (max-width: 720px) {
+  html[data-skin="warm"] .wm-shell { flex-direction: column; height: auto; min-height: 100vh; }
+  html[data-skin="warm"] .wm-side {
+    flex: none;
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    overflow: visible;
+  }
+  html[data-skin="warm"] .wm-logo { padding: 0; }
+  html[data-skin="warm"] .wm-nav { display: flex; overflow-x: auto; min-width: 0; }
+  html[data-skin="warm"] .wm-nav-group { display: flex; }
+  html[data-skin="warm"] .wm-group { display: none; }
+  html[data-skin="warm"] .wm-item { width: 40px; flex: none; }
+  html[data-skin="warm"] .wm-main { padding: 0 12px; }
+  html[data-skin="warm"] .wm-scroll { overflow: visible; }
+}

@@ -24,9 +24,7 @@ export default function AuroraShell() {
 
   return (
     <HelpProvider>
-      {/* app-shell / app-main — крючки для скинов (skins/*.css), Aurora их не стилизует. */}
       <div
-        className="app-shell"
         style={{
           display: 'flex',
           gap: 16,
@@ -37,7 +35,6 @@ export default function AuroraShell() {
       >
         <AuroraSidebar />
         <div
-          className="app-main"
           style={{
             flex: 1,
             minWidth: 0,
