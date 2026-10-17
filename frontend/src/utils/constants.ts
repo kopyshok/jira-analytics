@@ -210,8 +210,8 @@ const PULT_TOKENS: DarkThemeShape = {
   textPrimary: '#1C1C1A',
   textSecondary: '#3D3B37',
   textMuted: '#5C5A55',
-  textHint: '#6E6B64',
-  textDim: '#6E6B64',
+  textHint: '#64615A',
+  textDim: '#64615A',
 };
 
 /** Runtime-aware Dark theme tokens.
@@ -309,7 +309,7 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens; 
       textPrimary: '#1C1C1A',
       textSecondary: '#3D3B37',
       textMuted: '#5C5A55',
-      textHint: '#6E6B64',
+      textHint: '#64615A',
     },
   },
 };

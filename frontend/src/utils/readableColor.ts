@@ -90,11 +90,15 @@ function mix(a: Rgb, b: Rgb, t: number): Rgb {
 
 const WHITE: Rgb = { r: 255, g: 255, b: 255 };
 
+/** Самая тёмная поверхность обложки (корпус): цветной текст без явного фона должен читаться и на ней. */
+const DARKEST_SURFACE = '#E7E5E0';
+
 /**
  * Тот же оттенок, затемнённый до контраста `min` к фону `on`.
- * Для цветного текста (ключи задач, имена) на светлых поверхностях.
+ * Для цветного текста (ключи задач, имена) на светлых поверхностях; без `on` —
+ * под самую тёмную поверхность, тогда на белых экранах и модулях тем более читается.
  */
-export function readableInk(color: string | null | undefined, on = '#FFFFFF', min = 4.6): string {
+export function readableInk(color: string | null | undefined, on = DARKEST_SURFACE, min = 4.6): string {
   const base = parseColor(color) ?? NEUTRAL;
   const bg = parseColor(on) ?? WHITE;
   if (contrastRatio(base, bg) >= min) return toHex(base);

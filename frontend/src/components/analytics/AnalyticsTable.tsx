@@ -70,7 +70,7 @@ function pctColor(pct: number | null | undefined): string | undefined {
   // Обложка на светлом фоне: те же сигналы, но читаемые (контраст ≥ 4.5:1).
   if (currentSkin()) {
     if (pct > 110) return '#B92E17';
-    if (pct >= 70) return '#8F6400';
+    if (pct >= 70) return '#7E5800';
     return '#237A45';
   }
   if (pct > 110) return '#ff4d4f';

@@ -95,6 +95,17 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --rs-ok-bg: #FFFFFF;
   --rs-deficit-bg: #FBEAE6;
   --rs-track: #E7E5E0;
+  /* общие светлые значения для зашитых под тёмную тему цветов (см. glass.css) */
+  --hairline: var(--p-line);
+  --faint-fill: var(--p-row-alt);
+  --tile-bg: var(--p-screen);
+  --accent-text: var(--p-accent-text);
+  --ink-info: #2457B5;
+  --ink-good: #1E6B3C;
+  --ink-bad: #B92E17;
+  --ink-warn: #7E5800;
+  --ink-violet: #6B3FA0;
+  --avatar-bg: var(--p-key);
 
   /* классические глобальные переменные index.css (справка, деревья, подсказки графиков) */
   --color-page: var(--p-body);
@@ -103,7 +114,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --color-border: var(--p-line);
   --color-cyan: var(--p-accent-text);
   --color-cyan-2: #2A62C9;
-  --color-amber: #8F6400;
+  --color-amber: #7E5800;
   --color-text: #1C1C1A;
   --color-text-muted: #5C5A55;
 
@@ -520,7 +531,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .ant-picker-disabled,
   & .ant-select-disabled.ant-select-outlined {
     background: var(--p-row-alt) !important;
-    color: #6E6B64 !important;
+    color: #64615A !important;
   }
   & .ant-select-selection-item,
   & .ant-select-content,
@@ -528,7 +539,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .ant-select-selection-placeholder,
   & .ant-select-placeholder,
   & .ant-input::placeholder,
-  & .ant-picker-input > input::placeholder { color: #6E6B64 !important; }
+  & .ant-picker-input > input::placeholder { color: #64615A !important; }
   & .ant-select-arrow,
   & .ant-select-suffix,
   & .ant-picker-suffix { color: var(--text-muted) !important; }
@@ -651,6 +662,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     background: var(--p-accent);
   }
   & .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn { color: #FFFFFF !important; font-weight: 500; }
+  /* подписи и счётчики внутри активной (тёмной) вкладки — светлым, метки остаются своими */
+  & .ant-tabs-top > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn :not(.ant-tag, .ant-tag *, .ant-badge-count, .ant-badge-count *) { color: #FFFFFF !important; }
   & .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn .ant-badge-count { box-shadow: none; }
   & .ant-tabs-tab.ant-tabs-tab-disabled .ant-tabs-tab-btn { color: #8C897F !important; }
   & .ant-tabs-top > .ant-tabs-nav .ant-tabs-ink-bar,

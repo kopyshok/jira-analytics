@@ -38,7 +38,7 @@ export function useThemeTokens() {
       textSecondary: 'var(--text-2)',
       textMuted: 'var(--text-muted)',
       textHint: 'var(--text-muted)',
-      textDim: isPult ? '#6E6B64' : isDark ? '#5a6a85' : '#8b97b3',
+      textDim: isPult ? '#64615A' : isDark ? '#5a6a85' : '#8b97b3',
     };
   }, [isAurora, mode, skin]);
 }

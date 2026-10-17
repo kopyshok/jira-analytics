@@ -8,9 +8,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --st-todo: #9A978F;
   --st-done: #2E9E5B;
   --st-unassigned: #8E5BC2;
-  --hs-ok: #6E6B64;
+  --hs-ok: #64615A;
   --hs-over: #D9381E;
-  --hs-idle: #6E6B64;
+  --hs-idle: #64615A;
   --hs-under: #D99A00;
   --hs-track: #E7E5E0;
   --td-track: #FFFFFF;
@@ -62,6 +62,13 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     width: 34px;
     background: var(--p-key) !important;
     border-color: var(--p-key) !important;
+    color: #FFFFFF !important;
+  }
+  /* наведение и фокус не перекрашивают тёмную клавишу в светлый текст на тёмном */
+  & .td-f-settings .ant-btn:not(:disabled):hover,
+  & .td-f-settings .ant-btn:not(:disabled):focus-visible {
+    background: var(--p-key-hover) !important;
+    border-color: var(--p-key-hover) !important;
     color: #FFFFFF !important;
   }
 

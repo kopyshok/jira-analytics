@@ -23,8 +23,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --rp-text-2: #3D3B37;
   --rp-text-2b: #3D3B37;
   --rp-muted: #5C5A55;
-  --rp-dim: #6E6B64;
-  --rp-dim2: #6E6B64;
+  --rp-dim: #64615A;
+  --rp-dim2: #64615A;
   --rp-prio-bg: #2B2B29;
   --rp-prio-fg: #FFFFFF;
   --rp-accent: #E8590C;
@@ -54,7 +54,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --rp-borrowed-line: #C9B3E3;
   --rp-booking-line: #9A978F;
   --rp-booking-hatch: repeating-linear-gradient(45deg, #BDB9AF 0 2px, #F4F3EF 2px 5px);
-  --rp-warn-fg: #8F6400;
+  --rp-warn-fg: #7E5800;
   --rp-today: #E8590C;
   --rp-draw-bg: #FBEDE3;
   --rp-draw-line: #EFB48F;

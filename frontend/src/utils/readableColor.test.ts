@@ -50,6 +50,12 @@ describe('readableInk', () => {
   it('учитывает фон', () => {
     expect(ratio(readableInk('#b5502a', '#f6ddd7'), '#f6ddd7')).toBeGreaterThanOrEqual(4.5);
   });
+  it('без фона читается и на корпусе обложки, не только на белом', () => {
+    for (const c of ['#eb2f96', '#888888', '#13c2c2', '#faad14']) {
+      expect(ratio(readableInk(c), '#E7E5E0')).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(readableInk(c), '#F4F3EF')).toBeGreaterThanOrEqual(4.5);
+    }
+  });
 });
 
 describe('textOnFill', () => {
