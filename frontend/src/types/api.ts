@@ -1004,7 +1004,8 @@ export interface ProjectItem {
   trend_dir: 'up' | 'down' | 'flat';
   forecast_close_date: string | null;
   forecast_in_quarter: boolean;
-  silent_days: number;
+  /** Дни с последнего списания; null — по проекту часов не списывали. */
+  silent_days: number | null;
   weekly_activity: number[];
   team_fact_hours: number;
   alien_fact_hours: number;
