@@ -149,7 +149,7 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
                 border: `1px solid ${DARK_THEME.border}`,
                 borderRadius: 8,
                 padding: '8px 12px',
-                opacity: emp.is_absent ? 0.75 : 1,
+                opacity: emp.is_absent ? 'var(--dash-absent-opacity, 0.75)' : 1,
                 cursor: 'pointer',
               }}
             >
@@ -170,8 +170,8 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
                   }}>{emp.name}</span>
                   {emp.is_absent && (
                     <span style={{
-                      background: '#a78bfa22',
-                      color: '#a78bfa',
+                      background: 'var(--dash-absent-chip-bg, #a78bfa22)',
+                      color: 'var(--dash-absent-chip-fg, #a78bfa)',
                       fontSize: 10,
                       fontWeight: 700,
                       padding: '1px 6px',

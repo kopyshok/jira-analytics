@@ -193,8 +193,8 @@ function AlienHelpersStack({ project }: { project: ProjectItem }) {
             style={{
               width: 22, height: 22, borderRadius: '50%',
               border: `2px solid ${DARK_THEME.cardBg}`,
-              background: 'linear-gradient(135deg, #84cc16 0%, #22c55e 100%)',
-              color: '#052e16', fontSize: 9, fontWeight: 700,
+              background: 'var(--dash-helper-bg, linear-gradient(135deg, #84cc16 0%, #22c55e 100%))',
+              color: 'var(--dash-helper-fg, #052e16)', fontSize: 9, fontWeight: 700,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               marginLeft: i === 0 ? 0 : -6,
             }}

@@ -94,7 +94,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] {
   --track-bg: #EEF0F3;
   --grain: 0;
   --good: #237A4B;
-  --warn: #A06A0E;
+  --warn: #94600A;
   --bad: #D1382A;
   --radius: 10px;
   --radius-sm: 8px;
@@ -130,7 +130,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] {
   --color-border: #E1E3E8;
   --color-cyan: var(--za-ink);
   --color-cyan-2: #2F6FDE;
-  --color-amber: #A06A0E;
+  --color-amber: #94600A;
   --color-text: #17191C;
   --color-text-muted: #5A5F66;
 
@@ -1049,7 +1049,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-card-head-t
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-card-head-title { font-size: 15px; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-typography.ant-typography-danger { color: #D1382A !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-typography.ant-typography-success { color: #237A4B !important; }
-html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-typography.ant-typography-warning { color: #A06A0E !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-typography.ant-typography-warning { color: #94600A !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-typography.ant-typography-secondary { color: #5A5F66 !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-statistic-content-value,
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-statistic-content-suffix,
@@ -1394,7 +1394,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .category-queue-
   color: var(--za-ink);
 }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .category-queue-success .category-queue-count { color: #237A4B; }
-html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .category-queue-warning .category-queue-count { color: #A06A0E; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .category-queue-warning .category-queue-count { color: #94600A; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .category-queue-archive .category-queue-count { color: #2F6FDE; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .category-queue-muted .category-queue-count { color: #D1382A; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .category-table-wrap { border: 1px solid #E1E3E8; border-radius: 10px; }
@@ -1493,3 +1493,21 @@ html[data-skin="zones"] { --deficit-bg: #D1382A; --deficit-fg: #FFFFFF; }
 html[data-skin="zones"] { --warn-on: #FFFFFF; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-input-number-suffix,
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-input-suffix { color: #5A5F66 !important; }
+/* главная: без градиентов на аватарах, отсутствующие не приглушаются */
+html[data-skin="zones"] {
+  --dash-avatar-bg: var(--za-tint);
+  --dash-avatar-fg: var(--za-ink);
+  --dash-helper-bg: #E6F2EA;
+  --dash-helper-fg: #1E6B43;
+  --dash-absent-opacity: 1;
+  --dash-absent-chip-bg: #F0EBFC;
+  --dash-absent-chip-fg: #5B3FB0;
+}
+/* бэклог: заказчик и пустая группа читаются; группы меню настроек */
+html[data-skin="zones"] { --backlog-customer: #5A5F66; --backlog-subgroup-dim: 1; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-menu-item-group-title { color: #5A5F66 !important; }
+/* наведение на кнопку полосы не перекрашивает текст в цвет акцента (общее правило белых кнопок) */
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .zn-band .ant-btn-default:not(.zn-btn-dark):not(.zn-btn-outline):not(.ant-btn-dangerous):not([data-testid="onboarding-button"]):not(:disabled):hover { color: var(--zn-on) !important; border-color: var(--zn-ctl-border) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .zn-band .ant-btn.zn-btn-outline:not(:disabled):hover { color: var(--zn-on) !important; border-color: var(--zn-on) !important; }
+/* фильтр команд: отмеченная команда — тоном зоны, не бирюзой Aurora */
+html[data-skin="zones"] { --tf-checked-bg: var(--za-tint); --tf-check: var(--za); }

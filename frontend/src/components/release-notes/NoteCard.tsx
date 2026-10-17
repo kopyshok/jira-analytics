@@ -4,12 +4,15 @@ import {
 } from '../../types/releaseNotes';
 import type { ReleaseNote } from '../../types/releaseNotes';
 import { DARK_THEME } from '../../utils/constants';
+import { useSkin } from '../../contexts/ThemeContext';
+import { tagColorProps } from '../../skins/zones/readableColor';
 
 interface Props {
   note: ReleaseNote;
 }
 
 export default function NoteCard({ note }: Props) {
+  const typeTag = tagColorProps(NOTE_TYPE_COLORS[note.note_type], useSkin() != null);
   return (
     <div
       style={{
@@ -21,7 +24,7 @@ export default function NoteCard({ note }: Props) {
       }}
     >
       <div style={{ marginBottom: 4 }}>
-        <Tag color={NOTE_TYPE_COLORS[note.note_type]} style={{ marginRight: 8 }}>
+        <Tag color={typeTag.color} style={{ ...typeTag.style, marginRight: 8 }}>
           {NOTE_TYPE_LABELS[note.note_type]}
         </Tag>
         <Tag style={{ marginRight: 8 }}>{SECTION_LABELS[note.section]}</Tag>

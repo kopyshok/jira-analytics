@@ -20,6 +20,8 @@ import type {
   ReleaseNote, ReleaseNoteCreate, ReleaseNoteUpdate, ReleaseNoteType, ReleaseSection,
 } from '../../types/releaseNotes';
 import WhatsNewModal from '../release-notes/WhatsNewModal';
+import { useSkin } from '../../contexts/ThemeContext';
+import { tagColorProps } from '../../skins/zones/readableColor';
 
 export default function ReleaseNotesAdminTab() {
   const { notification } = App.useApp();
@@ -31,6 +33,7 @@ export default function ReleaseNotesAdminTab() {
   const publishMut = usePublishReleaseNotes();
   const deleteVersionMut = useDeleteVersion();
   const reseedMut = useReseedReleaseNotes();
+  const skinOn = useSkin() != null;
 
   const handleReseed = () => {
     reseedMut.mutate(undefined, {
@@ -58,7 +61,7 @@ export default function ReleaseNotesAdminTab() {
     {
       title: 'Тип', dataIndex: 'note_type', width: 130,
       render: (t: ReleaseNoteType) => (
-        <Tag color={NOTE_TYPE_COLORS[t]}>{NOTE_TYPE_LABELS[t]}</Tag>
+        <Tag {...tagColorProps(NOTE_TYPE_COLORS[t], skinOn)}>{NOTE_TYPE_LABELS[t]}</Tag>
       ),
     },
     {

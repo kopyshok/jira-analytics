@@ -97,3 +97,13 @@ export function readablePair(color: string | null | undefined): ReadablePair {
   }
   return { bg, fg, border };
 }
+
+/**
+ * Свойства метки AntD с цветом-hex: в скине — светлая подложка и тёмный текст
+ * того же оттенка, без скина — цвет как есть.
+ */
+export function tagColorProps(color: string, skinOn: boolean): { color?: string; style?: { background: string; color: string; borderColor: string } } {
+  if (!skinOn) return { color };
+  const p = readablePair(color);
+  return { style: { background: p.bg, color: p.fg, borderColor: p.border } };
+}

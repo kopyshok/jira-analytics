@@ -193,3 +193,11 @@ html[data-skin="zones"] .anz-flow > div > :first-child { grid-column: 1 / -1; }
 html[data-skin="zones"] .anz-kpi { display: flex; align-items: center; }
 html[data-skin="zones"] .anz-kpi [data-tour="analytics-kpi"] { flex: 1; }
 html[data-skin="zones"] .an-inherited-mark { opacity: 1 !important; font-size: 10px !important; }
+
+/* «Настройка отчёта»: уровни группировки — светлые плашки */
+html[data-skin="zones"] {
+  --an-level-bg: #F7F8FA;
+  --an-level-hidden-bg: #FFFFFF;
+  --an-level-border: #E1E3E8;
+  --an-level-hidden-opacity: 1;
+}

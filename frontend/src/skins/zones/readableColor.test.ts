@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, readablePair } from './readableColor';
+import { contrastRatio, readablePair, tagColorProps } from './readableColor';
 
 function hue(hex: string): number {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -55,5 +55,14 @@ describe('readablePair', () => {
       expect(hue(p.fg)).toBe(-1);
       expect(hue(p.bg)).toBe(-1);
     }
+  });
+});
+
+describe('tagColorProps', () => {
+  it('без скина — цвет метки как есть, в скине — читаемая пара', () => {
+    expect(tagColorProps('#1677ff', false)).toEqual({ color: '#1677ff' });
+    const on = tagColorProps('#1677ff', true);
+    expect(on.color).toBeUndefined();
+    expect(contrastRatio(on.style!.color, on.style!.background)).toBeGreaterThanOrEqual(4.5);
   });
 });
