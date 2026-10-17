@@ -1,19 +1,8 @@
 import { Modal, Checkbox } from 'antd';
 import type { CheckboxGroupProps } from 'antd/es/checkbox';
-import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
+import { CONFIGURABLE_COLUMN_LABELS as COLUMN_LABELS, useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
 import { useAnalyticsLayout } from '../../hooks/useAnalyticsLayout';
 import GroupingEditor from './GroupingEditor';
-
-const COLUMN_LABELS: Record<string, string> = {
-  plan_hours: 'Часы план',
-  pct_plan: '% план',
-  pct_in_group: '% в группе',
-  pct_total: '% от итога',
-  worklog_count: 'Ворклогов',
-  issue_count: 'Задач',
-  employee_count: 'Сотрудников',
-  avg_worklog_minutes: 'Ср. минут',
-};
 
 const CONFIGURABLE_COLUMNS = Object.keys(COLUMN_LABELS);
 

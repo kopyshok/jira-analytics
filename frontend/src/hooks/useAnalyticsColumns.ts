@@ -14,6 +14,22 @@ const DEFAULT_VISIBLE = [
   'employee_count', 'avg_worklog_minutes',
 ];
 
+/**
+ * Столбцы отчёта, которые включаются галочками в «Настройке отчёта».
+ * Ключ — тот же, что в списке видимых столбцов пользователя и у столбца таблицы
+ * отчёта (AnalyticsTable): расхождение ключей прячет столбец при любой галочке.
+ */
+export const CONFIGURABLE_COLUMN_LABELS: Record<string, string> = {
+  plan_hours: 'Часы план',
+  pct_plan: '% план',
+  pct_in_group: '% в группе',
+  pct_total: '% от итога',
+  worklog_count: 'Ворклогов',
+  issue_count: 'Задач',
+  employee_count: 'Сотрудников',
+  avg_worklog_minutes: 'Ср. минут',
+};
+
 export function useAnalyticsColumns() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({

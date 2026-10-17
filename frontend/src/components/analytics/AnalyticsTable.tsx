@@ -902,7 +902,8 @@ export default function AnalyticsTable({
     },
     {
       title: 'Ср.мин',
-      key: 'avg_min',
+      // Ключ — как у галочки «Ср. минут» в «Настройке отчёта» (CONFIGURABLE_COLUMN_LABELS).
+      key: 'avg_worklog_minutes',
       render: (_, r) => (isBlock(r) ? null : r.totals.avg_worklog_minutes.toFixed(0)),
       width: 90,
       align: 'right',
