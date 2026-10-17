@@ -16,10 +16,11 @@ const MONTH_NAMES_RU = [
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ];
 
+// В светлой теме — читаемые смысловые цвета (glass.css), в тёмной — прежние.
 function balanceColor(b: number): string {
-  if (b > 1) return '#ff4d4f';
-  if (b < -1) return '#faad14';
-  return '#8aa0c0';
+  if (b > 1) return 'var(--ink-bad, #ff4d4f)';
+  if (b < -1) return 'var(--ink-warn, #faad14)';
+  return 'var(--dim-text, #8aa0c0)';
 }
 
 // Часы в overlay ячейки: с 1 знаком после запятой если есть дробь, иначе целое.
