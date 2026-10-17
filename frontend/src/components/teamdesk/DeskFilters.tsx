@@ -147,7 +147,7 @@ export function DeskFilters({
               }}
               allowClear={false}
               format="DD.MM.YYYY"
-              style={{ width: 210 }}
+              style={{ width: 240 }}
             />
           </BandField>
         )}

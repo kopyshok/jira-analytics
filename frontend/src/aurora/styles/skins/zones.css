@@ -1543,3 +1543,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .zn-band .ant-bt
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .zn-band .ant-btn.zn-btn-outline:not(:disabled):hover { color: var(--zn-on) !important; border-color: var(--zn-on) !important; }
 /* фильтр команд: отмеченная команда — тоном зоны, не бирюзой Aurora */
 html[data-skin="zones"] { --tf-checked-bg: var(--za-tint); --tf-check: var(--za); }
+
+/* Календарь: дни соседних месяцев кликабельны — цвет вторичного текста, а не «выключенного» */
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-picker-dropdown .ant-picker-cell:not(.ant-picker-cell-in-view):not(.ant-picker-cell-disabled) { color: #6B7078; }
+/* Пояснение под заглушкой раздела (например, выключенный тематический отчёт) */
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-result-subtitle { color: #5A5F66 !important; }
