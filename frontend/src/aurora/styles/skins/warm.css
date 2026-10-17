@@ -78,6 +78,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
   --absence-chip-bg: #F1E3EE;
   --absence-chip-fg: #6E3B63;
   --customer-fg: #4A443A;
+  --text-muted-legacy: #6B6358;
   --row-excluded-opacity: 1;
   --unassigned-opacity: 1;
   --warn-fill: #F6EAD2;
