@@ -20,6 +20,7 @@ from app.connectors.jira_client import (
     JiraClientError,
     JiraNetworkError,
     JiraRateLimitError,
+    JiraTimeoutError,
 )
 from app.connectors.changelog import (
     category_changed_at,
@@ -382,6 +383,10 @@ logger = logging.getLogger("jira_analytics.sync")
 WORKLOG_CHUNK = 1000
 # Значений в одном IN (...): у SQLite предел на число параметров запроса.
 IN_CHUNK = 500
+
+# Сколько проектов одновременно читает загрузка задач: страницы с историей
+# изменений тяжёлые для Jira DC — не нагружаем её всеми проектами сразу.
+ISSUE_PRODUCERS = 3
 
 
 def _in_chunks(values: Iterable[str], size: int = IN_CHUNK) -> Iterator[list[str]]:
@@ -929,14 +934,18 @@ class SyncService:
         по обрывку «статус изменён» и дни паузы посчитались бы неверно. Не
         удалось дочитать — обрывок остаётся, и по нему ``_upsert_issue`` и
         ``sync_paused_days`` не трогают сохранённые значения. Ошибка Jira по
-        одной задаче (задачи нет, запрос отклонён) — то же самое: этап идёт
-        дальше. Нет доступа, лимит запросов, нет связи — сбой всего этапа.
+        одной задаче (задачи нет, запрос отклонён, не дождались ответа — у
+        задачи огромная история) — то же самое: этап идёт дальше. Нет
+        доступа, лимит запросов, нет связи — сбой всего этапа.
         """
         jira_issue.changelog = status_only(jira_issue.changelog)
         if is_complete(jira_issue.changelog):
             return
         try:
             full = status_only(await self.jira.get_issue_changelog(jira_issue.key))
+        except JiraTimeoutError as exc:
+            logger.warning("Историю изменений задачи %s Jira не отдала вовремя: %s", jira_issue.key, exc)
+            full = None
         except (JiraAuthError, JiraRateLimitError, JiraNetworkError):
             raise
         except JiraClientError as exc:
@@ -1417,6 +1426,9 @@ class SyncService:
             "issuelinks",
         ]
         request_fields = base_request_fields + list(extra_fields) if extra_fields else None
+        # Jira DC — один сервер компании: тяжёлые страницы с историей шлём не
+        # больше чем по ISSUE_PRODUCERS проектам сразу, остальные ждут очереди.
+        producer_slots = asyncio.Semaphore(ISSUE_PRODUCERS)
 
         async def producer(project_key: str) -> None:
             try:
@@ -1424,14 +1436,15 @@ class SyncService:
                 if since:
                     jql += f' AND updated >= "{since.strftime("%Y-%m-%d %H:%M")}"'
                 jql += " ORDER BY key ASC"
-                async for ji in self.jira.iter_issues(
-                    jql=jql,
-                    max_results=100,
-                    fields=request_fields,
-                    expand="changelog",
-                ):
-                    ji.changelog = status_only(ji.changelog)
-                    await queue.put(ji)
+                async with producer_slots:
+                    async for ji in self.jira.iter_issues(
+                        jql=jql,
+                        max_results=100,
+                        fields=request_fields,
+                        expand="changelog",
+                    ):
+                        ji.changelog = status_only(ji.changelog)
+                        await queue.put(ji)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

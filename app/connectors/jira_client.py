@@ -55,6 +55,18 @@ WORKLOG_LIST_BATCH = 1000
 #: Предел страниц опций поля: сервер, который не листает, не зациклит обход.
 OPTIONS_MAX_PAGES = 50
 
+#: Ожидание ответа Jira. Страница поиска с историей изменений у Jira DC
+#: собирается долго: при 30 с полная синхронизация после переезда падала на
+#: загрузке задач с пустым текстом сетевой ошибки (17.10.2026).
+REQUEST_TIMEOUT = httpx.Timeout(120.0, connect=15.0)
+
+#: Сколько раз повторять запрос, не дождавшийся ответа: тот же тяжёлый запрос
+#: обычно не успевает и второй раз — поиск задач вместо этого уменьшает страницу.
+TIMEOUT_ATTEMPTS = 2
+
+#: После скольких удачных страниц подряд уменьшенная страница поиска растёт обратно.
+PAGE_GROW_AFTER = 5
+
 
 def _with_stable_order(jql: str) -> str:
     """Добавить ``ORDER BY key ASC``, если сортировка в JQL не задана.
@@ -92,6 +104,12 @@ def _error_text(response: httpx.Response, method: str, url: str) -> str:
     return f"{text}: {'; '.join(messages)}" if messages else text
 
 
+def _failure_text(exc: Exception, method: str, url: str) -> str:
+    """Текст сетевого сбоя: вид сбоя и запрос — у тайм-аута httpx пустой текст."""
+    detail = str(exc).strip()
+    return f"Request failed: {type(exc).__name__} {method} {url}" + (f": {detail}" if detail else "")
+
+
 def _log_search_warnings(data: dict, jql: str) -> None:
     """Предупреждения поиска (``warningMessages``) — в журнал, а не в тишину."""
     warnings = data.get("warningMessages") or []
@@ -111,6 +129,11 @@ class JiraAuthError(JiraClientError):
 
 class JiraNetworkError(JiraClientError):
     """Jira не ответила и после повторов: сбой связи, а не ошибка запроса."""
+    pass
+
+
+class JiraTimeoutError(JiraNetworkError):
+    """Jira не успела ответить за ``REQUEST_TIMEOUT`` и после повтора."""
     pass
 
 
@@ -178,7 +201,7 @@ class JiraClient:
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             headers=self._headers,
-            timeout=30.0,
+            timeout=REQUEST_TIMEOUT,
         )
         return self
 
@@ -221,12 +244,19 @@ class JiraClient:
                     params=params,
                     json=json,
                 )
+            except httpx.TimeoutException as e:
+                # Не дождались ответа: повторяем один раз, дальше — отдельная ошибка,
+                # по ней поиск задач уменьшает страницу.
+                if attempt >= min(last, TIMEOUT_ATTEMPTS - 1):
+                    raise JiraTimeoutError(_failure_text(e, method, url)) from e
+                await asyncio.sleep(1.0 * (2 ** attempt))
+                continue
             except httpx.RequestError as e:
-                # Network errors (DNS fail / connection refused / timeout):
+                # Network errors (DNS fail / connection refused):
                 # эти проблемы держатся секунды-минуты, экспоненциальный backoff
                 # с базой 1s даёт 1, 2, 4, 8 сек — хватает на большинство глитчей.
                 if attempt == last:
-                    raise JiraNetworkError(f"Request failed: {e}")
+                    raise JiraNetworkError(_failure_text(e, method, url)) from e
                 await asyncio.sleep(1.0 * (2 ** attempt))
                 continue
 
@@ -334,18 +364,38 @@ class JiraClient:
 
         Смещение растёт на число полученных задач: сервер может урезать
         ``max_results``. ``lenient`` — как в ``search_issues``.
+
+        Страница не дождалась ответа (задачи с длинной историей) — она
+        перечитывается вдвое меньшей, до одной задачи; после
+        ``PAGE_GROW_AFTER`` удачных страниц подряд размер растёт обратно.
         """
         jql = _with_stable_order(jql)
         start_at = 0
+        page_size = max_results
+        ok_in_a_row = 0
         while True:
-            response = await self.search_issues(
-                jql=jql,
-                start_at=start_at,
-                max_results=max_results,
-                fields=fields,
-                expand=expand,
-                lenient=lenient,
-            )
+            try:
+                response = await self.search_issues(
+                    jql=jql,
+                    start_at=start_at,
+                    max_results=page_size,
+                    fields=fields,
+                    expand=expand,
+                    lenient=lenient,
+                )
+            except JiraTimeoutError:
+                if page_size == 1:
+                    raise
+                page_size = max(1, page_size // 2)
+                ok_in_a_row = 0
+                logger.warning(
+                    "Jira не успела отдать страницу поиска (с %d): читаю по %d задач", start_at, page_size,
+                )
+                continue
+            ok_in_a_row += 1
+            if page_size < max_results and ok_in_a_row >= PAGE_GROW_AFTER:
+                page_size = min(max_results, page_size * 2)
+                ok_in_a_row = 0
             for issue in response.issues:
                 yield issue
             start_at += len(response.issues)

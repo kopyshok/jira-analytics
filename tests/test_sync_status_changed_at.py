@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.connectors.jira_client import (
-    JiraAuthError, JiraClientError, JiraNetworkError, JiraRateLimitError,
+    JiraAuthError, JiraClientError, JiraNetworkError, JiraRateLimitError, JiraTimeoutError,
 )
 from app.connectors.schemas import JiraIssueSchema
 from app.models import Issue, Project
@@ -281,6 +281,19 @@ async def test_changelog_fetch_not_found_is_skipped(db_session, caplog):
     """Задачи уже нет (404) — предупреждение, обрывок истории остаётся."""
     jira = MagicMock()
     jira.get_issue_changelog = AsyncMock(side_effect=JiraClientError("404 Issue Does Not Exist"))
+    svc = SyncService(db_session, jira)
+    issue = _dc_issue(changelog={"total": 3, "histories": [{"created": "a", "items": []}]})
+
+    await svc._complete_changelog(issue)
+
+    assert issue.changelog["total"] == 3
+    assert "OS-91030" in caplog.text
+
+
+async def test_changelog_fetch_timeout_is_skipped(db_session, caplog):
+    """История одной задачи не пришла вовремя (огромная история) — этап идёт дальше."""
+    jira = MagicMock()
+    jira.get_issue_changelog = AsyncMock(side_effect=JiraTimeoutError("Request failed: ReadTimeout"))
     svc = SyncService(db_session, jira)
     issue = _dc_issue(changelog={"total": 3, "histories": [{"created": "a", "items": []}]})
 

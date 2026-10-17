@@ -12,6 +12,7 @@ from app.connectors.jira_client import (
     JiraClientError,
     JiraNetworkError,
     JiraServerError,
+    JiraTimeoutError,
 )
 from app.models.app_setting import AppSetting
 from tests.dc_fixtures import load_dc
@@ -330,3 +331,46 @@ async def test_lenient_flag_controls_validate_query_and_warnings_are_logged(capl
     assert "validateQuery" not in seen[0]
     assert seen[1]["validateQuery"] == "warn"
     assert "OS-404" in caplog.text
+
+
+@respx.mock
+async def test_search_page_timeout_halves_page_and_grows_back(sleeps):
+    """Страница не дождалась ответа — перечитывается вдвое меньшей; потом размер растёт обратно."""
+    all_issues = [_issue(n) for n in range(40)]
+    asked: list[tuple[int, int]] = []
+
+    def handler(request):
+        params = _params(request)
+        start, size = int(params["startAt"]), int(params["maxResults"])
+        asked.append((start, size))
+        if start == 0 and size > 2:
+            raise httpx.ReadTimeout("")
+        return httpx.Response(200, json={
+            "startAt": start, "maxResults": size, "total": 40, "issues": all_issues[start:start + size],
+        })
+
+    respx.get(f"{API}/search").mock(side_effect=handler)
+    async with JiraClient(base_url=BASE, api_token="t", max_retries=5) as jira:
+        keys = [i.key async for i in jira.iter_issues("project = OS", max_results=8)]
+
+    assert keys == [f"OS-{n}" for n in range(40)]
+    # 8 и 4 не дождались (по два раза), 2 прошла; после 5 удачных страниц — снова 4
+    assert asked[:5] == [(0, 8), (0, 8), (0, 4), (0, 4), (0, 2)]
+    assert (10, 4) in asked
+
+
+@respx.mock
+async def test_timeout_on_single_issue_page_is_timeout_error_with_details(sleeps):
+    respx.get(f"{API}/search").mock(side_effect=httpx.ReadTimeout(""))
+    async with JiraClient(base_url=BASE, api_token="t", max_retries=5) as jira:
+        with pytest.raises(JiraTimeoutError, match="ReadTimeout GET /rest/api/2/search"):
+            [i async for i in jira.iter_issues("project = OS", max_results=1)]
+
+
+@respx.mock
+async def test_timeout_is_retried_once_only(sleeps):
+    route = respx.get(f"{API}/myself").mock(side_effect=httpx.ReadTimeout(""))
+    async with JiraClient(base_url=BASE, api_token="t", max_retries=5) as jira:
+        with pytest.raises(JiraTimeoutError):
+            await jira.get_myself()
+    assert route.call_count == 2
