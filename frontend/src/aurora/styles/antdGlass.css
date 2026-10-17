@@ -577,3 +577,9 @@ html[data-theme="aurora"][data-mode="dark"] .ant-image-preview-mask {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+
+/* Отмеченная метка-фильтр (CheckableTag): общее правило .ant-tag выше красит текст в --text-2,
+   и на акцентной заливке он нечитаем. В светлой теме — текст цвета «на акценте». */
+[data-theme="aurora"][data-mode="light"] .ant-tag-checkable-checked {
+  color: var(--on-accent);
+}

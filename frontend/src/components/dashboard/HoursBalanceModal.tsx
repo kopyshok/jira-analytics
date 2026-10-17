@@ -16,10 +16,11 @@ const MONTH_NAMES_RU = [
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ];
 
+// Цвета светлых тем — переменные --fg-* (glass.css); в тёмной — прежние значения.
 function balanceColor(b: number): string {
-  if (b > 1) return '#ff4d4f';
-  if (b < -1) return '#faad14';
-  return '#8aa0c0';
+  if (b > 1) return 'var(--fg-bad, #ff4d4f)';
+  if (b < -1) return 'var(--fg-warn, #faad14)';
+  return 'var(--fg-neutral, #8aa0c0)';
 }
 
 // Часы в overlay ячейки: с 1 знаком после запятой если есть дробь, иначе целое.
@@ -211,13 +212,13 @@ export default function HoursBalanceModal({ employeeId, onClose }: Props) {
               label="Переработки"
               value={`${data.kpi.overtime_days} дн / +${Math.round(data.kpi.overtime_hours)}ч`}
               caption=""
-              color="#ff4d4f"
+              color="var(--fg-bad, #ff4d4f)"
             />
             <KpiTile
               label="Автоотгулы"
               value={`${data.kpi.skip_days} дн / ${Math.round(data.kpi.skip_hours)}ч`}
               caption=""
-              color="#a4b8d8"
+              color="var(--fg-neutral, #a4b8d8)"
             />
           </div>
           {/* Monthly strip — wrap, без горизонтального scroll'а */}

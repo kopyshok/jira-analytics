@@ -67,7 +67,8 @@ export default function KpiTeamMetricStrip({
               key={m.code}
               style={{
                 padding: '9px 12px', borderRadius: 10, background: t.darkRows,
-                opacity: empty ? 0.6 : 1, minWidth: 0,
+                // В светлых темах пустую метрику не притушиваем: серый текст на светлом и так на пределе.
+                opacity: empty ? 'var(--empty-opacity, 0.6)' : 1, minWidth: 0,
               }}
             >
               <Text type="secondary" style={{ fontSize: 11, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

@@ -38,7 +38,8 @@ export default function UsageMatrix({ days }: Props) {
   const tint = (h: number): React.CSSProperties | undefined => {
     if (h === 0 || max === 0) return undefined;
     const alpha = Math.min(1, h / max);
-    return { background: `rgba(0, 201, 200, ${alpha.toFixed(2)})` };
+    // Цвет тепловой шкалы скин задаёт переменной --heat-rgb (у тем Aurora — прежний бирюзовый).
+    return { background: `rgba(var(--heat-rgb, 0, 201, 200), ${alpha.toFixed(2)})` };
   };
 
   const columns = [

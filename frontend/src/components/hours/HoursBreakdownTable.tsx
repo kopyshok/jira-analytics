@@ -9,12 +9,21 @@ const ROLES: Array<{ key: 'analyst' | 'dev' | 'qa' | 'opo'; label: string }> = [
   { key: 'opo', label: 'ОПЭ' },
 ];
 
+/** Заливки полосы. */
 const COLOR = {
   past: 'var(--text-muted, #94a3b8)',
   current: '#fb923c',
   approved: '#38bdf8',
   planable: '#22c55e',
   draft: '#a78bfa',
+};
+/** Текст тех же величин: в светлых темах — тёмные оттенки (переменные --fg-*), в тёмной — прежние цвета. */
+const TEXT = {
+  past: COLOR.past,
+  current: 'var(--fg-warn, #fb923c)',
+  approved: 'var(--fg-info, #38bdf8)',
+  planable: 'var(--fg-good, #22c55e)',
+  draft: 'var(--fg-violet, #a78bfa)',
 };
 
 interface Row {
@@ -48,7 +57,7 @@ function ProgressBar({ data }: { data: HoursBreakdownData }) {
 
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ display: 'flex', height: 18, borderRadius: 3, overflow: 'hidden', background: '#1e293b' }}>
+      <div style={{ display: 'flex', height: 18, borderRadius: 3, overflow: 'hidden', background: 'var(--ui-track, #1e293b)' }}>
         <Tooltip title={`Факт прошлых Q: ${Math.round(past)}ч`}>
           <div style={{ background: COLOR.past, width: pct(past) }} />
         </Tooltip>
@@ -62,7 +71,7 @@ function ProgressBar({ data }: { data: HoursBreakdownData }) {
           <div style={{ background: COLOR.planable, width: pct(planable) }} />
         </Tooltip>
       </div>
-      <div style={{ fontSize: 11, color: COLOR.draft, marginTop: 6 }}>
+      <div style={{ fontSize: 11, color: TEXT.draft, marginTop: 6 }}>
         Черновик: {Math.round(data.draft.total)}ч (информационно)
       </div>
     </div>
@@ -74,7 +83,7 @@ const thStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
   color: 'var(--text-muted, #94a3b8)',
-  borderBottom: '1px solid #1e3a5f',
+  borderBottom: '1px solid var(--ui-divider, #1e3a5f)',
   textAlign: 'right',
   whiteSpace: 'nowrap',
 };
@@ -82,7 +91,7 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
   padding: '6px 8px',
   fontSize: 13,
-  borderBottom: '1px solid rgba(255,255,255,0.04)',
+  borderBottom: '1px solid var(--ui-divider-soft, rgba(255,255,255,0.04))',
   textAlign: 'right',
 };
 
@@ -133,19 +142,19 @@ export default function HoursBreakdownTable({ data, loading }: Props) {
               <tr key={r.key}>
                 <td style={{ ...baseTd, textAlign: 'left' }}>{r.role}</td>
                 <td style={baseTd}>{fmt(r.plan)}</td>
-                <td style={{ ...baseTd, color: COLOR.past }}>{fmt(r.fact_past)}</td>
-                <td style={{ ...baseTd, color: COLOR.current }}>{fmt(r.fact_current)}</td>
-                <td style={{ ...baseTd, color: COLOR.approved }}>{fmt(r.approved)}</td>
+                <td style={{ ...baseTd, color: TEXT.past }}>{fmt(r.fact_past)}</td>
+                <td style={{ ...baseTd, color: TEXT.current }}>{fmt(r.fact_current)}</td>
+                <td style={{ ...baseTd, color: TEXT.approved }}>{fmt(r.approved)}</td>
                 <td
                   style={{
                     ...baseTd,
-                    color: r.planable < 0 ? DARK_THEME.danger : COLOR.planable,
+                    color: r.planable < 0 ? DARK_THEME.danger : TEXT.planable,
                     fontWeight: 600,
                   }}
                 >
                   {fmt(r.planable)}
                 </td>
-                <td style={{ ...baseTd, color: COLOR.draft }}>{fmt(r.draft)}</td>
+                <td style={{ ...baseTd, color: TEXT.draft }}>{fmt(r.draft)}</td>
               </tr>
             );
           })}
