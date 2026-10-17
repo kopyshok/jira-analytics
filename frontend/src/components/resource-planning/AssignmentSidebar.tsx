@@ -53,6 +53,9 @@ interface Props {
 }
 
 const fmtDay = (iso: string) => dayjs(iso).format('DD.MM');
+/** Даты в панели — как у «Окончания»: ДД.ММ.ГГГГ. */
+const DATE_FORMAT = 'DD.MM.YYYY';
+const fmtDate = (iso: string) => dayjs(iso).format(DATE_FORMAT);
 
 /** «(в команде по 19.07)» — если участие обрывается внутри квартала плана. */
 function membershipSuffix(e: EmployeeCandidate): string {
@@ -310,6 +313,7 @@ export default function AssignmentSidebar({
         <Descriptions.Item label="Начало">
           <DatePicker
             value={assignment.start_date ? dayjs(assignment.start_date) : null}
+            format={DATE_FORMAT}
             disabled={saving}
             allowClear={false}
             onChange={(d) => d && updateField({ start_date: d.format('YYYY-MM-DD') })}
@@ -318,7 +322,7 @@ export default function AssignmentSidebar({
         <Descriptions.Item label="Окончание">
           {/* Конец считает планировщик по свободным дням исполнителя от даты начала. */}
           <Typography.Text>
-            {assignment.end_date ? dayjs(assignment.end_date).format('DD.MM.YYYY') : '—'}
+            {assignment.end_date ? fmtDate(assignment.end_date) : '—'}
           </Typography.Text>
           <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
             Окончание рассчитывается по часам и свободным дням; чтобы сдвинуть — перетащите начало
@@ -441,8 +445,8 @@ export default function AssignmentSidebar({
                   rowKey={(r) => `abs-${r.start_date}-${r.end_date}`}
                   dataSource={pendingEmpChange.preview.absences}
                   columns={[
-                    { title: 'Начало', dataIndex: 'start_date', width: 110 },
-                    { title: 'Окончание', dataIndex: 'end_date', width: 110 },
+                    { title: 'Начало', dataIndex: 'start_date', width: 110, render: fmtDate },
+                    { title: 'Окончание', dataIndex: 'end_date', width: 110, render: fmtDate },
                     { title: 'Причина', dataIndex: 'reason', render: (v) => v ?? '—' },
                     { title: 'Пересечение', dataIndex: 'overlap_days', width: 110, render: (v) => `${v} д.` },
                   ]}
@@ -458,12 +462,15 @@ export default function AssignmentSidebar({
                   rowKey={(r) => `ovl-${r.date}-${r.other_backlog_item_key ?? r.other_phase}`}
                   dataSource={pendingEmpChange.preview.overloads}
                   columns={[
-                    { title: 'День', dataIndex: 'date', width: 110 },
+                    { title: 'День', dataIndex: 'date', width: 110, render: fmtDate },
                     {
                       title: 'Другая задача',
                       render: (_, r) => `${r.other_backlog_item_key ?? '—'} · ${r.other_backlog_item_title}`,
                     },
-                    { title: 'Фаза', dataIndex: 'other_phase', width: 90 },
+                    {
+                      title: 'Фаза', dataIndex: 'other_phase', width: 90,
+                      render: (v: string) => PHASE_LABELS[v] ?? v,
+                    },
                     {
                       title: 'Итого ч/день',
                       dataIndex: 'hours_on_day',
