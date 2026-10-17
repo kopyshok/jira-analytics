@@ -1,7 +1,6 @@
 import React from 'react';
 import { Skeleton, Empty, Select, Tag, Button } from 'antd';
-import { useProjectsList } from '../../hooks/useProjects';
-import type { ProjectListFiltersState } from '../../types/projects';
+import type { ProjectListFiltersState, ProjectListItem } from '../../types/projects';
 import { ProjectListCard } from './ProjectListCard';
 import { ProjectListFilters } from './ProjectListFilters';
 import { DARK_THEME } from '../../utils/constants';
@@ -12,28 +11,18 @@ interface Props {
   filters: ProjectListFiltersState;
   onFiltersChange: (next: ProjectListFiltersState) => void;
   onShowPortfolio: () => void;
+  /** Список и годы приходят со страницы (useProjectsPage) — один источник с раскладками скинов. */
+  projects: ProjectListItem[] | undefined;
+  isLoading: boolean;
+  yearOptions: Array<{ value: number; label: string }>;
 }
-
-const CURRENT_YEAR = new Date().getFullYear();
 
 export const ProjectsList: React.FC<Props> = ({
   selectedKey, onSelect, filters, onFiltersChange, onShowPortfolio,
+  projects, isLoading, yearOptions,
 }) => {
   const patch = (part: Partial<ProjectListFiltersState>) =>
     onFiltersChange({ ...filters, ...part });
-
-  const { data: projects, isLoading } = useProjectsList({
-    search: filters.search || undefined,
-    status_category: filters.statusCategory || undefined,
-    category: filters.category || undefined,
-    year: filters.year,
-    quarter: filters.quarter,
-  });
-
-  const yearOptions = Array.from({ length: 5 }, (_, i) => {
-    const y = CURRENT_YEAR - 1 + i;
-    return { value: y, label: String(y) };
-  });
 
   return (
     <div

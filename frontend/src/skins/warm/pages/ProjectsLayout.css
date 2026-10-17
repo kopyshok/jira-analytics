@@ -1,0 +1,543 @@
+/* ============================================================
+   «Проекты» в скине «Тёплая» (макет C-projects).
+   1) Раскладка: список слева 360 px, справа сводка портфеля или карточка
+      проекта (pjc-page, pjc-side, pjc-main).
+   2) Вид компонентов с prop compact (классы pjc-*): карточки списка,
+      итоги портфеля, сигналы, таблица, таймлайн.
+   3) Переменные --pj-* для компонентов карточки проекта, у Aurora их нет —
+      действуют прежние значения.
+   ============================================================ */
+
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
+  --pj-ext-bg: #F5F1EA;
+  --pj-ext-border: #EEE9E1;
+}
+
+/* ---------- Каркас ---------- */
+html[data-skin="warm"] .pjc-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+html[data-skin="warm"] .pjc-main {
+  flex: 1 1 640px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+html[data-skin="warm"] .pjc-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- Левая колонка: список проектов ---------- */
+html[data-skin="warm"] .pjc-side {
+  flex: 0 0 360px;
+  width: 360px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html[data-skin="warm"] .pjc-side-head {
+  flex: none;
+  padding: 14px 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+html[data-skin="warm"] .pjc-side-title { display: flex; align-items: center; gap: 10px; }
+html[data-skin="warm"] .pjc-side-title h2 { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.3; color: #2A2620; }
+html[data-skin="warm"] .pjc-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 12px;
+  background: #F1ECE3;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2A2620;
+  box-sizing: border-box;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .wr-card .ant-btn.pjc-summary-btn {
+  height: 40px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 8px;
+}
+html[data-skin="warm"] .pjc-period { display: flex; align-items: center; gap: 8px; }
+html[data-skin="warm"] .pjc-year { flex: none; padding-right: 2px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-year .ant-select { width: 74px; min-height: 30px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-year .ant-select-selector { padding-inline: 4px 18px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-year .ant-select-selection-item { font-size: 13px; }
+html[data-skin="warm"] .pjc-quarters { flex: 1 1 auto; min-width: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .pjc-side .ant-segmented { border-radius: 12px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .pjc-side .ant-segmented-item-label { font-size: 13px; padding: 0 6px; }
+
+html[data-skin="warm"] .pjc-filters { display: flex; flex-direction: column; gap: 10px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-search.ant-input-affix-wrapper {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #D9D2C6 !important;
+  border-radius: 10px !important;
+  background: #FFFFFF !important;
+  box-shadow: none !important;
+  gap: 8px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-search.ant-input-affix-wrapper-focused { border-color: #2F6B5A !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-search .ant-input-prefix { margin-inline-end: 0; color: #6B6358; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-search .ant-input { font-size: 13px; background: transparent !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-search .ant-input::placeholder { color: #6B6358; }
+
+html[data-skin="warm"] .pjc-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid #EEE9E1;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+html[data-skin="warm"] .pjc-card {
+  flex: none;
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #EEE9E1;
+  border-radius: 12px;
+  background: #FFFFFF;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+  line-height: 1.35;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+html[data-skin="warm"] .pjc-card:hover { border-color: #D9D2C6; background: #FBF9F5; }
+html[data-skin="warm"] .pjc-card.is-selected { border-color: #2F6B5A; background: #EDF3F0; }
+html[data-skin="warm"] .pjc-card:focus-visible { outline: 2px solid #2F6B5A; outline-offset: 2px; }
+html[data-skin="warm"] .pjc-card-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: #3F6CA8;
+  box-sizing: border-box;
+}
+html[data-skin="warm"] .pjc-card-dot.is-done { background: #3F7D4E; }
+html[data-skin="warm"] .pjc-card-dot.is-new { background: #FFFFFF; border: 2px solid #8A8174; }
+html[data-skin="warm"] .pjc-card-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+html[data-skin="warm"] .pjc-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+html[data-skin="warm"] .pjc-card-title {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #2A2620;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+html[data-skin="warm"] .wr-pill.pjc-card-status { flex: none; height: 20px; padding: 0 8px; border-radius: 10px; font-weight: 500; }
+html[data-skin="warm"] .pjc-card-meta { font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] .pjc-card-stats { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: #2A2620; }
+html[data-skin="warm"] .pjc-card-stats b { font-weight: 600; }
+html[data-skin="warm"] .pjc-card-cat { color: #6B6358; }
+html[data-skin="warm"] .pjc-card-rating { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6358; }
+
+/* Звёзды оценки — охрой (и в карточке проекта) */
+html[data-skin="warm"] .star-rating .star-on { fill: #B7791F; }
+html[data-skin="warm"] .star-rating .star-on path { stroke: #B7791F; }
+html[data-skin="warm"] .star-rating .star-off { fill: #ECE8E1; }
+html[data-skin="warm"] .star-rating .star-off path { stroke: #D9D2C6; }
+
+/* ---------- Итоги портфеля ---------- */
+html[data-skin="warm"] .pjc-top { flex: none; display: flex; flex-wrap: wrap; gap: 12px; }
+html[data-skin="warm"] .pjc-kpi-card { flex: 1 1 640px; min-width: 0; padding: 14px 18px; }
+html[data-skin="warm"] .pjc-kpi { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; height: 100%; line-height: 1.3; }
+html[data-skin="warm"] .pjc-kpi-main { display: flex; align-items: center; gap: 28px; }
+html[data-skin="warm"] .pjc-kpi-cap { font-size: 12px; color: #6B6358; white-space: nowrap; }
+html[data-skin="warm"] .pjc-kpi-val { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; color: #2A2620; }
+html[data-skin="warm"] .pjc-kpi-val.is-center { align-items: center; gap: 8px; }
+html[data-skin="warm"] .pjc-kpi-big { font-size: 30px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+html[data-skin="warm"] .pjc-kpi-plan { color: #6B6358; font-weight: 500; }
+html[data-skin="warm"] .pjc-kpi-unit { font-size: 14px; }
+html[data-skin="warm"] .pjc-kpi-roles {
+  flex: 1 1 420px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0 18px;
+  padding-left: 24px;
+  border-left: 1px solid #EEE9E1;
+}
+html[data-skin="warm"] .pjc-kpi-role { min-width: 0; }
+html[data-skin="warm"] .pjc-kpi-role-cap { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6358; white-space: nowrap; }
+html[data-skin="warm"] .pjc-kpi-role-val { margin-top: 2px; font-size: 15px; font-weight: 600; color: #2A2620; white-space: nowrap; font-variant-numeric: tabular-nums; }
+html[data-skin="warm"] .pjc-kpi-role-bar { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+html[data-skin="warm"] .pjc-kpi-role-bar .pjc-bar { flex: 1 1 auto; margin-top: 0; }
+html[data-skin="warm"] .pjc-kpi-role-note { margin-top: 3px; font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] .pjc-pct { font-size: 12px; font-weight: 600; color: #2A2620; }
+html[data-skin="warm"] .pjc-pct.is-over { color: #8F3A18; }
+
+/* Цвета стадий: квадратик подписи и полосы */
+html[data-skin="warm"] .pjc-sw { flex: none; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: #8A8174; }
+html[data-skin="warm"] .pjc-sw.is-analyst { background: #2E8B8B; }
+html[data-skin="warm"] .pjc-sw.is-dev { background: #3F6CA8; }
+html[data-skin="warm"] .pjc-sw.is-qa { background: #D9822B; }
+html[data-skin="warm"] .pjc-bar {
+  display: flex;
+  height: 5px;
+  margin-top: 4px;
+  border-radius: 3px;
+  background: #EEE9E1;
+  overflow: hidden;
+}
+html[data-skin="warm"] .pjc-bar-base { background: #8A8174; }
+html[data-skin="warm"] .pjc-bar-base.is-analyst { background: #2E8B8B; }
+html[data-skin="warm"] .pjc-bar-base.is-dev { background: #3F6CA8; }
+html[data-skin="warm"] .pjc-bar-base.is-qa { background: #D9822B; }
+html[data-skin="warm"] .pjc-bar-over { background: #B5502A; }
+
+/* ---------- Сигналы ---------- */
+html[data-skin="warm"] .pjc-signals-card {
+  flex: 0 1 380px;
+  line-height: 1.3;
+  min-width: 260px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+html[data-skin="warm"] .pjc-signals { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+html[data-skin="warm"] .pjc-signal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: 15px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  box-sizing: border-box;
+}
+html[data-skin="warm"] .pjc-signal svg { flex: none; }
+html[data-skin="warm"] .pjc-signal.is-warn { background: #F6EAD2; color: #7A4E0C; }
+html[data-skin="warm"] .pjc-signal.is-info { background: #E3EBF6; color: #2A4F82; }
+
+/* ---------- Таблица «Проекты портфеля» ---------- */
+html[data-skin="warm"] .pjc-table-card {
+  flex: 1 1 auto;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html[data-skin="warm"] .pjc-card-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+}
+html[data-skin="warm"] .pjc-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid #EEE9E1;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table {
+  min-width: 1060px;
+  font-size: 13px;
+  color: #2A2620;
+  border-radius: 0;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-container { border-radius: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-thead > tr > th {
+  height: 36px;
+  padding: 0 10px !important;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #6B6358 !important;
+  border-radius: 0 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-thead > tr > th:last-child { padding-right: 16px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-thead > tr > th[aria-sort] { color: #2A2620 !important; font-weight: 600; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-thead > tr > th.ant-table-column-has-sorters:hover { background: #FAF8F4 !important; }
+/* Стрелка сортировки — только у выбранной колонки и только в её направлении */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table th:not([aria-sort]) .ant-table-column-sorter { display: none; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table th:not([aria-sort]):hover .ant-table-column-sorter { display: inline-flex; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table th[aria-sort] .ant-table-column-sorter :is(.ant-table-column-sorter-up, .ant-table-column-sorter-down):not(.active) { display: none; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-column-sorter { color: #6B6358; margin-inline-start: 4px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-column-sorter .active { color: #2A2620; }
+
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-tbody > tr.ant-table-row > td {
+  height: 54px;
+  padding: 0 10px !important;
+  background: #FFFFFF !important;
+  font-variant-numeric: tabular-nums;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-tbody > tr.ant-table-row:hover > td { background: #FBF9F5 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-tbody > tr.ant-table-row > td.ant-table-row-expand-icon-cell { padding: 0 0 0 10px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-tbody > tr.ant-table-row > td:last-child { padding-right: 16px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-expanded-row > td { background: #FBF9F5 !important; padding: 4px 16px !important; }
+
+html[data-skin="warm"] .pjc-expand {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6B6358;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+html[data-skin="warm"] .pjc-expand:hover { background: #F3EFE8; color: #2A2620; }
+html[data-skin="warm"] .pjc-expand.is-empty { cursor: default; pointer-events: none; }
+
+html[data-skin="warm"] .pjc-proj { min-width: 0; }
+html[data-skin="warm"] .pjc-proj-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+html[data-skin="warm"] .pjc-proj-title {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2A2620;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-skin="warm"] .pjc-prio {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #F1ECE3;
+  color: #2A2620;
+  box-sizing: border-box;
+}
+html[data-skin="warm"] .pjc-prio.is-p1 { background: #2A2620; color: #FFFFFF; }
+html[data-skin="warm"] .pjc-prio.is-p2 { background: #E8E2D8; }
+html[data-skin="warm"] .pjc-prio.is-p3 { background: #F1ECE3; border: 1px solid #D9D2C6; }
+html[data-skin="warm"] .pjc-proj-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #6B6358;
+  white-space: nowrap;
+  overflow: hidden;
+}
+html[data-skin="warm"] .pjc-key { color: #2A2620; text-decoration: underline; text-underline-offset: 2px; }
+html[data-skin="warm"] .wr-pill.pjc-proj-status {
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+  display: inline-block;
+  line-height: 18px;
+}
+html[data-skin="warm"] .pjc-dim { color: #6B6358; }
+html[data-skin="warm"] .pjc-fp b { font-weight: 600; }
+html[data-skin="warm"] .pjc-load {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-weight: 700;
+  background: #ECE8E1;
+  color: #5E564A;
+}
+html[data-skin="warm"] .pjc-load.is-good { background: #E1EFE4; color: #2D6140; }
+html[data-skin="warm"] .pjc-load.is-warn { background: #F6EAD2; color: #7A4E0C; }
+html[data-skin="warm"] .pjc-load.is-bad { background: #F6E1D8; color: #8F3A18; }
+html[data-skin="warm"] .pjc-th-stage { display: inline-flex; align-items: center; gap: 6px; }
+html[data-skin="warm"] .pjc-stage-top { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; white-space: nowrap; }
+html[data-skin="warm"] .pjc-stage-top b { font-weight: 600; }
+html[data-skin="warm"] .pjc-stage-top b.is-over { color: #8F3A18; }
+
+/* Итоги — закреплены внизу блока */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-summary { box-shadow: none !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-summary .ant-table-cell {
+  height: 42px;
+  padding: 0 10px !important;
+  background: #F3EFE8 !important;
+  border-top: 1px solid #E3DDD3;
+  border-bottom: 0 !important;
+  font-weight: 700;
+  color: #2A2620;
+  font-variant-numeric: tabular-nums;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-summary .ant-table-cell:nth-child(2) { font-size: 14px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .pjc-table .ant-table-summary .ant-table-cell:last-child { padding-right: 16px !important; }
+html[data-skin="warm"] .pjc-total .pjc-dim { font-weight: 500; }
+html[data-skin="warm"] .pjc-total-stage { font-size: 12px; font-weight: 400; white-space: nowrap; }
+html[data-skin="warm"] .pjc-total-stage b { font-weight: 700; }
+
+/* ---------- Таймлайн портфеля ---------- */
+html[data-skin="warm"] .pjc-tl-card {
+  flex: 0 1 auto;
+  max-height: 300px;
+  min-height: 0;
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html[data-skin="warm"] .pjc-tl { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+html[data-skin="warm"] .pjc-tl-head {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin-bottom: 6px;
+}
+html[data-skin="warm"] .pjc-tl-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] .pjc-tl-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+html[data-skin="warm"] .pjc-tl-sw { display: inline-block; width: 12px; height: 8px; border-radius: 2px; background: #8A8174; }
+html[data-skin="warm"] .pjc-tl-sw.is-analyst { background: #2E8B8B; }
+html[data-skin="warm"] .pjc-tl-sw.is-dev { background: #3F6CA8; }
+html[data-skin="warm"] .pjc-tl-sw.is-qa { background: #D9822B; }
+html[data-skin="warm"] .pjc-tl-sw.is-opo { background: #7B5A9E; }
+html[data-skin="warm"] .pjc-tl-sw.is-shade { height: 12px; background: #ECE6DB; border: 1px solid #DDD5C8; box-sizing: border-box; }
+html[data-skin="warm"] .pjc-tl-sw.is-today { width: 2px; height: 12px; border-radius: 0; background: #2A2620; }
+html[data-skin="warm"] .pjc-tl-empty { margin: 12px 0; color: #6B6358; }
+
+html[data-skin="warm"] .pjc-tl-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+html[data-skin="warm"] .pjc-tl-grid { --pjc-tl-label: 250px; position: relative; }
+html[data-skin="warm"] .pjc-tl-grid.is-phases { --pjc-tl-label: 160px; }
+html[data-skin="warm"] .pjc-tl-axis-row {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  height: 26px;
+  background: #FFFFFF;
+}
+html[data-skin="warm"] .pjc-tl-corner { flex: 0 0 var(--pjc-tl-label); }
+html[data-skin="warm"] .pjc-tl-axis { position: relative; flex: 1 1 auto; min-width: 0; }
+html[data-skin="warm"] .pjc-tl-month {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  padding: 5px 0 0 8px;
+  border-left: 1px solid #D9D2C6;
+  font-size: 12px;
+  color: #6B6358;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+html[data-skin="warm"] .pjc-tl-month:first-child { border-left: 0; }
+html[data-skin="warm"] .pjc-tl-month.is-in { color: #2A2620; font-weight: 600; }
+html[data-skin="warm"] .pjc-tl-body { position: relative; }
+html[data-skin="warm"] .pjc-tl-layer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--pjc-tl-label);
+  right: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+html[data-skin="warm"] .pjc-tl-layer.is-top { z-index: 2; }
+html[data-skin="warm"] .pjc-tl-shade { position: absolute; top: 0; bottom: 0; background: #ECE6DB; }
+html[data-skin="warm"] .pjc-tl-line { position: absolute; top: 0; bottom: 0; border-left: 1px solid #D9D2C6; }
+html[data-skin="warm"] .pjc-tl-today { position: absolute; top: 0; bottom: 0; border-left: 2px solid #2A2620; }
+html[data-skin="warm"] .pjc-tl-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 30px;
+  border-top: 1px solid #EEE9E1;
+  box-sizing: border-box;
+}
+html[data-skin="warm"] .pjc-tl-row:last-child { border-bottom: 1px solid #EEE9E1; }
+html[data-skin="warm"] .pjc-tl-label {
+  flex: 0 0 var(--pjc-tl-label);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 10px;
+  background: #FFFFFF;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+html[data-skin="warm"] .pjc-tl-key {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: #2A2620;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+html[data-skin="warm"] .pjc-tl-key:hover { color: #2F6B5A; }
+html[data-skin="warm"] .pjc-tl-title,
+html[data-skin="warm"] .pjc-tl-phase { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #6B6358; }
+html[data-skin="warm"] .pjc-tl-phase { color: #2A2620; }
+html[data-skin="warm"] .pjc-tl-lane { position: relative; flex: 1 1 auto; min-width: 0; }
+html[data-skin="warm"] .pjc-tl-bar {
+  position: absolute;
+  top: 7px;
+  height: 14px;
+  border-radius: 4px;
+  background: #8A8174;
+}
+html[data-skin="warm"] .pjc-tl-bar.is-analyst,
+html[data-skin="warm"] .pjc-tl-bar.is-cons { background: #2E8B8B; }
+html[data-skin="warm"] .pjc-tl-bar.is-dev { background: #3F6CA8; }
+html[data-skin="warm"] .pjc-tl-bar.is-qa { background: #D9822B; }
+html[data-skin="warm"] .pjc-tl-bar.is-opo { background: #7B5A9E; }
+
+/* ---------- Карточка выбранного проекта ---------- */
+html[data-skin="warm"] .pjc-detail { overflow: hidden; }
+html[data-skin="warm"] .pjc-plan { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+html[data-skin="warm"] .pjc-plan .pjc-kpi-card { flex: none; }
+html[data-skin="warm"] .pjc-tl-card.is-plan { max-height: none; flex: none; }
+
+/* ---------- Узкий экран: всё в колонку, прокрутка страницы ---------- */
+@media (max-width: 1100px) {
+  html[data-skin="warm"] .pjc-body { flex-direction: column; }
+  html[data-skin="warm"] .pjc-side { flex: none; width: auto; max-height: 70vh; }
+  html[data-skin="warm"] .pjc-main { flex: none; }
+  html[data-skin="warm"] .pjc-table-card { flex: none; max-height: 70vh; }
+  html[data-skin="warm"] .pjc-kpi-roles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; }
+}

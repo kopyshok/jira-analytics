@@ -2,6 +2,7 @@ import React from 'react';
 import { Tooltip, Empty } from 'antd';
 import type { PlanTimeline } from '../../../types/projects';
 import { DARK_THEME, MONTH_NAMES } from '../../../utils/constants';
+import { timelineScale } from '../../../utils/projectsView';
 
 const PHASE_COLOR: Record<string, string> = {
   analyst: '#00c9c8',
@@ -48,9 +49,128 @@ interface Props {
   /** Высота области строк; всё, что выше — прокручивается внутри блока.
    *  Нужна портфелю: строк там столько же, сколько проектов у выбранных команд. */
   maxHeight?: number | string;
+  /** Вид скина: заголовок с легендой, затенение вне квартала, своя прокрутка (классы pjc-tl-*). */
+  compact?: boolean;
+  /** Заголовок блока в виде скина. */
+  title?: string;
 }
 
-export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight }) => {
+const LEGEND: Array<[string, string]> = [
+  ['analyst', 'Анализ'], ['dev', 'Разработка'], ['qa', 'Тестирование'], ['opo', 'ОПЭ'],
+];
+
+/** '2026-10-01' → '01.10.2026' — подсказка полосы. */
+function fullDate(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return `${d}.${m}.${y}`;
+}
+
+/**
+ * Таймлайн в виде скина: заголовок с легендой, подписи месяцев по числу дней,
+ * затенение вне квартала, линия «сегодня», строки 30 px со своей прокруткой
+ * (классы pjc-tl-*). Фазу «Консультация» красим как анализ — как и в Aurora.
+ */
+const CompactTimeline: React.FC<Omit<Props, 'compact' | 'maxHeight'>> = ({ timeline, mode, onRowClick, title }) => {
+  const scale = timelineScale(timeline);
+  const now = new Date();
+  const todayText = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const rows = mode === 'by-phase'
+    ? timeline.rows.flatMap((r) => r.bars.map((b) => ({ key: r.key, title: b.label, bars: [b], phaseRow: true })))
+    : timeline.rows.map((r) => ({ key: r.key, title: r.title ?? '', bars: r.bars, phaseRow: false }));
+
+  return (
+    <div className="pjc-tl">
+      <div className="pjc-tl-head">
+        {title && <h2 className="rpc-card-title">{title}</h2>}
+        <div className="pjc-tl-legend">
+          {LEGEND.map(([code, label]) => (
+            <span key={code}><span className={`pjc-tl-sw is-${code}`} aria-hidden />{label}</span>
+          ))}
+          <span><span className="pjc-tl-sw is-shade" aria-hidden />Затенено — границы квартала</span>
+          <span><span className="pjc-tl-sw is-today" aria-hidden />сегодня {todayText}</span>
+        </div>
+      </div>
+      {!scale || rows.length === 0 ? (
+        <Empty className="pjc-tl-empty" description="Нет плановых дат" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : (
+        <div className="pjc-tl-scroll">
+          <div className={`pjc-tl-grid${mode === 'by-phase' ? ' is-phases' : ''}`}>
+            <div className="pjc-tl-axis-row">
+              <div className="pjc-tl-corner" />
+              <div className="pjc-tl-axis">
+                {scale.months.map((m, i) => (
+                  <span
+                    key={i}
+                    className={`pjc-tl-month${m.inQuarter ? ' is-in' : ''}`}
+                    style={{ left: `${m.left}%`, width: `${m.width}%` }}
+                  >
+                    {m.label}
+                  </span>
+                ))}
+                {scale.todayLeft !== null && (
+                  <span className="pjc-tl-today" style={{ left: `${scale.todayLeft}%` }} />
+                )}
+              </div>
+            </div>
+            <div className="pjc-tl-body">
+              <div className="pjc-tl-layer" aria-hidden>
+                <span className="pjc-tl-shade" style={{ left: 0, width: `${scale.quarterLeft}%` }} />
+                <span className="pjc-tl-shade" style={{ left: `${scale.quarterRight}%`, right: 0 }} />
+                {scale.months.slice(1).map((m, i) => (
+                  <span key={i} className="pjc-tl-line" style={{ left: `${m.left}%` }} />
+                ))}
+              </div>
+              {/* «Сегодня» — поверх полос, затенение и сетка — под ними. */}
+              {scale.todayLeft !== null && (
+                <div className="pjc-tl-layer is-top" aria-hidden>
+                  <span className="pjc-tl-today" style={{ left: `${scale.todayLeft}%` }} />
+                </div>
+              )}
+              {rows.map((row, ri) => (
+                <div key={`${row.key ?? ''}-${ri}`} className="pjc-tl-row">
+                  <div className="pjc-tl-label" title={row.phaseRow ? row.title : `${row.key ?? ''} · ${row.title}`}>
+                    {row.phaseRow ? (
+                      <span className="pjc-tl-phase">{row.title}</span>
+                    ) : (
+                      <>
+                        {row.key && (onRowClick ? (
+                          <button type="button" className="pjc-tl-key" onClick={() => onRowClick(row.key!)}>
+                            {row.key}
+                          </button>
+                        ) : <span className="pjc-tl-key">{row.key}</span>)}
+                        <span className="pjc-tl-title">{row.title}</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="pjc-tl-lane">
+                    {row.bars.map((b, bi) => {
+                      const { left, width } = scale.bar(b.start_date, b.end_date);
+                      return (
+                        <Tooltip
+                          key={bi}
+                          mouseEnterDelay={0.2}
+                          title={`${b.label}: ${fullDate(b.start_date)} — ${fullDate(b.end_date)}`}
+                        >
+                          <span
+                            className={`pjc-tl-bar is-${b.phase}`}
+                            style={{ left: `${left}%`, width: `${width}%` }}
+                          />
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight, compact = false, title }) => {
+  if (compact) return <CompactTimeline timeline={timeline} mode={mode} onRowClick={onRowClick} title={title} />;
   if (!timeline.start || !timeline.end || timeline.rows.length === 0) {
     return (
       <Empty

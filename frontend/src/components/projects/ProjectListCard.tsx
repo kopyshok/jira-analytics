@@ -2,6 +2,7 @@ import React from 'react';
 import type { ProjectListItem } from '../../types/projects';
 import { StarRating } from './shared/StarRating';
 import { DARK_THEME } from '../../utils/constants';
+import { monthYear, pluralRu, ratingAverage, statusTone } from '../../utils/projectsView';
 
 const STATUS_CATEGORY_COLOR: Record<string, string> = {
   done: '#67d68d',
@@ -30,9 +31,11 @@ interface Props {
   item: ProjectListItem;
   selected: boolean;
   onClick: () => void;
+  /** Вид скина: маркер-точка вместо полосы, статус пилюлей, строки по макету (классы pjc-*). */
+  compact?: boolean;
 }
 
-export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) => {
+export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick, compact = false }) => {
   const statusColor = item.status_category
     ? (STATUS_CATEGORY_COLOR[item.status_category] ?? DARK_THEME.textMuted)
     : DARK_THEME.textMuted;
@@ -52,6 +55,51 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
       onClick();
     }
   };
+
+  if (compact) {
+    const rating = ratingAverage(item);
+    const category = item.status_category ?? 'new';
+    const hasPeriod = Boolean(item.period_start || item.period_end);
+    return (
+      <div
+        data-testid="project-card"
+        role="button"
+        tabIndex={0}
+        aria-pressed={selected}
+        onClick={onClick}
+        onKeyDown={handleKeyDown}
+        className={`pjc-card${selected ? ' is-selected' : ''}`}
+      >
+        <span className={`pjc-card-dot is-${category}`} aria-hidden />
+        <span className="pjc-card-body">
+          <span className="pjc-card-top">
+            <b className="pjc-card-title" title={item.summary}>{item.summary}</b>
+            {item.status_category && (
+              <span className={`wr-pill is-sm is-${statusTone(item.status_category)} pjc-card-status`}>
+                {STATUS_CATEGORY_LABEL[item.status_category] ?? item.status_category}
+              </span>
+            )}
+          </span>
+          <span className="pjc-card-meta">
+            {item.key}
+            {hasPeriod && ` · ${monthYear(item.period_start)} – ${monthYear(item.period_end)}`}
+          </span>
+          <span className="pjc-card-stats">
+            <b>{Math.round(item.total_hours)} ч</b>
+            <span>{item.child_count} {pluralRu(item.child_count, ['задача', 'задачи', 'задач'])}</span>
+            <span>{item.employee_count} участн.</span>
+            <span className="pjc-card-cat">{CATEGORY_LABEL[item.category] ?? item.category}</span>
+          </span>
+          {rating != null && (
+            <span className="pjc-card-rating">
+              <StarRating value={Math.round(rating)} size={13} />
+              <span>{rating.toFixed(1).replace('.', ',')} из 5</span>
+            </span>
+          )}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div

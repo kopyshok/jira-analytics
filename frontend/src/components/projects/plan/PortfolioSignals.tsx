@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle, Info } from 'lucide-react';
 import type { PortfolioSignal } from '../../../types/projects';
 import { DARK_THEME } from '../../../utils/constants';
 
@@ -7,8 +8,26 @@ const DOT_COLOR: Record<string, string> = {
   info: DARK_THEME.cyanPrimary,
 };
 
-export const PortfolioSignals: React.FC<{ signals: PortfolioSignal[] }> = ({ signals }) => {
+export const PortfolioSignals: React.FC<{
+  signals: PortfolioSignal[];
+  /** Вид скина: строки-пилюли со значком, предупреждение охрой, сведения синим (классы pjc-signal). */
+  compact?: boolean;
+}> = ({ signals, compact = false }) => {
   if (signals.length === 0) return null;
+  if (compact) {
+    return (
+      <ul data-testid="portfolio-signals" className="pjc-signals">
+        {signals.map((s) => (
+          <li key={s.kind} className={`pjc-signal is-${s.severity}`}>
+            {s.severity === 'warn'
+              ? <AlertTriangle size={15} aria-hidden />
+              : <Info size={15} aria-hidden />}
+            {s.text}
+          </li>
+        ))}
+      </ul>
+    );
+  }
   return (
     <div data-testid="portfolio-signals" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       {signals.map((s) => (

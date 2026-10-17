@@ -50,11 +50,13 @@ export function usePortfolio(filters: {
   search?: string;
   year: number;
   quarter: number;
-}) {
+}, options?: { enabled?: boolean }) {
   const { queryParams } = useGlobalTeamFilter();
   const teams = queryParams.teams;
   const subgroups = queryParams.subgroups;
   return useQuery({
+    // Сводка нужна только без выбранного проекта — иначе запрос вхолостую.
+    enabled: options?.enabled ?? true,
     queryKey: ['projects-portfolio', teams, subgroups, filters],
     queryFn: ({ signal }) => projectsApi.portfolio({
       teams,

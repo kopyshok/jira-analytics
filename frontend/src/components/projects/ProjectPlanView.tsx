@@ -19,15 +19,49 @@ interface Props {
   projectKey: string;
   year: number;
   quarter: number;
+  /** Вид скина: итоги полосами «факт / план» и таймлайн скина в карточках (классы pjc-*). */
+  compact?: boolean;
 }
 
-export const ProjectPlanView: React.FC<Props> = ({ projectKey, year, quarter }) => {
+export const ProjectPlanView: React.FC<Props> = ({ projectKey, year, quarter, compact = false }) => {
   const { data, isLoading } = useProjectPlan(projectKey, year, quarter);
 
   if (isLoading || !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
         <Spin size="large" />
+      </div>
+    );
+  }
+
+  const tasksCard = (
+    <Card
+      size="small"
+      title={cardTitle(`Задачи проекта · ${data.children.length}`)}
+      style={cardStyle}
+      styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
+    >
+      <ProjectTasksTable children={data.children} />
+    </Card>
+  );
+
+  if (compact) {
+    return (
+      <div className="pjc-plan">
+        <div className="wr-card pjc-kpi-card">
+          <WorkTypeRings
+            compact
+            workTypes={data.work_types}
+            externalHours={data.external_hours}
+            totalPlan={data.total_plan}
+            totalFact={data.total_fact}
+            totalPct={data.total_pct}
+          />
+        </div>
+        <section className="wr-card pjc-tl-card is-plan" aria-label="Таймлайн проекта">
+          <PhaseTimeline compact title="Таймлайн проекта" timeline={data.timeline} mode="by-phase" />
+        </section>
+        {tasksCard}
       </div>
     );
   }
@@ -51,14 +85,7 @@ export const ProjectPlanView: React.FC<Props> = ({ projectKey, year, quarter }) 
         <PhaseTimeline timeline={data.timeline} mode="by-phase" />
       </Card>
 
-      <Card
-        size="small"
-        title={cardTitle(`Задачи проекта · ${data.children.length}`)}
-        style={cardStyle}
-        styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
-      >
-        <ProjectTasksTable children={data.children} />
-      </Card>
+      {tasksCard}
     </div>
   );
 };

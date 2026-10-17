@@ -1,36 +1,25 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
 import { ProjectsList } from '../components/projects/ProjectsList';
 import { ProjectDetailPanel } from '../components/projects/ProjectDetailPanel';
 import { PortfolioView } from '../components/projects/PortfolioView';
-import type { ProjectListFiltersState } from '../types/projects';
-import { useRegisterHelp } from '../contexts/HelpContext';
-import projectsHelp from '../../../docs/help/projects.md?raw';
 import { DARK_THEME } from '../utils/constants';
-
-const CURRENT_YEAR = new Date().getFullYear();
-const CURRENT_QUARTER = (Math.floor(new Date().getMonth() / 3) + 1) as 1 | 2 | 3 | 4;
+import { useSkin } from '../contexts/ThemeContext';
+import { useProjectsPage, type ProjectsPageState } from '../hooks/useProjectsPage';
+import WarmProjectsLayout from '../skins/warm/pages/ProjectsLayout';
 
 export default function ProjectsPage() {
-  const navigate = useNavigate();
-  const { key } = useParams<{ key?: string }>();
-  useRegisterHelp('Проекты', projectsHelp);
-  const [filters, setFilters] = useState<ProjectListFiltersState>({
-    search: '',
-    statusCategory: '',
-    category: '',
-    year: CURRENT_YEAR,
-    quarter: CURRENT_QUARTER,
-  });
+  const state = useProjectsPage();
+  const skin = useSkin();
+  if (skin === 'warm') return <WarmProjectsLayout state={state} />;
+  return <AuroraProjectsLayout state={state} />;
+}
 
-  const handleSelect = (selectedKey: string) => {
-    // Повторный клик по выбранной карточке возвращает к сводке.
-    if (selectedKey === key) {
-      navigate('/projects');
-      return;
-    }
-    navigate(`/projects/${encodeURIComponent(selectedKey)}`);
-  };
+/** Раскладка Aurora (тёмная и светлая) — как была до выделения данных в хук. */
+function AuroraProjectsLayout({ state }: { state: ProjectsPageState }) {
+  const {
+    projectKey: key, filters, setFilters, yearOptions,
+    projects, listLoading, portfolio, portfolioLoading,
+    handleSelect, showPortfolio, openProject,
+  } = state;
 
   return (
     <div
@@ -47,7 +36,10 @@ export default function ProjectsPage() {
         onSelect={handleSelect}
         filters={filters}
         onFiltersChange={setFilters}
-        onShowPortfolio={() => navigate('/projects')}
+        onShowPortfolio={showPortfolio}
+        projects={projects}
+        isLoading={listLoading}
+        yearOptions={yearOptions}
       />
 
       {key ? (
@@ -57,7 +49,7 @@ export default function ProjectsPage() {
           quarter={filters.quarter}
         />
       ) : (
-        <PortfolioView filters={filters} />
+        <PortfolioView data={portfolio} isLoading={portfolioLoading} onOpenProject={openProject} />
       )}
     </div>
   );

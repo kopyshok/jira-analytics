@@ -15,9 +15,11 @@ interface Props {
   projectKey: string;
   year: number;
   quarter: number;
+  /** Вид скина для вкладки «План и сроки» (итоги полосами, таймлайн скина). */
+  compact?: boolean;
 }
 
-export const ProjectDetailPanel: React.FC<Props> = ({ projectKey, year, quarter }) => {
+export const ProjectDetailPanel: React.FC<Props> = ({ projectKey, year, quarter, compact = false }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get('view') as ViewMode) ?? 'analysis';
 
@@ -70,7 +72,7 @@ export const ProjectDetailPanel: React.FC<Props> = ({ projectKey, year, quarter 
           />
         )}
         {view === 'plan' && (
-          <ProjectPlanView projectKey={projectKey} year={year} quarter={quarter} />
+          <ProjectPlanView projectKey={projectKey} year={year} quarter={quarter} compact={compact} />
         )}
       </div>
     </div>

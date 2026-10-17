@@ -1,9 +1,12 @@
 import React from 'react';
 import { Table, Tag, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { PlanChild, PlanWorkType, PortfolioProject, PlanTimeline } from '../../../types/projects';
 import { statusTagColor } from '../../../utils/status';
 import { DARK_THEME } from '../../../utils/constants';
+import { datesByKey, hoursText, loadTone, shortDate, statusTone } from '../../../utils/projectsView';
+import { StageBar } from './StageBar';
 
 const WT_COLOR: Record<string, string> = {
   analyst: '#00c9c8',
@@ -27,25 +30,6 @@ function pctColor(pct: number | null): string {
   return DARK_THEME.textPrimary;
 }
 
-/** '2026-07-01' → '01.07'. Пустая строка, если даты нет. */
-function shortDate(iso: string | undefined): string {
-  if (!iso) return '';
-  const [, m, d] = iso.split('-');
-  return m && d ? `${d}.${m}` : '';
-}
-
-/** Границы работ по каждому проекту — из полос таймлайна, отдельного запроса не нужно. */
-function datesByKey(timeline: PlanTimeline): Record<string, { start: string; end: string }> {
-  const out: Record<string, { start: string; end: string }> = {};
-  timeline.rows.forEach((row) => {
-    if (!row.key || row.bars.length === 0) return;
-    const starts = row.bars.map((b) => b.start_date).sort();
-    const ends = row.bars.map((b) => b.end_date).sort();
-    out[row.key] = { start: starts[0], end: ends[ends.length - 1] };
-  });
-  return out;
-}
-
 const StageCell: React.FC<{ wt: PlanWorkType | undefined }> = ({ wt }) => {
   if (!wt) return <span style={{ color: DARK_THEME.textMuted }}>—</span>;
   const over = wt.pct !== null && wt.pct > OVERLOAD_PCT;
@@ -66,6 +50,32 @@ const StageCell: React.FC<{ wt: PlanWorkType | undefined }> = ({ wt }) => {
       </div>
     </div>
   );
+};
+
+/** Ячейка стадии в виде скина: «факт/план» и процент над тонкой полосой. */
+const CompactStageCell: React.FC<{ wt: PlanWorkType | undefined }> = ({ wt }) => {
+  if (!wt) return <span className="pjc-dim">—</span>;
+  const over = wt.pct !== null && wt.pct > OVERLOAD_PCT;
+  return (
+    <div className="pjc-stage">
+      <div className="pjc-stage-top">
+        <span>{hoursText(wt.fact_hours)}/{hoursText(wt.plan_hours)}</span>
+        <b className={over ? 'is-over' : undefined}>{wt.pct === null ? '—' : `${wt.pct}%`}</b>
+      </div>
+      <StageBar fact={wt.fact_hours} plan={wt.plan_hours} code={wt.code} />
+    </div>
+  );
+};
+
+/** Подпись сортировки над таблицей скина — по ключу колонки. */
+const SORT_LABEL: Record<string, string> = {
+  title: 'названию',
+  hours: 'факту',
+  pct: 'загрузке',
+  analyst: 'анализу',
+  dev: 'разработке',
+  qa: 'тестированию',
+  external: 'внешним часам',
 };
 
 /** Подзадачи проекта — раскрываются под строкой, как на рабочих столах аналитиков. */
@@ -124,11 +134,197 @@ interface Props {
   onRowClick: (key: string) => void;
   /** Высота области строк; всё, что выше — прокручивается внутри таблицы. */
   maxHeight?: number | string;
+  /** Вид скина: заголовок блока с подписью сортировки, строки по макету,
+   *  шапка и итоги закреплены в своём блоке прокрутки (классы pjc-*). */
+  compact?: boolean;
+  /** Заголовок блока в виде скина. */
+  title?: string;
 }
 
-export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, totals, onRowClick, maxHeight }) => {
+export const PortfolioProjectsTable: React.FC<Props> = ({
+  projects, timeline, totals, onRowClick, maxHeight, compact = false, title,
+}) => {
   const dates = React.useMemo(() => datesByKey(timeline), [timeline]);
   const hasExternal = projects.some((p) => p.external_hours > 0) || totals.externalHours > 0;
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const [sortKey, setSortKey] = React.useState<string | null>('pct');
+
+  if (compact) {
+    const columns: ColumnsType<PortfolioProject> = [
+      {
+        title: 'Проект',
+        dataIndex: 'title',
+        key: 'title',
+        sorter: (a, b) => (a.title ?? '').localeCompare(b.title ?? ''),
+        render: (_: unknown, p: PortfolioProject) => {
+          const d = dates[p.key];
+          return (
+            <div className="pjc-proj">
+              <div className="pjc-proj-top">
+                <b className="pjc-proj-title" title={p.title ?? p.key}>{p.title ?? p.key}</b>
+                {p.priority !== null && (
+                  <span className={`pjc-prio is-p${Math.max(1, Math.min(3, p.priority))}`}>P{p.priority}</span>
+                )}
+              </div>
+              <div className="pjc-proj-meta">
+                <span className="pjc-key">{p.key}</span>
+                {d && <span>{shortDate(d.start)} – {shortDate(d.end)}</span>}
+                {p.status && (
+                  <span className={`wr-pill is-sm is-${statusTone(p.status_category)} pjc-proj-status`}>
+                    {p.status}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        title: 'Факт / План',
+        key: 'hours',
+        align: 'right',
+        width: 112,
+        sorter: (a, b) => a.total_fact - b.total_fact,
+        render: (_: unknown, p: PortfolioProject) => (
+          <span className="pjc-fp">
+            <b>{hoursText(p.total_fact)}</b>{' '}
+            <span className="pjc-dim">/ {p.total_plan === null ? '—' : hoursText(p.total_plan)}</span>
+          </span>
+        ),
+      },
+      {
+        title: 'Загрузка',
+        key: 'pct',
+        align: 'right',
+        width: 112,
+        defaultSortOrder: 'descend',
+        sorter: (a, b) => (a.total_pct ?? -1) - (b.total_pct ?? -1),
+        render: (_: unknown, p: PortfolioProject) => (
+          <span className={`pjc-load is-${loadTone(p.total_pct)}`}>
+            {p.total_pct === null ? '—' : `${p.total_pct}%`}
+          </span>
+        ),
+      },
+      ...STAGES.map((s) => ({
+        title: <span className="pjc-th-stage"><span className={`pjc-sw is-${s.code}`} aria-hidden />{s.label}</span>,
+        key: s.code,
+        width: s.code === 'analyst' ? 124 : 132,
+        sorter: (a: PortfolioProject, b: PortfolioProject) =>
+          (findWt(a, s.code)?.pct ?? -1) - (findWt(b, s.code)?.pct ?? -1),
+        render: (_: unknown, p: PortfolioProject) => <CompactStageCell wt={findWt(p, s.code)} />,
+      })),
+    ];
+    if (hasExternal) {
+      columns.push({
+        title: 'Внешние',
+        key: 'external',
+        align: 'right',
+        width: 92,
+        sorter: (a, b) => a.external_hours - b.external_hours,
+        render: (_: unknown, p: PortfolioProject) => (
+          <Tooltip title="Часы сотрудников не из команды проекта — вне плана и факта">
+            {p.external_hours > 0
+              ? <span>{hoursText(p.external_hours)} ч</span>
+              : <span className="pjc-dim">—</span>}
+          </Tooltip>
+        ),
+      });
+    }
+
+    return (
+      <>
+        <div className="pjc-card-head">
+          <h2 className="rpc-card-title">{title}</h2>
+          {sortKey && SORT_LABEL[sortKey] && (
+            <span className="wr-muted">сортировка по {SORT_LABEL[sortKey]}</span>
+          )}
+        </div>
+        <div className="pjc-table-scroll" ref={scrollRef}>
+          <Table<PortfolioProject>
+            data-testid="portfolio-projects-table"
+            className="pjc-table"
+            rowKey="key"
+            size="small"
+            tableLayout="fixed"
+            columns={columns}
+            dataSource={projects}
+            pagination={false}
+            showSorterTooltip={false}
+            // Шапка и итоги держатся у краёв своего блока, а не страницы.
+            sticky={{ getContainer: () => scrollRef.current ?? document.body }}
+            onChange={(_, __, sorter) => {
+              const s = Array.isArray(sorter) ? sorter[0] : sorter;
+              setSortKey(s?.order && s.columnKey ? String(s.columnKey) : null);
+            }}
+            expandable={{
+              // Поле children — подзадачи, не вложенные строки (см. вид Aurora ниже).
+              childrenColumnName: '__none__',
+              columnWidth: 36,
+              rowExpandable: (p) => (p.children ?? []).length > 0,
+              expandedRowRender: (p) => <ChildrenList items={p.children ?? []} />,
+              expandRowByClick: false,
+              expandIcon: ({ expanded, expandable, record, onExpand }) =>
+                expandable ? (
+                  <button
+                    type="button"
+                    className="pjc-expand"
+                    aria-label={`${expanded ? 'Свернуть' : 'Раскрыть'} ${record.key}`}
+                    aria-expanded={expanded}
+                    onClick={(e) => {
+                      // Иначе клик по стрелке ещё и откроет карточку проекта.
+                      e.stopPropagation();
+                      onExpand(record, e);
+                    }}
+                  >
+                    {expanded ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
+                  </button>
+                ) : (
+                  <span className="pjc-expand is-empty" aria-hidden />
+                ),
+            }}
+            onRow={(p) => ({
+              onClick: () => onRowClick(p.key),
+              style: { cursor: 'pointer' },
+            })}
+            summary={() => (
+              <Table.Summary fixed="bottom">
+                <Table.Summary.Row className="pjc-total">
+                  <Table.Summary.Cell index={0} />
+                  <Table.Summary.Cell index={1}>Итого · {projects.length}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={2} align="right">
+                    {hoursText(totals.totalFact)}{' '}
+                    <span className="pjc-dim">/ {totals.totalPlan === null ? '—' : hoursText(totals.totalPlan)}</span>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={3} align="right">
+                    {totals.totalPct === null ? '—' : `${totals.totalPct}%`}
+                  </Table.Summary.Cell>
+                  {STAGES.map((s, i) => {
+                    const wt = totals.workTypes.find((w) => w.code === s.code);
+                    return (
+                      <Table.Summary.Cell key={s.code} index={4 + i}>
+                        {wt ? (
+                          <span className="pjc-total-stage">
+                            <b>{hoursText(wt.fact_hours)}/{hoursText(wt.plan_hours)}</b>
+                            {' · '}{wt.pct === null ? '—' : `${wt.pct}%`}
+                          </span>
+                        ) : '—'}
+                      </Table.Summary.Cell>
+                    );
+                  })}
+                  {hasExternal && (
+                    <Table.Summary.Cell index={4 + STAGES.length} align="right">
+                      {totals.externalHours > 0 ? `${hoursText(totals.externalHours)} ч` : '—'}
+                    </Table.Summary.Cell>
+                  )}
+                </Table.Summary.Row>
+              </Table.Summary>
+            )}
+          />
+        </div>
+      </>
+    );
+  }
+
 
   const stageColumns: ColumnsType<PortfolioProject> = STAGES.map((s) => ({
     title: s.label,

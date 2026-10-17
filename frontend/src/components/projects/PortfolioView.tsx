@@ -1,33 +1,21 @@
 import React from 'react';
 import { Card, Empty, Spin } from 'antd';
-import { useNavigate } from 'react-router';
-import { usePortfolio } from '../../hooks/useProjects';
-import type { ProjectListFiltersState } from '../../types/projects';
+import type { Portfolio } from '../../types/projects';
 import { WorkTypeRings } from './plan/WorkTypeRings';
 import { PhaseTimeline } from './plan/PhaseTimeline';
 import { PortfolioProjectsTable } from './plan/PortfolioProjectsTable';
 import { PortfolioSignals } from './plan/PortfolioSignals';
 import { DARK_THEME } from '../../utils/constants';
+import { pluralProjects } from '../../utils/projectsView';
 
-/** Склонение слова «проект» под число: 1 проект, 3 проекта, 5 проектов. */
-function pluralProjects(n: number): string {
-  if (n % 100 >= 11 && n % 100 <= 14) return 'проектов';
-  const last = n % 10;
-  if (last === 1) return 'проект';
-  if (last >= 2 && last <= 4) return 'проекта';
-  return 'проектов';
+interface Props {
+  /** Сводка приходит со страницы (useProjectsPage) — один источник с раскладками скинов. */
+  data: Portfolio | undefined;
+  isLoading: boolean;
+  onOpenProject: (key: string) => void;
 }
 
-export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ filters }) => {
-  const navigate = useNavigate();
-  const { data, isLoading } = usePortfolio({
-    search: filters.search || undefined,
-    status_category: filters.statusCategory || undefined,
-    category: filters.category || undefined,
-    year: filters.year,
-    quarter: filters.quarter,
-  });
-
+export const PortfolioView: React.FC<Props> = ({ data, isLoading, onOpenProject }) => {
   if (isLoading || !data) {
     return (
       <div
@@ -86,7 +74,7 @@ export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ 
             totalFact: data.total_fact,
             totalPct: data.total_pct,
           }}
-          onRowClick={(key) => navigate(`/projects/${encodeURIComponent(key)}`)}
+          onRowClick={onOpenProject}
           maxHeight="calc(33vh + 120px)"
         />
       </Card>
@@ -101,7 +89,7 @@ export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ 
           timeline={data.timeline}
           mode="by-project"
           maxHeight="38vh"
-          onRowClick={(key) => navigate(`/projects/${encodeURIComponent(key)}`)}
+          onRowClick={onOpenProject}
         />
       </Card>
 

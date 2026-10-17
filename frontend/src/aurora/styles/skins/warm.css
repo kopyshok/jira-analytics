@@ -883,8 +883,3 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="colo
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is([style^="color: rgb(22, 119, 255)"], [style*="; color: rgb(22, 119, 255)"]) { color: #3F6CA8 !important; }
 /* Белый полупрозрачный текст «под тёмную тему» внутри белых поверхностей оболочки и окон */
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is(.app-shell, .ant-modal-content, .ant-drawer-content, .ant-popover-inner) :is([style^="color: rgba(255, 255, 255, 0.65)"], [style*="; color: rgba(255, 255, 255, 0.65)"], [style^="color: rgba(255, 255, 255, 0.55)"], [style*="; color: rgba(255, 255, 255, 0.55)"]) { color: #4A443A !important; }
-/* Тёмная полупрозрачная подложка «под тёмную тему» (плитка «Внешние» в Проектах) */
-html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .app-shell [style*="background: rgba(0, 0, 0, 0.22)"] {
-  background: #F5F1EA !important;
-  border-color: #EEE9E1 !important;
-}
