@@ -29,7 +29,7 @@ const SECTION_LABEL_STYLE: React.CSSProperties = {
 };
 
 const SECTION_STYLE: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.03)',
+  background: 'var(--faint-fill, rgba(255,255,255,0.03))',
   border: `1px solid ${DARK_THEME.border}`,
   borderRadius: 6,
   padding: '10px 12px',

@@ -59,8 +59,8 @@ export const ProjectCategoriesCard: React.FC<Props> = ({
       <Card
         size="small"
         title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Структура трудозатрат</span>}
-        style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
-        styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
+        style={{ background: DARK_THEME.cardBg, border: '1px solid var(--hairline, rgba(255,255,255,0.06))' }}
+        styles={{ header: { borderColor: 'var(--hairline, rgba(255,255,255,0.06))' }, body: { padding: 12 } }}
       >
         <Empty description="Нет данных" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       </Card>
@@ -77,8 +77,8 @@ export const ProjectCategoriesCard: React.FC<Props> = ({
     <Card
       size="small"
       title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Структура трудозатрат</span>}
-      style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
-      styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
+      style={{ background: DARK_THEME.cardBg, border: '1px solid var(--hairline, rgba(255,255,255,0.06))' }}
+      styles={{ header: { borderColor: 'var(--hairline, rgba(255,255,255,0.06))' }, body: { padding: 12 } }}
     >
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
         <DonutChart

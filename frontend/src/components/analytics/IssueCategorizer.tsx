@@ -8,8 +8,8 @@ import { trackAction } from '../../lib/usage/track';
 
 const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
 
-const CARD_BG = 'rgba(255,255,255,0.03)';
-const CARD_BORDER = '1px solid rgba(255,255,255,0.08)';
+const CARD_BG = 'var(--faint-fill, rgba(255,255,255,0.03))';
+const CARD_BORDER = '1px solid var(--hairline, rgba(255,255,255,0.08))';
 
 interface Props {
   context: IssueContextResponse;
@@ -95,7 +95,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
           textTransform: 'uppercase',
           color: 'var(--text-muted, #64748b)',
           padding: '10px 14px 8px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.06))',
         }}
       >
         Категория и анализ
@@ -259,8 +259,8 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
             onClick={handleCancel}
             disabled={saving}
             style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--faint-fill, rgba(255,255,255,0.05))',
+              border: '1px solid var(--hairline, rgba(255,255,255,0.1))',
               color: 'var(--text-muted, #94a3b8)',
             }}
           >

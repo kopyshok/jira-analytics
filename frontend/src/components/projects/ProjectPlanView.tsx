@@ -8,7 +8,7 @@ import { DARK_THEME } from '../../utils/constants';
 
 const cardStyle = {
   background: DARK_THEME.cardBg,
-  border: '1px solid rgba(255,255,255,0.06)',
+  border: '1px solid var(--hairline, rgba(255,255,255,0.06))',
 };
 
 const cardTitle = (text: string) => (
@@ -46,7 +46,7 @@ export const ProjectPlanView: React.FC<Props> = ({ projectKey, year, quarter }) 
         size="small"
         title={cardTitle('Таймлайн проекта')}
         style={cardStyle}
-        styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
+        styles={{ header: { borderColor: 'var(--hairline, rgba(255,255,255,0.06))' }, body: { padding: 12 } }}
       >
         <PhaseTimeline timeline={data.timeline} mode="by-phase" />
       </Card>
@@ -55,7 +55,7 @@ export const ProjectPlanView: React.FC<Props> = ({ projectKey, year, quarter }) 
         size="small"
         title={cardTitle(`Задачи проекта · ${data.children.length}`)}
         style={cardStyle}
-        styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
+        styles={{ header: { borderColor: 'var(--hairline, rgba(255,255,255,0.06))' }, body: { padding: 12 } }}
       >
         <ProjectTasksTable children={data.children} />
       </Card>

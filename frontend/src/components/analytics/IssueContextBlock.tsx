@@ -273,7 +273,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
 
   return (
     <tr>
-      <td style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)', verticalAlign: 'middle' }}>
+      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.04))', verticalAlign: 'middle' }}>
         <span
           style={{
             fontFamily: 'monospace',
@@ -293,7 +293,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
       </td>
       <td style={{
         padding: '6px 8px',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
+        borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.04))',
         maxWidth: 140,
         overflow: 'hidden',
         textOverflow: 'ellipsis',
@@ -304,7 +304,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
       }}>
         <Tooltip title={child.summary}>{child.summary}</Tooltip>
       </td>
-      <td style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)', verticalAlign: 'middle' }}>
+      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.04))', verticalAlign: 'middle' }}>
         <Tag
           color={statusTagColor(child.status, child.status_category)}
           style={{ marginInlineEnd: 0, fontSize: 10, padding: '2px 7px' }}
@@ -312,7 +312,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
           {child.status}
         </Tag>
       </td>
-      <td style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)', verticalAlign: 'middle' }}>
+      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.04))', verticalAlign: 'middle' }}>
         <Select
           size="small"
           value={child.assigned_category ?? null}
@@ -323,7 +323,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
           options={categories.map(c => ({ value: c.code, label: c.label }))}
         />
       </td>
-      <td style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)', textAlign: 'center', verticalAlign: 'middle' }}>
+      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.04))', textAlign: 'center', verticalAlign: 'middle' }}>
         <Tooltip title={isArchive ? 'Снимается автоматически архивной категорией' : undefined}>
           <Checkbox
             checked={child.include_in_analysis}
@@ -366,7 +366,7 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
           textTransform: 'uppercase',
           color: 'var(--text-muted, #64748b)',
           padding: '10px 14px 8px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.06))',
         }}
       >
         Контекст
@@ -381,7 +381,7 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
           parentId={parentId}
           onDrillDown={onDrillDown}
         />
-        <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 0 10px' }} />
+        <div style={{ height: 1, background: 'var(--hairline, rgba(255,255,255,0.06))', margin: '4px 0 10px' }} />
 
         {/* Children table */}
         {context.children.length === 0 ? (
@@ -411,7 +411,7 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
                         fontWeight: 500,
                         textAlign: h === 'В анализ' ? 'center' : 'left',
                         padding: '5px 8px',
-                        borderBottom: '1px solid rgba(255,255,255,0.07)',
+                        borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.07))',
                         fontSize: 10,
                         textTransform: 'uppercase',
                         letterSpacing: '0.04em',

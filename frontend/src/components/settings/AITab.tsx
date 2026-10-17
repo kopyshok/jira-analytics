@@ -631,7 +631,7 @@ export const AITab: React.FC = () => {
               value={promptDefault.format_spec}
               readOnly
               autoSize={{ minRows: 4, maxRows: 12 }}
-              style={{ background: 'rgba(255,255,255,0.04)', cursor: 'not-allowed' }}
+              style={{ background: 'var(--faint-fill, rgba(255,255,255,0.04))', cursor: 'not-allowed' }}
             />
           </Form.Item>
         )}

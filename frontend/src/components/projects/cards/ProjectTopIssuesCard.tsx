@@ -17,8 +17,8 @@ export const ProjectTopIssuesCard: React.FC<Props> = ({ topIssues }) => {
     <Card
       size="small"
       title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Топ-3 задачи по трудозатратам</span>}
-      style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
-      styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
+      style={{ background: DARK_THEME.cardBg, border: '1px solid var(--hairline, rgba(255,255,255,0.06))' }}
+      styles={{ header: { borderColor: 'var(--hairline, rgba(255,255,255,0.06))' }, body: { padding: 12 } }}
     >
       {top3.length === 0 ? (
         <Empty description="Нет данных" image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -47,7 +47,7 @@ export const ProjectTopIssuesCard: React.FC<Props> = ({ topIssues }) => {
                     openIssue();
                   }
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.04)'; }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'var(--faint-fill, rgba(255,255,255,0.04))'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
               >
                 <span style={{ color: DARK_THEME.textMuted, fontSize: 12, minWidth: 18, marginTop: 1 }}>{i + 1}.</span>

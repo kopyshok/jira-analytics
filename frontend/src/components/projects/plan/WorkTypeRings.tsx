@@ -23,8 +23,8 @@ interface Props {
 
 function pctColor(pct: number | null): string {
   if (pct === null) return DARK_THEME.textMuted;
-  if (pct > 110) return '#ff4d4f';
-  if (pct >= 70) return '#67d68d';
+  if (pct > 110) return 'var(--ink-bad, #ff4d4f)';
+  if (pct >= 70) return 'var(--ink-good, #67d68d)';
   return DARK_THEME.textPrimary;
 }
 
@@ -52,7 +52,7 @@ const Ring: React.FC<{ wt: PlanWorkType }> = ({ wt }) => {
       <div style={{ position: 'relative', width: 38, height: 38, flexShrink: 0 }}>
         <svg viewBox="0 0 38 38" width={38} height={38}>
           <circle cx="19" cy="19" r="14" fill="none" strokeWidth="4"
-                  stroke="rgba(255,255,255,0.08)" />
+                  stroke="var(--hairline, rgba(255,255,255,0.08))" />
           <circle cx="19" cy="19" r="14" fill="none" strokeWidth="4" strokeLinecap="round"
                   stroke={over ? '#ff4d4f' : color}
                   strokeDasharray={RING_CIRC.toFixed(2)}
@@ -62,7 +62,7 @@ const Ring: React.FC<{ wt: PlanWorkType }> = ({ wt }) => {
         <div style={{
           position: 'absolute', inset: 0, display: 'flex',
           alignItems: 'center', justifyContent: 'center',
-          fontSize: 10, fontWeight: 600, color: over ? '#ff4d4f' : DARK_THEME.textPrimary,
+          fontSize: 10, fontWeight: 600, color: over ? 'var(--ink-bad, #ff4d4f)' : DARK_THEME.textPrimary,
         }}>
           {wt.pct === null ? '—' : `${wt.pct}%`}
         </div>
@@ -70,7 +70,8 @@ const Ring: React.FC<{ wt: PlanWorkType }> = ({ wt }) => {
       <div style={{ minWidth: 0 }}>
         <div style={{
           fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em',
-          color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          // Цвет вида работ остаётся у кольца; подпись в светлых темах — читаемым приглушённым.
+          color: `var(--dim-text, ${color})`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {wt.label}
         </div>
@@ -117,8 +118,8 @@ export const WorkTypeRings: React.FC<Props> = ({
       title={externalHours > 0 ? 'Часы сотрудников не из команды — вне плана и факта' : undefined}
       style={{
         flex: '0 0 96px', padding: '8px 10px', borderRadius: 8,
-        background: 'rgba(0,0,0,0.22)',
-        border: '1px solid rgba(255,255,255,0.04)',
+        background: 'var(--faint-fill, rgba(0,0,0,0.22))',
+        border: '1px solid var(--hairline, rgba(255,255,255,0.04))',
         display: 'flex', flexDirection: 'column', justifyContent: 'center',
       }}
     >

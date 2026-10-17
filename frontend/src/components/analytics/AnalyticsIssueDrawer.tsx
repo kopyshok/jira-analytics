@@ -70,8 +70,8 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
       <div
         className="ai-worklogs"
         style={{
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--faint-fill, rgba(255,255,255,0.03))',
+          border: '1px solid var(--hairline, rgba(255,255,255,0.08))',
           borderRadius: 8,
           overflow: 'hidden',
         }}
@@ -84,7 +84,7 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
             textTransform: 'uppercase',
             color: 'var(--text-muted, #64748b)',
             padding: '10px 14px 8px',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.06))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -123,7 +123,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
       className="ai-head"
       style={{
         padding: '16px 20px 14px',
-        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.1))',
         background: 'var(--bg, #0d1c33)',
       }}
     >
