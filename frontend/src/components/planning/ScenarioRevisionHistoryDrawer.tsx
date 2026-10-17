@@ -107,12 +107,12 @@ function DiffBody({ diff }: { diff: NonNullable<ReturnType<typeof useRevisionDif
           <div style={{ display: 'flex', gap: 16 }}>
             <ItemColumn
               title={`Добавлено (${diff.added.length})`}
-              color="#1d9e75"
+              tone="added"
               items={diff.added.map((i) => i.backlog_item_name)}
             />
             <ItemColumn
               title={`Убрано (${diff.removed.length})`}
-              color="#f5222d"
+              tone="removed"
               items={diff.removed.map((i) => i.backlog_item_name)}
             />
           </div>
@@ -170,9 +170,17 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function ItemColumn({ title, color, items }: { title: string; color: string; items: string[] }) {
-  // Подпись — тем же смыслом, но читаемым на светлом фоне (в тёмной теме — прежний цвет).
-  const ink = color === '#1d9e75' ? 'var(--ink-good, #1d9e75)' : 'var(--ink-bad, #f5222d)';
+/**
+ * Цвета колонки по смыслу. Подпись — тем же смыслом, но читаемым на светлом
+ * фоне (в тёмной теме — прежний цвет).
+ */
+const ITEM_TONE = {
+  added: { mark: '#1d9e75', ink: 'var(--ink-good, #1d9e75)', bg: 'rgba(29,158,117,0.10)' },
+  removed: { mark: '#f5222d', ink: 'var(--ink-bad, #f5222d)', bg: 'rgba(245,34,45,0.10)' },
+} as const;
+
+function ItemColumn({ title, tone, items }: { title: string; tone: keyof typeof ITEM_TONE; items: string[] }) {
+  const { mark, ink, bg } = ITEM_TONE[tone];
   return (
     <div style={{ flex: 1 }}>
       <div style={{ fontSize: 12, color: ink, fontWeight: 600, marginBottom: 6 }}>{title}</div>
@@ -184,8 +192,8 @@ function ItemColumn({ title, color, items }: { title: string; color: string; ite
             key={name}
             style={{
               padding: '6px 10px', marginBottom: 4,
-              background: color === '#1d9e75' ? 'rgba(29,158,117,0.10)' : 'rgba(245,34,45,0.10)',
-              boxShadow: `inset 2px 0 0 ${color}`,
+              background: bg,
+              boxShadow: `inset 2px 0 0 ${mark}`,
               borderRadius: 4,
               fontSize: 12,
               color: DARK_THEME.textPrimary,
