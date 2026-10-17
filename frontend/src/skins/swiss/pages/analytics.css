@@ -1,0 +1,196 @@
+/* ============================================================
+   «Иерархический отчёт по часам» в обложке «Швейцарская» (макет G-analytics).
+   ============================================================ */
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
+  /* ---------- Паспорт ---------- */
+  & .sw-an-figures { gap: 12px 24px !important; margin-top: 20px !important; padding-top: 12px !important; }
+  & .sw-an-figures .sw-figure--xl { display: flex; flex-direction: column-reverse; }
+  & .sw-an-figures .sw-figure--xl .sw-figure-caption { margin: 0 0 2px; }
+  & .sw-an-figures .sw-figure--m .sw-figure-value { font-size: 36px; }
+  & .sw-an .sw-passport .sw-figures + .sw-pass-section { margin-top: 20px; }
+
+  & .sw-an-range-labels { margin-bottom: 0; }
+  & .sw-an-range .ant-picker-range {
+    width: 100%;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 24px;
+  }
+  & .sw-an-range .ant-picker-range .ant-picker-input {
+    border-bottom: 1px solid #111111;
+    padding: 4px 0;
+  }
+  & .sw-an-range .ant-picker-range .ant-picker-range-separator,
+  & .sw-an-range .ant-picker-range .ant-picker-active-bar { display: none; }
+  & .sw-an-range .ant-picker-range { position: relative; }
+  & .sw-an-range .ant-picker-range .ant-picker-suffix,
+  & .sw-an-range .ant-picker-range .ant-picker-clear { position: absolute; right: 0; top: 7px; margin: 0; }
+  & .sw-an-range .ant-picker-input > input { font-size: 13px; }
+  & .sw-an-hierarchy .ant-checkbox-wrapper { font-size: 12px; align-items: center; }
+  & .sw-an-hierarchy .ant-checkbox-label { display: inline-flex; gap: 8px; align-items: baseline; }
+  & .sw-an-hint { font-size: 11px; color: #5E5E5E; }
+  & .an-filters-stack { row-gap: 12px; }
+  & .an-filters-stack .ant-input-search .ant-input-group-addon { display: none; }
+  & .an-filters-stack .ant-input-search .ant-input-affix-wrapper,
+  & .an-filters-stack .ant-input-search .ant-input {
+    border: 0 !important;
+    border-bottom: 1px solid #111111 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    padding-left: 0;
+    box-shadow: none !important;
+  }
+  & .sw-an-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  & .sw-an-actions .ant-btn { height: 30px; padding: 0 12px; font-size: 12px; }
+
+  /* ---------- Данные ---------- */
+  & .sw-an-data { gap: 12px; }
+  & .an-team-tabs { flex-wrap: wrap; row-gap: 8px; }
+  & .an-tab-hours { margin-left: 6px; font-size: 12px; font-weight: 500; }
+  & .an-team-tabs > button.is-active .an-tab-hours { font-size: 14px; }
+  & .sw-an-flow { flex: none; font-size: 12px; }
+  & .sw-an-flow > div > .ant-typography:first-child,
+  & .sw-an-flow .ant-tooltip-open { font-size: 11px !important; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #111111 !important; }
+  & .sw-an-flow .ant-typography-warning,
+  & .sw-an-flow .ant-typography-success { color: #111111 !important; }
+
+  & .sw-an-main {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 446px;
+    column-gap: 24px;
+  }
+  & .sw-an-main.is-wide { grid-template-columns: minmax(0, 1fr); }
+  & .sw-an-table { min-height: 0; }
+  & .sw-an-table-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    border-bottom: 1px solid #111111;
+    scrollbar-width: thin;
+  }
+  & .sw-an-table-scroll .ant-table-thead > tr > th { position: sticky; top: 0; z-index: 3; }
+  & .sw-an-table-scroll .ant-table colgroup col:first-child { width: 400px !important; }
+  & .sw-an-table-scroll .ant-table colgroup col:nth-child(2) { width: 170px !important; }
+  & .sw-an-table-scroll .ant-table colgroup col:nth-child(n+3) { width: 84px !important; }
+  & .sw-an-table-scroll .an-foreign-chip { white-space: nowrap; }
+  & .an-inherited-mark { opacity: 1 !important; font-size: 10px !important; }
+  & .sw-an-table-scroll .an-foreign-chip {
+    padding: 0 4px !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    background: #FFFFFF !important;
+  }
+  & .sw-an-table-scroll .ant-table-thead > tr > th,
+  & .sw-an-table-scroll .ant-table-tbody > tr > td { padding: 5px 8px !important; font-size: 12px; }
+  & .sw-an .tree-row-depth-0 > td { background-color: #F4F4F4 !important; }
+  & .sw-an .tree-row-depth-1 > td,
+  & .sw-an .tree-row-depth-2 > td,
+  & .sw-an .tree-row-depth-3 > td,
+  & .sw-an .tree-row-depth-4 > td,
+  & .sw-an .tree-row-depth-5 > td { background-color: #FFFFFF !important; }
+  & .sw-an .tree-row-depth-1 > td { font-weight: 500; }
+  & .sw-an .tree-row-has-children > td { font-weight: 700; }
+  & .sw-an .tree-row-depth-0.tree-row-has-children > td { font-weight: 700; }
+  & .sw-an .tree-row-depth-2.tree-row-has-children > td,
+  & .sw-an .tree-row-depth-3.tree-row-has-children > td,
+  & .sw-an .tree-row-depth-4.tree-row-has-children > td,
+  & .sw-an .tree-row-depth-5.tree-row-has-children > td { font-weight: 400; }
+  & .sw-an .ant-table-tbody > tr:hover > td { background-color: #F4F4F4 !important; }
+  & .sw-an .ant-table-tbody > tr.tree-row-selected > td {
+    background-color: #EDEDED !important;
+    border-top: 1px solid #111111;
+    border-bottom: 1px solid #111111 !important;
+    font-weight: 500;
+  }
+  & .sw-an-table-scroll .ant-table-cell .ant-tag {
+    margin: 0;
+    padding: 0;
+    border: 0 !important;
+    background: none !important;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  & .sw-an-table-scroll .ant-table-cell .ant-tag.ant-tag-orange {
+    padding: 0 4px;
+    border: 1px solid var(--sw-accent-ink) !important;
+    color: var(--sw-accent-ink) !important;
+    font-size: 10px;
+  }
+  & .sw-an-table-scroll .ant-table-row-expand-icon {
+    border-radius: 0;
+    border-color: #111111;
+    color: #111111;
+  }
+
+  /* ---------- 2.4 Задача: панель встроена справа ---------- */
+  & .sw-an-issue {
+    min-height: 0;
+    overflow: auto;
+    border-top: 2px solid #111111;
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: thin;
+  }
+  & .sw-an-issue-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  & .sw-an-issue-eyebrow .sw-block-num { margin-right: 6px; }
+  & .an-issue-docked { --mini-tile-bg: #FFFFFF; --glass-border: #E2E2E2; --bg: #FFFFFF; display: flex; flex-direction: column; min-height: 0; }
+  & .an-issue-head {
+    position: relative;
+    padding: 8px 0 12px !important;
+    border-bottom: 1px solid #E2E2E2 !important;
+    background: #FFFFFF !important;
+  }
+  & .an-issue-head > div:first-child { flex-wrap: wrap; gap: 4px 12px !important; align-items: baseline !important; padding-right: 32px; }
+  & .an-issue-key {
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+    font-family: var(--sw-font) !important;
+    font-size: 28px !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.01em;
+    color: #111111 !important;
+    text-decoration: underline !important;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+  & .an-issue-status.ant-tag { padding: 0 !important; border: 0 !important; background: none !important; font-size: 12px !important; font-weight: 700; }
+  & .an-issue-close {
+    position: absolute;
+    top: -22px;
+    right: 0;
+    width: 22px !important;
+    height: 22px !important;
+    border: 1px solid #111111;
+    border-radius: 0 !important;
+    color: #111111 !important;
+    font-size: 15px !important;
+  }
+  & .an-issue-close:hover { background: #111111; color: #FFFFFF !important; }
+  & .an-issue-summary { font-size: 16px !important; font-weight: 700 !important; color: #111111 !important; }
+  & .an-issue-body { background: #FFFFFF !important; }
+  & .an-issue-body > div { padding: 12px 0 !important; gap: 12px !important; }
+  & .an-issue-body > div > div { border-radius: 0 !important; border-left: 0 !important; border-right: 0 !important; }
+  & .an-issue-body .ant-table-thead > tr > th { font-size: 11px; }
+}
+
+@media (max-width: 1500px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-main { grid-template-columns: minmax(0, 1fr) 360px; }
+}
+@media (max-width: 1100px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-main { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-table-scroll { max-height: 70vh; }
+}

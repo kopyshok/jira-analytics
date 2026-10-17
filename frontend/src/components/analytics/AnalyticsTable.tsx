@@ -17,6 +17,8 @@ import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
 import { useAnalyticsLayout } from '../../hooks/useAnalyticsLayout';
 import type { AnalyticsLevel } from '../../hooks/useAnalyticsLayout';
 import { statusTagColor } from '../../utils/status';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readableInk, solidFill } from '../../utils/readableColor';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
 import AnalyticsIssueDrawer from './AnalyticsIssueDrawer';
 
@@ -65,9 +67,9 @@ function indent(depth: number, content: React.ReactNode): React.ReactNode {
 
 function pctColor(pct: number | null | undefined): string | undefined {
   if (pct == null) return undefined;
-  if (pct > 110) return '#ff4d4f';
-  if (pct >= 70) return '#faad14';
-  return '#67d68d';
+  if (pct > 110) return 'var(--an-over, #ff4d4f)';
+  if (pct >= 70) return 'var(--an-warn-2, #faad14)';
+  return 'var(--an-ok, #67d68d)';
 }
 
 function stripKeyPrefix(summary: string, key: string): string {
@@ -273,6 +275,7 @@ function ForeignChip({ totals }: { totals: NodeTotals }) {
   return (
     <Tooltip title={`Чужие задачи под этим узлом: ${totals.foreign_issue_count} зад. · ${totals.foreign_hours.toFixed(1)}ч · ${totals.foreign_pct.toFixed(1)}% от факта`}>
       <span
+        className="an-foreign-chip"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -282,9 +285,9 @@ function ForeignChip({ totals }: { totals: NodeTotals }) {
           borderRadius: 999,
           fontSize: 11,
           fontWeight: 600,
-          background: 'rgba(255, 156, 74, 0.12)',
-          color: '#ff9c4a',
-          border: '1px solid rgba(255, 156, 74, 0.35)',
+          background: 'var(--an-foreign-bg, rgba(255, 156, 74, 0.12))',
+          color: 'var(--an-foreign, #ff9c4a)',
+          border: '1px solid var(--an-foreign-line, rgba(255, 156, 74, 0.35))',
         }}
       >
         ⚠ {totals.foreign_issue_count} · {totals.foreign_hours.toFixed(0)}ч · {totals.foreign_pct.toFixed(0)}%
@@ -476,6 +479,14 @@ function kindOfLevel(level: AnalyticsLevel): RowKind {
   }
 }
 
+/** Цвета справочника ролей: у Aurora — как есть, в светлых обложках — читаемые пары. */
+interface RefColors {
+  ink: (hex: string) => string;
+  fill: (hex: string) => string;
+}
+const AS_IS: RefColors = { ink: (c) => c, fill: (c) => c };
+const READABLE: RefColors = { ink: (c) => readableInk(c), fill: (c) => solidFill(c) };
+
 function buildTreeFromLayout(
   data: AnalyticsReportResponse,
   layout: AnalyticsLevel[],
@@ -484,6 +495,7 @@ function buildTreeFromLayout(
   periodEnd: string,
   navigate: ReturnType<typeof useNavigate>,
   thematicParams: URLSearchParams | null,
+  refColors: RefColors = AS_IS,
 ): TreeNode[] {
   const flat = flattenResponse(data);
   const grandFact = flat.reduce((s, r) => s + r.issue.totals.fact_hours, 0);
@@ -523,7 +535,7 @@ function buildTreeFromLayout(
                 flexShrink: 0,
               }}
             />
-            <span style={{ color: row.role_color, fontWeight: 600 }}>
+            <span style={{ color: refColors.ink(row.role_color), fontWeight: 600 }}>
               {row.role_label}
             </span>
           </span>,
@@ -541,7 +553,7 @@ function buildTreeFromLayout(
                 width: 22,
                 height: 22,
                 borderRadius: '50%',
-                background: row.role_color,
+                background: refColors.fill(row.role_color),
                 color: '#fff',
                 fontSize: 10,
                 fontWeight: 700,
@@ -693,6 +705,10 @@ interface Props {
   worklogMode: 'inline' | 'drawer';
   periodStart: string;
   periodEnd: string;
+  /** Открытая задача — подсветка строки, когда панель задачи держит страница. */
+  selectedIssueId?: string | null;
+  /** Панель задачи у страницы (встроена в раскладку); без него — своя выезжающая панель. */
+  onIssueOpen?: (issue: { id: string; key: string }) => void;
 }
 
 export default function AnalyticsTable({
@@ -701,7 +717,10 @@ export default function AnalyticsTable({
   worklogMode,
   periodStart,
   periodEnd,
+  selectedIssueId,
+  onIssueOpen,
 }: Props) {
+  const skin = useSkin();
   const { visible } = useAnalyticsColumns();
   const visibleSet = new Set(visible);
   const navigate = useNavigate();
@@ -776,10 +795,11 @@ export default function AnalyticsTable({
         periodEnd,
         navigate,
         thematicBaseParams,
+        skin ? READABLE : AS_IS,
       ),
     // thematicBaseParams is recreated each render but is URLSearchParams — stable via stringification
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filteredData, layout, worklogMode, periodStart, periodEnd, navigate],
+    [filteredData, layout, worklogMode, periodStart, periodEnd, navigate, skin],
   );
 
   const isBlock = (r: TreeNode) => r.kind === 'worklog-block';
@@ -815,7 +835,7 @@ export default function AnalyticsTable({
                 style={{
                   width: '100%',
                   height: 3,
-                  background: 'rgba(255,255,255,0.06)',
+                  background: 'var(--an-line, rgba(255,255,255,0.06))',
                   borderRadius: 2,
                   overflow: 'hidden',
                 }}
@@ -929,6 +949,7 @@ export default function AnalyticsTable({
           const cls = [`tree-row-depth-${record.depth}`];
           if (record.children && record.children.length > 0)
             cls.push('tree-row-has-children');
+          if (selectedIssueId && record.issueId === selectedIssueId) cls.push('tree-row-selected');
           return cls.join(' ');
         }}
         expandable={{
@@ -943,20 +964,23 @@ export default function AnalyticsTable({
           && record.issueId
           && !(record.children?.length)
             ? {
-                onClick: () =>
-                  setDrawerIssue({ id: record.issueId!, key: record.issueKey! }),
+                onClick: () => {
+                  const issue = { id: record.issueId!, key: record.issueKey! };
+                  if (onIssueOpen) onIssueOpen(issue);
+                  else setDrawerIssue(issue);
+                },
                 style: { cursor: 'pointer' },
               }
             : {}
         }
       />
-      <AnalyticsIssueDrawer
+      {!onIssueOpen && <AnalyticsIssueDrawer
         issueId={drawerIssue?.id ?? null}
         issueKey={drawerIssue?.key ?? null}
         periodStart={periodStart}
         periodEnd={periodEnd}
         onClose={() => setDrawerIssue(null)}
-      />
+      />}
     </>
   );
 }

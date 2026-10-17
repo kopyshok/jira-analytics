@@ -63,8 +63,8 @@ function SortableLevel({ level, hidden, onToggleVisible }: SortableLevelProps) {
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    background: hidden ? 'rgba(68, 90, 130, 0.18)' : '#162f54',
-    border: '1px solid rgba(255,255,255,0.06)',
+    background: hidden ? 'var(--an-chip-off, rgba(68, 90, 130, 0.18))' : 'var(--an-chip-solid, #162f54)',
+    border: '1px solid var(--an-line, rgba(255,255,255,0.06))',
     borderRadius: 6,
     padding: '8px 12px',
     marginBottom: 6,

@@ -8,8 +8,8 @@ import { trackAction } from '../../lib/usage/track';
 
 const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
 
-const CARD_BG = 'rgba(255,255,255,0.03)';
-const CARD_BORDER = '1px solid rgba(255,255,255,0.08)';
+const CARD_BG = 'var(--an-card-bg, rgba(255,255,255,0.03))';
+const CARD_BORDER = '1px solid var(--an-line, rgba(255,255,255,0.08))';
 
 interface Props {
   context: IssueContextResponse;
@@ -95,7 +95,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
           textTransform: 'uppercase',
           color: 'var(--text-muted, #64748b)',
           padding: '10px 14px 8px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: '1px solid var(--an-line, rgba(255,255,255,0.06))',
         }}
       >
         Категория и анализ
@@ -109,10 +109,10 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
             title="Это контейнер. Категории ставятся детям, не самому контейнеру."
             style={{
               marginBottom: 12,
-              background: 'rgba(251,191,36,0.07)',
-              border: '1px solid rgba(251,191,36,0.18)',
+              background: 'var(--an-warn-bg, rgba(251,191,36,0.07))',
+              border: '1px solid var(--an-warn-line, rgba(251,191,36,0.18))',
               borderRadius: 6,
-              color: '#fbbf24',
+              color: 'var(--an-warn, #fbbf24)',
               fontSize: 11,
             }}
           />
@@ -136,11 +136,11 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
                 fontWeight: 500,
                 padding: '3px 9px',
                 borderRadius: 10,
-                background: isInherited ? 'rgba(34,211,238,0.08)' : 'rgba(100,116,139,0.12)',
-                color: isInherited ? '#67e8f9' : 'var(--text-muted, #94a3b8)',
+                background: isInherited ? 'var(--an-inherit-bg, rgba(34,211,238,0.08))' : 'var(--an-chip-bg, rgba(100,116,139,0.12))',
+                color: isInherited ? 'var(--an-inherit, #67e8f9)' : 'var(--text-muted, #94a3b8)',
                 border: isInherited
-                  ? '1px solid rgba(34,211,238,0.25)'
-                  : '1px solid rgba(100,116,139,0.2)',
+                  ? '1px solid var(--an-inherit-line, rgba(34,211,238,0.25))'
+                  : '1px solid var(--an-chip-line, rgba(100,116,139,0.2))',
                 whiteSpace: 'nowrap',
                 cursor: isInherited ? 'help' : 'default',
               }}
@@ -158,7 +158,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
               )}
               {effectiveLabel}
               {isInherited && (
-                <span style={{ fontSize: 9, opacity: 0.75, marginLeft: 2 }}>унасл.</span>
+                <span className="an-inherited-mark" style={{ fontSize: 9, opacity: 0.75, marginLeft: 2 }}>унасл.</span>
               )}
             </span>
           </Tooltip>
@@ -206,7 +206,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
               checked={includeInAnalysis}
               onChange={e => setIncludeInAnalysis(e.target.checked)}
             >
-              <span style={{ fontSize: 12, color: isArchive ? 'var(--text-muted, #475569)' : '#cbd5e1' }}>
+              <span style={{ fontSize: 12, color: isArchive ? 'var(--text-muted, #475569)' : 'var(--an-text-2, #cbd5e1)' }}>
                 Учитывать в анализе
               </span>
               {isArchive && (
@@ -217,8 +217,8 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
                     gap: 5,
                     fontSize: 11,
                     color: 'var(--text-muted, #475569)',
-                    background: 'rgba(100,116,139,0.08)',
-                    border: '1px solid rgba(100,116,139,0.15)',
+                    background: 'var(--an-chip-bg, rgba(100,116,139,0.08))',
+                    border: '1px solid var(--an-chip-line, rgba(100,116,139,0.15))',
                     borderRadius: 5,
                     padding: '2px 8px',
                     marginLeft: 6,
@@ -259,8 +259,8 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
             onClick={handleCancel}
             disabled={saving}
             style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--an-line, rgba(255,255,255,0.05))',
+              border: '1px solid var(--an-line, rgba(255,255,255,0.1))',
               color: 'var(--text-muted, #94a3b8)',
             }}
           >
@@ -273,9 +273,9 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
             disabled={context.is_container}
             onClick={handleSave}
             style={{
-              background: '#00c9c8',
-              borderColor: '#00c9c8',
-              color: '#0d1c33',
+              background: 'var(--an-key, #00c9c8)',
+              borderColor: 'var(--an-key, #00c9c8)',
+              color: 'var(--an-on-key, #0d1c33)',
               fontWeight: 600,
             }}
           >

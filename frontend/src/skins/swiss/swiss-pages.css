@@ -291,6 +291,29 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-status.is-info { color: #1F4FD1; }
   & .sw-status.is-muted { color: #5E5E5E; }
 
+  /* Вкладки-разрезы с номерами: «1.1 Светофор», «2.2 Все команды» */
+  & .sw-tabs {
+    flex: none;
+    display: flex;
+    align-items: flex-end;
+    gap: 32px;
+    border-bottom: 1px solid #111111;
+  }
+  & .sw-tabs > button {
+    margin-bottom: -1px;
+    padding: 0 0 6px;
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    font: inherit;
+    font-size: 14px;
+    color: #5E5E5E;
+    cursor: pointer;
+  }
+  & .sw-tabs > button.is-active { color: #111111; font-weight: 700; border-bottom-color: #111111; }
+  & .sw-tabs > button:hover { color: #111111; }
+  & .sw-tab-num { margin-right: 8px; font-size: 11px; font-weight: 400; color: #5E5E5E; }
+
   /* Легенда под блоком */
   & .sw-legend {
     display: flex;

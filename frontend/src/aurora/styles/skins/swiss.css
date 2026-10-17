@@ -1112,3 +1112,35 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .rp-arrows #rp-manual-arrowhead polygon { fill: #D9391A; }
 
 }
+
+/* ---------------- Аналитика: панель задачи, настройка отчёта, таблица-дерево ----------------
+   Компоненты берут цвета из --an-* с прежними значениями Aurora по умолчанию. */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
+  --an-key: #111111;
+  --an-key-bg: #FFFFFF;
+  --an-key-line: #111111;
+  --an-text: #111111;
+  --an-text-2: #3A3A3A;
+  --an-text-3: #5E5E5E;
+  --an-text-dim: #5E5E5E;
+  --an-warn: #9A6400;
+  --an-warn-bg: #FBF5E8;
+  --an-warn-line: #9A6400;
+  --an-inherit: #0E5C66;
+  --an-inherit-bg: #FFFFFF;
+  --an-inherit-line: #0E5C66;
+  --an-chip-bg: #FFFFFF;
+  --an-chip-line: #111111;
+  --an-card-bg: #FFFFFF;
+  --an-card: #FFFFFF;
+  --an-line: #E2E2E2;
+  --an-on-key: #FFFFFF;
+  --an-chip-solid: #FFFFFF;
+  --an-chip-off: #F4F4F4;
+  --an-over: #D9391A;
+  --an-warn-2: #111111;
+  --an-ok: #111111;
+  --an-foreign: #D9391A;
+  --an-foreign-bg: #FFFFFF;
+  --an-foreign-line: #D9391A;
+}
