@@ -28,6 +28,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .an-top { flex: none; display: flex; gap: 10px; }
   & .an-summary { flex: 1 1 auto; }
   & .an-flow { flex: 0 0 440px; }
+  & .an-flow-empty { font-size: 12px; padding: 6px 8px; }
   & .an-screens { display: flex; gap: 10px; }
   & .an-screen {
     flex: 1 1 0;

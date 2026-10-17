@@ -241,22 +241,28 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
           onSelectAssignment={(id) => setSelectedAssignmentId(id)}
         />
       )}
+      {!gantt && viewMode !== 'plane' && (
+        <PModule
+          title="Конфликты"
+          className="rp-conflicts"
+          ariaLabel="Конфликты"
+          extra={<span className="rp-conf-none">{ganttLoading ? 'загрузка…' : 'план не выбран'}</span>}
+        />
+      )}
 
       <div className="rp-mid">
         <PModule title="Диаграмма Ганта" className="rp-gantt-module" ariaLabel="Диаграмма Ганта">
           {ganttBody}
-          {gantt && (
-            <div className="pm-legend">
-              {(['analyst', 'dev', 'qa', 'opo'] as const).map((p) => (
-                <span key={p}><i style={{ background: phaseColors[p] }} />{PHASE_LABELS[p]}</span>
-              ))}
-              <span><i className="lg-conflict" />конфликт</span>
-              <span><i className="lg-cp" />критический путь</span>
-              <span><i className="lg-pinned" />закреплено вручную</span>
-              <span><i className="lg-ooq" />за пределами квартала</span>
-              <span><i className="lg-absence" />отпуск</span>
-            </div>
-          )}
+          <div className="pm-legend">
+            {(['analyst', 'dev', 'qa', 'opo'] as const).map((p) => (
+              <span key={p}><i style={{ background: phaseColors[p] }} />{PHASE_LABELS[p]}</span>
+            ))}
+            <span><i className="lg-conflict" />конфликт</span>
+            <span><i className="lg-cp" />критический путь</span>
+            <span><i className="lg-pinned" />закреплено вручную</span>
+            <span><i className="lg-ooq" />за пределами квартала</span>
+            <span><i className="lg-absence" />отпуск</span>
+          </div>
         </PModule>
 
         <PModule
@@ -291,9 +297,9 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
         </PModule>
       </div>
 
-      {gantt && viewMode === 'two-level' && ((gantt.employee_load?.length ?? 0) > 0 || (gantt.reserve && gantt.plan.team)) && (
+      {viewMode === 'two-level' && (
         <div className="rp-bottom">
-          {gantt.employee_load && gantt.employee_load.length > 0 && (
+          {gantt && gantt.employee_load && gantt.employee_load.length > 0 ? (
             <section className="pm rp-heat-module" aria-label="Загрузка сотрудников по дням" data-tour="rp-load">
               <PlanLoadHeatmap
                 docked
@@ -308,14 +314,24 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
                 onEmployeeClick={togglePerson}
               />
             </section>
-          )}
-          {gantt.reserve && gantt.plan.team && (
-            <PModule title="Нормированные работы — запас квартала" className="rp-reserve-module" ariaLabel="Нормированные работы">
-              <div className="pm-screen rp-reserve-screen">
-                <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} docked />
+          ) : (
+            <PModule title="Загрузка сотрудников по дням" className="rp-heat-module" ariaLabel="Загрузка сотрудников по дням">
+              <div className="pm-empty">
+                {gantt ? 'В плане нет назначений — загрузки по дням нет' : 'Загрузка по дням появится после выбора плана'}
               </div>
             </PModule>
           )}
+          <PModule title="Нормированные работы — запас квартала" className="rp-reserve-module" ariaLabel="Нормированные работы">
+            {gantt?.reserve && gantt.plan.team ? (
+              <div className="pm-screen rp-reserve-screen">
+                <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} docked />
+              </div>
+            ) : (
+              <div className="pm-empty">
+                {gantt ? 'Нормированных работ в квартале нет' : 'Запас квартала появится после выбора плана'}
+              </div>
+            )}
+          </PModule>
         </div>
       )}
 

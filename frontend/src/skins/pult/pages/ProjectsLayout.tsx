@@ -164,7 +164,7 @@ function PortfolioModules({ filters, onOpen }: { filters: ProjectListFiltersStat
 
       <PModule title="Таймлайн портфеля" className="pp-timeline">
         <div className="pm-screen pp-timeline-screen">
-          <PhaseTimeline timeline={data.timeline} mode="by-project" onRowClick={onOpen} />
+          <PhaseTimeline timeline={data.timeline} mode="by-project" onRowClick={onOpen} fill />
         </div>
       </PModule>
     </div>

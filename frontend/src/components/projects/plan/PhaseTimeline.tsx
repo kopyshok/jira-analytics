@@ -48,9 +48,12 @@ interface Props {
   /** Высота области строк; всё, что выше — прокручивается внутри блока.
    *  Нужна портфелю: строк там столько же, сколько проектов у выбранных команд. */
   maxHeight?: number | string;
+  /** Заполнить высоту родителя: строки прокручиваются, легенда всегда видна,
+   *  у «сегодня» в легенде — дата. Для встроенного модуля обложки. */
+  fill?: boolean;
 }
 
-export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight }) => {
+export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight, fill = false }) => {
   if (!timeline.start || !timeline.end || timeline.rows.length === 0) {
     return (
       <Empty
@@ -92,7 +95,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
       }));
 
   return (
-    <div>
+    <div style={fill ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } : undefined}>
       <div style={{
         display: 'grid', gridTemplateColumns: `${labelW}px 1fr`, gap: 8, marginBottom: 4,
       }}>
@@ -107,7 +110,9 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
         </div>
       </div>
 
-      <div style={maxHeight ? { maxHeight, overflowY: 'auto', paddingRight: 4 } : undefined}>
+      <div style={fill
+        ? { flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 4 }
+        : maxHeight ? { maxHeight, overflowY: 'auto', paddingRight: 4 } : undefined}>
       {rows.map((row, ri) => (
         <div
           key={`${row.key ?? ''}-${ri}`}
@@ -201,7 +206,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
         )}
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ width: 2, height: 11, background: DARK_THEME.cyanPrimary }} />
-          сегодня
+          {fill ? `сегодня ${new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}` : 'сегодня'}
         </span>
         <span>Затенено — границы квартала</span>
       </div>

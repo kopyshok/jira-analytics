@@ -303,7 +303,7 @@ export default function PultTeamDeskLayout({ desk }: { desk: TeamDeskPageState }
               </PModule>
               <PModule title="Отсутствия" className="td-absence">
                 <div className="td-absence-body">
-                  <AbsenceStrip employeeIds={data.employee_ids ?? {}} />
+                  <AbsenceStrip employeeIds={data.employee_ids ?? {}} compact />
                 </div>
               </PModule>
             </div>

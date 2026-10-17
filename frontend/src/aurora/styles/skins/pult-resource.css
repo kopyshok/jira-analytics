@@ -28,6 +28,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --rp-prio-bg: #2B2B29;
   --rp-prio-fg: #FFFFFF;
   --rp-accent: #E8590C;
+  --rp-phase-dates: inline-block;
   --rp-accent-text: #A93F0A;
   --rp-cp-border: 2px solid #1C1C1A;
   --rp-other-sub: #8E5BC2;
@@ -242,6 +243,10 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   }
   & .rp-cell-assignee { font-size: 11px !important; color: var(--text-2) !important; }
   & .rp-cell-assignee > span { padding: 0 4px !important; }
+  /* сроки фазы справа в строке, как на макете: «01.10–16.10» */
+  & .rp-cell-assignee:has(.rp-phase-dates) { display: flex; align-items: center; gap: 6px; }
+  & .rp-cell-assignee:has(.rp-phase-dates) > span:first-child { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+  & .rp-cell-assignee .rp-phase-dates { margin-left: auto; padding: 0 !important; font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); flex: none; }
   & .rp-gantt-screen button[aria-label^="Развернуть"],
   & .rp-gantt-screen button[aria-label^="Свернуть"] { color: var(--text) !important; font-size: 9px !important; }
   /* полосы фаз: подпись моноширинным, слева */

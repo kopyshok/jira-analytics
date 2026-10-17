@@ -52,7 +52,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .td-filters { gap: 14px; }
   & .td-filters .pc-field > .ant-select,
   & .td-filters .pc-field > .ant-picker { flex: none !important; min-width: 0 !important; }
-  & .td-f-teams > .ant-select { width: 220px; }
+  & .td-f-teams > .ant-select { width: 300px; }
   & .td-f-people > .ant-select { width: 200px; }
   & .td-f-sprint > .ant-select,
   & .td-f-release > .ant-select { width: 140px; }
@@ -298,7 +298,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .td-screen b { font-size: 18px; font-weight: 500; line-height: 22px; }
   & .td-screen.is-dark { background: var(--p-key); border-color: var(--p-key); color: #FFFFFF; }
   & .td-screen.is-dark .pc-cap { color: #CFCCC4; }
-  & .td-screen .ant-input-number { width: 100% !important; background: transparent !important; border: 0 !important; box-shadow: none !important; }
+  & .td-screen .ant-input-number { width: 100% !important; padding: 0 !important; background: transparent !important; border: 0 !important; box-shadow: none !important; }
+  /* стрелки «больше/меньше» в узком экранчике съедали место значения («0.0…»); с клавиатуры шаг работает */
+  & .td-screen .ant-input-number-actions { display: none !important; }
   & .td-screen .ant-input-number-input { padding: 0 !important; font-family: var(--font-mono); font-size: 18px; height: 22px; }
   & .td-wip { flex: none; }
   & .td-wip .ant-typography { color: var(--text) !important; }

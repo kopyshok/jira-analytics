@@ -160,7 +160,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .pp-table-screen { flex: none; overflow: hidden; }
   & .pp-table-screen .ant-table-wrapper .ant-table { border: 0; border-radius: 0; }
   & .pp-timeline { flex: 1; min-height: 140px; }
-  & .pp-timeline-screen { padding: 8px 10px; }
+  & .pp-timeline-screen { padding: 8px 10px; display: flex; flex-direction: column; overflow: hidden; }
 }
 
 @media (max-width: 1400px) {

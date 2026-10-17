@@ -36,6 +36,12 @@ interface Props {
 }
 
 /** Шапка раздела: команды, добранные точечно люди, период, пороги. */
+/** «Команда 1С (ERP - УУ)» → «ERP - УУ»; без скобок — как есть. */
+function shortTeamName(team: string): string {
+  const m = team.match(/\(([^)]+)\)\s*$/);
+  return m ? m[1] : team;
+}
+
 export function DeskFilters({
   teams, onTeamsChange,
   developers, onDevelopersChange, developerRoles,
@@ -60,7 +66,14 @@ export function DeskFilters({
           value={teams}
           onChange={onTeamsChange}
           loading={teamsQuery.isLoading}
-          options={(teamsQuery.data ?? []).map((t) => ({ value: t, label: t }))}
+          options={(teamsQuery.data ?? []).map((t) => ({
+            value: t,
+            // В панели обложки поле узкое: метка — короткое имя из скобок
+            // («ERP - УУ»), полное — в подсказке и в выпадающем списке.
+            label: variant === 'panel' ? shortTeamName(t) : t,
+            title: t,
+          }))}
+          optionRender={variant === 'panel' ? (o) => String(o.value) : undefined}
           maxTagCount="responsive"
         />
   );

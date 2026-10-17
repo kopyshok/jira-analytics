@@ -1,6 +1,7 @@
 import { Empty, Select, Space, Typography } from 'antd';
 import { useState } from 'react';
 import AbsenceHeatmap from '../capacity/AbsenceHeatmap';
+import AbsenceWeeks from '../capacity/AbsenceWeeks';
 import { useAbsences } from '../../hooks/useAbsences';
 import { useEmployees } from '../../hooks/useCapacity';
 
@@ -9,10 +10,12 @@ const QUARTERS = [1, 2, 3, 4];
 interface Props {
   /** id сотрудников, попавших в срез стола (ключ — учётная запись Jira) */
   employeeIds: Record<string, string>;
+  /** Узкая панель: весь квартал неделями, без прокрутки вбок. */
+  compact?: boolean;
 }
 
 /** Отсутствия людей стола: переиспользуем теплокарту с экрана ёмкости. */
-export function AbsenceStrip({ employeeIds }: Props) {
+export function AbsenceStrip({ employeeIds, compact = false }: Props) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [quarter, setQuarter] = useState(Math.floor(now.getMonth() / 3) + 1);
@@ -48,14 +51,18 @@ export function AbsenceStrip({ employeeIds }: Props) {
           style={{ width: 80 }}
         />
       </Space>
-      <div style={{ overflowX: 'auto' }}>
-        <AbsenceHeatmap
-          year={year}
-          quarter={quarter}
-          employees={rows}
-          absences={absences.data ?? []}
-        />
-      </div>
+      {compact ? (
+        <AbsenceWeeks year={year} quarter={quarter} employees={rows} absences={absences.data ?? []} />
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <AbsenceHeatmap
+            year={year}
+            quarter={quarter}
+            employees={rows}
+            absences={absences.data ?? []}
+          />
+        </div>
+      )}
     </Space>
   );
 }

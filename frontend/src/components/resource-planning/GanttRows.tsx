@@ -1114,6 +1114,14 @@ function TwoLevelRows({
                 const empRole = sg.assignments[0].employee_role;
                 const empId = sg.assignments[0].employee_id;
                 const sgHours = sg.assignments.reduce((s, a) => s + (a.hours_allocated ?? 0), 0);
+                // Сроки фазы строкой «01.10–16.10»: показываются там, где тема включает
+                // переменную --rp-phase-dates (обложка); в Aurora строка как прежде.
+                const sgStarts = sg.assignments.map(a => a.start_date).filter(Boolean).sort() as string[];
+                const sgEnds = sg.assignments.map(a => a.end_date).filter(Boolean).sort() as string[];
+                const ddmm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+                const sgDates = sgStarts.length && sgEnds.length
+                  ? `${ddmm(sgStarts[0])}–${ddmm(sgEnds[sgEnds.length - 1])}`
+                  : '';
                 const title = sg.roleLabel
                   ? `${PHASE_LABELS[phase]} · ${sg.roleLabel}`
                   : PHASE_LABELS[phase];
@@ -1182,7 +1190,12 @@ function TwoLevelRows({
                       jiraKey={null}
                       leftColWidth={leftColWidth}
                       dotColor={color}
-                      assignee={assigneeNode}
+                      assignee={sgDates ? (
+                        <>
+                          {assigneeNode}
+                          <span className="rp-phase-dates" style={{ display: 'var(--rp-phase-dates, none)' }}>{sgDates}</span>
+                        </>
+                      ) : assigneeNode}
                       hours={sgHours > 0 ? `${Math.round(sgHours)} ч` : ''}
                     />
                     <div data-gantt-track="true" style={{ ...trackStyle(trackWidthPx) }}>

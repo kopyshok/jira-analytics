@@ -15,6 +15,9 @@ const fmt1 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 1
  * Модули: сводка · переток · команды и отборы · дерево · задача.
  * Данные и действия — общий хук страницы.
  */
+/** «2026-10-01» → «01.10.2026». */
+const ddmmyyyy = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
+
 export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState }) {
   const {
     selectedTeam, setSelectedTeam, urlFilters,
@@ -35,7 +38,8 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
             <DatePicker.RangePicker
               value={localRange}
               onChange={setLocalRange}
-              placeholder={['Уточнить с', 'по']}
+              // Пустой выбор = весь период строки состояния: его границы и видны, как на макете.
+              placeholder={[ddmmyyyy(periodStart), ddmmyyyy(periodEnd)]}
               allowClear
               format="DD.MM.YYYY"
               style={{ width: 240 }}
@@ -137,8 +141,10 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
                 </div>
               </div>
             </PModule>
-            {flows.length > 0 && (
-              <PModule title="Переток внутри команды" className="an-flow">
+            <PModule title="Переток внутри команды" className="an-flow">
+              {flows.length === 0 ? (
+                <div className="pm-empty an-flow-empty">Обмена часами между группами команды за период нет</div>
+              ) : (
                 <div className="an-flow-list" title="Часы, которыми группы обменялись внутри команды. Помощь извне считается отдельно.">
                   {flows.map((r) => (
                     <div key={r.subgroup_id} className="an-flow-row">
@@ -148,8 +154,8 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
                     </div>
                   ))}
                 </div>
-              </PModule>
-            )}
+              )}
+            </PModule>
           </div>
 
           <PModule title="Команды" className="an-teams">
