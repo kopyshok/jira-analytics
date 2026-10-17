@@ -5,11 +5,43 @@ interface Props {
   developers: DeskDeveloper[];
   workload: Record<string, DeskWorkload>;
   limit: number;
+  /** Компактный вид скина: строки 24 px, цвета и размеры — классами скина. */
+  compact?: boolean;
 }
 
 /** Сколько задач у человека одновременно в работе, с отсечкой лимита. */
-export function WorkloadBars({ developers, workload, limit }: Props) {
+export function WorkloadBars({ developers, workload, limit, compact = false }: Props) {
   const max = Math.max(limit + 2, ...developers.map((d) => d.in_progress));
+  if (compact) {
+    return (
+      <div className="tdc-wl">
+        {developers.map((dev) => {
+          const load = workload[dev.developer_id];
+          const over = dev.in_progress > limit;
+          return (
+            <Tooltip
+              key={dev.developer_id}
+              title={
+                load
+                  ? `Очередь ${roundHours(load.queue_hours)} ч, свободно ${roundHours(load.available_hours)} ч на неделю`
+                  : undefined
+              }
+            >
+              <div className={`tdc-wl-row${over ? ' is-over' : ''}`}>
+                <span className="tdc-wl-name" title={dev.display_name ?? undefined}>{dev.display_name}</span>
+                <span className="tdc-wl-track">
+                  <span className="tdc-wl-bar" style={{ width: `${(dev.in_progress / max) * 100}%` }} />
+                  <span className="tdc-wl-limit" style={{ left: `${(limit / max) * 100}%` }} />
+                </span>
+                <b className="tdc-wl-count">{dev.in_progress}</b>
+              </div>
+            </Tooltip>
+          );
+        })}
+        <div className="tdc-note">пунктир — лимит {limit} задач</div>
+      </div>
+    );
+  }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
       {developers.map((dev) => {

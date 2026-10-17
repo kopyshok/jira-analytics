@@ -9,10 +9,15 @@ const QUARTERS = [1, 2, 3, 4];
 interface Props {
   /** id сотрудников, попавших в срез стола (ключ — учётная запись Jira) */
   employeeIds: Record<string, string>;
+  /**
+   * Компактный вид скина: свой заголовок с одним полем «Период» и мини-карта
+   * по неделям квартала — для узкой правой колонки.
+   */
+  compact?: boolean;
 }
 
 /** Отсутствия людей стола: переиспользуем теплокарту с экрана ёмкости. */
-export function AbsenceStrip({ employeeIds }: Props) {
+export function AbsenceStrip({ employeeIds, compact = false }: Props) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [quarter, setQuarter] = useState(Math.floor(now.getMonth() / 3) + 1);
@@ -24,6 +29,43 @@ export function AbsenceStrip({ employeeIds }: Props) {
   const rows = (employees.data ?? [])
     .filter((e) => wanted.has(e.id))
     .map((e) => ({ id: e.id, display_name: e.display_name }));
+
+  if (compact) {
+    const years = [year - 1, year, year + 1];
+    return (
+      <>
+        <div className="tdc-abs-head">
+          <h2 className="rpc-card-title">Отсутствия</h2>
+          <div className="wr-field tdc-field is-period">
+            <label className="wr-field-label" htmlFor="tdc-abs-period">Период</label>
+            <Select
+              id="tdc-abs-period"
+              variant="borderless"
+              value={`${year}-${quarter}`}
+              onChange={(value: string) => {
+                const [y, q] = value.split('-').map(Number);
+                setYear(y);
+                setQuarter(q);
+              }}
+              options={years.flatMap((y) => QUARTERS.map((q) => ({ value: `${y}-${q}`, label: `${y} · Q${q}` })))}
+              popupMatchSelectWidth={false}
+            />
+          </div>
+        </div>
+        {rows.length ? (
+          <AbsenceHeatmap
+            compact
+            year={year}
+            quarter={quarter}
+            employees={rows}
+            absences={absences.data ?? []}
+          />
+        ) : (
+          <p className="tdc-empty">Выберите команды или людей</p>
+        )}
+      </>
+    );
+  }
 
   if (!rows.length) {
     return <Empty description="Выберите команды или людей" image={Empty.PRESENTED_IMAGE_SIMPLE} />;

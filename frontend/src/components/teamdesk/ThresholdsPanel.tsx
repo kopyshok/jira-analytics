@@ -25,6 +25,8 @@ interface Props {
   statusOptions: string[];
   statusCounters: string[];
   onStatusCountersChange: (v: string[]) => void;
+  /** Компактный вид скина: без своей карточки (живёт во всплывающей панели), подписи обычным регистром. */
+  compact?: boolean;
 }
 
 /**
@@ -32,7 +34,7 @@ interface Props {
  * набор счётчиков статусов. Настраивается разово, поэтому спрятано за шестерёнкой.
  */
 export function ThresholdsPanel({
-  settings, statusOptions, statusCounters, onStatusCountersChange,
+  settings, statusOptions, statusCounters, onStatusCountersChange, compact = false,
 }: Props) {
   const { message } = App.useApp();
   const [draft, setDraft] = useState<Record<string, number>>(settings.thresholds);
@@ -50,24 +52,23 @@ export function ThresholdsPanel({
   const toggle = (flag: FlagCode, on: boolean) =>
     setDisabled(on ? disabled.filter((f) => f !== flag) : [...disabled, flag]);
 
-  return (
-    <Card size="small" styles={{ body: { padding: '10px 12px' } }}>
+  const content = (
       <Space orientation="vertical" size={10} style={{ width: '100%' }}>
       <Space wrap size={[14, 6]} align="start">
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>ОТСЛЕЖИВАТЬ</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>{compact ? 'Отслеживать' : 'ОТСЛЕЖИВАТЬ'}</Typography.Text>
         {FLAG_ORDER.map((flag) => (
           <Checkbox
             key={flag}
             checked={!off.has(flag)}
             onChange={(e) => toggle(flag, e.target.checked)}
           >
-            <span style={{ fontSize: 12 }}>{FLAG_ICON[flag]} {FLAG_LABELS[flag]}</span>
+            <span style={{ fontSize: 12 }}>{compact ? FLAG_LABELS[flag] : <>{FLAG_ICON[flag]} {FLAG_LABELS[flag]}</>}</span>
           </Checkbox>
         ))}
       </Space>
 
       <Space wrap size={[18, 10]} align="end">
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>ПОРОГИ ПОДСВЕТКИ</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>{compact ? 'Пороги подсветки' : 'ПОРОГИ ПОДСВЕТКИ'}</Typography.Text>
         {FIELDS.filter((f) => !f.flag || !off.has(f.flag)).map((f) => (
           <Space key={f.key} orientation="vertical" size={2}>
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>{f.label}</Typography.Text>
@@ -99,7 +100,7 @@ export function ThresholdsPanel({
 
       <Space wrap size={[18, 10]} align="end">
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          СЧЁТЧИКИ СТАТУСОВ
+          {compact ? 'Счётчики статусов' : 'СЧЁТЧИКИ СТАТУСОВ'}
         </Typography.Text>
         <Space orientation="vertical" size={2}>
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
@@ -120,6 +121,11 @@ export function ThresholdsPanel({
         </Space>
       </Space>
       </Space>
+  );
+  if (compact) return <div className="tdc-thresholds">{content}</div>;
+  return (
+    <Card size="small" styles={{ body: { padding: '10px 12px' } }}>
+      {content}
     </Card>
   );
 }

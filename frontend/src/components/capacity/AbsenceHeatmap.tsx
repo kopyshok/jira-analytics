@@ -3,6 +3,8 @@ import dayjs from 'dayjs';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { DARK_THEME } from '../../utils/constants';
 import type { AbsenceResponse } from '../../types/api';
+import { quarterWeeks, weekMonthSpans } from '../../utils/quarterWeeks';
+import { deskShortName } from '../../utils/teamDeskView';
 
 const DEFAULT_REASON_COLOR = '#8c8c8c';
 
@@ -20,9 +22,16 @@ interface Props {
   quarter: number;
   employees: Array<{ id: string; display_name: string }>;
   absences: AbsenceResponse[];
+  /**
+   * Компактный вид скина для узкой колонки: недели квартала вместо дней,
+   * в ячейке недели — семь полосок-дней цвета причины, короткие имена.
+   */
+  compact?: boolean;
 }
 
-export default function AbsenceHeatmap({ year, quarter, employees, absences }: Props) {
+const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+
+export default function AbsenceHeatmap({ year, quarter, employees, absences, compact = false }: Props) {
   const { mode } = useAppTheme();
   const isLight = mode === 'light';
 
@@ -92,6 +101,68 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences }: P
     if (!uniqueReasons.has(a.reason_label)) {
       uniqueReasons.set(a.reason_label, a.reason_color ?? DEFAULT_REASON_COLOR);
     }
+  }
+
+  if (compact) {
+    const weeks = quarterWeeks(year, quarter);
+    const spans = weekMonthSpans(weeks);
+    return (
+      <div className="tdc-abs">
+        <div
+          className="tdc-abs-grid"
+          style={{ gridTemplateColumns: `var(--tdc-abs-name-w, 96px) repeat(${weeks.length}, minmax(0, 1fr))` }}
+        >
+          <span />
+          {spans.map((s, idx) => (
+            <span key={`m-${idx}`} className="tdc-abs-month" style={{ gridColumn: `span ${s.span}` }}>
+              {MONTH_NAMES[s.month - 1]}
+            </span>
+          ))}
+          {employees.map((e) => {
+            const list = byEmployee.get(e.id);
+            return (
+              <div key={`row-${e.id}`} style={{ display: 'contents' }}>
+                <span className="tdc-abs-name" title={e.display_name}>{deskShortName(e.display_name)}</span>
+                {weeks.map((w) => {
+                  const marks = w.days.map((d) => (d.inQuarter ? reasonForDay(list, dayjs(d.iso)) : null));
+                  const hits = [...new Set(marks.filter((a): a is AbsenceResponse => a != null))];
+                  const lines = hits.length
+                    ? hits.map((a) => `${a.reason_label}, ${dayjs(a.start_date).format('DD.MM')}–${dayjs(a.end_date).format('DD.MM')}`)
+                    : [`неделя ${ddmm(w.days[0].iso)}–${ddmm(w.days[6].iso)}, отсутствий нет`];
+                  return (
+                    <Tooltip
+                      key={`${e.id}-${w.start}`}
+                      title={<div>{e.display_name}{lines.map((l) => <div key={l}>{l}</div>)}</div>}
+                      mouseEnterDelay={0.3}
+                    >
+                      <span className="tdc-abs-week" role="img" aria-label={`${e.display_name}: ${lines.join('; ')}`}>
+                        {w.days.map((d, i) => (
+                          <span
+                            key={d.iso}
+                            className={`tdc-abs-day${d.inQuarter ? '' : ' is-out'}`}
+                            style={marks[i] ? { background: marks[i]!.reason_color ?? DEFAULT_REASON_COLOR } : undefined}
+                          />
+                        ))}
+                      </span>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+        {uniqueReasons.size > 0 && (
+          <div className="tdc-abs-legend">
+            {Array.from(uniqueReasons.entries()).map(([label, color]) => (
+              <span key={label}>
+                <span className="tdc-abs-legend-sq" style={{ background: color }} />
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (

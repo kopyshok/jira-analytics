@@ -4,6 +4,7 @@ import {
   FLAG_COLOR, FLAG_ICON, FLAG_LABELS, type FlagCode, type ReviewedMark,
 } from '../../api/teamDesk';
 import { useMarkFlag, useUnmarkFlag } from '../../hooks/useTeamDesk';
+import { FLAG_TONE } from '../../utils/teamDeskView';
 
 interface Props {
   issueId: string;
@@ -13,13 +14,15 @@ interface Props {
   count?: number;
   /** Показывать подпись рядом со значком */
   withLabel?: boolean;
+  /** Компактный вид скина: мягкая пилюля с подписью, без значка. */
+  compact?: boolean;
 }
 
 /**
  * Значок признака. Клик открывает действие «Просмотрено» — признак перестаёт
  * считаться проблемой, пока не изменится причина.
  */
-export function FlagChip({ issueId, flag, signature, reviewed, count, withLabel }: Props) {
+export function FlagChip({ issueId, flag, signature, reviewed, count, withLabel, compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const [comment, setComment] = useState('');
   const mark = useMarkFlag();
@@ -49,6 +52,15 @@ export function FlagChip({ issueId, flag, signature, reviewed, count, withLabel 
         trigger={['click']}
       >
         <Tooltip title={title}>
+          {compact ? (
+            <button
+              type="button"
+              aria-label={`${label}: действия с замечанием`}
+              className={`wr-pill is-sm is-${reviewed ? 'neutral' : FLAG_TONE[flag]} tdc-flag${reviewed ? ' is-reviewed' : ''}`}
+            >
+              {label}{count != null ? ` ${count}` : ''}
+            </button>
+          ) : (
           <Tag
             color={reviewed ? 'default' : FLAG_COLOR[flag]}
             style={{ cursor: 'pointer', opacity: reviewed ? 0.45 : 1, marginInlineEnd: 4 }}
@@ -57,6 +69,7 @@ export function FlagChip({ issueId, flag, signature, reviewed, count, withLabel 
             {withLabel ? ` ${label}` : ''}
             {count != null ? ` ${count}` : ''}
           </Tag>
+          )}
         </Tooltip>
       </Dropdown>
 
@@ -93,21 +106,24 @@ export function FlagList({
   flags,
   signatures,
   reviewed,
+  compact = false,
 }: {
   issueId: string;
   flags: FlagCode[];
   signatures: Partial<Record<FlagCode, string>>;
   reviewed: ReviewedMark[];
+  /** Компактный вид скина — подписанные пилюли. */
+  compact?: boolean;
 }) {
   // Просмотренные приходят только при включённом переключателе — и тогда они
   // остаются в flags, приглушёнными. Отдельного списка на экране нет.
   const reviewedMap = new Map(reviewed.map((r) => [r.flag, r]));
 
   if (flags.length === 0) {
-    return <span style={{ opacity: 0.35 }}>—</span>;
+    return compact ? <span className="tdc-dash">—</span> : <span style={{ opacity: 0.35 }}>—</span>;
   }
   return (
-    <span>
+    <span className={compact ? 'tdc-flags' : undefined}>
       {flags.map((flag) => (
         <FlagChip
           key={flag}
@@ -115,6 +131,7 @@ export function FlagList({
           flag={flag}
           signature={signatures[flag] ?? ''}
           reviewed={reviewedMap.get(flag)}
+          compact={compact}
         />
       ))}
     </span>

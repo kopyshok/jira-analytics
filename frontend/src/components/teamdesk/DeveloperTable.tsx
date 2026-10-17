@@ -6,6 +6,7 @@ import {
 } from '../../api/teamDesk';
 import type { QueueScope } from './queueFilter';
 import { HoursScale } from './HoursScale';
+import { FLAG_TONE, deskAvatarTone, deskInitials } from '../../utils/teamDeskView';
 
 interface Props {
   developers: DeskDeveloper[];
@@ -20,12 +21,14 @@ interface Props {
   onQueueFilter: (developerId: string, scope: QueueScope) => void;
   flagFilter: FlagCode | null;
   onFlagFilter: (developerId: string, flag: FlagCode | null) => void;
+  /** Компактный вид скина: аватары, замечания подписанными пилюлями, выбор — классами. */
+  compact?: boolean;
 }
 
 /** Раскладка «Ведомость»: строка на разработчика, снизу итог. */
 export function DeveloperTable({
   developers, workload, overrunPct, selected, onSelect, statuses, onStatusFilter,
-  queueScope, onQueueFilter, flagFilter, onFlagFilter,
+  queueScope, onQueueFilter, flagFilter, onFlagFilter, compact = false,
 }: Props) {
   const columns: ColumnsType<DeskDeveloper> = [
     {
@@ -33,7 +36,20 @@ export function DeveloperTable({
       dataIndex: 'display_name',
       ellipsis: true,
       sorter: (a, b) => (a.display_name ?? '').localeCompare(b.display_name ?? ''),
-      render: (v: string | null, row) => (
+      render: (v: string | null, row) => compact ? (
+        <span className="tdc-dev">
+          <span
+            className="tdc-avatar is-lg"
+            style={{ background: deskAvatarTone(v).bg, color: deskAvatarTone(v).fg }}
+          >
+            {deskInitials(v)}
+          </span>
+          <span className="tdc-dev-text">
+            <b className="tdc-ellipsis">{v ?? 'Без имени'}</b>
+            {row.team && <span className="tdc-dev-team tdc-ellipsis">{row.team}</span>}
+          </span>
+        </span>
+      ) : (
         <>
           <Typography.Text strong>{v ?? 'Без имени'}</Typography.Text>
           {row.team && (
@@ -83,12 +99,13 @@ export function DeveloperTable({
               e.stopPropagation();
               onQueueFilter(row.developer_id, active === scope ? null : scope);
             }}
+            className={compact ? `tdc-queue-line${active === scope ? ' is-active' : ''}` : undefined}
             style={{
               cursor: 'pointer',
               borderRadius: 4,
               padding: '0 4px',
               marginInline: -4,
-              background: active === scope ? 'rgba(75,163,255,0.18)' : undefined,
+              background: !compact && active === scope ? 'rgba(75,163,255,0.18)' : undefined,
             }}
           >
             {scope === 'assigned' && (
@@ -101,7 +118,7 @@ export function DeveloperTable({
         );
         return (
           <Tooltip title={`Свободно ${roundHours(load.available_hours)} ч на неделю вперёд`}>
-            <div style={{ color: load.overloaded ? '#ff6b6b' : undefined }}>
+            <div style={{ color: load.overloaded ? 'var(--td-over-text, #ff6b6b)' : undefined }}>
               {line('all', load.queue_hours, load.queue_days, load.without_estimate)}
               {line(
                 'assigned',
@@ -116,8 +133,30 @@ export function DeveloperTable({
     },
     {
       title: 'Замечания',
-      width: 180,
-      render: (_, row) =>
+      // Подписанные пилюли компактного вида шире значков — иначе строка в три этажа.
+      width: compact ? 300 : 180,
+      render: (_, row) => compact ? (
+        <span className="tdc-flags">
+          {FLAG_ORDER.filter((f) => row.flag_counts[f]).map((flag) => {
+            const active = selected === row.developer_id && flagFilter === flag;
+            return (
+              <Tooltip key={flag} title={`${FLAG_LABELS[flag]} — показать только эти`}>
+                <button
+                  type="button"
+                  aria-pressed={active}
+                  className={`wr-pill is-sm is-${FLAG_TONE[flag]} tdc-pill is-click${active ? ' is-active' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFlagFilter(row.developer_id, active ? null : flag);
+                  }}
+                >
+                  {FLAG_LABELS[flag]} {row.flag_counts[flag]}
+                </button>
+              </Tooltip>
+            );
+          })}
+        </span>
+      ) :
         FLAG_ORDER.filter((f) => row.flag_counts[f]).map((flag) => {
           const active = selected === row.developer_id && flagFilter === flag;
           return (
@@ -191,12 +230,13 @@ export function DeveloperTable({
       pagination={false}
       // Имя забирает остаток; цифровым колонкам дана ширина, при которой
       // заголовок помещается в одну строку.
-      scroll={{ x: 1370 + statusCols.length * 150 }}
+      scroll={{ x: 1370 + (compact ? 120 : 0) + statusCols.length * 150 }}
+      rowClassName={compact ? (row) => (selected === row.developer_id ? 'tdc-row-selected' : '') : undefined}
       onRow={(row) => ({
         onClick: () => onSelect(selected === row.developer_id ? null : row.developer_id),
         style: {
           cursor: 'pointer',
-          background: selected === row.developer_id ? 'rgba(75,163,255,0.12)' : undefined,
+          background: !compact && selected === row.developer_id ? 'rgba(75,163,255,0.12)' : undefined,
         },
       })}
       summary={() => (

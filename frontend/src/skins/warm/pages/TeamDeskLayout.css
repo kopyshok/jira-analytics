@@ -1,0 +1,592 @@
+/* ============================================================
+   «Рабочий стол тимлида» в скине «Тёплая» (макет C-desk).
+   1) Палитра: компоненты стола берут цвета шкалы и минуса из переменных
+      --td-*, у Aurora переменных нет — действуют прежние значения.
+   2) Компактный вид компонентов стола (prop compact, классы tdc-*) и
+      раскладка страницы (tdc-desk, tdc-body, tdc-side).
+   ============================================================ */
+
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
+  --td-scale-ok: #3F6CA8;
+  --td-scale-over: #B5502A;
+  --td-scale-idle: #6B6358;
+  --td-scale-under: #B7791F;
+  --td-scale-track: #EEE9E1;
+  --td-over-text: #A9461F;
+}
+
+/* ---------- Раскладка страницы ---------- */
+html[data-skin="warm"] .tdc-desk { gap: 10px; }
+html[data-skin="warm"] .tdc-head { align-items: flex-end; }
+html[data-skin="warm"] .tdc-subtitle { margin: 2px 0 0; line-height: 1.4; }
+
+/* Раскладки «Светофор / Ведомость / Проблемы вперёд» — на белом, как в макете */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .tdc-tabs.ant-segmented {
+  background: #FFFFFF !important;
+  border: 1px solid #E3DDD3 !important;
+  border-radius: 12px !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .tdc-tabs .ant-segmented-item-label {
+  min-height: 34px;
+  line-height: 34px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+
+/* Тело: слева отборы и задачи, справа три блока */
+html[data-skin="warm"] .tdc-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+html[data-skin="warm"] .tdc-main {
+  flex: 1 1 640px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+html[data-skin="warm"] .tdc-side {
+  flex: 0 0 360px;
+  width: 360px;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+html[data-skin="warm"] .tdc-side-card { flex: none; padding: 14px 16px; }
+html[data-skin="warm"] .tdc-empty-card {
+  flex: 1 1 auto;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (max-width: 1100px) {
+  html[data-skin="warm"] .tdc-body { flex-direction: column; }
+  html[data-skin="warm"] .tdc-side { flex: none; width: auto; }
+}
+
+/* ---------- Фильтры: поля с подписью внутри рамки ---------- */
+html[data-skin="warm"] .tdc-filters { display: flex; flex-direction: column; gap: 8px; }
+html[data-skin="warm"] .tdc-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-height: 40px;
+}
+html[data-skin="warm"] .tdc-field { height: 40px; padding: 0 6px 0 12px; gap: 6px; }
+html[data-skin="warm"] .tdc-field.is-teams { flex: 1 1 300px; max-width: 400px; }
+html[data-skin="warm"] .tdc-field.is-people { flex: 1 1 260px; max-width: 320px; }
+html[data-skin="warm"] .tdc-field.is-sprint,
+html[data-skin="warm"] .tdc-field.is-release { flex: 0 1 180px; }
+html[data-skin="warm"] .tdc-field .ant-select { flex: 1 1 auto; min-width: 0; }
+html[data-skin="warm"] .tdc-field.is-period { height: 32px; padding: 0 2px 0 10px; }
+html[data-skin="warm"] .tdc-field.is-period .ant-select { flex: none; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-field .ant-select-selection-placeholder { color: #6B6358; }
+/* Выбранная команда — мягкая песочная пилюля */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-field .ant-select-selection-item {
+  background: #F1ECE3 !important;
+  border: 0 !important;
+  border-radius: 13px !important;
+  color: #2A2620 !important;
+  font-weight: 500;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-field .ant-select-single .ant-select-selection-item,
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-field.is-period .ant-select-selection-item { background: transparent !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-field .ant-select-selection-item-remove { color: #6B6358 !important; }
+
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .tdc-seg.ant-segmented {
+  background: #FFFFFF !important;
+  border: 1px solid #E3DDD3 !important;
+  height: 40px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .tdc-seg .ant-segmented-item-label {
+  min-height: 32px;
+  line-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+html[data-skin="warm"] .tdc-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 6px;
+  font-size: 13px;
+  color: #2A2620;
+  cursor: pointer;
+  white-space: nowrap;
+}
+html[data-skin="warm"] .tdc-filters-end { margin-left: auto; display: inline-flex; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .tdc-filters-end .ant-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border-color: #D9D2C6;
+}
+
+/* Панель настроек вида под шестерёнкой */
+html[data-skin="warm"] .tdc-thresholds-pop .ant-popover-inner { padding: 14px 16px; max-width: min(980px, calc(100vw - 48px)); }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-thresholds .ant-typography-secondary { color: #4A443A !important; }
+
+/* ---------- Плитки разработчиков: четыре в ряд, остальные — прокруткой вбок ---------- */
+html[data-skin="warm"] .tdc-cards {
+  flex: none;
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  padding-bottom: 2px;
+}
+html[data-skin="warm"] .tdc-card {
+  flex: 1 0 calc((100% - 36px) / 4);
+  min-width: 300px;
+  scroll-snap-align: start;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+html[data-skin="warm"] .tdc-card:hover { border-color: #D9D2C6; }
+html[data-skin="warm"] .tdc-card.is-selected { outline: 2px solid #2F6B5A; outline-offset: -1px; }
+html[data-skin="warm"] .tdc-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
+html[data-skin="warm"] .tdc-card-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 0 14px;
+}
+html[data-skin="warm"] .tdc-card-col { display: flex; flex-direction: column; min-width: 0; }
+html[data-skin="warm"] .tdc-card-col.is-right { gap: 4px; }
+html[data-skin="warm"] .tdc-card-who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+html[data-skin="warm"] .tdc-card-who-text { min-width: 0; }
+html[data-skin="warm"] .tdc-card-name { font-size: 15px; font-weight: 600; line-height: 1.2; color: #2A2620; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-skin="warm"] .tdc-card-team {
+  font-size: 12px;
+  color: #6B6358;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-skin="warm"] .tdc-card-total { display: flex; align-items: baseline; gap: 6px; margin-top: 2px; font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] .tdc-card-num { font-size: 30px; font-weight: 700; line-height: 1; color: #2A2620; }
+html[data-skin="warm"] .tdc-card-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #2A2620;
+}
+html[data-skin="warm"] .tdc-card-split > span { display: inline-flex; align-items: center; gap: 5px; }
+html[data-skin="warm"] .tdc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+html[data-skin="warm"] .tdc-dot.is-dev { background: #3F6CA8; }
+html[data-skin="warm"] .tdc-dot.is-waiting { background: #B7791F; }
+html[data-skin="warm"] .tdc-dot.is-todo { background: #8A8174; }
+html[data-skin="warm"] .tdc-card-acc {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6B6358;
+}
+html[data-skin="warm"] .tdc-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 11px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* Сильная пометка — сплошная терракота, слабая — мягкая охра */
+html[data-skin="warm"] .tdc-badge.is-bad { background: #A9461F; color: #FFFFFF; }
+html[data-skin="warm"] .tdc-badge.is-warn { background: #F6EAD2; color: #7A4E0C; }
+html[data-skin="warm"] .tdc-card-hours {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  color: #6B6358;
+}
+html[data-skin="warm"] .tdc-card-hours b { font-size: 14px; font-weight: 600; color: #2A2620; }
+html[data-skin="warm"] .tdc-card-hours b.is-over { color: #8F3A18; }
+html[data-skin="warm"] .tdc-card-bar {
+  display: flex;
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 3px;
+  background: #EEE9E1;
+  overflow: hidden;
+}
+html[data-skin="warm"] .tdc-card-bar-fill { background: #3F6CA8; }
+html[data-skin="warm"] .tdc-card-bar-tail { background: #B7791F; }
+html[data-skin="warm"] .tdc-card-bar-tail.is-over { background: #B5502A; }
+html[data-skin="warm"] .tdc-queue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-height: 36px;
+  padding: 3px 10px;
+  border: 1px solid #EEE9E1;
+  border-radius: 10px;
+  background: #FBF9F5;
+  text-align: left;
+  font: inherit;
+  color: #2A2620;
+  cursor: pointer;
+}
+html[data-skin="warm"] .tdc-card-col.is-right > div + .tdc-queue { margin-top: 6px; }
+html[data-skin="warm"] .tdc-queue:hover { border-color: #D9D2C6; }
+html[data-skin="warm"] .tdc-queue.is-active { border-color: #2F6B5A; background: #EDF3F0; }
+html[data-skin="warm"] .tdc-queue .anticon { font-size: 10px; color: #6B6358; flex: none; }
+html[data-skin="warm"] .tdc-queue-label { display: block; font-size: 11px; color: #5E564A; line-height: 1.25; }
+html[data-skin="warm"] .tdc-queue-value { display: block; font-size: 13px; font-weight: 600; line-height: 1.35; }
+html[data-skin="warm"] .tdc-card-foot-wrap { position: relative; margin-top: auto; }
+html[data-skin="warm"] .tdc-card-foot {
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 5px;
+  padding-top: 8px;
+  border-top: 1px solid #EEE9E1;
+}
+/* Две строки пилюль; справа место под кнопку «ещё…» */
+html[data-skin="warm"] .tdc-card-foot.is-clamped { max-height: 53px; overflow: hidden; padding-right: 48px; }
+html[data-skin="warm"] .tdc-card-more {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid #D9D2C6;
+  border-radius: 10px;
+  background: #FFFFFF;
+  color: #4A443A;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+html[data-skin="warm"] .tdc-card-more:hover { border-color: #2F6B5A; color: #2F6B5A; }
+html[data-skin="warm"] .tdc-card-more[aria-expanded="true"] { position: static; display: block; margin: 4px 0 0 auto; }
+/* Подвал плитки: у реальных людей пилюль больше, чем в макете, — чуть мельче, чтобы плитка не росла */
+html[data-skin="warm"] .tdc-card-foot .wr-pill.is-sm { height: 20px; padding: 0 7px; font-size: 11.5px; }
+html[data-skin="warm"] .tdc-clean { display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; font-size: 12px; color: #2D6140; }
+
+/* Аватары с инициалами */
+html[data-skin="warm"] .tdc-avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+html[data-skin="warm"] .tdc-avatar.is-lg { width: 32px; height: 32px; font-size: 12px; }
+
+/* Пилюли статусов и замечаний; кликабельные — кнопки */
+html[data-skin="warm"] .tdc-pill { font-weight: 500; border: 0; font-family: inherit; }
+html[data-skin="warm"] .tdc-pill.is-click { cursor: pointer; }
+html[data-skin="warm"] .tdc-pill.is-click:hover { filter: brightness(0.97); }
+html[data-skin="warm"] .tdc-pill.is-active { outline: 2px solid #2F6B5A; outline-offset: 0; font-weight: 700; }
+
+/* ---------- Полоса отборов ---------- */
+html[data-skin="warm"] .tdc-bars { flex: none; padding: 10px 16px; display: flex; flex-direction: column; gap: 8px; }
+html[data-skin="warm"] .tdc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+html[data-skin="warm"] .tdc-bar-label { width: 140px; flex: none; font-size: 13px; font-weight: 600; color: #2A2620; }
+html[data-skin="warm"] .tdc-bar-empty { font-size: 13px; color: #6B6358; }
+html[data-skin="warm"] .tdc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid #DDD7CC;
+  background: #ECE8E1;
+  color: #5E564A;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+html[data-skin="warm"] .tdc-chip b { font-weight: 700; }
+html[data-skin="warm"] .tdc-chip:hover { filter: brightness(0.97); }
+html[data-skin="warm"] .tdc-chip.is-bad { border-color: #EBC9BA; background: #F6E1D8; color: #8F3A18; }
+html[data-skin="warm"] .tdc-chip.is-warn { border-color: #EAD6AE; background: #F6EAD2; color: #7A4E0C; }
+html[data-skin="warm"] .tdc-chip.is-info { border-color: #CBD9EC; background: #E3EBF6; color: #2A4F82; }
+html[data-skin="warm"] .tdc-chip.is-good { border-color: #C6DDCC; background: #E1EFE4; color: #2D6140; }
+html[data-skin="warm"] .tdc-chip.is-violet { border-color: #E2CCDD; background: #F1E3EE; color: #6E3B63; }
+html[data-skin="warm"] .tdc-chip.is-active { outline: 2px solid #2F6B5A; outline-offset: 1px; font-weight: 700; }
+
+/* ---------- Таблица задач ---------- */
+html[data-skin="warm"] .tdc-issues-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+html[data-skin="warm"] .tdc-issues {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html[data-skin="warm"] .tdc-issues-head {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 16px;
+}
+html[data-skin="warm"] .tdc-issues-title { display: flex; align-items: baseline; gap: 12px; }
+html[data-skin="warm"] .tdc-issues-count { font-size: 14px; color: #6B6358; }
+html[data-skin="warm"] .tdc-issues-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .tdc-issues-tools .ant-btn { height: 36px; padding-inline: 16px; border-color: #D9D2C6; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .tdc-issues-tools .ant-btn:disabled {
+  background: #F3EFE8 !important;
+  border-color: #E3DDD3 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .tdc-issues-tools .ant-segmented { height: 36px; }
+html[data-skin="warm"] .tdc-issues-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid #EEE9E1;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-table { font-size: 13px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-table-thead > tr > th {
+  height: 38px;
+  padding: 0 10px !important;
+  font-size: 13px;
+  white-space: nowrap;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-table-thead > tr > th:first-child { padding-left: 16px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-table-thead > tr > th.ant-table-column-sort { color: #2A2620 !important; font-weight: 600; background: #FFFFFF !important; }
+/* Стрелка сортировки — только у колонки, по которой отсортировано, и под указателем */
+html[data-skin="warm"] .tdc-issues .ant-table-thead th:not(.ant-table-column-sort):not(:hover) .ant-table-column-sorter { opacity: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-table-tbody > tr > td {
+  height: 40px;
+  padding: 4px 10px !important;
+  color: #2A2620;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-table-tbody > tr > td:first-child { padding-left: 16px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-table-tbody > tr > td.ant-table-column-sort { background: transparent !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-table-tbody > tr.tdc-group-row > td { background: #FAF8F4 !important; font-weight: 600; }
+html[data-skin="warm"] .tdc-group { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+html[data-skin="warm"] .tdc-group-row .tdc-expand { margin-top: 2px; }
+html[data-skin="warm"] .tdc-group-name { font-size: 14px; font-weight: 600; color: #2A2620; }
+html[data-skin="warm"] .tdc-group-meta { font-weight: 400; color: #6B6358; }
+html[data-skin="warm"] .tdc-group-statuses { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; font-weight: 400; }
+/* Стрелка раскрытия обтекается текстом, как значок AntD: название не уходит на новую строку */
+html[data-skin="warm"] .tdc-expand {
+  float: left;
+  width: 20px;
+  height: 20px;
+  margin: -1px 6px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6B6358;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  font-size: 10px;
+  cursor: pointer;
+}
+html[data-skin="warm"] .tdc-expand:hover { background: #F3EFE8; color: #2A2620; }
+html[data-skin="warm"] .tdc-expand.is-empty { cursor: default; }
+html[data-skin="warm"] .tdc-expand.is-empty:hover { background: transparent; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-typography a,
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues a.ant-typography { color: #24584A; font-weight: 600; }
+html[data-skin="warm"] .tdc-mark {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  margin-right: 6px;
+  padding: 0 8px;
+  border-radius: 10px;
+  border: 1px solid #D9D2C6;
+  color: #5E564A;
+  font-size: 11px;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+html[data-skin="warm"] .tdc-sprint { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+html[data-skin="warm"] .tdc-ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-skin="warm"] .tdc-issues .tdc-ellipsis { display: inline-block; max-width: 100%; vertical-align: middle; }
+html[data-skin="warm"] .tdc-more {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #ECE8E1;
+  color: #5E564A;
+  font-size: 11px;
+  font-weight: 600;
+}
+html[data-skin="warm"] .tdc-minus { font-weight: 600; }
+/* Название задачи — не длиннее двух строк, целиком — во всплывающей подсказке */
+html[data-skin="warm"] .tdc-summary-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.4;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-table-tbody > tr.tdc-group-row > td:first-child { white-space: nowrap; }
+html[data-skin="warm"] .tdc-dash { color: #6B6358; }
+html[data-skin="warm"] .tdc-flags { display: flex; flex-wrap: wrap; gap: 4px 5px; min-width: 0; }
+/* Длинная подпись признака не распирает колонку: обрезается, целиком — в подсказке */
+html[data-skin="warm"] .tdc-flag {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 0;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+html[data-skin="warm"] .tdc-flag.is-reviewed { text-decoration: line-through; }
+html[data-skin="warm"] .tdc-issues .tdc-flags { gap: 3px 4px; }
+html[data-skin="warm"] .tdc-issues .tdc-flag.wr-pill.is-sm { height: 20px; padding: 0 7px; font-size: 11.5px; }
+html[data-skin="warm"] .tdc-status { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+html[data-skin="warm"] .tdc-scale { display: inline-flex; align-items: center; gap: 8px; }
+html[data-skin="warm"] .tdc-scale-track {
+  display: flex;
+  width: 62px;
+  height: 6px;
+  border-radius: 3px;
+  background: #EEE9E1;
+  overflow: hidden;
+}
+html[data-skin="warm"] .tdc-scale-fill { background: #3F6CA8; }
+html[data-skin="warm"] .tdc-scale-tail { background: #B7791F; }
+html[data-skin="warm"] .tdc-scale.is-over .tdc-scale-tail { background: #B5502A; }
+html[data-skin="warm"] .tdc-scale-pct { font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] .tdc-scale.is-over .tdc-scale-pct { color: #8F3A18; font-weight: 600; }
+html[data-skin="warm"] .tdc-scale.is-above .tdc-scale-pct { color: #7A4E0C; font-weight: 600; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-input-number { border-color: #D9D2C6; border-radius: 8px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-issues .ant-input-number-input { text-align: center; }
+
+/* ---------- Ведомость ---------- */
+html[data-skin="warm"] .tdc-summary {
+  flex: none;
+  max-height: 300px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 6px;
+  overflow: hidden;
+}
+html[data-skin="warm"] .tdc-summary-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-summary .ant-table-thead > tr > th { font-size: 13px; white-space: nowrap; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .tdc-summary .ant-table-tbody > tr.tdc-row-selected > td { background: #EDF3F0 !important; }
+html[data-skin="warm"] .tdc-dev { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+html[data-skin="warm"] .tdc-dev-text { display: flex; flex-direction: column; min-width: 0; }
+html[data-skin="warm"] .tdc-dev-team { font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] .tdc-queue-line.is-active { background: #E2ECE7; }
+
+/* ---------- Правая колонка ---------- */
+html[data-skin="warm"] .tdc-note { margin: 2px 0 10px; font-size: 12px; line-height: 1.4; color: #6B6358; }
+html[data-skin="warm"] .tdc-wl .tdc-note { margin: 6px 0 0; }
+html[data-skin="warm"] .tdc-empty { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: #6B6358; }
+html[data-skin="warm"] .tdc-rubber {
+  border: 1px solid #EEE9E1;
+  border-radius: 10px;
+  background: #FBF9F5;
+  padding: 10px 12px;
+}
+html[data-skin="warm"] .tdc-rubber + .tdc-rubber { margin-top: 8px; }
+html[data-skin="warm"] .tdc-rubber-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+html[data-skin="warm"] .tdc-rubber-head .wr-pill { margin-left: auto; }
+html[data-skin="warm"] .tdc-rubber-task { margin-top: 6px; font-size: 13px; }
+html[data-skin="warm"] .tdc-rubber-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 10px;
+}
+html[data-skin="warm"] .tdc-rubber-stats > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+html[data-skin="warm"] .tdc-rubber-stats b { font-size: 15px; font-weight: 600; color: #2A2620; }
+html[data-skin="warm"] .tdc-rubber-stats .is-accent b { font-weight: 700; color: #2F6B5A; }
+html[data-skin="warm"] .tdc-rubber-stats span { font-size: 11px; color: #5E564A; }
+
+html[data-skin="warm"] .tdc-wl { display: flex; flex-direction: column; margin-top: 10px; }
+html[data-skin="warm"] .tdc-wl-row { display: flex; align-items: center; gap: 10px; height: 24px; }
+html[data-skin="warm"] .tdc-wl-name {
+  width: 132px;
+  flex: none;
+  font-size: 13px;
+  color: #2A2620;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-skin="warm"] .tdc-wl-track { position: relative; flex: 1; height: 24px; }
+html[data-skin="warm"] .tdc-wl-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 6px;
+  height: 12px;
+  border-radius: 6px;
+  background: #F3EFE8;
+}
+html[data-skin="warm"] .tdc-wl-bar { position: absolute; left: 0; top: 6px; height: 12px; border-radius: 6px; background: #3F6CA8; }
+html[data-skin="warm"] .tdc-wl-row.is-over .tdc-wl-bar { background: #B5502A; }
+html[data-skin="warm"] .tdc-wl-limit { position: absolute; top: 0; bottom: 0; border-left: 2px dashed #6B6358; }
+html[data-skin="warm"] .tdc-wl-count { width: 18px; text-align: right; font-weight: 600; color: #2A2620; }
+html[data-skin="warm"] .tdc-wl-row.is-over .tdc-wl-count { color: #8F3A18; }
+
+html[data-skin="warm"] .tdc-abs-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+html[data-skin="warm"] .tdc-abs { margin-top: 12px; }
+html[data-skin="warm"] .tdc-abs-grid { display: grid; gap: 3px 2px; align-items: center; }
+html[data-skin="warm"] .tdc-abs-month { font-size: 11px; color: #6B6358; white-space: nowrap; overflow: hidden; }
+html[data-skin="warm"] .tdc-abs-name {
+  font-size: 12px;
+  color: #2A2620;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 4px;
+}
+html[data-skin="warm"] .tdc-abs-week {
+  display: flex;
+  height: 16px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #EEE9E1;
+}
+html[data-skin="warm"] .tdc-abs-day { flex: 1 1 0; min-width: 0; }
+html[data-skin="warm"] .tdc-abs-day.is-out { background: #F7F4EF; }
+html[data-skin="warm"] .tdc-abs-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #6B6358;
+}
+html[data-skin="warm"] .tdc-abs-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+html[data-skin="warm"] .tdc-abs-legend-sq { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }

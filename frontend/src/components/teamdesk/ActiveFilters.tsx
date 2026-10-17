@@ -8,6 +8,8 @@ interface Props {
   status: string | null;
   queueScope: QueueScope;
   onReset: () => void;
+  /** Компактный вид скина: подпись обычным регистром, пилюли без значков. */
+  compact?: boolean;
 }
 
 /**
@@ -15,14 +17,26 @@ interface Props {
  * Без неё через минуту анализа непонятно, почему список короткий.
  */
 export function ActiveFilters({
-  developerName, flag, status, queueScope, onReset,
+  developerName, flag, status, queueScope, onReset, compact = false,
 }: Props) {
   const chips: string[] = [];
   if (developerName) chips.push(developerName);
   if (queueScope) chips.push(QUEUE_SCOPE_LABEL[queueScope]);
-  if (flag) chips.push(`${FLAG_ICON[flag]} ${FLAG_LABELS[flag]}`);
+  if (flag) chips.push(compact ? FLAG_LABELS[flag] : `${FLAG_ICON[flag]} ${FLAG_LABELS[flag]}`);
   if (status) chips.push(status);
   if (!chips.length) return null;
+
+  if (compact) {
+    return (
+      <div className="tdc-bar">
+        <span className="tdc-bar-label">Отобрано</span>
+        {chips.map((chip) => (
+          <span key={chip} className="wr-pill is-accent">{chip}</span>
+        ))}
+        <button type="button" className="wr-link" onClick={onReset}>Сбросить</button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

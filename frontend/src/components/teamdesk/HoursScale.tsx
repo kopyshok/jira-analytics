@@ -4,22 +4,27 @@ import { roundHours } from '../../api/teamDesk';
 interface Props {
   fact: number;
   est: number | null;
-  /** centered — засечка оценки посередине: недобор влево, перебор вправо */
-  variant?: 'bar' | 'centered';
+  /**
+   * centered — засечка оценки посередине: недобор влево, перебор вправо;
+   * inline — короткая полоса и процент в одну строку (таблица скина).
+   */
+  variant?: 'bar' | 'centered' | 'inline';
   overrunPct: number;
   width?: number;
 }
 
-const COLOR_OK = '#3ebd85';
-const COLOR_OVER = '#ff6b6b';
-const COLOR_IDLE = '#788799';
-const COLOR_UNDER = '#eeb13c';
-const TRACK = 'rgba(125,145,170,0.22)';
+// Скин переопределяет цвета переменными --td-scale-*; у Aurora их нет.
+const COLOR_OK = 'var(--td-scale-ok, #3ebd85)';
+const COLOR_OVER = 'var(--td-scale-over, #ff6b6b)';
+const COLOR_IDLE = 'var(--td-scale-idle, #788799)';
+const COLOR_UNDER = 'var(--td-scale-under, #eeb13c)';
+const TRACK = 'var(--td-scale-track, rgba(125,145,170,0.22))';
 
 /** Шкала «факт / оценка». Перерасход рисуется штриховым хвостом поверх полосы. */
 export function HoursScale({ fact, est, variant = 'bar', overrunPct, width }: Props) {
   const factText = roundHours(fact);
   if (est == null) {
+    if (variant === 'inline') return <span className="tdc-dash">—</span>;
     return <span style={{ color: COLOR_IDLE }}>{factText} / — ч</span>;
   }
   const estText = roundHours(est);
@@ -49,6 +54,22 @@ export function HoursScale({ fact, est, variant = 'bar', overrunPct, width }: Pr
             <span>{ratio > 1 ? `+${Math.round((ratio - 1) * 100)}%` : ''}</span>
           </div>
         </div>
+      </Tooltip>
+    );
+  }
+
+  if (variant === 'inline') {
+    // Перебор — сплошным хвостом своей доли: полоса = факт, хвост — сверх оценки.
+    const part = ratio > 1 ? (1 / ratio) * 100 : ratio * 100;
+    return (
+      <Tooltip title={title}>
+        <span className={`tdc-scale${over ? ' is-over' : ratio > 1 ? ' is-above' : ''}`}>
+          <span className="tdc-scale-track">
+            <span className="tdc-scale-fill" style={{ width: `${part}%` }} />
+            {ratio > 1 && <span className="tdc-scale-tail" style={{ width: `${100 - part}%` }} />}
+          </span>
+          <span className="tdc-scale-pct">{Math.round(ratio * 100)}%</span>
+        </span>
       </Tooltip>
     );
   }

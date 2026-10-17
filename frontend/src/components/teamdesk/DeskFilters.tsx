@@ -7,6 +7,13 @@ import { useEmployees } from '../../hooks/useCapacity';
 
 const DATE_FMT = 'YYYY-MM-DD';
 
+/**
+ * Подпись «ещё N» у списка, где метки не влезли. Пока скрытых меток нет,
+ * AntD всё равно держит в разметке прозрачный замер «+ 0 ...» — его текст
+ * читают экранные дикторы и проверка контраста; пустая подпись их не путает.
+ */
+const restTags = (omitted: unknown[]) => (omitted.length ? `+${omitted.length}` : '');
+
 interface Props {
   teams: string[];
   onTeamsChange: (v: string[]) => void;
@@ -31,6 +38,13 @@ interface Props {
   onSprintsChange: (v: string[]) => void;
   releases: string[];
   onReleasesChange: (v: string[]) => void;
+  /**
+   * Компактный вид скина: поля с подписью внутри рамки, две строки, без
+   * своей карточки. `trailing` — элемент в конце второй строки (шестерёнка
+   * с панелью настроек); не задан — обычная шестерёнка.
+   */
+  compact?: boolean;
+  trailing?: React.ReactNode;
 }
 
 /** Шапка раздела: команды, добранные точечно люди, период, пороги. */
@@ -44,9 +58,149 @@ export function DeskFilters({
   onToggleThresholds,
   sprintOptions, releaseOptions,
   sprints, onSprintsChange, releases, onReleasesChange,
+  compact = false, trailing,
 }: Props) {
   const teamsQuery = useTeams();
   const employeesQuery = useEmployees({ isActive: true });
+
+  if (compact) {
+    const field = (id: string, label: string, control: React.ReactNode, cls: string) => (
+      <div className={`wr-field tdc-field ${cls}`}>
+        <label className="wr-field-label" htmlFor={id}>{label}</label>
+        {control}
+      </div>
+    );
+    return (
+      <div className="tdc-filters" role="group" aria-label="Фильтры">
+        <div className="tdc-filters-row">
+          {field('tdc-teams', 'Команды', (
+            <Select
+              id="tdc-teams"
+              variant="borderless"
+              mode="multiple"
+              allowClear
+              placeholder="Выберите команды"
+              value={teams}
+              onChange={onTeamsChange}
+              loading={teamsQuery.isLoading}
+              options={(teamsQuery.data ?? []).map((t) => ({ value: t, label: t }))}
+              maxTagCount="responsive"
+              maxTagPlaceholder={restTags}
+              popupMatchSelectWidth={false}
+            />
+          ), 'is-teams')}
+          {field('tdc-people', 'Отдельные люди', (
+            <Select
+              id="tdc-people"
+              variant="borderless"
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Добрать разработчика"
+              value={developers}
+              onChange={onDevelopersChange}
+              loading={employeesQuery.isLoading}
+              options={(employeesQuery.data ?? [])
+                .filter((e) => e.role && developerRoles.includes(e.role))
+                .map((e) => ({
+                  value: e.jira_account_id,
+                  label: e.display_name,
+                }))}
+              maxTagCount="responsive"
+              maxTagPlaceholder={restTags}
+              popupMatchSelectWidth={false}
+            />
+          ), 'is-people')}
+          {field('tdc-sprint', 'Спринт', (
+            <Select
+              id="tdc-sprint"
+              variant="borderless"
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Все спринты"
+              value={sprints}
+              onChange={onSprintsChange}
+              options={sprintOptions.map((v) => ({ value: v, label: v }))}
+              maxTagCount="responsive"
+              maxTagPlaceholder={restTags}
+              popupMatchSelectWidth={false}
+            />
+          ), 'is-sprint')}
+          {field('tdc-release', 'Релиз', (
+            <Select
+              id="tdc-release"
+              variant="borderless"
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Все релизы"
+              value={releases}
+              onChange={onReleasesChange}
+              options={releaseOptions.map((v) => ({ value: v, label: v }))}
+              maxTagCount="responsive"
+              maxTagPlaceholder={restTags}
+              popupMatchSelectWidth={false}
+            />
+          ), 'is-release')}
+          <Segmented
+            className="tdc-seg"
+            aria-label="Режим"
+            value={mode}
+            onChange={(v) => onModeChange(v as DeskMode)}
+            options={[
+              { value: 'open', label: 'Открытые сейчас' },
+              { value: 'period', label: 'За период' },
+              { value: 'all', label: 'Все задачи' },
+            ]}
+          />
+          <label className="tdc-switch">
+            <Switch checked={showReviewed} onChange={onShowReviewedChange} aria-label="Показывать просмотренные" />
+            <span>показывать просмотренные</span>
+          </label>
+        </div>
+        <div className="tdc-filters-row">
+          <label
+            className="tdc-switch"
+            title="Показывать закрытые подзадачи под их родителями — видно, разбита задача или нет"
+          >
+            <Switch
+              checked={showDoneSubtasks}
+              onChange={onShowDoneSubtasksChange}
+              // В режиме «все задачи» закрытые подзадачи видны и без тумблера.
+              disabled={mode === 'all'}
+              aria-label="Выполненные подзадачи"
+            />
+            <span>выполненные подзадачи</span>
+          </label>
+          {mode === 'period' && (
+            <div className="wr-field tdc-field">
+              <span className="wr-field-label">Период</span>
+              <DatePicker.RangePicker
+                variant="borderless"
+                value={[dayjs(periodStart), dayjs(periodEnd)]}
+                onChange={(range) => {
+                  if (range?.[0] && range?.[1]) {
+                    onPeriodChange(range[0].format(DATE_FMT), range[1].format(DATE_FMT));
+                  }
+                }}
+                allowClear={false}
+                format="DD.MM.YYYY"
+              />
+            </div>
+          )}
+          <span className="tdc-filters-end">
+            {trailing ?? (
+              <Button icon={<SettingOutlined />} onClick={onToggleThresholds} title="Настройки вида" aria-label="Настройки вида" />
+            )}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Card size="small" styles={{ body: { padding: '10px 12px' } }}>

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
-import { ReloadOutlined, SettingOutlined } from '@ant-design/icons';
+import { DownOutlined, ReloadOutlined, RightOutlined, SettingOutlined } from '@ant-design/icons';
 import {
-  Button, Card, Checkbox, Dropdown, InputNumber, Space, Switch, Table, Tag, Tooltip, Typography,
+  Button, Card, Checkbox, Dropdown, InputNumber, Segmented, Space, Switch, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -14,6 +14,7 @@ import { HoursScale } from './HoursScale';
 import { IssueKey, StatusTag } from './IssueCells';
 import { StatusCounters } from './StatusCounters';
 import { inQueueScope, type QueueScope } from './queueFilter';
+import { deskAvatarTone, deskInitials } from '../../utils/teamDeskView';
 
 interface Row extends Partial<DeskIssue> {
   rowKey: string;
@@ -70,6 +71,11 @@ interface Props {
   refreshing?: boolean;
   /** Обновление из Jira запрещено до завершения переезда — кнопка видна, но не нажимается. */
   refreshBlocked?: boolean;
+  /**
+   * Компактный вид скина: блок без карточки AntD, шапка колонок закреплена,
+   * тело прокручивается внутри блока; статусы и замечания — пилюлями.
+   */
+  compact?: boolean;
 }
 
 /** Подписи колонок для настройки видимости. «Задача» не убирается. */
@@ -86,6 +92,24 @@ const COLUMN_LABELS: [string, string][] = [
   ['days', 'Дней'],
   ['flags', 'Замечания'],
 ];
+
+/** Ширины колонок компактного вида: «Задаче» остаётся больше места в узком блоке. */
+const COMPACT_WIDTHS: Record<string, number> = {
+  developer: 140, status: 116, sprint: 108, release: 84, est: 66, daily_rate: 84,
+  fact: 62, left: 80, scale: 116, days: 52, flags: 196,
+};
+/** Шкала «недобор / перебор» шире: подписи стоят под полосой. */
+const COMPACT_CENTERED_SCALE = 160;
+/** Наименьшая ширина «Задачи» в компактном виде — уже неё блок прокручивается вбок. */
+const COMPACT_TASK_MIN = 248;
+/** Колонки, над которыми в компактном виде растягивается строка человека. */
+const GROUP_SPAN_KEYS = ['status', 'sprint', 'release'];
+
+/** Кружок с инициалами в строке человека — мягкая тёплая подложка по имени. */
+function avatarStyle(name?: string): React.CSSProperties {
+  const tone = deskAvatarTone(name ?? null);
+  return { background: tone.bg, color: tone.fg };
+}
 
 /** Значение колонки для сортировки. Пусто — строка уходит в конец. */
 const SORT_VALUE: Record<string, (row: Row) => string | number | null> = {
@@ -193,6 +217,7 @@ export function GroupedIssues({
   sprintFilter = [], releaseFilter = [],
   columnWidths = {}, onColumnWidthsChange,
   onHiddenColumnsChange, onGroupByDeveloperChange, onRefreshVisible, refreshing = false, refreshBlocked = false,
+  compact = false,
 }: Props) {
   const [sort, setSort] = useState<SortState>(null);
   // Пока тянут мышкой, ширина живёт на экране; в профиль уходит один раз,
@@ -200,6 +225,8 @@ export function GroupedIssues({
   const [draggedWidths, setDraggedWidths] = useState<Record<string, number> | null>(null);
   // Нужна, чтобы после перетаскивания снять фактические размеры колонок.
   const tableRef = useRef<HTMLDivElement>(null);
+  // Компактный вид: прокручиваемый блок, внутри которого держится шапка колонок.
+  const scrollRef = useRef<HTMLDivElement>(null);
   const widths = draggedWidths ?? columnWidths;
   // Люди развёрнуты по умолчанию, задачи — свёрнуты; здесь только отклонения
   // от этого правила, чтобы не пересобирать состояние на каждой загрузке.
@@ -316,7 +343,33 @@ export function GroupedIssues({
       title: 'Задача',
       key: 'task',
       render: (_, row) =>
-        row.isGroup ? (
+        row.isGroup && compact ? (
+          <>
+            <span className="tdc-group">
+              <span className="tdc-avatar" style={avatarStyle(row.groupName)}>
+                {deskInitials(row.groupName ?? null)}
+              </span>
+              <b className="tdc-group-name">{row.groupName}</b>
+              <span className="tdc-group-meta">{row.groupCount} задач · {row.groupInDev} у него</span>
+            </span>
+            {statuses.length > 0 && (
+              <div className="tdc-group-statuses">
+                <StatusCounters
+                  compact="pill"
+                  counts={row.groupStatusCounts ?? {}}
+                  statuses={statuses}
+                  statusGroups={statusGroups}
+                  selected={statusFilter}
+                  onSelect={
+                    onStatusFilter
+                      ? (status) => onStatusFilter(row.groupDeveloperId!, status)
+                      : undefined
+                  }
+                />
+              </div>
+            )}
+          </>
+        ) : row.isGroup ? (
           <>
             <Typography.Text strong>
               {row.groupName}{' '}
@@ -348,9 +401,15 @@ export function GroupedIssues({
               <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} />
             </span>
             <span style={{ minWidth: 0 }}>
-            {row.summary}
-            {row.is_analysis && <Tag style={{ marginLeft: 6 }}>тех. анализ</Tag>}
-            {row.daily_rate ? (
+            {compact && row.is_analysis && <span className="tdc-mark">тех. анализ</span>}
+            {compact && row.daily_rate ? (
+              <Tooltip title={`В очередь идёт по ${row.daily_rate} ч в день, а не весь остаток`}>
+                <span className="tdc-mark">резиновая</span>
+              </Tooltip>
+            ) : null}
+            {compact ? <span className="tdc-summary-text" title={row.summary}>{row.summary}</span> : row.summary}
+            {!compact && row.is_analysis && <Tag style={{ marginLeft: 6 }}>тех. анализ</Tag>}
+            {!compact && row.daily_rate ? (
               <Tooltip title={`В очередь идёт по ${row.daily_rate} ч в день, а не весь остаток`}>
                 <Tag color="geekblue" style={{ marginLeft: 6 }}>резиновая</Tag>
               </Tooltip>
@@ -377,7 +436,7 @@ export function GroupedIssues({
       width: 150,
       ellipsis: true,
       render: (_, row) =>
-        row.isGroup ? null : <StatusTag status={row.status!} group={row.status_group!} />,
+        row.isGroup ? null : <StatusTag status={row.status!} group={row.status_group!} compact={compact} />,
     },
     {
       title: 'Спринт',
@@ -398,12 +457,19 @@ export function GroupedIssues({
               </div>
             }
           >
+            {compact ? (
+              <span className="tdc-sprint">
+                <span className="tdc-ellipsis">{row.sprint}</span>
+                {all.length > 1 && <span className="tdc-more">+{all.length - 1}</span>}
+              </span>
+            ) : (
             <span style={{ whiteSpace: 'nowrap' }}>
               <Tag style={{ marginInlineEnd: 0 }}>{row.sprint}</Tag>
               {all.length > 1 && (
                 <Typography.Text type="secondary"> +{all.length - 1}</Typography.Text>
               )}
             </span>
+            )}
           </Tooltip>
         );
       },
@@ -418,7 +484,9 @@ export function GroupedIssues({
         if (!row.release) return '—';
         return (
           <Tooltip title={row.release}>
-            <Tag style={{ marginInlineEnd: 0 }}>{row.release}</Tag>
+            {compact
+              ? <span className="tdc-ellipsis">{row.release}</span>
+              : <Tag style={{ marginInlineEnd: 0 }}>{row.release}</Tag>}
           </Tooltip>
         );
       },
@@ -448,7 +516,8 @@ export function GroupedIssues({
                 value={row.daily_rate ?? null}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(v) => onDailyRate(row.id!, v == null ? null : Number(v))}
-                style={{ width: 84 }}
+                aria-label={`DevForDay ${row.key}`}
+                style={{ width: compact ? 60 : 84 }}
               />
             ),
         }]
@@ -493,7 +562,15 @@ export function GroupedIssues({
         if (row.est_hours == null) return '—';
         // Минус — перерасход: оценка исчерпана, работа продолжается.
         const left = roundHours(row.est_hours - (row.fact_hours ?? 0));
-        return <span style={{ color: left < 0 ? '#ff6b6b' : undefined }}>{left}</span>;
+        // Скин задаёт цвет минуса переменной --td-over-text; у Aurora её нет.
+        return (
+          <span
+            className={compact && left < 0 ? 'tdc-minus' : undefined}
+            style={{ color: left < 0 ? 'var(--td-over-text, #ff6b6b)' : undefined }}
+          >
+            {left}
+          </span>
+        );
       },
     },
     {
@@ -504,7 +581,7 @@ export function GroupedIssues({
         <HoursScale
           fact={row.fact_hours ?? 0}
           est={row.est_hours ?? null}
-          variant={scale}
+          variant={compact && scale === 'bar' ? 'inline' : scale}
           overrunPct={overrunPct}
         />
       ),
@@ -522,6 +599,7 @@ export function GroupedIssues({
             flags={row.flags ?? []}
             signatures={row.signatures ?? {}}
             reviewed={row.reviewed ?? []}
+            compact={compact}
           />
         ),
     },
@@ -530,14 +608,30 @@ export function GroupedIssues({
   // Сортируем сами: строки групп остаются на месте, порядок меняется только
   // у задач. Колонка «Задача» в сплошном списке сортируется по названию.
 
+  const shownKeys = allColumns
+    .map((col) => String(col.key))
+    .filter((key) => !hiddenColumns.includes(key));
+  // Компактный вид: имя и счётчики человека занимают и пустые у группы
+  // колонки статуса, спринта и релиза — иначе в узкой «Задаче» им тесно.
+  const groupSpan = 1 + shownKeys.filter((key) => GROUP_SPAN_KEYS.includes(key)).length;
+  const spanCell = (key: string) => (row: Row) => {
+    if (!row.isGroup) return {};
+    if (key === 'task') return { colSpan: groupSpan };
+    return GROUP_SPAN_KEYS.includes(key) ? { colSpan: 0 } : {};
+  };
+
   const columns: ColumnsType<Row> = allColumns
     .filter((col) => !hiddenColumns.includes(String(col.key)))
     .map((col) => {
       const key = String(col.key);
-      const width = widths[key] ?? (col.width as number | undefined);
+      const width = widths[key]
+        ?? (compact && key === 'scale' && scale === 'centered' ? COMPACT_CENTERED_SCALE : undefined)
+        ?? (compact && key !== 'task' ? COMPACT_WIDTHS[key] : undefined)
+        ?? (col.width as number | undefined);
       return {
         ...col,
         width,
+        ...(compact && groupByDeveloper ? { onCell: spanCell(key) } : {}),
         ...(SORT_VALUE[key]
           ? { sorter: true, sortOrder: sort?.key === key ? sort.order : null }
           : {}),
@@ -593,6 +687,117 @@ export function GroupedIssues({
   const totalWidth = columns.reduce(
     (sum, col) => sum + ((col.width as number | undefined) ?? 160), 0,
   );
+  const columnMenu: MenuProps = {
+    items: columnMenuItems,
+    onClick: ({ key }) => {
+      if (key === '__reset_widths__') {
+        setDraggedWidths(null);
+        onColumnWidthsChange?.({});
+        return;
+      }
+      onHiddenColumnsChange?.(
+        hiddenColumns.includes(key)
+          ? hiddenColumns.filter((k) => k !== key)
+          : [...hiddenColumns, key],
+      );
+    },
+  };
+
+  if (compact) {
+    const compactWidth = columns.reduce(
+      (sum, col) => sum + (String(col.key) === 'task' ? COMPACT_TASK_MIN : ((col.width as number | undefined) ?? 120)), 0,
+    );
+    return (
+      <section className="wr-card tdc-issues" aria-label={title}>
+        <div className="tdc-issues-head">
+          <div className="tdc-issues-title">
+            <h2 className="rpc-card-title">{title}</h2>
+            <span className="tdc-issues-count">{hint ? `${hint} · ` : ''}{shown} задач</span>
+          </div>
+          <div className="tdc-issues-tools">
+            {onGroupByDeveloperChange && (
+              <Segmented
+                aria-label="Вид таблицы"
+                value={groupByDeveloper ? 'people' : 'list'}
+                onChange={(v) => onGroupByDeveloperChange(v === 'people')}
+                options={[
+                  { label: 'по людям', value: 'people' },
+                  { label: 'списком', value: 'list' },
+                ]}
+              />
+            )}
+            {onHiddenColumnsChange && (
+              <Dropdown trigger={['click']} menu={columnMenu}>
+                <Button>Колонки</Button>
+              </Dropdown>
+            )}
+            {onRefreshVisible && (
+              <Tooltip title={refreshBlocked ? SYNC_BLOCKED_TEXT : 'Перечитать с Jira только задачи из этого списка'}>
+                <Button
+                  loading={refreshing}
+                  disabled={refreshBlocked}
+                  onClick={() => onRefreshVisible(visibleKeys)}
+                >
+                  Обновить видимые
+                </Button>
+              </Tooltip>
+            )}
+          </div>
+        </div>
+        <div className="tdc-issues-scroll" ref={scrollRef}>
+          <div ref={tableRef}>
+            <Table<Row>
+              size="small"
+              rowKey="rowKey"
+              dataSource={data}
+              columns={columns}
+              pagination={false}
+              onChange={(_p, _f, sorter) => {
+                const single = Array.isArray(sorter) ? sorter[0] : sorter;
+                const key = single?.columnKey ? String(single.columnKey) : null;
+                setSort(key && single?.order ? { key, order: single.order } : null);
+              }}
+              // Шапка колонок держится у верхнего края блока, а не страницы.
+              sticky={{ getContainer: () => scrollRef.current ?? document.body }}
+              tableLayout="fixed"
+              scroll={{ x: resized ? totalWidth : compactWidth }}
+              components={
+                onColumnWidthsChange
+                  ? { header: { cell: ResizableHeaderCell } }
+                  : undefined
+              }
+              rowClassName={(row) => (row.isGroup ? 'tdc-group-row' : '')}
+              expandable={{
+                expandedRowKeys,
+                onExpand: (_, row) => toggle(row.rowKey),
+                expandIcon: ({ expanded, expandable, record, onExpand }) =>
+                  expandable ? (
+                    <button
+                      type="button"
+                      className="tdc-expand"
+                      aria-label={expanded ? 'Свернуть' : 'Развернуть'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onExpand(record, e);
+                      }}
+                    >
+                      {expanded ? <DownOutlined /> : <RightOutlined />}
+                    </button>
+                  ) : (
+                    <span className="tdc-expand is-empty" aria-hidden />
+                  ),
+              }}
+              onRow={(row) =>
+                row.isGroup
+                  ? { onClick: () => toggle(row.rowKey), style: { cursor: 'pointer' } }
+                  : {}
+              }
+            />
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <Card
