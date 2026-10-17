@@ -815,7 +815,7 @@ export default function AnalyticsTable({
                 style={{
                   width: '100%',
                   height: 3,
-                  background: 'rgba(255,255,255,0.06)',
+                  background: 'var(--faint-fill, rgba(255,255,255,0.06))',
                   borderRadius: 2,
                   overflow: 'hidden',
                 }}

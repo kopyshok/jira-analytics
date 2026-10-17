@@ -26,8 +26,8 @@ export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey })
       <Card
         size="small"
         title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Участники</span>}
-        style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
-        styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
+        style={{ background: DARK_THEME.cardBg, border: '1px solid var(--hairline, rgba(255,255,255,0.06))' }}
+        styles={{ header: { borderColor: 'var(--hairline, rgba(255,255,255,0.06))' }, body: { padding: 12 } }}
       >
         <Empty description="Нет данных" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       </Card>
@@ -40,8 +40,8 @@ export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey })
     <Card
       size="small"
       title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Участники</span>}
-      style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
-      styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
+      style={{ background: DARK_THEME.cardBg, border: '1px solid var(--hairline, rgba(255,255,255,0.06))' }}
+      styles={{ header: { borderColor: 'var(--hairline, rgba(255,255,255,0.06))' }, body: { padding: 12 } }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {employees.map((emp, i) => {
@@ -87,7 +87,7 @@ export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey })
                     {Math.round(emp.hours)} ч · {emp.pct}%
                   </span>
                 </div>
-                <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: 4, background: 'var(--faint-fill, rgba(255,255,255,0.08))', borderRadius: 2, overflow: 'hidden' }}>
                   <div
                     style={{
                       height: '100%',

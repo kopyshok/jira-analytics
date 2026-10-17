@@ -35,8 +35,8 @@ export const ProjectRatingsCard: React.FC<Props> = ({ detail, summary }) => {
     <Card
       size="small"
       title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Оценка заказчика</span>}
-      style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
-      styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
+      style={{ background: DARK_THEME.cardBg, border: '1px solid var(--hairline, rgba(255,255,255,0.06))' }}
+      styles={{ header: { borderColor: 'var(--hairline, rgba(255,255,255,0.06))' }, body: { padding: 12 } }}
     >
       {hasAnyRating ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

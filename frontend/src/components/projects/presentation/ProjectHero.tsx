@@ -4,7 +4,7 @@ import type { ProjectDetail } from '../../../types/projects';
 import { DARK_THEME } from '../../../utils/constants';
 
 export const ProjectHero: React.FC<{ detail: ProjectDetail }> = ({ detail }) => (
-  <div style={{ padding: '32px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+  <div style={{ padding: '32px 16px', borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.06))' }}>
     <div style={{ fontSize: 11, color: DARK_THEME.textMuted, letterSpacing: 1, textTransform: 'uppercase' }}>
       Проект {detail.key}
     </div>

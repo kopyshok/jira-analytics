@@ -114,7 +114,7 @@ function DiffRow({ alloc, muted }: { alloc: AllocationResponse; muted?: boolean 
       style={{
         padding: '8px 10px',
         marginBottom: 4,
-        background: muted ? 'transparent' : 'rgba(255,255,255,0.03)',
+        background: muted ? 'transparent' : 'var(--faint-fill, rgba(255,255,255,0.03))',
         borderRadius: 4,
         opacity: muted ? 0.65 : 1,
         fontSize: 13,

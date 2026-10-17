@@ -18,7 +18,7 @@ export const PortfolioSignals: React.FC<{ signals: PortfolioSignal[] }> = ({ sig
             display: 'flex', alignItems: 'center', gap: 7,
             fontSize: 12, color: DARK_THEME.textPrimary,
             padding: '5px 12px', borderRadius: 14,
-            background: 'rgba(255,255,255,0.04)',
+            background: 'var(--faint-fill, rgba(255,255,255,0.04))',
             border: `1px solid ${DARK_THEME.border}`,
           }}
         >

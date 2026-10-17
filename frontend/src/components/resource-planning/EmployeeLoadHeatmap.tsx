@@ -198,7 +198,7 @@ function quarterTooltipLines(q: EmployeeQuarterLoad, ownLabel = 'Задачи п
 function loadColor(pct: number): { bg: string; border?: string } {
   if (pct <= 0) {
     // Свободный рабочий день: чуть заметная заливка (есть ресурс, нет задач).
-    return { bg: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' };
+    return { bg: 'var(--faint-fill, rgba(255,255,255,0.06))', border: '1px solid var(--hairline, rgba(255,255,255,0.08))' };
   }
   if (pct > 110) {
     const t = Math.min((pct - 110) / 40, 1);
