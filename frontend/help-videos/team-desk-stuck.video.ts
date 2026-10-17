@@ -106,7 +106,7 @@ test('team-desk-stuck', async ({ page }) => {
   await d.click(flagBar, `Отфильтруйте по замечанию «${FLAG_LABEL}»`);
   await d.pause(1200);
 
-  const row = issuesBlock.locator(`tr[data-row-key="${issueId}"]`);
+  const row = issuesBlock.locator(`.ant-table-row[data-row-key="${issueId}"]`);
   await expect(row).toBeVisible();
   await d.show(row);
   await d.pause(1400);

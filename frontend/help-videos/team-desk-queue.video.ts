@@ -129,7 +129,7 @@ test('team-desk-queue', async ({ page }) => {
   await d.show(activeFilters);
   await d.pause(2200);
 
-  const row = issuesBlock.locator(`tr[data-row-key="${issueId}"]`);
+  const row = issuesBlock.locator(`.ant-table-row[data-row-key="${issueId}"]`);
   await expect(row).toBeVisible();
   await d.show(row);
   await d.pause(1000);
