@@ -253,6 +253,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .td-issues-screen .ant-table-tbody > tr.ant-table-row-level-0 > td { border-bottom-color: var(--p-line) !important; }
   & .td-issues-screen .ant-table-sticky-holder { background: var(--p-body); }
   & .td-issues-screen .ant-table table { table-layout: fixed !important; min-width: 1180px; }
+  /* колонка «Задача» без своей ширины при фиксированной раскладке сжималась в ноль
+     (на 1366 px подпись шла буквами в столбик); растянутая мышкой ширина — главнее */
+  & .td-issues-screen .ant-table colgroup > col:first-child { width: 260px; }
   & .td-issues-screen .ant-table-tbody > tr > td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   & .td-issues-screen .ant-table-tbody > tr > td > * { max-width: 100%; }
   & .td-issues-screen .ant-table-tbody > tr > td:first-child > span,
