@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { Tooltip } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
 import { useAppTheme } from '../../contexts/ThemeContext';
+import { readablePair } from '../../skins/zones/readableColor';
 
 interface BacklogRoleCellProps {
   label: string;       // 'АН' | 'ПР' | 'ТС' | 'ОПЭ'
@@ -57,7 +58,32 @@ export default function BacklogRoleCell({
     </>
   ) : undefined;
 
-  const cell = (
+  // Скин «Цветовые зоны»: в колонке — число и доля, как в таблице; цвет роли
+  // из справочника — только тонкой чертой снизу (читаемой парой).
+  const plain = skin ? (
+    <div
+      className="role-cell-plain"
+      style={{
+        flex: 1,
+        minWidth: 42,
+        textAlign: 'center',
+        lineHeight: 1.25,
+        userSelect: 'none',
+        position: disputed ? 'relative' : undefined,
+        outline: disputed ? `2px dashed ${WARN}` : undefined,
+        outlineOffset: disputed ? 1 : undefined,
+        borderBottom: empty ? '2px solid transparent' : `2px solid ${readablePair(color).border}`,
+      }}
+    >
+      {disputed && <span aria-hidden style={DISPUTE_BADGE}>?</span>}
+      <div style={{ fontSize: 13, fontWeight: empty ? 400 : 600, color: empty ? '#5A5F66' : '#17191C' }}>
+        {empty ? '—' : hours}
+      </div>
+      {!empty && <div style={{ fontSize: 10, color: '#5A5F66' }}>{pct}%</div>}
+    </div>
+  ) : null;
+
+  const cell = plain ?? (
     <div
       style={{
         flex: 1,

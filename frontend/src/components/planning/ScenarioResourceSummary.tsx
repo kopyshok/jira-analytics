@@ -3,7 +3,7 @@ import SubgroupFlowLine from '../common/SubgroupFlowLine';
 import { Card, Skeleton, Tooltip } from 'antd';
 import { useScenarioResourceSummary } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
-import { getRoleLabel, getRoleColor } from '../../utils/roles';
+import { getRoleLabel, getRoleColor, getRoleTextColor } from '../../utils/roles';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { demandByAssigneeRole, demandByRole } from '../../utils/planning';
 import type { AllocationResponse, ResourceEmployee } from '../../types/api';
@@ -14,6 +14,11 @@ interface Props {
   allocations?: AllocationResponse[];
   employees?: ResourceEmployee[];
   pulsedRoles?: Set<string>;
+  /**
+   * Свёрнута, пока пользователь сам не развернул (скин «Цветовые зоны»:
+   * экран в высоту окна, сводка не теснит таблицу). Выбор пользователя главнее.
+   */
+  defaultCollapsed?: boolean;
 }
 
 const CELL: React.CSSProperties = {
@@ -31,7 +36,7 @@ const CELL_LABEL: React.CSSProperties = {
 
 const ROW_DIVIDER = `1px solid rgba(255,255,255,0.06)`;
 
-function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employees, pulsedRoles }: Props) {
+function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employees, pulsedRoles, defaultCollapsed = false }: Props) {
   const { data: summary, isLoading } = useScenarioResourceSummary(scenarioId, enabled);
   const { data: roles = [] } = useRoles();
 
@@ -43,9 +48,11 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
   //   'force-collapsed' — юзер сам свернул в верху страницы, держим свёрнутым
   //                       (персистится в localStorage)
   type Mode = 'auto' | 'force-expanded' | 'force-collapsed';
-  const [mode, setMode] = useState<Mode>(
-    () => (localStorage.getItem(LS_KEY) === 'true' ? 'force-collapsed' : 'auto'),
-  );
+  const [mode, setMode] = useState<Mode>(() => {
+    const stored = localStorage.getItem(LS_KEY);
+    if (stored === 'true') return 'force-collapsed';
+    return stored === null && defaultCollapsed ? 'force-collapsed' : 'auto';
+  });
   const [isStuck, setIsStuck] = useState(false);
   // Sentinel — 1px блок СНАРУЖИ и ВЫШЕ sticky. Проверяем его top через
   // getBoundingClientRect при скролле. Sentinel в обычном потоке, его высота
@@ -224,7 +231,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
   const totalDemand = Object.values(roleDemand).reduce((s, v) => s + v, 0);
 
   const collapsedCard = (
-    <Card styles={{ body: { padding: 0, overflow: 'hidden' } }}>
+    <Card className="scenario-summary-collapsed" styles={{ body: { padding: 0, overflow: 'hidden' } }}>
       <div style={{ display: 'flex', alignItems: 'center', height: 40 }}>
         <div style={{
           padding: '0 14px',
@@ -254,7 +261,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
               borderRight: `1px solid ${DARK_THEME.border}`,
               height: '100%',
             }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: getRoleColor(roles, role) }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: getRoleTextColor(roles, role) }}>
                 {getRoleLabel(roles, role)}
               </span>
               <span
@@ -364,7 +371,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                         style={{
                           fontWeight: 600,
                           fontSize: 13,
-                          color: getRoleColor(roles, role),
+                          color: getRoleTextColor(roles, role),
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                         }}
@@ -795,7 +802,7 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
                       textAlign: 'center' as const,
                       fontFamily: FONTS.mono,
                       fontSize: 13,
-                      color: getRoleColor(roles, role),
+                      color: getRoleTextColor(roles, role),
                     }}
                   >
                     {Math.round(byRole[role] ?? 0).toLocaleString('ru')}

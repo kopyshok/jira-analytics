@@ -306,7 +306,7 @@ function BacklogAllocRowBase({
     a.override_estimate_opo_hours !== null;
   const isPendingContinuation = !!continuationInfo?.is_continuation && !hasOverride;
 
-  const className = ['backlog-row', flashing ? 'cyan-flash' : '', rowStateClass]
+  const className = ['backlog-row', flashing ? 'cyan-flash' : '', rowStateClass, isDragging ? 'is-dragging' : '']
     .filter(Boolean)
     .join(' ');
 

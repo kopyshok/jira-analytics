@@ -50,6 +50,8 @@ export function BandField({ label, children, className, ...rest }: {
 interface TabItem {
   key: string;
   label: ReactNode;
+  /** Якорь экскурсии по разделу. */
+  tour?: string;
 }
 
 /** Вкладки экрана «папками» внизу полосы; активная сливается с телом. */
@@ -67,6 +69,7 @@ export function BandTabs({ items, activeKey, onChange, ...rest }: {
           role="tab"
           aria-selected={t.key === activeKey}
           className={`zn-band-tab${t.key === activeKey ? ' is-active' : ''}`}
+          data-tour={t.tour}
           onClick={() => onChange(t.key)}
         >
           {t.label}

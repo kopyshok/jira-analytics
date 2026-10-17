@@ -4,7 +4,7 @@ import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
-import { getRoleColor } from '../../utils/roles';
+import { getRoleColor, roleChipColors } from '../../utils/roles';
 import type { AllocationResponse, ResourceBase, ResourceEmployee, ResourceSummaryOut } from '../../types/api';
 import RoleCapacityBar from './RoleCapacityBar';
 import { patchEmployee } from '../../api/employees';
@@ -286,7 +286,8 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                       style={{
                         width: 26, height: 18, borderRadius: 3,
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        background: roleColor, color: '#00202a',
+                        background: roleChipColors(roleColor, '#00202a').bg,
+                        color: roleChipColors(roleColor, '#00202a').fg,
                         fontSize: 11, fontWeight: 700, fontFamily: FONTS.mono,
                       }}
                     >

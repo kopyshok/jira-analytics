@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import { effectiveEstimate } from '../../utils/allocationEstimates';
-import { getRoleColor } from '../../utils/roles';
+import { getRoleTextColor } from '../../utils/roles';
 import { OPO_COLOR, foldOpo } from '../../utils/opo';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import type { AllocationResponse, Role } from '../../types/api';
@@ -37,9 +37,9 @@ export default function SubgroupSectionHeader({ name, items, collapsed, roles, o
   }, [items, opoOff]);
 
   const cells: Array<[string, number, string]> = [
-    ['АН', totals.analyst, getRoleColor(roles, 'analyst')],
-    ['ПР', totals.dev, getRoleColor(roles, 'dev')],
-    ['ТС', totals.qa, getRoleColor(roles, 'qa')],
+    ['АН', totals.analyst, getRoleTextColor(roles, 'analyst')],
+    ['ПР', totals.dev, getRoleTextColor(roles, 'dev')],
+    ['ТС', totals.qa, getRoleTextColor(roles, 'qa')],
   ];
   if (!opoOff) cells.push(['ОПЭ', totals.opo, OPO_COLOR]);
 

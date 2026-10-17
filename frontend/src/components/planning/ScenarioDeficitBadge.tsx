@@ -34,8 +34,8 @@ export default function ScenarioDeficitBadge({ deficit }: Props) {
                 fontWeight: 700,
                 padding: '2px 8px',
                 borderRadius: 10,
-                background: 'rgba(245, 34, 45, 0.12)',
-                color: '#ff7875',
+                background: 'var(--deficit-bg, rgba(245, 34, 45, 0.12))',
+                color: 'var(--deficit-fg, #ff7875)',
                 border: `1px solid ${color}40`,
                 whiteSpace: 'nowrap',
               }}

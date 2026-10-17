@@ -196,7 +196,7 @@ const ZONES_TOKENS: DarkThemeShape = {
   border: '#E1E3E8',
   darkRows: '#F7F8FA',
   cyanPrimary: '#2546A6',
-  cyanSecondary: '#2F6FDE',
+  cyanSecondary: '#1F4FA8',
   yellow: '#A06A0E',
   amber: '#A06A0E',
   amberDim: '#8A5A0A',
@@ -206,7 +206,7 @@ const ZONES_TOKENS: DarkThemeShape = {
   textSecondary: '#3F444B',
   textMuted: '#5A5F66',
   textHint: '#6B7078',
-  textDim: '#7B8088',
+  textDim: '#6B7078',
 };
 
 /** Runtime-aware Dark theme tokens.

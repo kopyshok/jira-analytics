@@ -1467,3 +1467,29 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] [style*="; color
 /* невидимые «лишние» метки выпадающего списка (их меряет список) — и для экранного диктора не видны */
 html[data-skin="zones"] .ant-select-selection-overflow-item[aria-hidden="true"],
 html[data-skin="zones"] .ant-select-content-item[aria-hidden="true"] { visibility: hidden; }
+
+/* Метки AntD предустановленных цветов на белом: заливка тоном, текст темнее (≥ 4.5) */
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-green,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-success { background: #E6F2EA !important; border-color: #A9D3BA !important; color: #1E6B43 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-gold,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-warning,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-yellow { background: #FBF1DC !important; border-color: #E2C98F !important; color: #7A5200 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-orange,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-volcano { background: #FDF0E6 !important; border-color: #E8C9A6 !important; color: #8A4B00 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-red,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-error { background: #FDF3F1 !important; border-color: #E6B7B1 !important; color: #B42A1E !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-blue,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-processing,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-geekblue { background: #EAF1FD !important; border-color: #BCD0F2 !important; color: #1D4FB8 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-cyan { background: #E3F4F5 !important; border-color: #A8D8DC !important; color: #0F6670 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-purple { background: #F1ECF9 !important; border-color: #CDB8EA !important; color: #5E3696 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-magenta,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-pink { background: #FCEAF3 !important; border-color: #EBB8D2 !important; color: #9B1C5A !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag.ant-tag-lime { background: #EEF6E3 !important; border-color: #C3DDA1 !important; color: #3F6212 !important; }
+
+/* Дефицит роли в карточке сценария — сплошная красная метка */
+html[data-skin="zones"] { --deficit-bg: #D1382A; --deficit-fg: #FFFFFF; }
+/* текст на заливке «внимание» (--warn) и подписи в числовых полях */
+html[data-skin="zones"] { --warn-on: #FFFFFF; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-input-number-suffix,
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-input-suffix { color: #5A5F66 !important; }
