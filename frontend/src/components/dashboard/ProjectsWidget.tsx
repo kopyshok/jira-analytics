@@ -21,7 +21,7 @@ type ColKey = 'status' | 'subtasks' | 'help' | 'assignees' | 'due' | 'trend' | '
 type BlockKey = 'donut' | 'kpi' | 'sparklines';
 
 const COLS: { key: ColKey; label: string; width: string; align?: 'right' }[] = [
-  { key: 'status', label: 'Статус', width: 'minmax(0,150px)' },
+  { key: 'status', label: 'Статус', width: 'minmax(90px,150px)' },
   { key: 'subtasks', label: 'Задачи', width: '70px' },
   { key: 'help', label: 'Помощь', width: '95px' },
   { key: 'assignees', label: 'Команда', width: '70px' },
@@ -545,11 +545,14 @@ export default function ProjectsWidget({ data, loading }: Props) {
   const visibleCols = COLS.filter((c) => prefs.cols[c.key]);
   const tableGrid = ['12px', 'minmax(220px,1.3fr)', ...visibleCols.map((c) => c.width)].join(' ');
 
+  const showSide = prefs.blocks.kpi || prefs.blocks.sparklines;
   const outerCols = [
     prefs.blocks.donut ? '220px' : null,
-    '1fr',
-    prefs.blocks.kpi ? '280px' : null,
-    prefs.blocks.sparklines ? '280px' : null,
+    // Таблица не распирает сетку: плитки и активность — одной колонкой справа,
+    // а если колонкам всё равно тесно, таблица прокручивается вбок внутри себя
+    // (раньше она выталкивала активность за край карточки, «Статус» наезжал на «Задачи»).
+    'minmax(0, 1fr)',
+    showSide ? '280px' : null,
   ].filter(Boolean).join(' ');
 
   return (
@@ -557,7 +560,7 @@ export default function ProjectsWidget({ data, loading }: Props) {
       <div style={{ display: 'grid', gridTemplateColumns: outerCols, gap: 20, alignItems: 'flex-start' }}>
         {prefs.blocks.donut && <Donut data={data} />}
 
-        <div>
+        <div style={{ overflowX: 'auto', minWidth: 0 }}>
           <div style={{
             display: 'grid',
             gridTemplateColumns: tableGrid,
@@ -591,9 +594,13 @@ export default function ProjectsWidget({ data, loading }: Props) {
           )}
         </div>
 
-        {prefs.blocks.kpi && <KpiTiles data={data} />}
+        {showSide && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
+            {prefs.blocks.kpi && <KpiTiles data={data} />}
 
-        {prefs.blocks.sparklines && <Sparklines projects={data.projects} />}
+            {prefs.blocks.sparklines && <Sparklines projects={data.projects} />}
+          </div>
+        )}
       </div>
     </Card>
   );
