@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import {
   Button, Card, Checkbox, Dropdown, InputNumber, Space, Switch, Table, Tag, Tooltip, Typography,
@@ -14,6 +14,7 @@ import { HoursScale } from './HoursScale';
 import { IssueKey, StatusTag } from './IssueCells';
 import { StatusCounters } from './StatusCounters';
 import { inQueueScope, type QueueScope } from './queueFilter';
+import { useStickyViewportHeight } from '../../hooks/useStickyViewportHeight';
 
 interface Row extends Partial<DeskIssue> {
   rowKey: string;
@@ -105,16 +106,27 @@ const SORT_VALUE: Record<string, (row: Row) => string | number | null> = {
 
 type SortState = { key: string; order: 'ascend' | 'descend' } | null;
 
+/**
+ * В «Все задачи» в списке тысячи строк: таблица рисует только видимые строки
+ * и листается внутри себя. Высота — экран минус шапка карточки и таблицы,
+ * короткий список занимает своё место без пустоты.
+ */
+const LIST_VIEWPORT_OFFSET = 120;
+/** Без растянутых колонок «Задача» забирает остаток ширины, но не уже этого. */
+const TASK_MIN_WIDTH = 320;
+
 interface HeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
   columnKey?: string;
   columnWidth?: number;
+  /** Пока тянут: ширина на экране, не чаще раза за кадр. */
+  onResizing?: (key: string, width: number) => void;
   /** Вызывается один раз — когда кнопку мыши отпустили. */
   onResized?: (key: string, width: number) => void;
 }
 
 /** Заголовок колонки с «ручкой» справа: тянешь мышкой — меняется ширина. */
 function ResizableHeaderCell({
-  columnKey, columnWidth, onResized, children, ...rest
+  columnKey, columnWidth, onResizing, onResized, children, ...rest
 }: HeaderCellProps) {
   if (!columnKey || !onResized) return <th {...rest}>{children}</th>;
   const startDrag = (e: React.MouseEvent) => {
@@ -124,20 +136,22 @@ function ResizableHeaderCell({
     if (!cell) return;
     const startX = e.clientX;
     const startWidth = columnWidth ?? cell.getBoundingClientRect().width;
-    const index = cell.cellIndex;
-    const table = cell.closest('.ant-table');
     let latest = startWidth;
+    let frame = 0;
     const move = (ev: MouseEvent) => {
       // Меньше 60 не даём: заголовок перестаёт читаться.
       latest = Math.max(60, Math.round(startWidth + ev.clientX - startX));
-      // Пока тянут, двигаем саму колонку в разметке. Перерисовывать сотню
-      // строк на каждое движение мыши слишком дорого — список подвисает.
-      table?.querySelectorAll('colgroup').forEach((group) => {
-        const col = group.children[index] as HTMLElement | undefined;
-        if (col) col.style.width = `${latest}px`;
-      });
+      // Таблица рисует только видимые строки, поэтому ширину можно менять
+      // на экране сразу — но не чаще раза за кадр.
+      if (!frame) {
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          onResizing?.(columnKey, latest);
+        });
+      }
     };
     const stop = () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener('mousemove', move);
       document.removeEventListener('mouseup', stop);
       onResized(columnKey, latest);
@@ -198,8 +212,10 @@ export function GroupedIssues({
   // Пока тянут мышкой, ширина живёт на экране; в профиль уходит один раз,
   // когда кнопку отпустили — иначе на каждый пиксель шёл бы запрос.
   const [draggedWidths, setDraggedWidths] = useState<Record<string, number> | null>(null);
-  // Нужна, чтобы после перетаскивания снять фактические размеры колонок.
-  const tableRef = useRef<HTMLDivElement>(null);
+  // Нужна, чтобы при перетаскивании снять фактические размеры колонок
+  // и чтобы померить высоту видимой области под список.
+  const [tableEl, setTableEl] = useState<HTMLDivElement | null>(null);
+  const listHeight = useStickyViewportHeight(tableEl, LIST_VIEWPORT_OFFSET);
   const widths = draggedWidths ?? columnWidths;
   // Люди развёрнуты по умолчанию, задачи — свёрнуты; здесь только отклонения
   // от этого правила, чтобы не пересобирать состояние на каждой загрузке.
@@ -211,102 +227,111 @@ export function GroupedIssues({
       return next;
     });
 
-  const childrenOf = new Map<string, DeskIssue[]>();
-  const ids = new Set(issues.map((i) => i.id));
-  issues.forEach((issue) => {
-    if (issue.parent_id && ids.has(issue.parent_id)) {
-      const list = childrenOf.get(issue.parent_id) ?? [];
-      list.push(issue);
-      childrenOf.set(issue.parent_id, list);
-    }
-  });
-
-  // Фильтры складываются: строка остаётся, если под оба условия попадает она
-  // сама либо её подзадача — иначе подзадача осталась бы без родителя.
-  const hit = (issue: DeskIssue): boolean =>
-    (!flagFilter || issue.flags.includes(flagFilter)) &&
-    (!statusFilter || issue.status === statusFilter) &&
-    (!sprintFilter.length || (!!issue.sprint && sprintFilter.includes(issue.sprint))) &&
-    (!releaseFilter.length || (!!issue.release && releaseFilter.includes(issue.release))) &&
-    inQueueScope(issue, queueScope);
-
-  const matches = (issue: DeskIssue): boolean =>
-    hit(issue) || (childrenOf.get(issue.id) ?? []).some(hit);
-
-  const toRow = (issue: DeskIssue, ownerId?: string | null): Row => {
-    const kids = (childrenOf.get(issue.id) ?? []).map((kid) => toRow(kid, ownerId));
-    return {
-      ...issue,
-      rowKey: issue.id,
-      otherDeveloper:
-        ownerId && issue.developer_id && issue.developer_id !== ownerId
-          ? issue.developer_name
-          : null,
-      children: kids.length ? kids : undefined,
-    };
-  };
-
-  const data: Row[] = [];
-  if (groupByDeveloper) {
-    developers
-      .filter((dev) => !onlyDeveloper || dev.developer_id === onlyDeveloper)
-      .forEach((dev) => {
-        const own = issues
-          .filter(
-            (i) => i.developer_id === dev.developer_id && !(i.parent_id && ids.has(i.parent_id)),
-          )
-          .filter(matches);
-        if (!own.length) return;
-        data.push({
-          rowKey: `group-${dev.developer_id}`,
-          isGroup: true,
-          groupName: dev.display_name ?? 'Без имени',
-          groupCount: own.length,
-          groupInDev: dev.in_dev,
-          groupDeveloperId: dev.developer_id,
-          groupStatusCounts: dev.status_counts ?? {},
-          est_hours: dev.est_hours,
-          fact_hours: dev.fact_hours,
-          children: sortRows(own.map((i) => toRow(i, dev.developer_id)), sort),
-        });
-      });
-  } else {
-    // Сплошной список: группировка по людям выключена, сортировка идёт по
-    // всем задачам сразу, а имя разработчика показывается колонкой.
-    const flat = issues
-      .filter((i) => !(i.parent_id && ids.has(i.parent_id)))
-      .filter((i) => !onlyDeveloper || i.developer_id === onlyDeveloper)
-      .filter(matches)
-      .map((i) => toRow(i, null));
-    data.push(...sortRows(flat, sort));
-  }
-
-  const countRows = (rows: Row[]): number =>
-    rows.reduce(
-      (n, row) => n + (row.isGroup ? 0 : 1) + countRows(row.children ?? []),
-      0,
-    );
-  // Ключи задач на экране — их и перечитываем по кнопке.
-  const collectKeys = (rows: Row[]): string[] =>
-    rows.flatMap((row) => [
-      ...(row.isGroup || !row.key ? [] : [row.key]),
-      ...collectKeys(row.children ?? []),
-    ]);
-  const visibleKeys = collectKeys(data);
-
-  const shown = groupByDeveloper
-    ? data.reduce((n, g) => n + (g.children?.length ?? 0), 0)
-    : countRows(data);
-
-  const expandableKeys: string[] = [];
-  const collect = (rows: Row[]) =>
-    rows.forEach((row) => {
-      if (row.children?.length) {
-        expandableKeys.push(row.rowKey);
-        collect(row.children);
+  // Сборка дерева — один проход по всем задачам среза. Ширина колонки и
+  // раскрытие строк его не меняют: пересобираем только при смене данных,
+  // отборов или сортировки.
+  const { data, visibleKeys, shown, expandableKeys } = useMemo(() => {
+    const childrenOf = new Map<string, DeskIssue[]>();
+    const ids = new Set(issues.map((i) => i.id));
+    issues.forEach((issue) => {
+      if (issue.parent_id && ids.has(issue.parent_id)) {
+        const list = childrenOf.get(issue.parent_id) ?? [];
+        list.push(issue);
+        childrenOf.set(issue.parent_id, list);
       }
     });
-  collect(data);
+
+    // Фильтры складываются: строка остаётся, если под оба условия попадает она
+    // сама либо её подзадача — иначе подзадача осталась бы без родителя.
+    const hit = (issue: DeskIssue): boolean =>
+      (!flagFilter || issue.flags.includes(flagFilter)) &&
+      (!statusFilter || issue.status === statusFilter) &&
+      (!sprintFilter.length || (!!issue.sprint && sprintFilter.includes(issue.sprint))) &&
+      (!releaseFilter.length || (!!issue.release && releaseFilter.includes(issue.release))) &&
+      inQueueScope(issue, queueScope);
+
+    const matches = (issue: DeskIssue): boolean =>
+      hit(issue) || (childrenOf.get(issue.id) ?? []).some(hit);
+
+    const toRow = (issue: DeskIssue, ownerId?: string | null): Row => {
+      const kids = (childrenOf.get(issue.id) ?? []).map((kid) => toRow(kid, ownerId));
+      return {
+        ...issue,
+        rowKey: issue.id,
+        otherDeveloper:
+          ownerId && issue.developer_id && issue.developer_id !== ownerId
+            ? issue.developer_name
+            : null,
+        children: kids.length ? kids : undefined,
+      };
+    };
+
+    const data: Row[] = [];
+    if (groupByDeveloper) {
+      developers
+        .filter((dev) => !onlyDeveloper || dev.developer_id === onlyDeveloper)
+        .forEach((dev) => {
+          const own = issues
+            .filter(
+              (i) => i.developer_id === dev.developer_id && !(i.parent_id && ids.has(i.parent_id)),
+            )
+            .filter(matches);
+          if (!own.length) return;
+          data.push({
+            rowKey: `group-${dev.developer_id}`,
+            isGroup: true,
+            groupName: dev.display_name ?? 'Без имени',
+            groupCount: own.length,
+            groupInDev: dev.in_dev,
+            groupDeveloperId: dev.developer_id,
+            groupStatusCounts: dev.status_counts ?? {},
+            est_hours: dev.est_hours,
+            fact_hours: dev.fact_hours,
+            children: sortRows(own.map((i) => toRow(i, dev.developer_id)), sort),
+          });
+        });
+    } else {
+      // Сплошной список: группировка по людям выключена, сортировка идёт по
+      // всем задачам сразу, а имя разработчика показывается колонкой.
+      const flat = issues
+        .filter((i) => !(i.parent_id && ids.has(i.parent_id)))
+        .filter((i) => !onlyDeveloper || i.developer_id === onlyDeveloper)
+        .filter(matches)
+        .map((i) => toRow(i, null));
+      data.push(...sortRows(flat, sort));
+    }
+
+    const countRows = (rows: Row[]): number =>
+      rows.reduce(
+        (n, row) => n + (row.isGroup ? 0 : 1) + countRows(row.children ?? []),
+        0,
+      );
+    // Ключи задач на экране — их и перечитываем по кнопке.
+    const collectKeys = (rows: Row[]): string[] =>
+      rows.flatMap((row) => [
+        ...(row.isGroup || !row.key ? [] : [row.key]),
+        ...collectKeys(row.children ?? []),
+      ]);
+    const visibleKeys = collectKeys(data);
+
+    const shown = groupByDeveloper
+      ? data.reduce((n, g) => n + (g.children?.length ?? 0), 0)
+      : countRows(data);
+
+    const expandableKeys: string[] = [];
+    const collect = (rows: Row[]) =>
+      rows.forEach((row) => {
+        if (row.children?.length) {
+          expandableKeys.push(row.rowKey);
+          collect(row.children);
+        }
+      });
+    collect(data);
+    return { data, visibleKeys, shown, expandableKeys };
+  }, [
+    issues, developers, groupByDeveloper, onlyDeveloper, sort,
+    flagFilter, statusFilter, sprintFilter, releaseFilter, queueScope,
+  ]);
   const expandedRowKeys = expandableKeys.filter(
     (key) => key.startsWith('group-') !== toggled.has(key),
   );
@@ -487,7 +512,8 @@ export function GroupedIssues({
     {
       title: 'Осталось',
       key: 'left',
-      width: 92,
+      // Ширина колонок теперь соблюдается точно: на 92 заголовок рвался посреди слова.
+      width: 100,
       align: 'right',
       render: (_, row) => {
         if (row.est_hours == null) return '—';
@@ -546,18 +572,18 @@ export function GroupedIssues({
               onHeaderCell: () => ({
                 columnKey: key,
                 columnWidth: width,
+                onResizing: resizeWidth,
                 onResized: commitWidth,
               }) as React.HTMLAttributes<HTMLElement>,
             }
           : {}),
       };
     });
-  // Ширину запоминаем, когда кнопку отпустили. Заодно фиксируем соседние
-  // колонки по их текущему размеру на экране: иначе при первом растягивании
-  // они прыгнули бы с подогнанной ширины на исходную.
-  function commitWidth(key: string, width: number) {
+  // Соседние колонки фиксируем по их текущему размеру на экране: иначе при
+  // первом растягивании они прыгнули бы с подогнанной ширины на исходную.
+  function withWidth(key: string, width: number): Record<string, number> {
     const next: Record<string, number> = { ...widths };
-    const cells = tableRef.current?.querySelectorAll('.ant-table-thead th');
+    const cells = tableEl?.querySelectorAll('.ant-table-thead th');
     if (cells?.length) {
       const offset = cells.length - columns.length;
       columns.forEach((col, i) => {
@@ -569,6 +595,15 @@ export function GroupedIssues({
       });
     }
     next[key] = width;
+    return next;
+  }
+  // Пока тянут, ширина живёт только на экране.
+  function resizeWidth(key: string, width: number) {
+    setDraggedWidths(withWidth(key, width));
+  }
+  // Ширину запоминаем, когда кнопку отпустили.
+  function commitWidth(key: string, width: number) {
+    const next = withWidth(key, width);
     setDraggedWidths(next);
     onColumnWidthsChange?.(next);
   }
@@ -592,6 +627,12 @@ export function GroupedIssues({
   ];
   const totalWidth = columns.reduce(
     (sum, col) => sum + ((col.width as number | undefined) ?? 160), 0,
+  );
+  // Без ручных ширин таблица по-прежнему ужимается под экран: колонки без
+  // ширины («Задача») делят остаток. Прокрутка вбок — только если на узком
+  // экране «Задаче» не осталось TASK_MIN_WIDTH.
+  const fitWidth = columns.reduce(
+    (sum, col) => sum + ((col.width as number | undefined) ?? TASK_MIN_WIDTH), 0,
   );
 
   return (
@@ -652,13 +693,16 @@ export function GroupedIssues({
         </Space>
       }
     >
-      <div ref={tableRef}>
+      <div ref={setTableEl}>
       <Table<Row>
         size="small"
         rowKey="rowKey"
         dataSource={data}
         columns={columns}
         pagination={false}
+        // Рисуются только строки в видимой области: на тысячах задач иначе
+        // браузеру не хватало памяти. Шапка таблицы остаётся на месте.
+        virtual
         onChange={(_p, _f, sorter) => {
           const single = Array.isArray(sorter) ? sorter[0] : sorter;
           const key = single?.columnKey ? String(single.columnKey) : null;
@@ -668,7 +712,7 @@ export function GroupedIssues({
         // экрана, длинные значения обрезаются многоточием с подсказкой.
         // Колонки растянули мышкой — уважаем ширину и включаем прокрутку.
         tableLayout={resized ? 'fixed' : undefined}
-        scroll={resized ? { x: totalWidth } : undefined}
+        scroll={{ x: resized ? totalWidth : fitWidth, y: listHeight ?? 600 }}
         components={
           onColumnWidthsChange
             ? { header: { cell: ResizableHeaderCell } }

@@ -148,7 +148,9 @@ html[data-theme="aurora"] .ant-drawer-header {
 
 :where([data-theme="aurora"]) .ant-table,
 :where([data-theme="aurora"]) .ant-table-thead > tr > th,
-:where([data-theme="aurora"]) .ant-table-tbody > tr > td {
+:where([data-theme="aurora"]) .ant-table-tbody > tr > td,
+/* Таблица с отрисовкой только видимых строк: строки и ячейки там — div, не tr/td. */
+:where([data-theme="aurora"]) .ant-table-tbody-virtual .ant-table-row > .ant-table-cell {
   background: transparent !important;
   border-bottom-color: var(--glass-border) !important;
   color: var(--text);
@@ -161,7 +163,8 @@ html[data-theme="aurora"] .ant-drawer-header {
   letter-spacing: 0.06em;
 }
 
-:where([data-theme="aurora"]) .ant-table-tbody > tr:hover > td {
+:where([data-theme="aurora"]) .ant-table-tbody > tr:hover > td,
+:where([data-theme="aurora"]) .ant-table-tbody-virtual .ant-table-row:hover > .ant-table-cell {
   background: var(--glass-bg) !important;
 }
 
@@ -448,10 +451,12 @@ html[data-theme="aurora"][data-mode="light"] .ant-image-preview-mask {
 
 /* Table — subtle borders against the solid bg */
 html[data-theme="aurora"][data-mode="light"] .ant-table-thead > tr > th,
-html[data-theme="aurora"][data-mode="light"] .ant-table-tbody > tr > td {
+html[data-theme="aurora"][data-mode="light"] .ant-table-tbody > tr > td,
+html[data-theme="aurora"][data-mode="light"] .ant-table-tbody-virtual .ant-table-row > .ant-table-cell {
   border-bottom-color: rgba(195,203,217,0.7) !important;
 }
-html[data-theme="aurora"][data-mode="light"] .ant-table-tbody > tr:hover > td {
+html[data-theme="aurora"][data-mode="light"] .ant-table-tbody > tr:hover > td,
+html[data-theme="aurora"][data-mode="light"] .ant-table-tbody-virtual .ant-table-row:hover > .ant-table-cell {
   background: rgba(195,203,217,0.25) !important;
 }
 html[data-theme="aurora"][data-mode="light"] .ant-table-tbody > tr:hover > td.ant-table-cell-fix {
