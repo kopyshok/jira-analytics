@@ -221,6 +221,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .td-statusbar { gap: 14px; }
   & .td-statusbar .td-status.ant-tag { font-size: 12px; color: var(--text) !important; }
   & .td-statusbar .td-status.ant-tag b { font-size: 14px; }
+  /* выбранный статус в строке «Задачи по статусам» — тёмная клавиша: подпись светлым */
+  & .td-statusbar .td-status.ant-tag.is-active { color: #FFFFFF !important; }
   & .td-sep { width: 1px; align-self: stretch; background: var(--p-line); }
   & .td-flag-key {
     height: 28px;
