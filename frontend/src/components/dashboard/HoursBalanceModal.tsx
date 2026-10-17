@@ -211,13 +211,13 @@ export default function HoursBalanceModal({ employeeId, onClose }: Props) {
               label="Переработки"
               value={`${data.kpi.overtime_days} дн / +${Math.round(data.kpi.overtime_hours)}ч`}
               caption=""
-              color="#ff4d4f"
+              color="var(--ink-bad, #ff4d4f)"
             />
             <KpiTile
               label="Автоотгулы"
               value={`${data.kpi.skip_days} дн / ${Math.round(data.kpi.skip_hours)}ч`}
               caption=""
-              color="#a4b8d8"
+              color="var(--dim-text, #a4b8d8)"
             />
           </div>
           {/* Monthly strip — wrap, без горизонтального scroll'а */}
