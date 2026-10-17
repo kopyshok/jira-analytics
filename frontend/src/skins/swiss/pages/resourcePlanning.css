@@ -256,7 +256,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     flex: none;
     width: 14px;
     height: 14px;
-    background: center / 14px 14px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23D9391A' stroke-width='1.75'%3E%3Cpath d='M8 2l6.25 11H1.75z'/%3E%3Cpath d='M8 6.5v3.2M8 11.6v.1'/%3E%3C/svg%3E");
+    background: center / 14px 14px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23BE3119' stroke-width='1.75'%3E%3Cpath d='M8 2l6.25 11H1.75z'/%3E%3Cpath d='M8 6.5v3.2M8 11.6v.1'/%3E%3C/svg%3E");
   }
   & .sw-rp [data-gantt-row][data-cp] .rp-title-line::after {
     content: 'КП';

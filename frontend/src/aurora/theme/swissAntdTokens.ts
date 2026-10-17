@@ -3,7 +3,7 @@ import { buildAuroraAntdConfig } from './auroraAntdTokens';
 
 /* «Швейцарская»: белый лист, чёрный текст, один красно-оранжевый акцент.
  * Акцент #E5401F — линии, крупные цифры; для текста и заливки под белым
- * текстом — чуть глубже (#D9391A, контраст 4.6:1). Скруглений и теней нет:
+ * текстом — чуть глубже (#BE3119, контраст 5.8:1 — и на светлых подложках не ниже 4.5). Скруглений и теней нет:
  * выпадающие слои и окна очерчены линией 1px через «тень» без размытия. */
 const INK = '#111111';
 const INK_2 = '#3A3A3A';
@@ -12,7 +12,7 @@ const HINT = '#6E6E6E';
 const LINE = '#E2E2E2';
 const FILL = '#F4F4F4';
 const WHITE = '#FFFFFF';
-const ACCENT_INK = '#D9391A';
+const ACCENT_INK = '#BE3119';
 const HAIRLINE = `0 0 0 1px ${INK}`;
 const FONT = "'Geologica', 'Segoe UI', Arial, sans-serif";
 

@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react';
 import { Tooltip } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
-import { useAppTheme } from '../../contexts/ThemeContext';
+import { useAppTheme, useSkin } from '../../contexts/ThemeContext';
+import { readableInk } from '../../utils/readableColor';
 
 interface BacklogRoleCellProps {
   label: string;       // 'АН' | 'ПР' | 'ТС' | 'ОПЭ'
@@ -43,6 +44,8 @@ export default function BacklogRoleCell({
   // но текст переключаем на тёмный для light.
   const { mode } = useAppTheme();
   const isLight = mode === 'light';
+  // В обложке пустая ячейка — без полупрозрачности, подпись роли — читаемым оттенком.
+  const skin = useSkin();
   const fillText = isLight ? '#1a1f2c' : '#ffffff';
   const filledBg = `linear-gradient(180deg, ${color}aa 0%, ${color}44 100%)`;
 
@@ -93,8 +96,8 @@ export default function BacklogRoleCell({
           fontWeight: 800,
           letterSpacing: '0.07em',
           textTransform: 'uppercase',
-          color: empty ? `${color}` : fillText,
-          opacity: empty ? 0.6 : 1,
+          color: empty ? (skin ? readableInk(color) : `${color}`) : fillText,
+          opacity: empty && !skin ? 0.6 : 1,
           marginBottom: 2,
         }}
       >
@@ -128,7 +131,7 @@ export default function BacklogRoleCell({
         style={{
           fontSize: 10,
           color: empty ? DARK_THEME.textMuted : fillText,
-          opacity: empty ? 0.6 : 0.7,
+          opacity: skin ? 1 : empty ? 0.6 : 0.7,
         }}
       >
         {empty ? '0%' : `${pct}%`}

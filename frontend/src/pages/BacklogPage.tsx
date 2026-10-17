@@ -484,7 +484,7 @@ export default function BacklogPage() {
       width: 120,
       render: (_: unknown, r: BacklogItemResponse) => {
         if (r.issue_id) {
-          return <span style={{ fontSize: 12, color: '#6b8fa8' }}>{r.customer ?? '—'}</span>;
+          return <span style={{ fontSize: 12, color: 'var(--bl-customer, #6b8fa8)' }}>{r.customer ?? '—'}</span>;
         }
         return (
           <input

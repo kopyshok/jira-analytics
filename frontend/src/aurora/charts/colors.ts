@@ -31,7 +31,7 @@ export const CHART_COLORS_SWISS: Record<keyof typeof CHART_COLORS_AURORA, string
   violet: '#7A3E9A',
   green: '#1E7A3E',
   yellow: '#9A6400',
-  red: '#D9391A',
+  red: '#BE3119',
   cyan: '#0E7C86',
   pink: '#B0306A',
   amber: '#C75B00',

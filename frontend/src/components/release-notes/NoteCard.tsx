@@ -4,12 +4,18 @@ import {
 } from '../../types/releaseNotes';
 import type { ReleaseNote } from '../../types/releaseNotes';
 import { DARK_THEME } from '../../utils/constants';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readablePair } from '../../utils/readableColor';
 
 interface Props {
   note: ReleaseNote;
 }
 
 export default function NoteCard({ note }: Props) {
+  // В обложке метка вида — читаемой парой цветов (на светлом фоне яркий цвет не читается).
+  const skin = useSkin();
+  const typeColor = NOTE_TYPE_COLORS[note.note_type];
+  const pair = skin ? readablePair(typeColor) : null;
   return (
     <div
       style={{
@@ -21,7 +27,10 @@ export default function NoteCard({ note }: Props) {
       }}
     >
       <div style={{ marginBottom: 4 }}>
-        <Tag color={NOTE_TYPE_COLORS[note.note_type]} style={{ marginRight: 8 }}>
+        <Tag
+          color={pair ? undefined : typeColor}
+          style={pair ? { marginRight: 8, color: pair.fg, background: pair.bg, borderColor: pair.border } : { marginRight: 8 }}
+        >
           {NOTE_TYPE_LABELS[note.note_type]}
         </Tag>
         <Tag style={{ marginRight: 8 }}>{SECTION_LABELS[note.section]}</Tag>

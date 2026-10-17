@@ -3,6 +3,8 @@ import { useMemo, useState } from 'react';
 import { useScenarioRevisions, useRevisionDiff } from '../../hooks/usePlanning';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import type { RevisionDiffEmployee, RevisionDiffMonth } from '../../types/api';
+import { useSkin } from '../../contexts/ThemeContext';
+import { readableInk } from '../../utils/readableColor';
 
 interface Props {
   open: boolean;
@@ -171,9 +173,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function ItemColumn({ title, color, items }: { title: string; color: string; items: string[] }) {
+  // В обложке заголовок колонки — читаемым оттенком того же цвета.
+  const skin = useSkin();
   return (
     <div style={{ flex: 1 }}>
-      <div style={{ fontSize: 12, color, fontWeight: 600, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 12, color: skin ? readableInk(color) : color, fontWeight: 600, marginBottom: 6 }}>{title}</div>
       {items.length === 0 ? (
         <div style={{ fontSize: 12, color: DARK_THEME.textMuted }}>—</div>
       ) : (
