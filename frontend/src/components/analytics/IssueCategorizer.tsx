@@ -15,9 +15,14 @@ interface Props {
   context: IssueContextResponse;
   categories: CategoryResponse[];
   onSaved: () => void;
+  /**
+   * Вид встроенной панели скина: без своей карточки, заголовок как у соседних
+   * разделов, метки пилюлями, цвета — из темы (без «тёмных» значений Aurora).
+   */
+  compact?: boolean;
 }
 
-export default function IssueCategorizer({ context, categories, onSaved }: Props) {
+export default function IssueCategorizer({ context, categories, onSaved, compact = false }: Props) {
   const qc = useQueryClient();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     context.assigned_category ?? null,
@@ -76,6 +81,106 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
   const isInherited = !context.assigned_category && context.category != null;
   const effectiveCat = categories.find(c => c.code === effectiveCode);
   const effectiveLabel = effectiveCat?.label ?? (effectiveCode ?? 'Без категории');
+  const subtreeWord = subtreeN === 1 ? 'задача' : subtreeN < 5 ? 'задачи' : 'задач';
+  const pickCategory = (val: string | null | undefined) => {
+    setSelectedCategory(val ?? null);
+    if (ARCHIVE_CODES.has(val ?? '')) {
+      setIncludeInAnalysis(false);
+    }
+  };
+  const categoryOptions = categories.map(c => ({
+    value: c.code,
+    label: (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: c.color ?? 'var(--text-muted, #64748b)',
+            flexShrink: 0,
+            display: 'inline-block',
+          }}
+        />
+        {c.label}
+      </span>
+    ),
+  }));
+
+  if (compact) {
+    return (
+      <div data-tour="analytics-categorize" className="anc-cat">
+        <h3 className="anc-panel-h3">Категория и анализ</h3>
+        {context.is_container && (
+          <Alert
+            type="warning"
+            showIcon
+            title="Это контейнер. Категории ставятся детям, не самому контейнеру."
+            className="anc-cat-alert"
+          />
+        )}
+        <div className="anc-cat-row">
+          <Tooltip
+            title={
+              isInherited
+                ? 'Категория унаследована от родительской задачи. Можно поставить свою — она перекроет наследование.'
+                : undefined
+            }
+          >
+            <span className={`wr-pill is-sm ${isInherited ? 'is-info' : 'is-neutral'}`}>
+              {effectiveCat?.color && <span className="anc-dot" style={{ background: effectiveCat.color }} />}
+              {effectiveLabel}
+              {isInherited && <span className="anc-cat-inherited">унасл.</span>}
+            </span>
+          </Tooltip>
+          <span className="anc-cat-arrow" aria-hidden>→</span>
+          <Select
+            aria-label="Новая категория"
+            disabled={context.is_container}
+            value={selectedCategory}
+            onChange={pickCategory}
+            allowClear
+            placeholder="Без категории"
+            className="anc-cat-select"
+            options={categoryOptions}
+          />
+        </div>
+        <Tooltip title={isArchive ? 'Снимается автоматически архивной категорией' : undefined}>
+          <Checkbox
+            disabled={context.is_container || isArchive}
+            checked={includeInAnalysis}
+            onChange={e => setIncludeInAnalysis(e.target.checked)}
+          >
+            Учитывать в анализе
+          </Checkbox>
+        </Tooltip>
+        {isArchive && (
+          <div className="anc-cat-note">Снимается автоматически архивной категорией</div>
+        )}
+        {context.subtree_count > 1 && !context.is_container && (
+          <label className="anc-cat-subtree">
+            <Switch size="small" checked={applyToSubtree} onChange={setApplyToSubtree} />
+            <span>
+              Применить ко всему поддереву ({subtreeN} {subtreeWord})
+              <span className="anc-cat-note">Категория поставится на эту задачу и всех детей рекурсивно</span>
+            </span>
+          </label>
+        )}
+        <div className="anc-cat-actions">
+          <Button size="small" onClick={handleCancel} disabled={saving}>Отмена</Button>
+          <Button
+            size="small"
+            type="primary"
+            loading={saving}
+            disabled={context.is_container}
+            onClick={handleSave}
+          >
+            Сохранить
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -166,33 +271,11 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
           <Select
             disabled={context.is_container}
             value={selectedCategory}
-            onChange={(val) => {
-              setSelectedCategory(val ?? null);
-              if (ARCHIVE_CODES.has(val ?? '')) {
-                setIncludeInAnalysis(false);
-              }
-            }}
+            onChange={pickCategory}
             allowClear
             placeholder="Без категории"
             style={{ minWidth: 220 }}
-            options={categories.map(c => ({
-              value: c.code,
-              label: (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      background: c.color ?? 'var(--text-muted, #64748b)',
-                      flexShrink: 0,
-                      display: 'inline-block',
-                    }}
-                  />
-                  {c.label}
-                </span>
-              ),
-            }))}
+            options={categoryOptions}
           />
         </div>
 
@@ -243,7 +326,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
             <div>
               <div style={{ fontSize: 12, color: 'var(--text-muted, #94a3b8)', lineHeight: 1.4 }}>
                 Применить ко всему поддереву{' '}
-                <span style={{ color: 'var(--text-muted, #64748b)' }}>({subtreeN} {subtreeN === 1 ? 'задача' : subtreeN < 5 ? 'задачи' : 'задач'})</span>
+                <span style={{ color: 'var(--text-muted, #64748b)' }}>({subtreeN} {subtreeWord})</span>
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted, #475569)', fontStyle: 'italic', marginTop: 2 }}>
                 Категория поставится на эту задачу + всех детей рекурсивно

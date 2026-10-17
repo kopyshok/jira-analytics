@@ -1,8 +1,12 @@
 import type React from 'react';
+import { TriangleAlert } from 'lucide-react';
 import type { NodeTotals } from '../../types/api';
+import { formatHours, formatInt, formatPct, planTone } from '../../utils/analyticsView';
 
 interface Props {
   totals: NodeTotals;
+  /** Вид скина: одна карточка с пятью ячейками, числа по-русски, «чужие» — подкрашенной ячейкой. */
+  compact?: boolean;
 }
 
 const TILE: React.CSSProperties = {
@@ -29,10 +33,15 @@ const VALUE: React.CSSProperties = {
   lineHeight: 1.1,
 };
 
-export default function AnalyticsKpiTiles({ totals }: Props) {
+// Цвет «чужих часов»: оранжевый Aurora на светлых поверхностях не читается,
+// скин задаёт свой через переменную.
+const FOREIGN = 'var(--an-foreign-text, #ff9c4a)';
+
+export default function AnalyticsKpiTiles({ totals, compact = false }: Props) {
   const pct = totals.plan_hours && totals.plan_hours > 0
     ? (totals.fact_hours / totals.plan_hours) * 100
     : null;
+  if (compact) return <KpiStrip totals={totals} pct={pct} />;
   return (
     <div style={{ display: 'flex', gap: 12, marginBottom: 16 }} data-tour="analytics-kpi">
       <div style={TILE}>
@@ -57,15 +66,60 @@ export default function AnalyticsKpiTiles({ totals }: Props) {
       </div>
       <div style={TILE}>
         <div style={LABEL}>Чужих часов</div>
-        <div style={{ ...VALUE, color: totals.foreign_hours > 0 ? '#ff9c4a' : 'var(--text, #e6edf7)' }}>
+        <div style={{ ...VALUE, color: totals.foreign_hours > 0 ? FOREIGN : 'var(--text, #e6edf7)' }}>
           {totals.foreign_hours.toFixed(1)}
           {totals.foreign_hours > 0 && (
-            <span style={{ fontSize: 13, marginLeft: 6, color: '#ff9c4a', fontWeight: 500 }}>
+            <span style={{ fontSize: 13, marginLeft: 6, color: FOREIGN, fontWeight: 500 }}>
               ({totals.foreign_pct.toFixed(0)}%)
             </span>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Сводка одной карточкой: факт крупно, остальное тише; у «% выполнения» —
+ * тонкая полоса, «чужие часы» — подкрашенная ячейка с предупреждением.
+ */
+function KpiStrip({ totals, pct }: { totals: NodeTotals; pct: number | null }) {
+  const foreign = totals.foreign_hours > 0;
+  return (
+    <section className="wr-card anc-kpi" aria-label="Сводка" data-tour="analytics-kpi">
+      <div className="anc-kpi-cell is-main">
+        <div className="anc-kpi-label">Σ Часов факт</div>
+        <div className="anc-kpi-value">{formatHours(totals.fact_hours)}</div>
+      </div>
+      <div className="anc-kpi-cell">
+        <div className="anc-kpi-label">Σ Часов план</div>
+        <div className="anc-kpi-value">
+          {totals.plan_hours != null ? formatInt(totals.plan_hours) : '—'}
+        </div>
+      </div>
+      <div className="anc-kpi-cell">
+        <div className="anc-kpi-label">% Выполнения</div>
+        <div className="anc-kpi-value">{pct == null ? '—' : formatPct(pct)}</div>
+        {pct != null && (
+          <div className="anc-kpi-bar" aria-hidden>
+            <span className={`is-${planTone(pct)}`} style={{ width: `${Math.min(100, pct)}%` }} />
+          </div>
+        )}
+      </div>
+      <div className="anc-kpi-cell">
+        <div className="anc-kpi-label">Сотрудников</div>
+        <div className="anc-kpi-value">{formatInt(totals.employee_count)}</div>
+      </div>
+      <div className={`anc-kpi-cell is-foreign${foreign ? ' is-on' : ''}`}>
+        <div className="anc-kpi-label">
+          {foreign && <TriangleAlert size={14} aria-hidden />}
+          Чужих часов
+        </div>
+        <div className="anc-kpi-foreign">
+          <span className="anc-kpi-value">{formatHours(totals.foreign_hours)}</span>
+          {foreign && <span className="anc-kpi-share">({formatPct(totals.foreign_pct)})</span>}
+        </div>
+      </div>
+    </section>
   );
 }

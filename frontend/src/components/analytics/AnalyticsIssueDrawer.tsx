@@ -7,6 +7,7 @@ import { statusTagColor } from '../../utils/status';
 import IssueContextBlock from './IssueContextBlock';
 import IssueCategorizer from './IssueCategorizer';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
+import AnalyticsIssuePanel from './AnalyticsIssuePanel';
 import JiraIssueLink from '../shared/JiraIssueLink';
 
 
@@ -16,6 +17,8 @@ interface Props {
   periodStart: string;
   periodEnd: string;
   onClose: () => void;
+  /** Встроенная панель раскладки скина вместо выезжающей шторки; без задачи — ничего. */
+  docked?: boolean;
 }
 
 interface DrawerContentProps {
@@ -197,6 +200,7 @@ export default function AnalyticsIssueDrawer({
   periodStart,
   periodEnd,
   onClose,
+  docked = false,
 }: Props) {
   // Back-stack: stack of {id, key} entries. Current is top of stack.
   const [stack, setStack] = useState<Array<{ id: string; key: string }>>([]);
@@ -213,13 +217,14 @@ export default function AnalyticsIssueDrawer({
   const currentEntry = stack.length > 0 ? stack[stack.length - 1] : null;
   const open = !!currentEntry;
 
-  const handleDrillDown = (childId: string) => {
+  const handleDrillDown = (childId: string, knownKey?: string) => {
     // We need to know the key — fetch from context or fallback to id prefix
     // We'll re-use the cached context data to get the key
     const parentContext = qc.getQueryData<{ children: Array<{ id: string; key: string }> }>(
       ['issue', 'context', currentEntry?.id],
     );
     const childKey =
+      knownKey ??
       parentContext?.children?.find((c) => c.id === childId)?.key ??
       childId;
     setStack(prev => [...prev, { id: childId, key: childKey }]);
@@ -237,6 +242,23 @@ export default function AnalyticsIssueDrawer({
   const handleSaved = () => {
     // Context will be invalidated by the child components
   };
+
+  if (docked) {
+    if (!currentEntry) return null;
+    return (
+      <AnalyticsIssuePanel
+        key={currentEntry.id}
+        issueId={currentEntry.id}
+        issueKey={currentEntry.key}
+        periodStart={periodStart}
+        periodEnd={periodEnd}
+        canGoBack={stack.length > 1}
+        onBack={handleBack}
+        onClose={handleClose}
+        onDrillDown={handleDrillDown}
+      />
+    );
+  }
 
   return (
     <Drawer

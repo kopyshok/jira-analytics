@@ -3,8 +3,7 @@ import { Popover, Skeleton, Select, Checkbox, Tooltip, Tag } from 'antd';
 import type { IssueContextAncestor, IssueContextChild, IssueContextResponse } from '../../types/api';
 import type { CategoryResponse } from '../../types/api';
 import { useIssueChildren } from '../../hooks/useIssueChildren';
-import { setIssueCategory, setIssueInclude } from '../../api/issues';
-import { useQueryClient } from '@tanstack/react-query';
+import { isArchiveCategory, useChildIssueEdit } from '../../hooks/useChildIssueEdit';
 import { statusTagColor } from '../../utils/status';
 
 const CARD_BG = 'var(--mini-tile-bg, rgba(255,255,255,0.03))';
@@ -249,27 +248,12 @@ interface ChildRowProps {
   onSaved: () => void;
 }
 
-const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
-
 function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
-  const qc = useQueryClient();
-  const isArchive = ARCHIVE_CODES.has(child.assigned_category ?? '');
-
-  const handleCategoryChange = async (code: string | null) => {
-    await setIssueCategory(child.id, code);
-    qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
-    qc.invalidateQueries({ queryKey: ['analytics-report'] });
-    qc.invalidateQueries({ queryKey: ['issue', 'context', child.id] });
-    onSaved();
-  };
-
-  const handleIncludeChange = async (checked: boolean) => {
-    await setIssueInclude(child.id, checked);
-    qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
-    qc.invalidateQueries({ queryKey: ['analytics-report'] });
-    qc.invalidateQueries({ queryKey: ['issue', 'context', child.id] });
-    onSaved();
-  };
+  const isArchive = isArchiveCategory(child.assigned_category);
+  const {
+    changeCategory: handleCategoryChange,
+    changeInclude: handleIncludeChange,
+  } = useChildIssueEdit(child.id, onSaved);
 
   return (
     <tr>

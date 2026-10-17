@@ -1,7 +1,8 @@
 import type React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Table, Tag, Tooltip } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
+import { ArrowUpRight, ChevronDown, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
@@ -17,6 +18,10 @@ import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
 import { useAnalyticsLayout } from '../../hooks/useAnalyticsLayout';
 import type { AnalyticsLevel } from '../../hooks/useAnalyticsLayout';
 import { statusTagColor } from '../../utils/status';
+import { readablePair } from '../../utils/readableColor';
+import {
+  formatHours, formatInt, formatPct, formatPct1, isProjectCategory, planTone,
+} from '../../utils/analyticsView';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
 import AnalyticsIssueDrawer from './AnalyticsIssueDrawer';
 
@@ -57,7 +62,9 @@ function initialsOf(name: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-function indent(depth: number, content: React.ReactNode): React.ReactNode {
+function indent(depth: number, content: React.ReactNode, compact = false): React.ReactNode {
+  // В компактном виде отступ уровня даёт сама таблица (indentSize) — свой не нужен.
+  if (compact) return <div className="anc-cell">{content}</div>;
   return (
     <div style={{ paddingLeft: depth * 14, lineHeight: 1.35 }}>{content}</div>
   );
@@ -102,6 +109,7 @@ function buildIssueNode(
   periodStart: string,
   periodEnd: string,
   navigate: ReturnType<typeof useNavigate>,
+  compact = false,
 ): TreeNode {
   const rowKind = i.row_kind ?? 'issue';
   const isContext = rowKind === 'context';
@@ -117,24 +125,72 @@ function buildIssueNode(
         <span style={{ color: 'var(--text-muted, #7e94b8)', fontStyle: 'italic' }}>
           Собственные списания
         </span>,
+        compact,
       ),
       totals: i.totals,
       children: worklogMode === 'inline'
-        ? [worklogBlockNode(`${prefix}/i:${i.id}/own`, i.id, depth + 1, periodStart, periodEnd)]
+        ? [worklogBlockNode(`${prefix}/i:${i.id}/own`, i.id, depth + 1, periodStart, periodEnd, compact)]
         : undefined,
     };
   }
 
   const cleanSummary = stripKeyPrefix(i.summary, i.key);
-  const isProject =
-    i.category === 'quarterly_tasks' || i.category === 'archive_target';
+  const isProject = isProjectCategory(i.category);
+  const openProject = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/projects/${encodeURIComponent(i.key)}`);
+  };
   const node: TreeNode = {
     key: `${prefix}/i:${i.id}`,
     kind: 'issue',
     depth,
     issueId: isContext ? undefined : i.id,
     issueKey: i.key,
-    label: indent(
+    // Компактный вид: одна строка «ключ · статус · Чужая · название ↗», длинное
+    // название обрезается многоточием (полностью — в подсказке).
+    label: compact ? indent(
+      depth,
+      <div className="anc-issue-line">
+        <JiraIssueLink
+          issueKey={i.key}
+          onClick={(e) => e.stopPropagation()}
+          className="anc-key"
+        >
+          {i.key}
+        </JiraIssueLink>
+        <Tag color={statusTagColor(i.status, i.status_category)} className="anc-status">
+          {i.status}
+        </Tag>
+        {i.is_foreign && (
+          <span
+            className="wr-pill is-bad is-sm"
+            title="Задача чужой команды (списание часов вне scope сотрудника)"
+          >
+            Чужая
+          </span>
+        )}
+        <span className="anc-summary-wrap">
+          <span className={`anc-summary${isContext ? ' is-context' : ''}`} title={cleanSummary}>
+            {cleanSummary}
+          </span>
+          {i.is_foreign && i.team && (
+            <span className="anc-foreign-team">Команда: {i.team}</span>
+          )}
+        </span>
+        {isProject && (
+          <button
+            type="button"
+            className="anc-go"
+            onClick={openProject}
+            aria-label="Открыть страницу проекта"
+            title="Открыть страницу проекта"
+          >
+            <ArrowUpRight size={14} aria-hidden />
+          </button>
+        )}
+      </div>,
+      true,
+    ) : indent(
       depth,
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <div
@@ -190,10 +246,7 @@ function buildIssueNode(
               size="small"
               type="link"
               icon={<ArrowRightOutlined />}
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/projects/${encodeURIComponent(i.key)}`);
-              }}
+              onClick={openProject}
               title="Открыть страницу проекта"
               style={{ flexShrink: 0, padding: '0 4px' }}
             />
@@ -230,14 +283,14 @@ function buildIssueNode(
 
   // Режим «Иерархия»: под задачей идут подзадачи, собранные бэкендом.
   const childNodes = (i.children ?? []).map((c) =>
-    buildIssueNode(c, node.key, depth + 1, worklogMode, periodStart, periodEnd, navigate),
+    buildIssueNode(c, node.key, depth + 1, worklogMode, periodStart, periodEnd, navigate, compact),
   );
 
   // В inline-режиме ворклоги задачи показываются как один child-row через
   // tree-expansion, чтобы не конфликтовать с tree-mode на родительских уровнях.
   // У родителя своих ворклогов нет — они уходят в строку «собственные списания».
   if (worklogMode === 'inline' && !isContext && childNodes.length === 0) {
-    childNodes.push(worklogBlockNode(node.key, i.id, depth + 1, periodStart, periodEnd));
+    childNodes.push(worklogBlockNode(node.key, i.id, depth + 1, periodStart, periodEnd, compact));
   }
   if (childNodes.length > 0) node.children = childNodes;
 
@@ -250,12 +303,22 @@ function worklogBlockNode(
   depth: number,
   periodStart: string,
   periodEnd: string,
+  compact = false,
 ): TreeNode {
   return {
     key: `${parentKey}/wl`,
     kind: 'worklog-block',
     depth,
-    label: (
+    label: compact ? (
+      <div className="anc-wl-inline">
+        <AnalyticsWorklogsBlock
+          compact
+          issueId={issueId}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+        />
+      </div>
+    ) : (
       <div style={{ paddingLeft: depth * 14 }}>
         <AnalyticsWorklogsBlock
           issueId={issueId}
@@ -282,10 +345,12 @@ function ForeignChip({ totals }: { totals: NodeTotals }) {
           borderRadius: 999,
           fontSize: 11,
           fontWeight: 600,
-          background: 'rgba(255, 156, 74, 0.12)',
-          color: '#ff9c4a',
-          border: '1px solid rgba(255, 156, 74, 0.35)',
+          // Оранжевый Aurora на светлых поверхностях не читается — скин задаёт свою пару.
+          background: 'var(--an-foreign-bg, rgba(255, 156, 74, 0.12))',
+          color: 'var(--an-foreign-text, #ff9c4a)',
+          border: '1px solid var(--an-foreign-border, rgba(255, 156, 74, 0.35))',
         }}
+        className="an-foreign-chip"
       >
         ⚠ {totals.foreign_issue_count} · {totals.foreign_hours.toFixed(0)}ч · {totals.foreign_pct.toFixed(0)}%
       </span>
@@ -484,6 +549,7 @@ function buildTreeFromLayout(
   periodEnd: string,
   navigate: ReturnType<typeof useNavigate>,
   thematicParams: URLSearchParams | null,
+  compact = false,
 ): TreeNode[] {
   const flat = flattenResponse(data);
   const grandFact = flat.reduce((s, r) => s + r.issue.totals.fact_hours, 0);
@@ -503,7 +569,90 @@ function buildTreeFromLayout(
     }
   }
 
+  function thematicUrlOf(row: FlatRow): string | null {
+    return thematicParams
+      ? `/analytics/work-type-report?${new URLSearchParams({
+          ...Object.fromEntries(thematicParams),
+          work_type_id: row.work_type_id,
+        }).toString()}`
+      : null;
+  }
+
+  /**
+   * Подписи уровней в компактном виде: у каждого уровня свой признак — команда
+   * жирным, роль и категория точкой своего цвета, сотрудник — кружком с
+   * инициалами (читаемая пара из цвета роли), вид работ — ссылкой-стрелкой.
+   */
+  function compactLabelOf(level: AnalyticsLevel, row: FlatRow, depth: number): React.ReactNode {
+    switch (level) {
+      case 'team':
+        return indent(depth, <b className="anc-name is-team">{row.team_label}</b>, true);
+      case 'subgroup':
+        return indent(depth, <b className="anc-name is-subgroup">{row.subgroup_label}</b>, true);
+      case 'role':
+        return indent(
+          depth,
+          <span className="anc-lv">
+            <span className="anc-dot" style={{ background: row.role_color }} />
+            <span className="anc-name">{row.role_label}</span>
+          </span>,
+          true,
+        );
+      case 'employee': {
+        const pair = readablePair(row.role_color);
+        return indent(
+          depth,
+          <span className="anc-lv">
+            <span className="anc-ava" style={{ background: pair.bg, color: pair.fg }}>
+              {row.employee_initials || initialsOf(row.employee_name)}
+            </span>
+            <span className="anc-name">{row.employee_name}</span>
+          </span>,
+          true,
+        );
+      }
+      case 'work_type': {
+        const thematicUrl = thematicUrlOf(row);
+        return indent(
+          depth,
+          <span className="anc-lv">
+            <span className="anc-dot is-muted" />
+            <span className="anc-name">{row.work_type_label}</span>
+            {thematicUrl && (
+              <Tooltip title="Тематический отчёт">
+                <button
+                  type="button"
+                  className="anc-go"
+                  aria-label="Тематический отчёт"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(thematicUrl);
+                  }}
+                >
+                  <ArrowUpRight size={14} aria-hidden />
+                </button>
+              </Tooltip>
+            )}
+          </span>,
+          true,
+        );
+      }
+      case 'category':
+        return indent(
+          depth,
+          <span className="anc-lv">
+            <span className="anc-dot" style={{ background: row.category_color }} />
+            <span className="anc-name">{row.category_label}</span>
+          </span>,
+          true,
+        );
+      case 'issue':
+        throw new Error('issue is a leaf, not a group level');
+    }
+  }
+
   function labelOf(level: AnalyticsLevel, row: FlatRow, depth: number): React.ReactNode {
+    if (compact) return compactLabelOf(level, row, depth);
     switch (level) {
       case 'team':
         return indent(depth, <b>{row.team_label}</b>);
@@ -555,12 +704,7 @@ function buildTreeFromLayout(
         );
       }
       case 'work_type': {
-        const thematicUrl = thematicParams
-          ? `/analytics/work-type-report?${new URLSearchParams({
-              ...Object.fromEntries(thematicParams),
-              work_type_id: row.work_type_id,
-            }).toString()}`
-          : null;
+        const thematicUrl = thematicUrlOf(row);
         return indent(
           depth,
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -649,6 +793,7 @@ function buildTreeFromLayout(
           periodStart,
           periodEnd,
           navigate,
+          compact,
         );
         nodes.push(node);
       }
@@ -693,7 +838,33 @@ interface Props {
   worklogMode: 'inline' | 'drawer';
   periodStart: string;
   periodEnd: string;
+  /**
+   * Вид скина: стрелки-шевроны, числа по-русски, «% план» пилюлей, отметки
+   * «чужих» у названия, шапка колонок закреплена в собственном блоке прокрутки.
+   */
+  compact?: boolean;
+  /**
+   * Панель задачи живёт в раскладке страницы: таблица только сообщает, какую
+   * задачу открыть, и свою шторку не рисует.
+   */
+  onOpenIssue?: (issue: { id: string; key: string }) => void;
+  /** Задача, открытая в панели страницы, — её строка подсвечивается. */
+  openIssueId?: string | null;
 }
+
+// Ширины колонок компактного вида (название забирает остаток).
+const COMPACT_WIDTHS: Record<string, number> = {
+  fact_hours: 88,
+  plan_hours: 78,
+  pct_plan: 76,
+  pct_in_group: 84,
+  pct_total: 84,
+  worklog_count: 92,
+  issue_count: 64,
+  employee_count: 66,
+  avg_min: 74,
+};
+const COMPACT_LABEL_MIN = 420;
 
 export default function AnalyticsTable({
   data,
@@ -701,6 +872,9 @@ export default function AnalyticsTable({
   worklogMode,
   periodStart,
   periodEnd,
+  compact = false,
+  onOpenIssue,
+  openIssueId = null,
 }: Props) {
   const { visible } = useAnalyticsColumns();
   const visibleSet = new Set(visible);
@@ -709,6 +883,7 @@ export default function AnalyticsTable({
   const { selectedTeams } = useGlobalTeamFilter();
   const [drawerIssue, setDrawerIssue] = useState<{ id: string; key: string } | null>(null);
   const { resolved } = useAnalyticsLayout();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Params for thematic report deep-links (work_type_id is added per-row)
   const thematicBaseParams = new URLSearchParams({
@@ -776,10 +951,11 @@ export default function AnalyticsTable({
         periodEnd,
         navigate,
         thematicBaseParams,
+        compact,
       ),
     // thematicBaseParams is recreated each render but is URLSearchParams — stable via stringification
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filteredData, layout, worklogMode, periodStart, periodEnd, navigate],
+    [filteredData, layout, worklogMode, periodStart, periodEnd, navigate, compact],
   );
 
   const isBlock = (r: TreeNode) => r.kind === 'worklog-block';
@@ -916,47 +1092,147 @@ export default function AnalyticsTable({
       MANDATORY_KEYS.has(col.key as string) || visibleSet.has(col.key as string),
   );
 
+  // Компактный вид: числа по-русски и табличными цифрами, «% план» — пилюлей
+  // при перерасходе и тихим цветом при недоборе, отметка «чужих» — у названия.
+  const dash = <span className="anc-dash">—</span>;
+  const compactCells: Record<string, (r: TreeNode) => React.ReactNode> = {
+    fact_hours: (r) => {
+      const pct = r.depth === 0 ? r.totals.pct_total : (r.totals.pct_in_group ?? 0);
+      return (
+        <div className="anc-factcell">
+          <span className="anc-num">{formatHours(r.totals.fact_hours)}</span>
+          {resolved.showFactBar && r.kind !== 'issue' && (
+            <div className="anc-factbar" aria-hidden>
+              <span style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+            </div>
+          )}
+        </div>
+      );
+    },
+    plan_hours: (r) => (r.totals.plan_hours != null ? formatInt(r.totals.plan_hours) : dash),
+    pct_plan: (r) => (r.totals.pct_plan != null
+      ? <span className={`anc-pct is-${planTone(r.totals.pct_plan)}`}>{formatPct(r.totals.pct_plan)}</span>
+      : dash),
+    pct_in_group: (r) => (r.totals.pct_in_group != null ? formatPct1(r.totals.pct_in_group) : dash),
+    pct_total: (r) => formatPct1(r.totals.pct_total),
+    worklog_count: (r) => formatInt(r.totals.worklog_count),
+    issue_count: (r) => formatInt(r.totals.issue_count),
+    employee_count: (r) => formatInt(r.totals.employee_count),
+    avg_min: (r) => formatInt(r.totals.avg_worklog_minutes),
+  };
+  const shownColumns: ColumnsType<TreeNode> = compact
+    ? columns.map((col) => {
+        const key = String(col.key);
+        if (key === 'label') {
+          return {
+            ...col,
+            width: undefined,
+            render: (label: React.ReactNode, r: TreeNode) => (
+              <div className="anc-label">
+                {label}
+                {r.kind !== 'issue' && !isBlock(r) && <ForeignChip totals={r.totals} />}
+              </div>
+            ),
+          };
+        }
+        const cell = compactCells[key];
+        return {
+          ...col,
+          width: COMPACT_WIDTHS[key],
+          render: (_: unknown, r: TreeNode) => (isBlock(r) ? null : cell(r)),
+        };
+      })
+    : columns;
+  const compactWidth = shownColumns.reduce(
+    (sum, col) => sum + (COMPACT_WIDTHS[String(col.key)] ?? COMPACT_LABEL_MIN), 0,
+  );
+
+  const openIssue = (issue: { id: string; key: string }) => {
+    if (onOpenIssue) onOpenIssue(issue);
+    else setDrawerIssue(issue);
+  };
+
+  const table = (
+    <Table<TreeNode>
+      dataSource={tableData}
+      columns={shownColumns}
+      rowKey="key"
+      pagination={false}
+      size="small"
+      scroll={compact ? { x: compactWidth } : { x: 'max-content' }}
+      {...(compact
+        ? {
+            tableLayout: 'fixed' as const,
+            // Шапка колонок держится у верхнего края своего блока, а не страницы.
+            sticky: { getContainer: () => scrollRef.current ?? document.body },
+          }
+        : {})}
+      rowClassName={(record) => {
+        const cls = [`tree-row-depth-${record.depth}`];
+        if (record.children && record.children.length > 0)
+          cls.push('tree-row-has-children');
+        if (compact) {
+          if (record.depth === 0 && record.kind === 'team') cls.push('anc-row-top');
+          if (openIssueId && record.issueId === openIssueId) cls.push('anc-row-selected');
+          if (isBlock(record)) cls.push('anc-row-block');
+        }
+        return cls.join(' ');
+      }}
+      expandable={{
+        expandedRowKeys,
+        onExpandedRowsChange: setExpandedRowKeys,
+        expandRowByClick: true,
+        rowExpandable: (record) => (record.children?.length ?? 0) > 0,
+        ...(compact
+          ? {
+              indentSize: 16,
+              expandIcon: ({ expanded, expandable, record, onExpand }) =>
+                expandable ? (
+                  <button
+                    type="button"
+                    className="anc-expand"
+                    aria-label={expanded ? 'Свернуть' : 'Развернуть'}
+                    aria-expanded={expanded}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onExpand(record, e);
+                    }}
+                  >
+                    {expanded ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+                  </button>
+                ) : (
+                  <span className="anc-expand is-empty" aria-hidden />
+                ),
+            }
+          : {}),
+      }}
+      onRow={(record) =>
+        worklogMode === 'drawer'
+        && record.kind === 'issue'
+        && record.issueId
+        && !(record.children?.length)
+          ? {
+              onClick: () =>
+                openIssue({ id: record.issueId!, key: record.issueKey! }),
+              style: { cursor: 'pointer' },
+            }
+          : {}
+      }
+    />
+  );
+
   return (
     <>
-      <Table<TreeNode>
-        dataSource={tableData}
-        columns={columns}
-        rowKey="key"
-        pagination={false}
-        size="small"
-        scroll={{ x: 'max-content' }}
-        rowClassName={(record) => {
-          const cls = [`tree-row-depth-${record.depth}`];
-          if (record.children && record.children.length > 0)
-            cls.push('tree-row-has-children');
-          return cls.join(' ');
-        }}
-        expandable={{
-          expandedRowKeys,
-          onExpandedRowsChange: setExpandedRowKeys,
-          expandRowByClick: true,
-          rowExpandable: (record) => (record.children?.length ?? 0) > 0,
-        }}
-        onRow={(record) =>
-          worklogMode === 'drawer'
-          && record.kind === 'issue'
-          && record.issueId
-          && !(record.children?.length)
-            ? {
-                onClick: () =>
-                  setDrawerIssue({ id: record.issueId!, key: record.issueKey! }),
-                style: { cursor: 'pointer' },
-              }
-            : {}
-        }
-      />
-      <AnalyticsIssueDrawer
-        issueId={drawerIssue?.id ?? null}
-        issueKey={drawerIssue?.key ?? null}
-        periodStart={periodStart}
-        periodEnd={periodEnd}
-        onClose={() => setDrawerIssue(null)}
-      />
+      {compact ? <div className="anc-table-scroll" ref={scrollRef}>{table}</div> : table}
+      {!onOpenIssue && (
+        <AnalyticsIssueDrawer
+          issueId={drawerIssue?.id ?? null}
+          issueKey={drawerIssue?.key ?? null}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+          onClose={() => setDrawerIssue(null)}
+        />
+      )}
     </>
   );
 }

@@ -63,15 +63,18 @@ function SortableLevel({ level, hidden, onToggleVisible }: SortableLevelProps) {
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    background: hidden ? 'rgba(68, 90, 130, 0.18)' : '#162f54',
-    border: '1px solid rgba(255,255,255,0.06)',
+    // Тёмная плашка Aurora на светлом окне скина не читается — скин задаёт свою.
+    background: hidden
+      ? 'var(--an-level-bg-off, rgba(68, 90, 130, 0.18))'
+      : 'var(--an-level-bg, #162f54)',
+    border: '1px solid var(--an-level-border, rgba(255,255,255,0.06))',
     borderRadius: 6,
     padding: '8px 12px',
     marginBottom: 6,
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    opacity: hidden ? 0.55 : 1,
+    opacity: hidden ? 'var(--an-level-off-opacity, 0.55)' : 1,
     cursor: isDragging ? 'grabbing' : 'default',
   };
   return (

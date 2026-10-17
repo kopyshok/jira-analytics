@@ -9,9 +9,37 @@ const { Text } = Typography;
  * Это не «помощь извне» — граница «свои — чужие» остаётся на уровне команды,
  * здесь показан внутренний обмен ресурсом между группами.
  */
-export default function SubgroupFlowLine({ items }: { items?: SubgroupFlowItem[] }) {
+export default function SubgroupFlowLine({ items, compact = false }: {
+  items?: SubgroupFlowItem[];
+  /** Вид скина: отдельная карточка, группы — пилюлями «Группа: −12 ч к соседям · +8 ч от них». */
+  compact?: boolean;
+}) {
   const rows = (items ?? []).filter((i) => i.out_hours > 0 || i.in_hours > 0);
   if (rows.length === 0) return null;
+
+  if (compact) {
+    return (
+      <section className="wr-card anc-flow" aria-label="Переток внутри команды">
+        <Tooltip title="Часы, которыми группы обменялись внутри команды. Помощь извне считается отдельно.">
+          <div className="anc-flow-title">Переток внутри команды</div>
+        </Tooltip>
+        <div className="anc-flow-list">
+          {rows.map((r) => (
+            <span key={r.subgroup_id} className="anc-flow-pill">
+              <b>{r.subgroup_name}:</b>
+              {r.out_hours > 0 && (
+                <span><span className="is-out">−{Math.round(r.out_hours)} ч</span> к соседям</span>
+              )}
+              {r.out_hours > 0 && r.in_hours > 0 && <span aria-hidden>·</span>}
+              {r.in_hours > 0 && (
+                <span><span className="is-in">+{Math.round(r.in_hours)} ч</span> от них</span>
+              )}
+            </span>
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 12 }}>
