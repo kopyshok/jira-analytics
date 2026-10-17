@@ -165,3 +165,22 @@ html[data-skin="zones"] .plz-qa { padding: 12px 14px; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row .ant-select-disabled,
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row .ant-select-disabled * { background: transparent !important; cursor: default; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .plz .backlog-row .ant-select-disabled { border-color: transparent !important; }
+
+/* изменение доступности утверждённого сценария */
+html[data-skin="zones"] {
+  --drift-border: #E2C98F;
+  --drift-bg: #FBF1DC;
+  --drift-warn: #7A5200;
+  --drift-bad-bg: #FDF3F1;
+  --drift-text: #17191C;
+  --drift-bad: #B42A1E;
+  --drift-row-bg: #FFFFFF;
+  --drift-good: #1E6B43;
+}
+/* история ревизий: подписи «добавлено/убрано» и дельты — тёмные оттенки */
+html[data-skin="zones"] {
+  --rev-added: #1E6B43;
+  --rev-removed: #B42A1E;
+  --rev-up: #1E6B43;
+  --rev-down: #B42A1E;
+}

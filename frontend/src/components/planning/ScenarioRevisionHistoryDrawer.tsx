@@ -173,7 +173,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function ItemColumn({ title, color, items }: { title: string; color: string; items: string[] }) {
   return (
     <div style={{ flex: 1 }}>
-      <div style={{ fontSize: 12, color, fontWeight: 600, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 12, color: `var(${color === '#1d9e75' ? '--rev-added' : '--rev-removed'}, ${color})`, fontWeight: 600, marginBottom: 6 }}>{title}</div>
       {items.length === 0 ? (
         <div style={{ fontSize: 12, color: DARK_THEME.textMuted }}>—</div>
       ) : (
@@ -245,7 +245,7 @@ function CapacityTable({ rows }: { rows: RevisionDiffEmployee[] }) {
       fontFamily: FONTS.mono,
       fontSize: 12,
       fontWeight: 600,
-      color: d > 0 ? '#22c55e' : d < 0 ? '#f87171' : DARK_THEME.textMuted,
+      color: d > 0 ? 'var(--rev-up, #22c55e)' : d < 0 ? 'var(--rev-down, #f87171)' : DARK_THEME.textMuted,
     }}>
       {d === 0 ? '—' : `${d > 0 ? '+' : ''}${Math.round(d)}`}
     </span>
