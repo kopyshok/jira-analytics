@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Spin, Empty, Popover, Button, Checkbox, Space, Tag } from 'antd';
+import { Card, Spin, Empty, Popover, Button, Checkbox, Grid, Space, Tag } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import type { DashboardProjectsResponse, ProjectItem } from '../../types/api';
@@ -529,6 +529,7 @@ interface Props {
 export default function ProjectsWidget({ data, loading }: Props) {
   const navigate = useNavigate();
   const [prefs, setPrefsState] = useState<Prefs>(() => loadPrefs());
+  const screens = Grid.useBreakpoint();
 
   const setPrefs = (p: Prefs) => {
     setPrefsState(p);
@@ -544,21 +545,37 @@ export default function ProjectsWidget({ data, loading }: Props) {
   const tableGrid = ['12px', 'minmax(220px,1.3fr)', ...visibleCols.map((c) => c.width)].join(' ');
 
   const showSide = prefs.blocks.kpi || prefs.blocks.sparklines;
+  // На экране уже 1600 px между сводкой и плитками таблице остаётся меньше
+  // половины её ширины: тогда плитки и активность встают рядом со сводкой,
+  // а таблица — отдельной строкой во всю ширину карточки.
+  const stacked = showSide && screens.xxl === false;
   const outerCols = [
     prefs.blocks.donut ? '220px' : null,
     // Таблица не распирает сетку: плитки и активность — одной колонкой справа,
     // а если колонкам всё равно тесно, таблица прокручивается вбок внутри себя
     // (раньше она выталкивала активность за край карточки, «Статус» наезжал на «Задачи»).
     'minmax(0, 1fr)',
-    showSide ? '280px' : null,
+    showSide && !stacked ? '280px' : null,
   ].filter(Boolean).join(' ');
+
+  const side = showSide && (
+    <div style={{ display: 'flex', flexDirection: stacked ? 'row' : 'column', gap: 20, minWidth: 0 }}>
+      {prefs.blocks.kpi && <div style={stacked ? { flex: 1, minWidth: 0 } : undefined}><KpiTiles data={data} /></div>}
+
+      {prefs.blocks.sparklines && (
+        <div style={stacked ? { flex: 1, minWidth: 0 } : undefined}><Sparklines projects={data.projects} /></div>
+      )}
+    </div>
+  );
 
   return (
     <Card title="Проекты квартала" extra={extra}>
       <div style={{ display: 'grid', gridTemplateColumns: outerCols, gap: 20, alignItems: 'flex-start' }}>
         {prefs.blocks.donut && <Donut data={data} />}
 
-        <div style={{ overflowX: 'auto', minWidth: 0 }}>
+        {stacked && side}
+
+        <div style={{ overflowX: 'auto', minWidth: 0, ...(stacked ? { gridColumn: '1 / -1' } : {}) }}>
           <div style={{
             display: 'grid',
             gridTemplateColumns: tableGrid,
@@ -601,13 +618,7 @@ export default function ProjectsWidget({ data, loading }: Props) {
           )}
         </div>
 
-        {showSide && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
-            {prefs.blocks.kpi && <KpiTiles data={data} />}
-
-            {prefs.blocks.sparklines && <Sparklines projects={data.projects} />}
-          </div>
-        )}
+        {!stacked && side}
       </div>
     </Card>
   );
