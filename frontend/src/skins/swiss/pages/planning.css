@@ -180,6 +180,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-pl .backlog-priority-input {
     width: 22px !important;
     background: transparent !important;
+    box-shadow: none !important;
     font-family: var(--sw-font) !important;
     font-size: 12px !important;
   }
