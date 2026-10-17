@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Card, Spin, Empty, Popover, Button, Checkbox, Grid, Space, Tag } from 'antd';
+import { useState, useSyncExternalStore } from 'react';
+import { Card, Spin, Empty, Popover, Button, Checkbox, Space, Tag } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import type { DashboardProjectsResponse, ProjectItem } from '../../types/api';
@@ -16,6 +16,19 @@ const STATUS_COLORS = {
 
 const SILENCE_THRESHOLD = 14;
 const DUE_SOON_THRESHOLD = 7;
+
+/**
+ * Экран от 1600 px (порог xxl в AntD). Ответ берётся у браузера сразу, ещё
+ * до первой отрисовки: Grid.useBreakpoint на первом кадре пуст, и раскладка
+ * на узком экране успевала мигнуть широкой.
+ */
+const WIDE_QUERY = '(min-width: 1600px)';
+const subscribeWide = (onChange: () => void) => {
+  const query = window.matchMedia(WIDE_QUERY);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+};
+const isWide = () => window.matchMedia(WIDE_QUERY).matches;
 
 type ColKey = 'status' | 'subtasks' | 'help' | 'assignees' | 'due' | 'trend' | 'forecast' | 'progress' | 'factplan' | 'pct';
 type BlockKey = 'donut' | 'kpi' | 'sparklines';
@@ -531,7 +544,7 @@ interface Props {
 export default function ProjectsWidget({ data, loading }: Props) {
   const navigate = useNavigate();
   const [prefs, setPrefsState] = useState<Prefs>(() => loadPrefs());
-  const screens = Grid.useBreakpoint();
+  const wide = useSyncExternalStore(subscribeWide, isWide, () => true);
 
   const setPrefs = (p: Prefs) => {
     setPrefsState(p);
@@ -550,7 +563,7 @@ export default function ProjectsWidget({ data, loading }: Props) {
   // На экране уже 1600 px между сводкой и плитками таблице остаётся меньше
   // половины её ширины: тогда плитки и активность встают рядом со сводкой,
   // а таблица — отдельной строкой во всю ширину карточки.
-  const stacked = showSide && screens.xxl === false;
+  const stacked = showSide && !wide;
   const outerCols = [
     prefs.blocks.donut ? '220px' : null,
     // Таблица не распирает сетку: плитки и активность — одной колонкой справа,
