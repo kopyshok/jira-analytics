@@ -191,7 +191,29 @@
   /* Backlog allocation rows — на светлом полупрозрачный голубой, акцент даёт полоса слева */
   --row-included-bg: rgba(59,110,245,0.07);
   --row-excluded-bg: transparent;
+
+  /* Светлые значения для цветов, которые компоненты зашили под тёмную тему.
+     В компоненте пишется var(--имя, <цвет тёмной темы>): в тёмной теме этих
+     переменных нет — там остаётся прежний цвет, светлые темы задают свои. */
+  --hairline: rgba(195,203,217,0.7);   /* рамки и разделители */
+  --faint-fill: #eef2f7;               /* слабая подложка: плитки, дорожки полос */
+  --tile-bg: #f4f7fb;                  /* строка-плитка внутри окна */
+  --dim-opacity: 1;                    /* приглушение прозрачностью — текст перестаёт читаться */
+  --dim-text: var(--text-muted);       /* …вместо него приглушённый цвет текста */
+  --accent-text: #2a56d6;              /* акцент как цвет текста и ссылок */
+  --ink-info: #1a5f8f;                 /* смысловые цвета текстом: «в работе», сведения */
+  --ink-good: #17704b;                 /* …«готово», «добавлено», рост */
+  --ink-bad: #b4232f;                  /* …«убрано», снижение, ошибка */
+  --ink-warn: #8a5300;                 /* …«текущий», предупреждение */
+  --ink-violet: #6b3fa0;               /* …«черновик», прочее */
+  --avatar-bg: #2a56d6;                /* аватар-кружок с белыми инициалами */
 }
+
+/* Метки типа заметки «Что нового»: цвет типа на светлом фоне не читается —
+   в светлых темах текст метки берёт смысловой цвет текста (в тёмной — как было). */
+[data-theme="aurora"][data-mode="light"] .note-type-tag.note-type-new { color: var(--ink-good) !important; }
+[data-theme="aurora"][data-mode="light"] .note-type-tag.note-type-improvement { color: var(--ink-info) !important; }
+[data-theme="aurora"][data-mode="light"] .note-type-tag.note-type-fix { color: var(--text-muted) !important; }
 
 /* ---------- Фарфор neu overrides ----------
    Kill glass-blur + glass-sheen, swap to solid bg + neu shadow.

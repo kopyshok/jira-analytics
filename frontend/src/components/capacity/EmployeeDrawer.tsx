@@ -178,7 +178,7 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
               <Avatar
                 size={56}
                 icon={!initials ? <UserOutlined /> : undefined}
-                style={{ background: '#1d3a66', fontSize: 20, fontWeight: 600 }}
+                style={{ background: 'var(--avatar-bg, #1d3a66)', fontSize: 20, fontWeight: 600 }}
               >
                 {initials}
               </Avatar>

@@ -134,7 +134,7 @@ function DiffBody({ diff }: { diff: NonNullable<ReturnType<typeof useRevisionDif
 
 function Header({ diff }: { diff: NonNullable<ReturnType<typeof useRevisionDiff>['data']> }) {
   return (
-    <div style={{ display: 'flex', gap: 16, padding: 12, background: 'rgba(0,201,200,0.05)', borderRadius: 6 }}>
+    <div style={{ display: 'flex', gap: 16, padding: 12, background: 'var(--faint-fill, rgba(0,201,200,0.05))', borderRadius: 6 }}>
       <RevisionCard label="R1" side={diff.r1} />
       <div style={{ display: 'flex', alignItems: 'center', color: DARK_THEME.textMuted, fontSize: 18 }}>→</div>
       <RevisionCard label="R2" side={diff.r2} />
@@ -171,9 +171,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function ItemColumn({ title, color, items }: { title: string; color: string; items: string[] }) {
+  // Подпись — тем же смыслом, но читаемым на светлом фоне (в тёмной теме — прежний цвет).
+  const ink = color === '#1d9e75' ? 'var(--ink-good, #1d9e75)' : 'var(--ink-bad, #f5222d)';
   return (
     <div style={{ flex: 1 }}>
-      <div style={{ fontSize: 12, color, fontWeight: 600, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 12, color: ink, fontWeight: 600, marginBottom: 6 }}>{title}</div>
       {items.length === 0 ? (
         <div style={{ fontSize: 12, color: DARK_THEME.textMuted }}>—</div>
       ) : (
@@ -245,7 +247,7 @@ function CapacityTable({ rows }: { rows: RevisionDiffEmployee[] }) {
       fontFamily: FONTS.mono,
       fontSize: 12,
       fontWeight: 600,
-      color: d > 0 ? '#22c55e' : d < 0 ? '#f87171' : DARK_THEME.textMuted,
+      color: d > 0 ? 'var(--ink-good, #22c55e)' : d < 0 ? 'var(--ink-bad, #f87171)' : DARK_THEME.textMuted,
     }}>
       {d === 0 ? '—' : `${d > 0 ? '+' : ''}${Math.round(d)}`}
     </span>

@@ -17,6 +17,15 @@ const COLOR = {
   draft: '#a78bfa',
 };
 
+/** Те же смыслы текстом: в светлых темах — читаемые оттенки, в тёмной — прежние цвета. */
+const INK = {
+  past: COLOR.past,
+  current: 'var(--ink-warn, #fb923c)',
+  approved: 'var(--ink-info, #38bdf8)',
+  planable: 'var(--ink-good, #22c55e)',
+  draft: 'var(--ink-violet, #a78bfa)',
+};
+
 interface Row {
   key: string;
   role: string;
@@ -48,7 +57,7 @@ function ProgressBar({ data }: { data: HoursBreakdownData }) {
 
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ display: 'flex', height: 18, borderRadius: 3, overflow: 'hidden', background: '#1e293b' }}>
+      <div style={{ display: 'flex', height: 18, borderRadius: 3, overflow: 'hidden', background: 'var(--faint-fill, #1e293b)' }}>
         <Tooltip title={`Факт прошлых Q: ${Math.round(past)}ч`}>
           <div style={{ background: COLOR.past, width: pct(past) }} />
         </Tooltip>
@@ -62,7 +71,7 @@ function ProgressBar({ data }: { data: HoursBreakdownData }) {
           <div style={{ background: COLOR.planable, width: pct(planable) }} />
         </Tooltip>
       </div>
-      <div style={{ fontSize: 11, color: COLOR.draft, marginTop: 6 }}>
+      <div style={{ fontSize: 11, color: INK.draft, marginTop: 6 }}>
         Черновик: {Math.round(data.draft.total)}ч (информационно)
       </div>
     </div>
@@ -74,7 +83,7 @@ const thStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
   color: 'var(--text-muted, #94a3b8)',
-  borderBottom: '1px solid #1e3a5f',
+  borderBottom: '1px solid var(--hairline, #1e3a5f)',
   textAlign: 'right',
   whiteSpace: 'nowrap',
 };
@@ -82,7 +91,7 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
   padding: '6px 8px',
   fontSize: 13,
-  borderBottom: '1px solid rgba(255,255,255,0.04)',
+  borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.04))',
   textAlign: 'right',
 };
 
@@ -133,19 +142,19 @@ export default function HoursBreakdownTable({ data, loading }: Props) {
               <tr key={r.key}>
                 <td style={{ ...baseTd, textAlign: 'left' }}>{r.role}</td>
                 <td style={baseTd}>{fmt(r.plan)}</td>
-                <td style={{ ...baseTd, color: COLOR.past }}>{fmt(r.fact_past)}</td>
-                <td style={{ ...baseTd, color: COLOR.current }}>{fmt(r.fact_current)}</td>
-                <td style={{ ...baseTd, color: COLOR.approved }}>{fmt(r.approved)}</td>
+                <td style={{ ...baseTd, color: INK.past }}>{fmt(r.fact_past)}</td>
+                <td style={{ ...baseTd, color: INK.current }}>{fmt(r.fact_current)}</td>
+                <td style={{ ...baseTd, color: INK.approved }}>{fmt(r.approved)}</td>
                 <td
                   style={{
                     ...baseTd,
-                    color: r.planable < 0 ? DARK_THEME.danger : COLOR.planable,
+                    color: r.planable < 0 ? DARK_THEME.danger : INK.planable,
                     fontWeight: 600,
                   }}
                 >
                   {fmt(r.planable)}
                 </td>
-                <td style={{ ...baseTd, color: COLOR.draft }}>{fmt(r.draft)}</td>
+                <td style={{ ...baseTd, color: INK.draft }}>{fmt(r.draft)}</td>
               </tr>
             );
           })}

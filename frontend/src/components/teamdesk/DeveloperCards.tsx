@@ -110,7 +110,7 @@ export function DeveloperCards({
                 <div>
                   <Typography.Text strong>{dev.display_name ?? 'Без имени'}</Typography.Text>
                   {dev.team && (
-                    <div style={{ fontSize: 11, opacity: 0.55 }}>{dev.team}</div>
+                    <div style={{ fontSize: 11, opacity: 'var(--dim-opacity, 0.55)', color: 'var(--dim-text, inherit)' }}>{dev.team}</div>
                   )}
                 </div>
               </div>

@@ -440,7 +440,7 @@ function BacklogAllocRowBase({
               e.stopPropagation();
               onOpenBreakdown(a.issue_id!, a.jira_key ?? '');
             }}
-            style={{ marginLeft: 6, cursor: 'pointer', color: '#38bdf8', fontSize: 13 }}
+            style={{ marginLeft: 6, cursor: 'pointer', color: 'var(--ink-info, #38bdf8)', fontSize: 13 }}
           />
         )}
         {a.cost_type && (
