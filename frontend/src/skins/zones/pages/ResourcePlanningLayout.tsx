@@ -113,7 +113,9 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
               {/* Без базового плана сравнение открывается с выбором базы на месте. */}
               {planId && gantt && (
                 <Button
-                  onClick={() => navigate(`/resource-planning/compare?base=${gantt.plan.parent_plan_id ?? ''}&scen=${planId}`)}
+                  onClick={() => navigate(gantt.plan.parent_plan_id
+                    ? `/resource-planning/compare?base=${gantt.plan.parent_plan_id}&scen=${planId}`
+                    : `/resource-planning/compare?scen=${planId}`)}
                   title={gantt.plan.parent_plan_id ? undefined : 'Базовый план выбирается на странице сравнения'}
                 >
                   Сравнить с базовым
@@ -241,6 +243,14 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
                   onCreateDependency={onCreateDependency}
                   onDeleteDependency={onDeleteDependency}
                 />
+                {gantt.assignments.length === 0 && (
+                  <div className="rpz-gantt-empty">
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="В плане пока нет фаз — нажмите «Распределить», чтобы разложить задачи сценария по людям"
+                    />
+                  </div>
+                )}
               </div>
               <div className="rpz-legend">
                 {(['analyst', 'dev', 'qa', 'opo'] as const).map((ph) => (

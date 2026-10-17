@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { PlanChild, PlanWorkType, PortfolioProject, PlanTimeline } from '../../../types/projects';
 import { statusTagColor } from '../../../utils/status';
 import { DARK_THEME } from '../../../utils/constants';
+import { useSkin } from '../../../contexts/ThemeContext';
 
 // Цвета — через CSS-переменные скина; без скина берётся прежнее значение.
 const WT_COLOR: Record<string, string> = {
@@ -131,6 +132,8 @@ interface Props {
 
 export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, totals, onRowClick, maxHeight, titleWidth }) => {
   const dates = React.useMemo(() => datesByKey(timeline), [timeline]);
+  // Скин рисует у загрузки короткую полосу, как в макете; Aurora — только число.
+  const skin = useSkin();
   const hasExternal = projects.some((p) => p.external_hours > 0) || totals.externalHours > 0;
 
   const stageColumns: ColumnsType<PortfolioProject> = STAGES.map((s) => ({
@@ -199,12 +202,17 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
       title: 'Загрузка',
       key: 'pct',
       align: 'right',
-      width: 92,
+      width: skin ? 130 : 92,
       defaultSortOrder: 'descend',
       sorter: (a, b) => (a.total_pct ?? -1) - (b.total_pct ?? -1),
       render: (_: unknown, p: PortfolioProject) => (
-        <span style={{ color: pctColor(p.total_pct), fontWeight: 600 }}>
+        <span className="pf-load" style={{ color: pctColor(p.total_pct), fontWeight: 600 }}>
           {p.total_pct === null ? '—' : `${p.total_pct}%`}
+          {skin && p.total_pct !== null && (
+            <span className="pf-load-bar" aria-hidden>
+              <i style={{ width: `${Math.min(100, p.total_pct)}%` }} />
+            </span>
+          )}
         </span>
       ),
     },

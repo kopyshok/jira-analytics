@@ -170,6 +170,7 @@ export default function SettingsPage() {
         ) : (
           <Menu
             mode="inline"
+            className="settings-nav"
             selectedKeys={[active.key]}
             onClick={({ key }) => onChange(key)}
             style={{ width: 248, flex: 'none', position: 'sticky', top: 16, background: 'transparent' }}

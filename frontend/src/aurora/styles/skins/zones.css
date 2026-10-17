@@ -1548,3 +1548,7 @@ html[data-skin="zones"] { --tf-checked-bg: var(--za-tint); --tf-check: var(--za)
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-picker-dropdown .ant-picker-cell:not(.ant-picker-cell-in-view):not(.ant-picker-cell-disabled) { color: #6B7078; }
 /* Пояснение под заглушкой раздела (например, выключенный тематический отчёт) */
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-result-subtitle { color: #5A5F66 !important; }
+/* Подписи пустых состояний — на сером фоне страницы тоже ≥ 4.5:1 */
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-empty-description { color: #5A5F66; }
+/* Меню настроек длиннее окна — листается само, а не уводит короткий раздел за верх экрана */
+html[data-skin="zones"] .settings-nav { max-height: calc(100vh - 150px); overflow-y: auto; }

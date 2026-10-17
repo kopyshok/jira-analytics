@@ -226,3 +226,8 @@ html[data-skin="zones"] .pf-stage-head { display: inline-flex; align-items: cent
 html[data-skin="zones"] .pf-stage-head::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--pf-wt-dev); }
 html[data-skin="zones"] .pf-stage-head[data-stage="analyst"]::before { background: var(--pf-wt-analyst); }
 html[data-skin="zones"] .pf-stage-head[data-stage="qa"]::before { background: var(--pf-wt-qa); }
+
+/* загрузка проекта — число и короткая полоса цветом числа (перегруз — красная, ниже нормы — янтарь) */
+html[data-skin="zones"] .pf-load { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; }
+html[data-skin="zones"] .pf-load-bar { flex: none; width: 48px; height: 4px; border-radius: 2px; background: #EEF0F3; overflow: hidden; }
+html[data-skin="zones"] .pf-load-bar > i { display: block; height: 100%; background: currentColor; }

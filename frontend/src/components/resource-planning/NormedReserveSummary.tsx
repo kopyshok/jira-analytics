@@ -114,7 +114,7 @@ export default function NormedReserveSummary({ reserve, alwaysOpen = false }: Pr
             ? localOverrides[overrideKey] ?? undefined
             : item.is_manual ? item.work_type_id : undefined;
         return (
-          <div key={itemKey(item)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--rp-text-2b, #cfe1f5)' }}>
+          <div key={itemKey(item)} className="rp-reserve-item" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--rp-text-2b, #cfe1f5)' }}>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.issue_key && (
                 <>

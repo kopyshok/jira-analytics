@@ -372,3 +372,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .desk-issues-car
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* правая колонка как в макете: все три блока на виду — длинный список «в работе одновременно» листается внутри */
+html[data-skin="zones"] .dz-right > .dz-wip { flex: 0 1 auto; min-height: 140px; display: flex; flex-direction: column; overflow: hidden; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .dz-right > .dz-wip > .ant-card-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+html[data-skin="zones"] .dz-right > .dz-absence { flex: none; }
