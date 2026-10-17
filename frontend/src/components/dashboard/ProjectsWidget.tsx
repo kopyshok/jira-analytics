@@ -573,7 +573,16 @@ export default function ProjectsWidget({ data, loading }: Props) {
             <span />
             <span>Проект</span>
             {visibleCols.map((c) => (
-              <span key={c.key} style={c.align === 'right' ? { textAlign: 'right' } : undefined}>
+              // Подпись не вылезает на соседнюю колонку: если тесно — многоточие,
+              // полностью — в подсказке.
+              <span
+                key={c.key}
+                title={c.label}
+                style={{
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  ...(c.align === 'right' ? { textAlign: 'right' as const } : {}),
+                }}
+              >
                 {c.label}
               </span>
             ))}
