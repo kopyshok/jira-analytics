@@ -7,8 +7,9 @@ import {
 export function StatusTag({ status, group }: { status: string; group: StatusGroup }) {
   return (
     <Tooltip title={STATUS_GROUP_LABELS[group]}>
-      <Tag style={{ marginInlineEnd: 0 }}>
+      <Tag className="desk-status" data-group={group} style={{ marginInlineEnd: 0 }}>
         <span
+          className="desk-status-dot"
           style={{
             display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
             background: GROUP_COLOR[group], marginRight: 6,

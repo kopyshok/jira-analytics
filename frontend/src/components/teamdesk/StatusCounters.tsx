@@ -24,13 +24,15 @@ export function StatusCounters({
   const shown = statuses.filter((status) => counts[status]);
   if (!shown.length) return null;
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+    <div className="desk-statuses" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
       {shown.map((status) => {
         const group = statusGroupOf(statusGroups, status);
         const active = selected === status;
         return (
           <Tooltip key={status} title={`${status} · ${STATUS_GROUP_LABELS[group]}`}>
             <Tag
+              className={`desk-status${active ? ' is-active' : ''}`}
+              data-group={group}
               onClick={
                 onSelect
                   ? (e) => {
@@ -51,6 +53,7 @@ export function StatusCounters({
               }}
             >
               <span
+                className="desk-status-dot"
                 style={{
                   display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
                   background: STATUS_GROUP_COLOR[group], marginRight: 6,

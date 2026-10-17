@@ -46,6 +46,8 @@ export function buildSwissAntdConfig(): ThemeConfig {
       colorTextQuaternary: '#8A8A8A',
       // Подсказка в пустом поле — текст, ему нужен контраст 4.5:1 (#8A8A8A даёт 3.4).
       colorTextPlaceholder: '#6E6E6E',
+      // Недоступное — светлее обычного, но читается (4.5:1 на белом).
+      colorTextDisabled: '#767676',
       colorTextDescription: MUTED,
       colorBorder: INK,
       colorBorderSecondary: LINE,

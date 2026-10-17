@@ -849,6 +849,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tooltip-inn
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tooltip-inner * { color: inherit; }
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-dropdown-menu .ant-dropdown-menu-item,
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-select-dropdown .ant-select-item { border-radius: 0 !important; }
+/* Служебная «+N» у мультивыбора, пока она не нужна, прозрачна, но остаётся в разметке — прячем по-настоящему. */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-select-selection-overflow-item-rest[style*="opacity: 0"],
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-select-content-item-rest[style*="opacity: 0"] { visibility: hidden; }
 
 /* Графики */
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .recharts-tooltip-label { color: #111111 !important; font-weight: 700; }

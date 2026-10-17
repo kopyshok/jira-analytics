@@ -10,17 +10,17 @@ interface Props {
   width?: number;
 }
 
-const COLOR_OK = '#3ebd85';
-const COLOR_OVER = '#ff6b6b';
-const COLOR_IDLE = '#788799';
-const COLOR_UNDER = '#eeb13c';
-const TRACK = 'rgba(125,145,170,0.22)';
+const COLOR_OK = 'var(--desk-scale-ok, #3ebd85)';
+const COLOR_OVER = 'var(--desk-scale-over, #ff6b6b)';
+const COLOR_IDLE = 'var(--desk-scale-idle, #788799)';
+const COLOR_UNDER = 'var(--desk-scale-under, #eeb13c)';
+const TRACK = 'var(--desk-scale-track, rgba(125,145,170,0.22))';
 
 /** Шкала «факт / оценка». Перерасход рисуется штриховым хвостом поверх полосы. */
 export function HoursScale({ fact, est, variant = 'bar', overrunPct, width }: Props) {
   const factText = roundHours(fact);
   if (est == null) {
-    return <span style={{ color: COLOR_IDLE }}>{factText} / — ч</span>;
+    return <span className="desk-scale-none" style={{ color: COLOR_IDLE }}>{factText} / — ч</span>;
   }
   const estText = roundHours(est);
   const ratio = est > 0 ? fact / est : 0;
@@ -57,12 +57,12 @@ export function HoursScale({ fact, est, variant = 'bar', overrunPct, width }: Pr
   const tail = ratio > 1 ? Math.min(ratio - 1, 1) * 100 : 0;
   return (
     <Tooltip title={title}>
-      <div style={{ minWidth: width ?? 132 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontVariantNumeric: 'tabular-nums', fontSize: 12 }}>
-          <span>{factText} / {estText} ч</span>
-          <span style={{ color }}>{Math.round(ratio * 100)}%</span>
+      <div className={`desk-scale${over ? ' is-over' : ''}`} style={{ minWidth: width ?? 132 }}>
+        <div className="desk-scale-text" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontVariantNumeric: 'tabular-nums', fontSize: 12 }}>
+          <span className="desk-scale-hours">{factText} / {estText} ч</span>
+          <span className="desk-scale-pct" style={{ color }}>{Math.round(ratio * 100)}%</span>
         </div>
-        <div style={{ position: 'relative', height: 5, borderRadius: 3, background: TRACK, marginTop: 4, overflow: 'hidden' }}>
+        <div className="desk-scale-track" style={{ position: 'relative', height: 5, borderRadius: 3, background: TRACK, marginTop: 4, overflow: 'hidden' }}>
           <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${base}%`, background: color, borderRadius: 3 }} />
           {tail > 0 && (
             <div

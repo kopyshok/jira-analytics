@@ -9,18 +9,70 @@ interface Props {
   rubberDays: number;
   jiraBaseUrl?: string;
   onDailyRate: (issueId: string, hours: number | null) => void;
+  /** Списком для узкой колонки: задача строкой и четыре цифры под ней (обложки). */
+  compact?: boolean;
 }
 
 /**
  * Все «резиновые» задачи среза одним списком: по каким задачам очередь
  * считается по дневной норме и сколько из них в неё уходит.
  */
-export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate }: Props) {
+export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate, compact = false }: Props) {
   const rows = issues.filter((issue) => issue.daily_rate);
   if (!rows.length) return null;
 
   const left = (row: DeskIssue) =>
     row.est_hours == null ? null : Math.max(0, row.est_hours - row.fact_hours);
+  // Оценка — только потолок: нет её — вклад задаёт дневная норма.
+  const toQueue = (row: DeskIssue) => {
+    const byRate = (row.daily_rate ?? 0) * rubberDays;
+    const value = left(row);
+    return roundHours(value == null ? byRate : Math.min(byRate, value));
+  };
+  const rateInput = (row: DeskIssue) => (
+    <InputNumber
+      size="small"
+      min={0}
+      max={24}
+      step={0.5}
+      value={row.daily_rate ?? null}
+      onChange={(v) => onDailyRate(row.id, v == null ? null : Number(v))}
+      style={{ width: 84 }}
+    />
+  );
+
+  if (compact) {
+    return (
+      <section className="desk-rubber">
+        <div className="sw-block-title">
+          <span className="sw-block-num">1.5</span>
+          <b>Резиновые задачи · {rows.length}</b>
+        </div>
+        <p className="desk-rubber-note">в очередь идёт норма за {rubberDays} дн, но не больше остатка</p>
+        {rows.map((row) => {
+          const rest = left(row);
+          return (
+            <div key={row.id} className="desk-rubber-item">
+              <div className="desk-rubber-line">
+                <b>{row.developer_name ?? '—'}</b>
+                {' · '}
+                <IssueKey issueKey={row.key} jiraBaseUrl={jiraBaseUrl} /> {row.summary}
+                {' · '}
+                <span className="desk-rubber-status">{row.status}</span>
+                <span className="desk-rubber-rate">{rateInput(row)} ч/день</span>
+              </div>
+              <div className="desk-rubber-figures">
+                <div><span>оценка</span><b>{row.est_hours == null ? '—' : roundHours(row.est_hours)}</b></div>
+                <div><span>факт</span><b>{roundHours(row.fact_hours)}</b></div>
+                <div><span>осталось</span><b>{rest == null ? '—' : roundHours(rest)}</b></div>
+                <div><span>в очередь</span><b>{toQueue(row)}</b></div>
+              </div>
+            </div>
+          );
+        })}
+      </section>
+    );
+  }
 
   const columns: ColumnsType<DeskIssue> = [
     { title: 'Разработчик', width: 220, ellipsis: true,
@@ -39,17 +91,7 @@ export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate }: Pr
       title: 'Ч/день',
       width: 110,
       align: 'right',
-      render: (_, row) => (
-        <InputNumber
-          size="small"
-          min={0}
-          max={24}
-          step={0.5}
-          value={row.daily_rate ?? null}
-          onChange={(v) => onDailyRate(row.id, v == null ? null : Number(v))}
-          style={{ width: 84 }}
-        />
-      ),
+      render: (_, row) => rateInput(row),
     },
     { title: 'Оценка', width: 96, align: 'right',
       render: (_, row) => (row.est_hours == null ? '—' : roundHours(row.est_hours)) },
@@ -64,12 +106,7 @@ export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate }: Pr
       title: 'В очередь',
       width: 116,
       align: 'right',
-      render: (_, row) => {
-        // Оценка — только потолок: нет её — вклад задаёт дневная норма.
-        const byRate = (row.daily_rate ?? 0) * rubberDays;
-        const value = left(row);
-        return roundHours(value == null ? byRate : Math.min(byRate, value));
-      },
+      render: (_, row) => toQueue(row),
     },
   ];
 

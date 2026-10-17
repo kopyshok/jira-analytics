@@ -16,10 +16,11 @@ export function StatusFilterBar({
 }: Props) {
   const empty = !statuses.some((s) => counts[s]);
   return (
-    <Card size="small" styles={{ body: { padding: '7px 12px' } }}>
+    <Card size="small" className="desk-bar" styles={{ body: { padding: '7px 12px' } }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Typography.Text
           type="secondary"
+          className="desk-bar-label"
           style={{ fontSize: 12, whiteSpace: 'nowrap' }}
         >
           ЗАДАЧИ ПО СТАТУСАМ

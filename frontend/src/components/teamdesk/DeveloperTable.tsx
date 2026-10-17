@@ -37,7 +37,7 @@ export function DeveloperTable({
         <>
           <Typography.Text strong>{v ?? 'Без имени'}</Typography.Text>
           {row.team && (
-            <div style={{ fontSize: 11, opacity: 0.55 }}>{row.team}</div>
+            <div className="desk-row-team" style={{ fontSize: 11, opacity: 0.55 }}>{row.team}</div>
           )}
         </>
       ),
@@ -101,7 +101,7 @@ export function DeveloperTable({
         );
         return (
           <Tooltip title={`Свободно ${roundHours(load.available_hours)} ч на неделю вперёд`}>
-            <div style={{ color: load.overloaded ? '#ff6b6b' : undefined }}>
+            <div style={{ color: load.overloaded ? 'var(--desk-scale-over, #ff6b6b)' : undefined }}>
               {line('all', load.queue_hours, load.queue_days, load.without_estimate)}
               {line(
                 'assigned',
@@ -124,6 +124,9 @@ export function DeveloperTable({
             <Tooltip key={flag} title={`${FLAG_LABELS[flag]} — показать только эти`}>
               <Tag
                 color={FLAG_COLOR[flag]}
+                className={`desk-flag${active ? ' is-active' : ''}`}
+                data-flag={flag}
+                data-label={FLAG_LABELS[flag]}
                 style={{
                   cursor: 'pointer',
                   fontWeight: active ? 700 : undefined,
@@ -134,7 +137,7 @@ export function DeveloperTable({
                   onFlagFilter(row.developer_id, active ? null : flag);
                 }}
               >
-                {FLAG_ICON[flag]} {row.flag_counts[flag]}
+                <span className="desk-flag-icon">{FLAG_ICON[flag]}</span> {row.flag_counts[flag]}
               </Tag>
             </Tooltip>
           );

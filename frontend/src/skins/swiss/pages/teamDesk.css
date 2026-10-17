@@ -1,0 +1,346 @@
+/* ============================================================
+   «Рабочий стол тимлида» в обложке «Швейцарская» (макет G-desk).
+   Плитки людей, ленты замечаний и статусов, список задач и узкая
+   колонка — классами desk-* из общих компонентов стола.
+   ============================================================ */
+
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
+  /* Цвета стола — переменными (у Aurora — прежние значения по умолчанию) */
+  --desk-acc-over: #B8301A;
+  --desk-acc-under: #9A6400;
+  --desk-acc-ok: #111111;
+  --desk-scale-ok: #111111;
+  --desk-scale-over: #B8301A;
+  --desk-scale-idle: #5E5E5E;
+  --desk-scale-under: #9A6400;
+  --desk-scale-track: #E2E2E2;
+  --desk-wip-track: #EFEFEF;
+  --desk-wip-fill: #111111;
+  --desk-wip-over: #E5401F;
+  --desk-wip-limit: #111111;
+  --desk-radius: 0px;
+
+  /* Статусы — цветом текста по группе: у разработчика, ждёт не его, не начата… */
+  & .desk-status[data-group="dev"] { color: #1F4FD1 !important; }
+  & .desk-status[data-group="waiting"] { color: #9A6400 !important; }
+  & .desk-status[data-group="todo"] { color: #5E5E5E !important; }
+  & .desk-status[data-group="done"] { color: #1E7A3E !important; }
+  & .desk-status[data-group="unassigned"] { color: #7A3E9A !important; }
+  & .desk-status .desk-status-dot { display: none !important; }
+  & .desk-status.ant-tag {
+    margin: 0;
+    padding: 0;
+    border: 0 !important;
+    background: none !important;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  & .desk-status.is-active { text-decoration: underline; text-underline-offset: 3px; outline: 0 !important; }
+  & .desk-statuses { gap: 2px 0 !important; }
+  & .desk-statuses .desk-status:not(:last-child)::after { content: '·'; margin: 0 6px; color: #111111; font-weight: 400; }
+
+  /* Признаки — подписью словом, без значков */
+  & .desk-flag-icon { display: none; }
+  & .desk-flag.ant-tag,
+  & .desk-flagchip.ant-tag {
+    margin: 0 !important;
+    padding: 0;
+    border: 0 !important;
+    background: none !important;
+    font-size: 12px;
+    font-weight: 500;
+    color: #111111 !important;
+  }
+  & .desk-flag.is-active { text-decoration: underline; text-underline-offset: 3px; outline: 0 !important; font-weight: 700; }
+  & .desk-flagchip[data-label]::before { content: attr(data-label); }
+  & .desk-flagchip[data-flag="over"] { font-weight: 700; }
+  & .desk-flagchip:not([data-flag="over"]) { color: #9A6400 !important; }
+  & .desk-flag-sep { display: none; }
+  & .desk-flag .desk-flag-count { margin-left: 4px; font-weight: 700; }
+  & .desk-flag[data-flag="over"] .desk-flag-count { color: var(--sw-accent-ink); }
+
+  /* ---------- Каркас ---------- */
+  & .sw-desk-data { gap: 16px; }
+  & .sw-tabs {
+    flex: none;
+    display: flex;
+    align-items: flex-end;
+    gap: 32px;
+    border-bottom: 1px solid #111111;
+  }
+  & .sw-tabs > button {
+    margin-bottom: -1px;
+    padding: 0 0 6px;
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    font: inherit;
+    font-size: 14px;
+    color: #5E5E5E;
+    cursor: pointer;
+  }
+  & .sw-tabs > button.is-active { color: #111111; font-weight: 700; border-bottom-color: #111111; }
+  & .sw-tabs > button:hover { color: #111111; }
+  & .sw-tab-num { margin-right: 8px; font-size: 11px; font-weight: 400; color: #5E5E5E; }
+  & .sw-desk-thresholds { flex: none; max-height: 40vh; overflow: auto; }
+
+  /* ---------- Плитки людей ---------- */
+  & .sw-desk-cards { flex: none; max-height: 38vh; overflow: auto; scrollbar-width: thin; }
+  & .sw-desk-cards > .ant-row { margin-inline: -12px !important; row-gap: 16px !important; }
+  & .sw-desk-cards > .ant-row > .ant-col { padding-inline: 12px !important; }
+  & .desk-card.ant-card {
+    position: relative;
+    height: 100%;
+    border-left: 0 !important;
+    outline: 0 !important;
+    cursor: pointer;
+  }
+  & .desk-card.ant-card.is-selected { outline: 2px solid #111111 !important; outline-offset: 4px; }
+  & .desk-card.ant-card:hover { border-top-color: #111111 !important; }
+  & .desk-card > .ant-card-body {
+    padding: 8px 0 0 !important;
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 5px;
+    align-items: start;
+    font-size: 11px;
+  }
+  & .desk-card .desk-card-head { grid-column: 1 / -1; margin-bottom: 2px !important; gap: 8px !important; padding-right: 0; }
+  & .desk-card[data-badge] .desk-card-head { padding-right: 112px; }
+  & .desk-card .desk-avatar {
+    width: 24px !important;
+    height: 24px !important;
+    flex: none;
+    border-radius: 0 !important;
+    background: #111111 !important;
+    color: #FFFFFF;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+  }
+  & .desk-card .desk-card-name { min-width: 0; line-height: 1.2; }
+  & .desk-card .desk-card-name .ant-typography { font-size: 14px; }
+  & .desk-card .desk-card-team { opacity: 1 !important; color: #5E5E5E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  & .desk-card[data-badge]::after {
+    content: attr(data-badge);
+    position: absolute;
+    top: 13px;
+    right: 0;
+    max-width: 108px;
+    padding: 1px 6px;
+    border: 1px solid #9A6400;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 14px;
+    color: #9A6400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  & .desk-card[data-severity="2"]::after {
+    border: 1.5px solid var(--sw-accent);
+    color: var(--sw-accent-ink);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  & .desk-card .desk-card-total-row { display: contents !important; }
+  & .desk-card .desk-card-total {
+    grid-column: 1;
+    grid-row: 2 / span 3;
+    font-size: 44px !important;
+    font-weight: 800 !important;
+    line-height: 0.9;
+    letter-spacing: -0.02em;
+  }
+  & .desk-card .desk-card-split { grid-column: 2; font-size: 11px !important; color: #111111 !important; }
+  & .desk-card .desk-card-split b { font-weight: 400; }
+  & .desk-card .desk-scale { grid-column: 2; min-width: 0 !important; }
+  & .desk-card .desk-card-acc { grid-column: 2; margin: 0 !important; font-size: 11px !important; }
+  & .desk-card .desk-card-acc .ant-typography { color: #111111 !important; }
+  & .desk-card .desk-card-acc > span:last-child { font-weight: 700; }
+  & .desk-card .desk-card-queues,
+  & .desk-card .desk-card-statuses,
+  & .desk-card .desk-card-flags { grid-column: 1 / -1; margin: 0 !important; }
+  & .desk-card .desk-card-queues { gap: 1px !important; }
+  & .desk-card .desk-card-statuses .desk-status { font-size: 11px; }
+  & .desk-card .desk-card-flags .desk-flag { font-size: 11px; font-weight: 700; }
+  & .desk-card .desk-card-flags .desk-flag:not([data-flag="over"]):not([data-flag="stale"]) { color: #9A6400 !important; font-weight: 500; }
+  & .desk-card .desk-card-flags .desk-flag::before { content: attr(data-label); }
+  & .desk-card .desk-card-flags .desk-flag:not(:last-child)::after { content: '·'; margin: 0 6px; color: #111111; font-weight: 400; }
+  & .desk-card .desk-no-flags { color: #5E5E5E !important; }
+
+  /* Строки очереди — ссылками с линией */
+  & .desk-queue { padding: 0 !important; margin: 0 !important; background: none !important; outline: 0 !important; justify-self: start; }
+  & .desk-queue .ant-typography { color: #111111 !important; border-bottom: 1px solid #111111; font-size: 11px; }
+  & .desk-queue .ant-typography b { font-weight: 400; }
+  & .desk-queue.is-active .ant-typography { font-weight: 700; border-bottom-width: 2px; }
+  & .desk-queue:hover .ant-typography { color: var(--sw-accent-ink) !important; border-bottom-color: var(--sw-accent-ink); }
+
+  /* Шкала «факт / оценка»: чёрная полоса, перерасход — акцентом */
+  & .desk-scale-track { height: 6px !important; border-radius: 0 !important; margin-top: 4px !important; }
+  & .desk-scale-track > div { border-radius: 0 !important; }
+  & .desk-scale-text { font-size: 11px !important; }
+  & .desk-scale-hours { font-weight: 700; }
+  & .desk-scale-pct { font-weight: 700; }
+
+  /* ---------- Низ: ленты, задачи, правая колонка ---------- */
+  & .sw-desk-bottom {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 446px;
+    column-gap: 24px;
+  }
+  & .sw-desk-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+  & .sw-desk-bars { flex: none; gap: 4px !important; }
+  & .desk-bar.ant-card { border-top: 0 !important; }
+  & .desk-bar.ant-card > .ant-card-body { padding: 0 !important; }
+  & .desk-bar .ant-card-body > div { gap: 2px 12px !important; }
+  & .desk-bar-label.ant-typography {
+    font-size: 11px !important;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #111111 !important;
+  }
+  & .desk-bar .desk-statuses .desk-status:not(:last-child)::after { content: none; }
+  & .desk-bar .desk-statuses { gap: 2px 12px !important; }
+  & .desk-active .ant-tag { border-radius: 0; }
+
+  & .desk-filters-stack { display: flex; flex-direction: column; gap: 12px; }
+  & .sw-desk-issues { flex: 1; min-height: 0; display: flex; }
+  & .desk-issues .ant-table table { width: max-content !important; min-width: 100%; }
+  & .desk-issues .ant-table-thead > tr > th:first-child,
+  & .desk-issues .ant-table-tbody > tr > td:first-child { min-width: 300px; max-width: 400px; }
+  & .desk-issues.ant-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  & .desk-issues.ant-card > .ant-card-head { flex: none; min-height: 32px; padding: 0 !important; border-bottom: 0 !important; }
+  & .desk-issues .ant-card-head-title { font-size: 16px !important; }
+  & .desk-issues .ant-card-head-title::before { content: '1.4'; margin-right: 12px; font-size: 11px; font-weight: 700; color: #5E5E5E; }
+  & .desk-issues .ant-card-extra .ant-btn { height: 26px; padding: 0 12px; font-size: 12px; font-weight: 400; }
+  & .desk-issues .desk-issues-count { color: #5E5E5E !important; }
+  & .desk-issues.ant-card > .ant-card-body {
+    flex: 1;
+    min-height: 0;
+    padding: 0 !important;
+    overflow: auto;
+    border-bottom: 1px solid #111111;
+    scrollbar-width: thin;
+  }
+  & .desk-issues .ant-table-thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 6px 8px !important;
+  }
+  & .desk-issues .ant-table-tbody > tr > td { padding: 6px 8px !important; font-size: 12px; }
+  & .desk-issues .ant-table-tbody > tr.desk-group-row > td { background: #F4F4F4 !important; font-weight: 700; }
+  & .desk-issues .desk-group-row .desk-group-name { display: inline; }
+  & .desk-issues .desk-group-row .desk-group-statuses { display: inline-flex; margin: 0 0 0 12px !important; vertical-align: baseline; }
+  & .desk-issues .desk-key a,
+  & .desk-issues .desk-key .ant-typography { font-weight: 700; color: #111111; text-decoration: underline; text-underline-offset: 2px; }
+  & .desk-issues .desk-mark.ant-tag {
+    padding: 0 4px;
+    border: 1px solid #111111 !important;
+    color: #111111 !important;
+    background: #FFFFFF !important;
+    font-size: 10px;
+    line-height: 14px;
+  }
+  & .desk-issues .desk-status.ant-tag { font-size: 12px; }
+  & .desk-issues .ant-table-cell .ant-tag:not(.desk-status):not(.desk-mark):not(.desk-flagchip) {
+    padding: 0;
+    border: 0 !important;
+    background: none !important;
+    font-size: 12px;
+    color: #111111 !important;
+  }
+  & .desk-issues .desk-left-over { font-weight: 700; }
+  & .desk-noflags { opacity: 1 !important; color: #5E5E5E; }
+  & .desk-issues .desk-scale { min-width: 0 !important; display: flex; flex-direction: row-reverse; align-items: center; gap: 6px; }
+  & .desk-issues .desk-scale-text { flex: none; }
+  & .desk-issues .desk-scale-hours { display: none; }
+  & .desk-issues .desk-scale-pct { font-weight: 400; color: #111111 !important; }
+  & .desk-issues .desk-scale.is-over .desk-scale-pct { color: #B8301A !important; }
+  & .desk-issues .desk-scale-track { flex: 0 0 48px; height: 4px !important; margin: 0 !important; }
+  & .desk-issues .ant-input-number {
+    width: 40px !important;
+    border: 0 !important;
+    border-bottom: 1px solid #111111 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  & .desk-issues .ant-input-number .ant-input-number-input { padding: 0 2px; text-align: right; }
+  & .desk-issues .ant-input-number .ant-input-number-handler-wrap { display: none; }
+  & .desk-issues .desk-flagchip:not(:last-child)::after { content: ','; color: #111111; font-weight: 400; margin-right: 4px; }
+
+  /* Правая колонка */
+  & .sw-desk-side {
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scrollbar-width: thin;
+  }
+  & .sw-desk-side > section { border-top: 2px solid #111111; padding-top: 8px; }
+  & .desk-rubber-note { margin: 4px 0 8px; font-size: 11px; color: #5E5E5E; }
+  & .desk-rubber-item + .desk-rubber-item { margin-top: 12px; }
+  & .desk-rubber-line { font-size: 12px; line-height: 1.4; }
+  & .desk-rubber-line a,
+  & .desk-rubber-line .ant-typography { font-weight: 700; color: #111111; text-decoration: underline; }
+  & .desk-rubber-status { color: #1F4FD1; font-weight: 500; }
+  & .desk-rubber-rate { white-space: nowrap; margin-left: 6px; }
+  & .desk-rubber-rate .ant-input-number {
+    width: 44px !important;
+    border: 0 !important;
+    border-bottom: 1px solid #111111 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    margin-right: 4px;
+  }
+  & .desk-rubber-rate .ant-input-number-handler-wrap { display: none; }
+  & .desk-rubber-rate .ant-input-number .ant-input-number-input { padding: 0 2px; text-align: right; }
+  & .desk-rubber-figures {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid #E2E2E2;
+  }
+  & .desk-rubber-figures span { display: block; font-size: 10px; color: #5E5E5E; }
+  & .desk-rubber-figures b { display: block; font-size: 18px; font-weight: 700; }
+
+  & .desk-wip { gap: 8px !important; margin-top: 10px; }
+  & .desk-wip-row { grid-template-columns: 120px 1fr 20px !important; font-size: 12px; }
+  & .desk-wip-row .ant-typography { color: #111111 !important; font-size: 12px !important; }
+  & .desk-wip-row.is-over .ant-typography { font-weight: 700; }
+  & .desk-wip-row > div { --desk-wip-h: 12px; }
+  & .desk-wip-fill { opacity: 1 !important; }
+  & .desk-wip-count { font-weight: 700; }
+  & .desk-wip-note.ant-typography { color: #5E5E5E !important; font-size: 11px !important; }
+
+  & .desk-abs .sw-block-tools .ant-select { font-size: 12px; }
+  & .abs-weeks { margin-top: 10px; font-size: 11px; }
+  & .abs-weeks-months { font-size: 10px; color: #5E5E5E; margin-bottom: 4px; }
+  & .abs-weeks-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; }
+  & .abs-weeks-cell { display: block; height: 16px; background: #EFEFEF; }
+  & .abs-weeks-cell > span { display: block; height: 16px; }
+  & .abs-weeks-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; color: #5E5E5E; }
+  & .abs-weeks-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  & .abs-weeks-legend i { display: inline-block; width: 10px; height: 10px; }
+
+  /* Сводка по разработчикам (вкладка «Ведомость») */
+  & .sw-desk-summary { flex: none; max-height: 34vh; overflow: auto; scrollbar-width: thin; }
+  & .desk-row-team { opacity: 1 !important; color: #5E5E5E; }
+  & .sw-desk-summary .desk-flag::before { content: attr(data-label); margin-right: 4px; }
+  & .sw-desk-summary .desk-flag { margin-right: 10px !important; font-weight: 700; }
+}
+
+@media (max-width: 1500px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-desk-bottom { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+@media (max-width: 1100px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-desk-bottom { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-desk-issues { min-height: 60vh; }
+}

@@ -15,9 +15,17 @@ function initials(name: string | null): string {
 
 function accuracyColor(value: number | null): string | undefined {
   if (value == null) return undefined;
-  if (value > 1.3) return '#ff6b6b';
-  if (value < 0.7) return '#eeb13c';
-  return '#3ebd85';
+  if (value > 1.3) return 'var(--desk-acc-over, #ff6b6b)';
+  if (value < 0.7) return 'var(--desk-acc-under, #eeb13c)';
+  return 'var(--desk-acc-ok, #3ebd85)';
+}
+
+/** Главный признак плитки — подписью в углу у обложек. */
+function severityBadge(dev: DeskDeveloper): string | undefined {
+  if (dev.flag_counts.over) return FLAG_LABELS.over;
+  if (dev.flag_counts.decomp) return FLAG_LABELS.decomp;
+  if (dev.flag_counts.stale) return FLAG_LABELS.stale;
+  return undefined;
 }
 
 interface Props {
@@ -51,6 +59,7 @@ function QueueLine({
 }) {
   return (
     <div
+      className={`desk-queue${active ? ' is-active' : ''}`}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -90,6 +99,9 @@ export function DeveloperCards({
             <Card
               size="small"
               hoverable
+              className={`desk-card${isSelected ? ' is-selected' : ''}`}
+              data-severity={severity}
+              data-badge={severityBadge(dev)}
               onClick={() => onSelect(isSelected ? null : dev.developer_id)}
               styles={{ body: { padding: 12 } }}
               style={{
@@ -97,8 +109,9 @@ export function DeveloperCards({
                 outline: isSelected ? '2px solid #4ba3ff' : undefined,
               }}
             >
-              <div style={{ display: 'flex', gap: 9, alignItems: 'center', marginBottom: 8 }}>
+              <div className="desk-card-head" style={{ display: 'flex', gap: 9, alignItems: 'center', marginBottom: 8 }}>
                 <div
+                  className="desk-avatar"
                   style={{
                     width: 30, height: 30, borderRadius: '50%',
                     display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600,
@@ -107,19 +120,19 @@ export function DeveloperCards({
                 >
                   {initials(dev.display_name)}
                 </div>
-                <div>
+                <div className="desk-card-name">
                   <Typography.Text strong>{dev.display_name ?? 'Без имени'}</Typography.Text>
                   {dev.team && (
-                    <div style={{ fontSize: 11, opacity: 0.55 }}>{dev.team}</div>
+                    <div className="desk-card-team" style={{ fontSize: 11, opacity: 0.55 }}>{dev.team}</div>
                   )}
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 24, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+              <div className="desk-card-total-row" style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+                <span className="desk-card-total" style={{ fontSize: 24, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                   {dev.total_issues}
                 </span>
-                <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>
+                <Typography.Text type="secondary" className="desk-card-split" style={{ fontSize: 11.5 }}>
                   задач всего<br />
                   <b>{dev.in_dev}</b> у него · <b>{dev.waiting}</b> ждут не его · <b>{dev.todo}</b> не начаты
                 </Typography.Text>
@@ -127,7 +140,7 @@ export function DeveloperCards({
 
               <HoursScale fact={dev.fact_hours} est={dev.est_hours || null} overrunPct={overrunPct} />
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 0', fontSize: 11.5 }}>
+              <div className="desk-card-acc" style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 0', fontSize: 11.5 }}>
                 <Typography.Text type="secondary">точность оценок</Typography.Text>
                 <span style={{ color: accuracyColor(dev.accuracy) }}>
                   {dev.accuracy == null ? '—' : `×${dev.accuracy.toFixed(2)}`}
@@ -135,7 +148,7 @@ export function DeveloperCards({
               </div>
 
               {load && (
-                <div style={{ fontSize: 11.5, marginBottom: 8, display: 'grid', gap: 2 }}>
+                <div className="desk-card-queues" style={{ fontSize: 11.5, marginBottom: 8, display: 'grid', gap: 2 }}>
                   <QueueLine
                     label="очередь"
                     hours={load.queue_hours}
@@ -163,7 +176,7 @@ export function DeveloperCards({
                 </div>
               )}
 
-              <div style={{ marginBottom: 8 }}>
+              <div className="desk-card-statuses" style={{ marginBottom: 8 }}>
                 <StatusCounters
                   counts={dev.status_counts ?? {}}
                   statuses={statuses}
@@ -173,13 +186,16 @@ export function DeveloperCards({
                 />
               </div>
 
-              <div>
+              <div className="desk-card-flags">
                 {FLAG_ORDER.filter((f) => dev.flag_counts[f]).map((flag) => {
                   const activeFlag = isSelected && flagFilter === flag;
                   return (
                     <Tooltip key={flag} title={`${FLAG_LABELS[flag]} — показать только эти`}>
                       <Tag
                         color={FLAG_COLOR[flag]}
+                        className={`desk-flag${activeFlag ? ' is-active' : ''}`}
+                        data-flag={flag}
+                        data-label={FLAG_LABELS[flag]}
                         style={{
                           cursor: 'pointer',
                           fontWeight: activeFlag ? 700 : undefined,
@@ -190,13 +206,13 @@ export function DeveloperCards({
                           onFlagFilter(dev.developer_id, activeFlag ? null : flag);
                         }}
                       >
-                        {FLAG_ICON[flag]} {dev.flag_counts[flag]}
+                        <span className="desk-flag-icon">{FLAG_ICON[flag]}</span> {dev.flag_counts[flag]}
                       </Tag>
                     </Tooltip>
                   );
                 })}
                 {FLAG_ORDER.every((f) => !dev.flag_counts[f]) && (
-                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>без замечаний</Typography.Text>
+                  <Typography.Text type="secondary" className="desk-no-flags" style={{ fontSize: 11 }}>без замечаний</Typography.Text>
                 )}
               </div>
             </Card>

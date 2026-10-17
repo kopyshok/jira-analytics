@@ -51,9 +51,12 @@ export function FlagChip({ issueId, flag, signature, reviewed, count, withLabel 
         <Tooltip title={title}>
           <Tag
             color={reviewed ? 'default' : FLAG_COLOR[flag]}
+            className="desk-flagchip"
+            data-flag={flag}
+            data-label={withLabel ? undefined : label}
             style={{ cursor: 'pointer', opacity: reviewed ? 0.45 : 1, marginInlineEnd: 4 }}
           >
-            {FLAG_ICON[flag]}
+            <span className="desk-flag-icon">{FLAG_ICON[flag]}</span>
             {withLabel ? ` ${label}` : ''}
             {count != null ? ` ${count}` : ''}
           </Tag>
@@ -104,7 +107,7 @@ export function FlagList({
   const reviewedMap = new Map(reviewed.map((r) => [r.flag, r]));
 
   if (flags.length === 0) {
-    return <span style={{ opacity: 0.35 }}>—</span>;
+    return <span className="desk-noflags" style={{ opacity: 0.35 }}>—</span>;
   }
   return (
     <span>

@@ -17,19 +17,24 @@ interface Props {
 export function ActiveFilters({
   developerName, flag, status, queueScope, onReset,
 }: Props) {
-  const chips: string[] = [];
-  if (developerName) chips.push(developerName);
-  if (queueScope) chips.push(QUEUE_SCOPE_LABEL[queueScope]);
-  if (flag) chips.push(`${FLAG_ICON[flag]} ${FLAG_LABELS[flag]}`);
-  if (status) chips.push(status);
+  const chips: { key: string; node: React.ReactNode }[] = [];
+  if (developerName) chips.push({ key: developerName, node: developerName });
+  if (queueScope) chips.push({ key: queueScope, node: QUEUE_SCOPE_LABEL[queueScope] });
+  if (flag) {
+    chips.push({
+      key: flag,
+      node: <><span className="desk-flag-icon">{FLAG_ICON[flag]} </span>{FLAG_LABELS[flag]}</>,
+    });
+  }
+  if (status) chips.push({ key: `status:${status}`, node: status });
   if (!chips.length) return null;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>ОТОБРАНО</Typography.Text>
+    <div className="desk-active" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <Typography.Text type="secondary" className="desk-bar-label" style={{ fontSize: 12 }}>ОТОБРАНО</Typography.Text>
       {chips.map((chip) => (
-        <Tag key={chip} color="blue" style={{ marginInlineEnd: 0, fontWeight: 600 }}>
-          {chip}
+        <Tag key={chip.key} color="blue" style={{ marginInlineEnd: 0, fontWeight: 600 }}>
+          {chip.node}
         </Tag>
       ))}
       <Button size="small" type="link" onClick={onReset}>Сбросить</Button>

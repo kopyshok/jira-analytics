@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import {
-  Button, Card, Checkbox, Dropdown, InputNumber, Space, Switch, Table, Tag, Tooltip, Typography,
+  Button, Card, Checkbox, Dropdown, InputNumber, Segmented, Space, Switch, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -70,6 +70,8 @@ interface Props {
   refreshing?: boolean;
   /** Обновление из Jira запрещено до завершения переезда — кнопка видна, но не нажимается. */
   refreshBlocked?: boolean;
+  /** Переключатель «по людям / списком»: тумблером (Aurora) или парой кнопок (обложки). */
+  groupToggle?: 'switch' | 'segmented';
 }
 
 /** Подписи колонок для настройки видимости. «Задача» не убирается. */
@@ -193,6 +195,7 @@ export function GroupedIssues({
   sprintFilter = [], releaseFilter = [],
   columnWidths = {}, onColumnWidthsChange,
   onHiddenColumnsChange, onGroupByDeveloperChange, onRefreshVisible, refreshing = false, refreshBlocked = false,
+  groupToggle = 'switch',
 }: Props) {
   const [sort, setSort] = useState<SortState>(null);
   // Пока тянут мышкой, ширина живёт на экране; в профиль уходит один раз,
@@ -318,14 +321,14 @@ export function GroupedIssues({
       render: (_, row) =>
         row.isGroup ? (
           <>
-            <Typography.Text strong>
+            <Typography.Text strong className="desk-group-name">
               {row.groupName}{' '}
               <Typography.Text type="secondary" style={{ fontWeight: 400 }}>
                 · {row.groupCount} задач · {row.groupInDev} у него
               </Typography.Text>
             </Typography.Text>
             {statuses.length > 0 && (
-              <div style={{ marginTop: 5 }}>
+              <div className="desk-group-statuses" style={{ marginTop: 5 }}>
                 <StatusCounters
                   counts={row.groupStatusCounts ?? {}}
                   statuses={statuses}
@@ -344,15 +347,15 @@ export function GroupedIssues({
           // Ключ отдельной колонкой внутри ячейки: перенос длинного названия
           // начинается под первой строкой названия, а не под ключом.
           <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-            <span style={{ flex: '0 0 auto', whiteSpace: 'nowrap' }}>
+            <span className="desk-key" style={{ flex: '0 0 auto', whiteSpace: 'nowrap' }}>
               <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} />
             </span>
             <span style={{ minWidth: 0 }}>
             {row.summary}
-            {row.is_analysis && <Tag style={{ marginLeft: 6 }}>тех. анализ</Tag>}
+            {row.is_analysis && <Tag className="desk-mark" style={{ marginLeft: 6 }}>тех. анализ</Tag>}
             {row.daily_rate ? (
               <Tooltip title={`В очередь идёт по ${row.daily_rate} ч в день, а не весь остаток`}>
-                <Tag color="geekblue" style={{ marginLeft: 6 }}>резиновая</Tag>
+                <Tag color="geekblue" className="desk-mark" style={{ marginLeft: 6 }}>резиновая</Tag>
               </Tooltip>
             ) : null}
             {row.otherDeveloper && (
@@ -493,7 +496,7 @@ export function GroupedIssues({
         if (row.est_hours == null) return '—';
         // Минус — перерасход: оценка исчерпана, работа продолжается.
         const left = roundHours(row.est_hours - (row.fact_hours ?? 0));
-        return <span style={{ color: left < 0 ? '#ff6b6b' : undefined }}>{left}</span>;
+        return <span className={left < 0 ? 'desk-left-over' : undefined} style={{ color: left < 0 ? 'var(--desk-scale-over, #ff6b6b)' : undefined }}>{left}</span>;
       },
     },
     {
@@ -597,13 +600,25 @@ export function GroupedIssues({
   return (
     <Card
       size="small"
+      className="desk-issues"
       title={title}
       extra={
         <Space size="small">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" className="desk-issues-count" style={{ fontSize: 12 }}>
             {hint ? `${hint} · ` : ''}{shown} задач
           </Typography.Text>
-          {onGroupByDeveloperChange && (
+          {onGroupByDeveloperChange && groupToggle === 'segmented' && (
+            <Segmented
+              size="small"
+              value={groupByDeveloper ? 'people' : 'list'}
+              onChange={(v) => onGroupByDeveloperChange(v === 'people')}
+              options={[
+                { value: 'people', label: 'по людям' },
+                { value: 'list', label: 'списком' },
+              ]}
+            />
+          )}
+          {onGroupByDeveloperChange && groupToggle === 'switch' && (
             <Tooltip title="Группировать задачи по разработчикам">
               <Switch
                 size="small"
@@ -652,7 +667,7 @@ export function GroupedIssues({
         </Space>
       }
     >
-      <div ref={tableRef}>
+      <div ref={tableRef} className="desk-issues-table">
       <Table<Row>
         size="small"
         rowKey="rowKey"
@@ -678,6 +693,7 @@ export function GroupedIssues({
           expandedRowKeys,
           onExpand: (_, row) => toggle(row.rowKey),
         }}
+        rowClassName={(row) => (row.isGroup ? 'desk-group-row' : '')}
         onRow={(row) =>
           row.isGroup
             ? { onClick: () => toggle(row.rowKey), style: { cursor: 'pointer' } }

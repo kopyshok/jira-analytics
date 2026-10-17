@@ -13,10 +13,11 @@ interface Props {
 export function FlagFilterBar({ flagCounts, value, onChange }: Props) {
   const empty = FLAG_ORDER.every((f) => !flagCounts[f]);
   return (
-    <Card size="small" styles={{ body: { padding: '7px 12px' } }}>
+    <Card size="small" className="desk-bar" styles={{ body: { padding: '7px 12px' } }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Typography.Text
           type="secondary"
+          className="desk-bar-label"
           style={{ fontSize: 12, whiteSpace: 'nowrap' }}
         >
           ТРЕБУЕТ ВНИМАНИЯ
@@ -26,6 +27,8 @@ export function FlagFilterBar({ flagCounts, value, onChange }: Props) {
           return (
             <Tag
               key={flag}
+              className={`desk-flag${active ? ' is-active' : ''}`}
+              data-flag={flag}
               color={active ? 'blue' : FLAG_COLOR[flag]}
               // Выбранный отбор виден без сравнения оттенков: жирная рамка,
               // жирный текст и крестик снятия.
@@ -37,7 +40,7 @@ export function FlagFilterBar({ flagCounts, value, onChange }: Props) {
               }}
               onClick={() => onChange(active ? null : flag)}
             >
-              {FLAG_ICON[flag]} {FLAG_LABELS[flag]} · {flagCounts[flag]}{active ? ' ✕' : ''}
+              <span className="desk-flag-icon">{FLAG_ICON[flag]}</span> {FLAG_LABELS[flag]}<span className="desk-flag-sep"> · </span><span className="desk-flag-count">{flagCounts[flag]}</span>{active ? ' ✕' : ''}
             </Tag>
           );
         })}
