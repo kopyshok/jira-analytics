@@ -2,6 +2,17 @@ import { Modal, Button, Collapse, Space, Empty } from 'antd';
 import type { ReactNode } from 'react';
 import NoteCard from './NoteCard';
 import type { VersionFeed, ReleaseNote } from '../../types/releaseNotes';
+import { DARK_THEME } from '../../utils/constants';
+
+/** Заголовок группы заметок: текст основным цветом темы, смысловой цвет — только у метки. */
+function GroupTitle({ color, children }: { color: string; children: ReactNode }) {
+  return (
+    <h4 style={{ color: DARK_THEME.textPrimary, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+      {children}
+    </h4>
+  );
+}
 
 interface Props {
   open: boolean;
@@ -74,13 +85,13 @@ export default function WhatsNewModal({
               )}
               {groups.new.length > 0 && (
                 <section style={{ marginBottom: 16 }}>
-                  <h4 style={{ color: '#52c41a', marginBottom: 8 }}>Новое</h4>
+                  <GroupTitle color="#52c41a">Новое</GroupTitle>
                   {groups.new.map((n) => <NoteCard key={n.id} note={n} />)}
                 </section>
               )}
               {groups.improvement.length > 0 && (
                 <section style={{ marginBottom: 16 }}>
-                  <h4 style={{ color: '#1677ff', marginBottom: 8 }}>Улучшения</h4>
+                  <GroupTitle color="#1677ff">Улучшения</GroupTitle>
                   {groups.improvement.map((n) => <NoteCard key={n.id} note={n} />)}
                 </section>
               )}
@@ -103,7 +114,7 @@ function FixesSection({ notes }: { notes: ReleaseNote[] }) {
         {
           key: 'fixes',
           label: (
-            <span style={{ color: '#8c8c8c' }}>
+            <span style={{ color: DARK_THEME.textMuted }}>
               Исправления ({notes.length})
             </span>
           ),
