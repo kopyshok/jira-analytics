@@ -78,14 +78,14 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     scrollbar-width: thin;
   }
   & .sw-an-table-scroll .ant-table-thead > tr > th { position: sticky; top: 0; z-index: 3; }
-  & .sw-an-table-scroll .ant-table colgroup col:first-child { width: 420px !important; }
+  & .sw-an-table-scroll .ant-table colgroup col:first-child { width: 396px !important; }
   & .sw-an-table-scroll .ant-table colgroup col:nth-child(2) { width: 124px !important; }
   & .sw-an-table-scroll .ant-table colgroup col:nth-child(n+3) { width: 56px !important; }
   /* Отступ уровня дерева даёт сама таблица — второй отступ подписи убираем,
      а ключ, статус и название задачи идут одним абзацем (перенос под ключ). */
   & .sw-an-table-scroll .an-indent { padding-left: 0 !important; }
   & .sw-an-table-scroll .an-issue-line { display: block !important; }
-  & .sw-an-table-scroll .an-issue-line > * { margin-right: 6px; vertical-align: baseline; }
+  & .sw-an-table-scroll .an-issue-line > * { margin-inline-end: 6px !important; vertical-align: baseline; }
   & .sw-an-table-scroll .an-issue-line > span:not(.ant-tag) { display: inline; }
   & .sw-an-table-scroll .an-foreign-chip { white-space: nowrap; }
   & .an-inherited-mark { opacity: 1 !important; font-size: 10px !important; }
@@ -192,6 +192,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
 
 @media (max-width: 1500px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-main { grid-template-columns: minmax(0, 1fr) 360px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-table-scroll .ant-table colgroup col:first-child { width: 280px !important; }
 }
 @media (max-width: 1100px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-main { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }

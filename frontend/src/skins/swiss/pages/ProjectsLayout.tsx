@@ -131,7 +131,7 @@ export default function SwissProjectsLayout({ vm }: { vm: ProjectsPageModel }) {
                     totalPct: data.total_pct,
                   }}
                   onRowClick={openProject}
-                  maxHeight="calc(100vh - 700px)"
+                  maxHeight="max(220px, calc(100vh - 700px))"
                 />
               </section>
 
@@ -141,7 +141,7 @@ export default function SwissProjectsLayout({ vm }: { vm: ProjectsPageModel }) {
                   timeline={data.timeline}
                   mode="by-project"
                   todayCaption
-                  maxHeight="calc(100vh - 880px)"
+                  maxHeight="max(160px, calc(100vh - 880px))"
                   onRowClick={openProject}
                 />
               </section>

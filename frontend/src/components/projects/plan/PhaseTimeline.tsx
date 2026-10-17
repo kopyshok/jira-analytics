@@ -215,7 +215,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
           ),
         )}
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ width: 2, height: 11, background: DARK_THEME.cyanPrimary }} />
+          <span className="pj-tl-legend-now" style={{ width: 2, height: 11, background: DARK_THEME.cyanPrimary }} />
           сегодня
         </span>
         <span>Затенено — границы квартала</span>

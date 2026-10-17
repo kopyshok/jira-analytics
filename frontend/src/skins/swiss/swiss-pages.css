@@ -340,6 +340,15 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
 @media (max-height: 760px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page { height: auto; }
 }
+/* 1366 px: паспорт узкий — крупные цифры и заголовок мельче, чтобы не резались многоточием. */
+@media (max-width: 1500px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-title { font-size: 24px; overflow-wrap: anywhere; hyphens: auto; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page--p2 .sw-title { font-size: 21px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-figure-value { font-size: 38px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page--p2 .sw-figure-value { font-size: 30px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-figure--xl .sw-figure-value { font-size: 44px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-figure--m .sw-figure-value { font-size: 30px; }
+}
 /* Узкие экраны: паспорт над данными. */
 @media (max-width: 1100px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page { height: auto; row-gap: 24px; }

@@ -831,7 +831,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.an
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-green,
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-success { color: #1E7A3E !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-lime { color: #4D7A12 !important; }
-html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-cyan { color: #0E7C86 !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-cyan { color: #0B6B74 !important; } /* ≥ 4,5:1 и на серой подсветке строки */
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-blue,
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-geekblue,
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-tag:not(.ant-tag-solid).ant-tag-processing { color: #1F4FD1 !important; }

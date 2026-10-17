@@ -255,6 +255,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     color: #111111 !important;
   }
   & .desk-issues .desk-left-over { font-weight: 700; }
+  /* Спринт/релиз в узкой колонке — многоточием, а не обрезом посреди знака */
+  & .desk-issues .ant-table-cell .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
   & .desk-noflags { opacity: 1 !important; color: #5E5E5E; }
   & .desk-issues .desk-scale { min-width: 0 !important; display: flex; flex-direction: row-reverse; align-items: center; gap: 6px; }
   & .desk-issues .desk-scale-text { flex: none; }
