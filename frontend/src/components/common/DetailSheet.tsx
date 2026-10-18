@@ -16,7 +16,8 @@ import './DetailSheet.css';
 // ponytail: признаки открытых окон AntD по классам — если Esc закроет лишнее, перейти на счётчик открытых окон.
 const OVERLAY_OPEN =
   '.ant-modal-wrap:not([style*="display: none"]), .ant-select-dropdown:not(.ant-select-dropdown-hidden), ' +
-  '.ant-picker-dropdown:not(.ant-picker-dropdown-hidden), .ant-dropdown:not(.ant-dropdown-hidden)';
+  '.ant-picker-dropdown:not(.ant-picker-dropdown-hidden), .ant-dropdown:not(.ant-dropdown-hidden), ' +
+  '.ant-popover:not(.ant-popover-hidden)';
 
 interface Props {
   open: boolean;
@@ -43,11 +44,13 @@ function PlacementIcon({ placement }: { placement: Placement }) {
 export default function DetailSheet({ open, onClose, title, subtitle, extra, ariaLabel, className, children }: Props) {
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
   const [expanded, setExpanded] = useState(false);
-  // Закрыли панель — следующее открытие начинается не развёрнутым.
+  // Закрыли панель — следующее открытие начинается не развёрнутым. Открыли — место и размер
+  // перечитываются: на странице могут быть другие панели, и пользователь мог их поменять там.
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (!open) setExpanded(false);
+    if (open) setPrefs(loadPrefs());
+    else setExpanded(false);
   }
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
   const dragging = useRef(false);
@@ -94,10 +97,13 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
     });
   }, []);
 
-  const fractionAt = (e: PointerEvent) =>
-    placement === 'bottom'
-      ? (window.innerHeight - e.clientY) / window.innerHeight
-      : (window.innerWidth - e.clientX) / window.innerWidth;
+  // Размер — от закреплённого края самой панели: тема может отодвинуть панель от краёв окна.
+  const fractionAt = (e: PointerEvent<HTMLDivElement>) => {
+    const rect = (e.currentTarget.parentElement ?? e.currentTarget).getBoundingClientRect();
+    return placement === 'bottom'
+      ? (rect.bottom - e.clientY) / window.innerHeight
+      : (rect.right - e.clientX) / window.innerWidth;
+  };
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     dragging.current = true;
@@ -106,7 +112,9 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return;
     // Во время перетаскивания не пишем в браузер на каждый кадр — только в конце.
-    setPrefs((prev) => ({ ...prev, [placement]: clamp(placement, fractionAt(e)) }));
+    // Долю считаем сразу: после обработчика у события уже нет элемента.
+    const next = clamp(placement, fractionAt(e));
+    setPrefs((prev) => ({ ...prev, [placement]: next }));
   };
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return;
