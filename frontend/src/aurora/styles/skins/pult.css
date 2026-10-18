@@ -1267,6 +1267,54 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     line-height: 16px;
     text-align: center;
   }
+
+  /* ============================================================
+     Панель подробностей (DetailSheet): садится между колонкой
+     разделов и строкой состояния, рабочая область ужимается на её размер.
+     Плоско: вместо тени — тёмная кромка, как у строки состояния.
+     ============================================================ */
+  --detail-sheet-inset-left: 76px; /* ширина .pult-rail */
+  --detail-sheet-inset-bottom: var(--pult-status-h, 32px);
+  --detail-sheet-bg: var(--p-body);
+  --detail-sheet-head-bg: var(--p-module);
+  &[data-detail-sheet="bottom"] .pult-main > .pult-content { padding-bottom: var(--detail-sheet-size); }
+  &[data-detail-sheet="right"] .pult-main > .pult-content { padding-right: var(--detail-sheet-size); }
+
+  & .detail-sheet { border-color: var(--p-key); box-shadow: none; color: var(--text); }
+  & .detail-sheet--bottom { border-top-width: 2px; }
+  & .detail-sheet--right { border-left-width: 2px; }
+  & .detail-sheet__handle::after { background: var(--p-line-strong); border-radius: 0; }
+  & .detail-sheet--bottom .detail-sheet__handle::after { top: 6px; width: 56px; height: 3px; }
+  & .detail-sheet--right .detail-sheet__handle::after { left: 6px; width: 3px; height: 56px; }
+  & .detail-sheet__handle:hover::after,
+  & .detail-sheet__handle:focus-visible::after { background: var(--p-accent); }
+  & .detail-sheet__head {
+    min-height: 50px;
+    box-sizing: border-box;
+    padding: 6px 12px 6px 16px;
+    gap: 10px;
+    border-bottom: 1px solid var(--p-line);
+  }
+  & .detail-sheet__name { font-size: 16px; font-weight: 600; line-height: 22px; }
+  & .detail-sheet__name .num { font-family: var(--font-mono); font-weight: 600; }
+  & .detail-sheet__sub { margin-top: 1px; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+  & .detail-sheet__tools { gap: 4px; padding-left: 6px; border-left: 1px solid var(--p-line); }
+  & .detail-sheet__tool {
+    width: 30px;
+    height: 30px;
+    background: var(--p-screen);
+    border: 1px solid var(--p-line-strong);
+    border-radius: 6px;
+    color: var(--text);
+  }
+  & .detail-sheet__tool:hover,
+  & .detail-sheet__tool:focus-visible,
+  & .detail-sheet__tool[aria-pressed="true"] { background: var(--p-key); border-color: var(--p-key); color: #FFFFFF; }
+  & .detail-sheet__tool:last-child { background: var(--p-key); border-color: var(--p-key); color: #FFFFFF; }
+  & .detail-sheet__tool:last-child:hover,
+  & .detail-sheet__tool:last-child:focus-visible { background: var(--p-key-hover); border-color: var(--p-key-hover); }
+  & .detail-sheet__extra .ant-btn { height: 30px; }
+  & .detail-sheet__body { padding: 10px 16px 12px; box-sizing: border-box; }
 }
 
 /* Ноутбук (1366–1500): подписи органов и имя пользователя прячутся (имя — в подсказке у инициалов) */
@@ -1289,6 +1337,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
 }
 @media (max-width: 640px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
+    --detail-sheet-inset-left: 60px;
     & .pult-rail { width: 60px; }
     & .pult-rail-item { width: 52px; }
     & .pult-rail-label { display: none; }

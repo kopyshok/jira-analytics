@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
@@ -29,6 +29,20 @@ export function PultStatusBar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  // Высота строки (на узком экране она переносится) — панель подробностей садится над ней.
+  const barRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => root.style.setProperty('--pult-status-h', `${bar.offsetHeight}px`));
+    observer.observe(bar);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--pult-status-h');
+    };
+  }, []);
+
   const handleLogout = useCallback(async () => {
     await logout();
     trackAction('logout');
@@ -36,7 +50,7 @@ export function PultStatusBar() {
   }, [logout, navigate]);
 
   return (
-    <footer className="pult-status" aria-label="Строка состояния">
+    <footer ref={barRef} className="pult-status" aria-label="Строка состояния">
       <div className="pult-sb-group">
         <SyncIndicator />
         {user && (

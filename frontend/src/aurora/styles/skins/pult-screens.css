@@ -99,6 +99,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     box-sizing: border-box;
     overflow: hidden;
   }
+  /* Открыта панель подробностей: экран становится ниже или уже — главный блок страницы
+     держит высоту (правило в файле страницы), остальное прокручивается, а не прячется */
+  &[data-detail-sheet] .pult-body { overflow-y: auto; }
   & .pm {
     min-width: 0;
     min-height: 0;
@@ -142,21 +145,6 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     font-size: 12px;
     color: var(--text-muted);
   }
-  & .pm-close {
-    margin-left: auto;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--p-screen);
-    border: 1px solid var(--p-line-strong);
-    border-radius: 6px;
-    color: var(--text);
-    cursor: pointer;
-  }
-  & .pm-close:hover { border-color: var(--p-key); }
   & .pm-link {
     font-size: 12px;
     color: var(--text);

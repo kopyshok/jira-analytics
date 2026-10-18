@@ -25,14 +25,15 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   /* ---------- тело ---------- */
   & .an-pult { gap: 10px; }
   & .an-empty { flex: 1; align-items: center; justify-content: center; }
-  & .an-top { flex: none; display: flex; gap: 10px; }
-  & .an-summary { flex: 1 1 auto; }
-  & .an-flow { flex: 0 0 440px; }
+  /* сводка и переток переносятся по ширине рабочей области (она уже, пока панель подробностей справа) */
+  & .an-top { flex: none; display: flex; flex-wrap: wrap; gap: 10px; }
+  & .an-summary { flex: 1 1 760px; }
+  & .an-flow { flex: 1 0 340px; max-width: 440px; }
   & .an-flow-empty { font-size: 12px; padding: 6px 8px; }
-  & .an-screens { display: flex; gap: 10px; }
+  & .an-screens { display: flex; flex-wrap: wrap; gap: 10px; }
   & .an-screen {
     flex: 1 1 0;
-    min-width: 0;
+    min-width: 130px;
     box-sizing: border-box;
     height: 62px;
     padding: 6px 12px;
@@ -108,9 +109,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .an-filters .ant-select { width: 160px !important; }
   & .an-filters .ant-input-search { width: 190px !important; }
 
-  & .an-main { flex: 1; min-height: 0; display: flex; gap: 10px; }
   & .an-tree { flex: 1 1 auto; }
-  & .an-issue { flex: 0 0 400px; overflow: hidden; }
+  &[data-detail-sheet] .an-tree { flex: 1 0 320px; }
+  & .an-tree-hint { font-size: 11px; color: var(--text-muted); }
   & .an-tree-screen .ant-table-wrapper .ant-table { border: 0; border-radius: 0; }
   & .an-tree-screen .ant-table-thead > tr > th { position: sticky; top: 0; z-index: 2; height: 30px; padding-top: 0 !important; padding-bottom: 0 !important; }
   & .an-tree-screen .ant-table-tbody > tr > td { height: 30px; padding-top: 0 !important; padding-bottom: 0 !important; font-size: 12px; }
@@ -121,9 +122,14 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .an-tree-screen .ant-table-container,
   & .an-tree-screen .ant-table-content { overflow: visible !important; }
 
-  /* М · задача (встроенная карточка) */
-  & .ai-docked { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 0 -10px -8px; overflow: hidden; }
-  & .ai-docked .ai-head { background: var(--p-module) !important; border-bottom: 0 !important; padding: 0 10px 8px !important; }
+  /* Карточка задачи в панели подробностей: модули стойки; на широкой панели — ворклоги отдельной колонкой (ниже) */
+  & .ai-docked { display: flex; flex-direction: column; gap: 10px; }
+  & .ai-docked .ai-head {
+    background: var(--p-module) !important;
+    border: 1px solid var(--p-line) !important;
+    border-radius: 8px;
+    padding: 8px 12px 10px !important;
+  }
   & .ai-docked .ai-head > div:first-child { margin-bottom: 4px !important; }
   & .ai-docked .ai-key {
     font-family: var(--font-mono) !important;
@@ -136,34 +142,49 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     text-underline-offset: 4px;
   }
   & .ai-docked .ai-summary { font-size: 14px !important; font-weight: 600 !important; color: var(--text) !important; }
-  & .ai-docked .ai-close {
-    width: 24px !important;
-    height: 24px !important;
-    background: var(--p-screen);
-    border: 1px solid var(--p-line-strong);
-    border-radius: 6px !important;
-    color: var(--text) !important;
-    font-size: 14px !important;
-  }
-  & .ai-docked .ai-body { background: var(--p-module) !important; }
-  & .ai-docked .ai-body > div { padding: 0 10px 10px !important; gap: 10px !important; }
-  & .ai-docked .ai-worklogs { background: var(--p-screen) !important; border: 1px solid var(--p-line-strong) !important; border-radius: 6px !important; }
+  /* закрывает панель её собственная кнопка в шапке */
+  & .ai-docked .ai-close { display: none !important; }
+  & .ai-docked .ai-body { background: transparent !important; overflow: visible !important; }
+  & .ai-docked .ai-body > div { padding: 0 !important; gap: 10px !important; }
+  & .ai-docked .ai-worklogs { background: var(--p-module) !important; border: 1px solid var(--p-line) !important; border-radius: 8px !important; }
   & .ai-docked .ai-worklogs > div:first-child { color: var(--text-muted) !important; border-bottom-color: var(--p-line) !important; font-family: var(--font-mono); font-weight: 400 !important; letter-spacing: 0.12em !important; }
+  & .ai-docked .ai-worklogs > div:last-child { padding: 8px 10px 10px !important; }
+  & .ai-docked .ai-worklogs .ant-table-wrapper { margin: 0 !important; max-width: none !important; }
+  & .ai-docked .ai-worklogs .ant-table { background: var(--p-screen); border: 1px solid var(--p-line-strong); border-radius: 6px; }
+  & .ai-docked .ai-worklogs .ant-table-tbody > tr > td { vertical-align: top; font-size: 12px; line-height: 1.4; }
+  & .ai-docked .ai-worklogs .ant-table-tbody > tr > td:nth-child(-n + 3) { font-family: var(--font-mono); white-space: nowrap; }
 }
 
 @media (max-width: 1400px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     & .an-flow { flex-basis: 340px; }
-    & .an-issue { flex-basis: 340px; }
   }
 }
 @media (max-width: 1100px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
-    & .an-top,
-    & .an-main { flex-direction: column; }
+    & .an-top { flex-direction: column; }
     & .an-screens { flex-wrap: wrap; }
     & .an-tree { min-height: 480px; }
-    & .an-flow,
-    & .an-issue { flex-basis: auto; }
+    & .an-flow { flex-basis: auto; }
+  }
+}
+
+/* Широкая панель (от 1040 px): слева шапка задачи, контекст и категория, справа — ворклоги во всю высоту */
+@container detail-sheet (min-width: 1040px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
+    & .an-sheet .ai-docked {
+      display: grid;
+      grid-template-columns: minmax(380px, 36%) minmax(0, 1fr);
+      grid-template-rows: max-content max-content max-content 1fr;
+      align-items: start;
+      gap: 10px;
+      height: 100%;
+    }
+    & .an-sheet .ai-body,
+    & .an-sheet .ai-body > div { display: contents !important; }
+    /* строки левой колонки — по содержимому (max-content): в низкой панели карточки не сжимаются и не наезжают друг на друга */
+    & .an-sheet .ai-head,
+    & .an-sheet .ai-body > div > :not(.ai-worklogs) { grid-column: 1; }
+    & .an-sheet .ai-worklogs { grid-column: 2; grid-row: 1 / -1; align-self: stretch; min-height: 0; overflow: auto; }
   }
 }

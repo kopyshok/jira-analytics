@@ -103,13 +103,11 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
 
   /* ---------- раскладка экрана ---------- */
   & .rp-pult .ant-alert { flex: none; padding: 6px 10px; }
-  & .rp-mid { flex: 1; min-height: 0; display: flex; gap: 10px; }
   & .rp-gantt-module { flex: 1 1 auto; }
-  & .rp-assign-module { flex: 0 0 340px; overflow: hidden; }
-  & .rp-assign-scroll { flex: 1; min-height: 0; overflow: auto; margin: 0 -10px -8px; padding: 0 10px 10px; }
+  &[data-detail-sheet] .rp-gantt-module { flex: 1 0 320px; }
+  & .rp-legend-hint { margin-left: auto; }
   & .rp-bottom { flex: none; height: clamp(170px, 24vh, 236px); display: flex; gap: 10px; min-height: 0; }
   & .rp-heat-module { flex: 1 1 auto; }
-  & .rp-reserve-module { flex: 0 0 420px; }
 
   /* клавиши панели — в рост поля (30px), «Вид» — тёмная клавиша */
   & .pc-panel .ant-btn-sm { height: 30px; padding: 0 12px; font-size: 13px; border-radius: 6px; }
@@ -265,6 +263,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     line-height: 18px;
     pointer-events: none;
   }
+  /* фаза, открытая в панели подробностей */
+  & .rp-bar.rp-bar-selected { z-index: 7 !important; outline: 2px solid var(--p-accent) !important; outline-offset: 1px; }
   /* сводная полоса инициативы — тонкая серая шкала вместо скобки */
   & .rp-init-span {
     top: 14px !important;
@@ -319,6 +319,45 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .rp-assign-docked .ant-descriptions-item-content .ant-picker { width: 100% !important; font-family: var(--font-body); }
   & .rp-assign-docked .ant-btn-block { justify-content: flex-start; }
 
+  /* ---------- назначение в панели подробностей: колонки-модули ---------- */
+  & .rp-assign-cols { display: grid; gap: 10px; align-items: start; }
+  & .rp-assign-cols.is-c1 { grid-template-columns: minmax(0, 1fr); }
+  & .rp-assign-cols.is-c2 { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr); }
+  & .rp-assign-cols.is-c3 { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.3fr) minmax(0, 1fr); }
+  & .rp-assign-cols.is-c4 { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
+  & .rp-assign-col {
+    min-width: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px 10px;
+    background: var(--p-module);
+    border: 1px solid var(--p-line);
+    border-radius: 8px;
+  }
+  & .rp-assign-col > .ant-divider:first-child { margin-top: 0 !important; }
+  /* секции: подпись — как подпись модуля, содержимое — без отступа слева */
+  & .rp-assign-cols .ant-collapse-header {
+    padding: 6px 0 !important;
+    align-items: center !important;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted) !important;
+  }
+  & .rp-assign-cols .ant-collapse-content-box { padding: 2px 0 8px !important; }
+  & .rp-assign-cols .ant-collapse-item + .ant-collapse-item,
+  & .rp-assign-cols .ant-collapse + .ant-collapse { border-top: 1px solid var(--p-line-soft); }
+  /* все секции развёрнуты: подпись не сворачивает */
+  & .rp-assign-cols:is(.is-c3, .is-c4) .ant-collapse-header { pointer-events: none; cursor: default; }
+  & .rp-assign-cols:is(.is-c3, .is-c4) .ant-collapse-expand-icon { display: none !important; }
+  & .rp-assign-cols .ant-table-wrapper { max-width: 100%; overflow-x: auto; }
+  & .rp-assign-cols .ant-table-wrapper .ant-table { background: var(--p-screen); }
+  & .rp-assign-cols .ant-statistic-content { font-size: 18px !important; font-family: var(--font-mono); }
+  & .rp-assign-cols .ant-statistic-title { font-size: 10px !important; }
+
   /* ---------- загрузка по дням ---------- */
   & .rp-heatmap.is-docked { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 5px; }
   & .rp-heatmap.is-docked .rp-heat-head { margin-bottom: 0 !important; gap: 12px; min-height: 18px; }
@@ -346,16 +385,29 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .rp-heat-legend > span:first-child { font-family: var(--font-mono); font-weight: 400 !important; letter-spacing: 0.12em !important; font-size: 9px !important; }
   & .rp-heat-legend > span > span { border-radius: 0 !important; width: 12px !important; height: 10px !important; }
 
-  /* ---------- нормированные работы ---------- */
+  /* ---------- нормированные работы: строка-итог на странице, таблица — в панели ---------- */
+  & .rp-reserve-sum { flex: 0 0 270px; }
+  & .rp-reserve-sum .pm-cap { white-space: normal; line-height: 14px; }
+  & .rp-rs-figs { flex: none; margin: 0; padding: 4px 10px; display: flex; flex-direction: column; overflow: visible; }
+  & .rp-rs-figs > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 3px 0; }
+  & .rp-rs-figs > div + div { border-top: 1px solid var(--p-line-soft); }
+  & .rp-rs-figs dt { font-size: 12px; color: var(--text-2); }
+  & .rp-rs-figs dd { margin: 0; font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  & .rp-rs-foot { margin-top: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  & .rp-rs-over { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: #B92E17; }
+  & .rp-rs-ok { font-size: 11px; color: var(--text-muted); }
+  & .rp-rs-more { margin-left: auto; height: 26px; }
+  & .rp-reserve-sheet .rp-reserve-module { padding: 8px 10px 10px; }
+  & .rp-reserve-sheet .rp-reserve-screen { flex: none; overflow: visible; }
   & .rp-reserve-screen { padding: 0; }
   & .rp-reserve.is-docked { font-size: 12px; }
   & .rp-reserve.is-docked table { font-size: 12px; }
-  & .rp-reserve.is-docked col:nth-child(2) { width: 66px !important; }
-  & .rp-reserve.is-docked col:nth-child(3) { width: 128px !important; }
-  & .rp-reserve.is-docked col:nth-child(4) { width: 76px !important; }
+  & .rp-reserve.is-docked col:nth-child(2) { width: 140px !important; }
+  & .rp-reserve.is-docked col:nth-child(3) { width: min(420px, 40%) !important; }
+  & .rp-reserve.is-docked col:nth-child(4) { width: 160px !important; }
   & .rp-reserve.is-docked th {
     height: 28px;
-    padding: 0 8px !important;
+    padding: 0 12px !important;
     background: var(--p-body);
     font-family: var(--font-mono);
     font-size: 10px !important;
@@ -368,31 +420,23 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     top: 0;
     z-index: 1;
   }
-  & .rp-reserve.is-docked td { padding: 6px 8px !important; color: var(--text) !important; }
+  & .rp-reserve.is-docked td { padding: 7px 12px !important; color: var(--text) !important; }
   & .rp-reserve.is-docked td:nth-child(2),
   & .rp-reserve.is-docked td:nth-child(3),
   & .rp-reserve.is-docked td:nth-child(4) { font-family: var(--font-mono); }
   & .rp-reserve.is-docked td[colspan="4"] { font-family: var(--font-mono); letter-spacing: 0.12em !important; font-weight: 400 !important; color: var(--text-muted) !important; }
+  /* раскрытая строка вида работ (задачи других команд) — обычный текст, не подпись роли */
+  & .rp-reserve.is-docked td[colspan="4"]:has(> div) { font-family: var(--font-body); letter-spacing: 0 !important; color: var(--text) !important; }
+  & .rp-reserve.is-docked td[colspan="4"]:has(> div) .ant-typography { font-family: var(--font-mono); }
   & .rp-reserve-over { padding: 6px 8px 0; font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: #B92E17; letter-spacing: 0.04em; }
   & .rp-reserve-scenario { padding: 6px 8px 0; margin-bottom: 4px !important; }
 }
 
-@media (max-width: 1400px) {
-  html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
-    & .rp-assign-module { flex-basis: 300px; }
-    & .rp-reserve-module { flex-basis: 360px; }
-    & .rp-reserve.is-docked col:nth-child(2) { width: 54px !important; }
-    & .rp-reserve.is-docked col:nth-child(3) { width: 104px !important; }
-    & .rp-reserve.is-docked col:nth-child(4) { width: 62px !important; }
-  }
-}
 @media (max-width: 1100px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
-    & .rp-mid,
     & .rp-bottom { flex-direction: column; height: auto; }
     & .rp-gantt-module { min-height: 480px; }
-    & .rp-assign-module,
-    & .rp-reserve-module { flex-basis: auto; }
     & .rp-heat-module { min-height: 240px; }
+    & .rp-reserve-sum { flex-basis: auto; }
   }
 }

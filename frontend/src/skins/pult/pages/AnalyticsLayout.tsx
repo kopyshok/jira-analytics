@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, DatePicker, Empty, Segmented, Spin, Switch, Tooltip } from 'antd';
 import { ExportOutlined, SettingOutlined, WarningOutlined } from '@ant-design/icons';
 import AnalyticsFilters from '../../../components/analytics/AnalyticsFilters';
 import AnalyticsTable from '../../../components/analytics/AnalyticsTable';
 import AnalyticsReportSettings from '../../../components/analytics/AnalyticsReportSettings';
 import AnalyticsIssueDrawer from '../../../components/analytics/AnalyticsIssueDrawer';
+import DetailSheet from '../../../components/common/DetailSheet';
 import type { AnalyticsPageState } from '../../../hooks/useAnalyticsPage';
 import { PcField, PcRow, PcTitle, PModule, PultScreen } from '../ui';
 
@@ -12,7 +13,7 @@ const fmt1 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 1
 
 /**
  * «Иерархический отчёт по часам» в обложке «Пульт» (D-analytics):
- * Модули: сводка · переток · команды и отборы · дерево · задача.
+ * Модули: сводка · переток · команды и отборы · дерево; карточка задачи — в панели подробностей.
  * Данные и действия — общий хук страницы.
  */
 /** «2026-10-01» → «01.10.2026». */
@@ -26,8 +27,15 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
     data, isLoading, periodStart, periodEnd,
     handleFilterChange, hasActiveFilters, resetFilters, exportXlsx,
   } = page;
-  // Карточка задачи встроена справа от дерева (в Aurora — выезжающая панель).
+  // Карточка задачи — в панели подробностей поверх страницы (в Aurora — выезжающая справа).
   const [issue, setIssue] = useState<{ id: string; key: string } | null>(null);
+  // Рабочая область ужалась под панель — выбранная строка дерева остаётся на виду.
+  useEffect(() => {
+    if (!issue) return;
+    const frame = requestAnimationFrame(() =>
+      document.querySelector('.an-tree-screen tr.tree-row-selected')?.scrollIntoView({ block: 'nearest', inline: 'start' }));
+    return () => cancelAnimationFrame(frame);
+  }, [issue]);
 
   const panel = (
     <PcRow>
@@ -191,44 +199,46 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
             </div>
           </PModule>
 
-          <div className="an-main">
-            <PModule
-              title="Дерево: команда → группа → роль → сотрудник → вид работ → категория → задача"
-              className="an-tree"
-            >
-              <div className="pm-screen an-tree-screen" data-tour="analytics-table">
-                <AnalyticsTable
-                  data={data}
-                  selectedTeam={selectedTeam}
-                  worklogMode={worklogMode}
-                  periodStart={periodStart}
-                  periodEnd={periodEnd}
-                  onOpenIssue={setIssue}
-                  selectedIssueId={issue?.id ?? null}
-                />
-              </div>
-            </PModule>
-            <PModule title="Задача" as="aside" className="an-issue">
-              {issue ? (
-                <AnalyticsIssueDrawer
-                  docked
-                  issueId={issue.id}
-                  issueKey={issue.key}
-                  periodStart={periodStart}
-                  periodEnd={periodEnd}
-                  onClose={() => setIssue(null)}
-                />
-              ) : (
-                <div className="pm-empty">
-                  {worklogMode === 'drawer'
-                    ? 'Щёлкните задачу в дереве — здесь откроются её контекст, категория и ворклоги за период'
-                    : 'Ворклоги показаны прямо в дереве. Чтобы открывать карточку задачи здесь, переключите «Ворклоги» на drawer'}
-                </div>
-              )}
-            </PModule>
-          </div>
+          <PModule
+            title="Дерево: команда → группа → роль → сотрудник → вид работ → категория → задача"
+            className="an-tree"
+            extra={worklogMode === 'drawer' && (
+              <span className="pm-push an-tree-hint">щелчок по задаче — карточка с ворклогами в панели</span>
+            )}
+          >
+            <div className="pm-screen an-tree-screen" data-tour="analytics-table">
+              <AnalyticsTable
+                data={data}
+                selectedTeam={selectedTeam}
+                worklogMode={worklogMode}
+                periodStart={periodStart}
+                periodEnd={periodEnd}
+                onOpenIssue={setIssue}
+                selectedIssueId={issue?.id ?? null}
+              />
+            </div>
+          </PModule>
         </>
       )}
+      <DetailSheet
+        open={!!issue}
+        onClose={() => setIssue(null)}
+        title="Карточка задачи"
+        subtitle={`ворклоги за ${ddmmyyyy(periodStart)} – ${ddmmyyyy(periodEnd)}`}
+        ariaLabel="Карточка задачи"
+        className="an-sheet"
+      >
+        {issue && (
+          <AnalyticsIssueDrawer
+            docked
+            issueId={issue.id}
+            issueKey={issue.key}
+            periodStart={periodStart}
+            periodEnd={periodEnd}
+            onClose={() => setIssue(null)}
+          />
+        )}
+      </DetailSheet>
     </PultScreen>
   );
 }

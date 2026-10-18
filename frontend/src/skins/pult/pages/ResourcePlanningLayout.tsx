@@ -1,6 +1,9 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Popover, Segmented, Select, Spin } from 'antd';
-import { CaretRightOutlined, CloseOutlined, EyeOutlined, LockOutlined } from '@ant-design/icons';
+import { CaretRightOutlined, EyeOutlined, LockOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import '../../../utils/gantt.css';
+import DetailSheet from '../../../components/common/DetailSheet';
 import GanttChart from '../../../components/resource-planning/GanttChart';
 import AssignmentSidebar from '../../../components/resource-planning/AssignmentSidebar';
 import PlanLoadHeatmap from '../../../components/resource-planning/PlanLoadHeatmap';
@@ -13,8 +16,11 @@ import type { TimelineScale } from '../../../utils/gantt';
 import { PHASE_LABELS } from '../../../utils/gantt';
 import { usePlanQuality } from '../../../hooks/useResourcePlanning';
 import type { ResourcePlanningPageState } from '../../../hooks/useResourcePlanningPage';
+import type { AssignmentOut, ReserveOut } from '../../../api/resourcePlanning';
+import { fmtHours, overuseCount, usedHours } from '../../../utils/normedReserve';
 import { PULT_SIGNAL } from '../palette';
 import { PcField, PcLamp, PcRow, PcTitle, PModule, PultScreen } from '../ui';
+import { useWidth } from '../useWidth';
 import PultConflicts from './PultConflicts';
 
 const STATUS: Record<string, { label: string; color: string }> = {
@@ -24,12 +30,44 @@ const STATUS: Record<string, { label: string; color: string }> = {
   draft: { label: 'Черновик', color: PULT_SIGNAL.grey },
 };
 
-/** Левая колонка диаграммы в обложке — уже, чем в Aurora: модуль делит ширину с «Назначением». */
+/** Левая колонка диаграммы в обложке — уже, чем в Aurora. */
 const LEFT_COL = 380;
+
+const PHASE_ORDER: Record<string, number> = { analyst: 0, dev: 1, qa: 2, opo: 3 };
+const ddmm = (iso: string | null) => (iso ? dayjs(iso).format('DD.MM') : '—');
+
+/** Итог запаса нормированных работ для страницы: заложено, занято, осталось, перерасход. */
+function reserveTotals(reserve: ReserveOut) {
+  let planned = 0;
+  let used = 0;
+  let remaining = 0;
+  for (const role of reserve.roles) {
+    for (const row of role.rows) {
+      planned += row.planned_hours;
+      used += usedHours(row);
+      remaining += row.remaining_hours;
+    }
+  }
+  return { planned, used, remaining, over: overuseCount(reserve) };
+}
+
+/** «в 1 виде», «в 3 видах» работ. */
+const kindsWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'виде' : 'видах');
+
+/** Подпись фазы в шапке панели: фаза, исполнитель, часы, сроки. */
+function phaseLine(a: AssignmentOut): string {
+  return [
+    `${PHASE_LABELS[a.phase] ?? a.phase}${a.part_number > 1 ? ` · часть ${a.part_number}` : ''}`,
+    a.employee_name ?? (a.phase === 'qa' ? 'QA — без сотрудника' : 'исполнитель не назначен'),
+    `${Math.round(a.hours_allocated ?? 0)} ч`,
+    `${ddmm(a.start_date)}–${ddmm(a.end_date)}`,
+  ].join(' · ');
+}
 
 /**
  * «Ресурсное планирование» в обложке «Пульт»: панель управления экраном,
- * модули: конфликты · Гант · назначение · загрузка · нормированные работы.
+ * модули: конфликты · Гант · загрузка · итог нормированных работ; назначение фазы
+ * и таблица запаса — в панели подробностей (снизу или справа).
  * Данные и обработчики — общий хук страницы, раскладка только рисует.
  */
 export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlanningPageState }) {
@@ -48,6 +86,43 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
   const { data: quality } = usePlanQuality(planId);
   const status = gantt ? STATUS[gantt.plan.status] ?? STATUS.draft : null;
   const computing = compute.isPending || gantt?.plan.status === 'computing';
+
+  // На странице одна панель подробностей: фаза плана или запас нормированных работ.
+  const [reserveOpen, setReserveOpen] = useState(false);
+  if (reserveOpen && selectedAssignment) setReserveOpen(false);
+  const reserve = gantt?.reserve && gantt.plan.team ? gantt.reserve : null;
+  const totals = useMemo(() => (reserve ? reserveTotals(reserve) : null), [reserve]);
+  const reserveShown = reserveOpen && !!reserve && viewMode === 'two-level';
+  const openReserve = () => {
+    setSelectedAssignmentId(null);
+    setReserveOpen(true);
+  };
+
+  // Соседние фазы для стрелок в шапке панели: порядок задач диаграммы, внутри — фазы по порядку.
+  const phaseNav = useMemo(() => {
+    const itemIdx = new Map<string, number>();
+    for (const a of shownAssignments) if (!itemIdx.has(a.backlog_item_id)) itemIdx.set(a.backlog_item_id, itemIdx.size);
+    return shownAssignments
+      .filter((a) => a.start_date && a.end_date)
+      .sort((a, b) =>
+        (itemIdx.get(a.backlog_item_id) ?? 0) - (itemIdx.get(b.backlog_item_id) ?? 0)
+        || (PHASE_ORDER[a.phase] ?? 9) - (PHASE_ORDER[b.phase] ?? 9)
+        || (a.start_date ?? '').localeCompare(b.start_date ?? '')
+        || a.part_number - b.part_number);
+  }, [shownAssignments]);
+  const navIdx = selectedAssignment ? phaseNav.findIndex((a) => a.id === selectedAssignment.id) : -1;
+  const prevPhase = navIdx > 0 ? phaseNav[navIdx - 1] : null;
+  const nextPhase = navIdx >= 0 && navIdx < phaseNav.length - 1 ? phaseNav[navIdx + 1] : null;
+  // Рабочая область ужалась под панель — выбранная фаза остаётся на виду (и при переходе стрелками).
+  const selectedId = selectedAssignment?.id;
+  useEffect(() => {
+    if (!selectedId) return;
+    const frame = requestAnimationFrame(() =>
+      document.querySelector('.rp-gantt-screen .rp-bar-selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+    return () => cancelAnimationFrame(frame);
+  }, [selectedId]);
+  const [assignRef, assignWidth] = useWidth<HTMLDivElement>();
+  const assignCols = assignWidth >= 1500 ? 4 : assignWidth >= 1100 ? 3 : assignWidth >= 800 ? 2 : 1;
 
   const panel = (
     <>
@@ -203,6 +278,7 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
           onToggleCollapse={handleToggleCollapse}
           conflictAssignmentIds={conflictAssignmentIds}
           onAssignmentClick={(id) => setSelectedAssignmentId(id)}
+          selectedAssignmentId={selectedAssignment?.id ?? null}
           hideWeekends={prefs.hide_weekends}
           highlightedEmployeeId={highlightedEmployeeId}
           selectedEmployeeIds={peopleFilter}
@@ -250,52 +326,20 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
         />
       )}
 
-      <div className="rp-mid">
-        <PModule title="Диаграмма Ганта" className="rp-gantt-module" ariaLabel="Диаграмма Ганта">
-          {ganttBody}
-          <div className="pm-legend">
-            {(['analyst', 'dev', 'qa', 'opo'] as const).map((p) => (
-              <span key={p}><i style={{ background: phaseColors[p] }} />{PHASE_LABELS[p]}</span>
-            ))}
-            <span><i className="lg-conflict" />конфликт</span>
-            <span><i className="lg-cp" />критический путь</span>
-            <span><i className="lg-pinned" />закреплено вручную</span>
-            <span><i className="lg-ooq" />за пределами квартала</span>
-            <span><i className="lg-absence" />отпуск</span>
-          </div>
-        </PModule>
-
-        <PModule
-          title="Назначение"
-          as="aside"
-          className="rp-assign-module"
-          ariaLabel="Назначение"
-          extra={selectedAssignment && (
-            <button type="button" className="pm-close" aria-label="Закрыть" onClick={() => setSelectedAssignmentId(null)}>
-              <CloseOutlined style={{ fontSize: 10 }} />
-            </button>
-          )}
-        >
-          {selectedAssignment ? (
-            <div className="rp-assign-scroll">
-              <AssignmentSidebar
-                docked
-                open
-                onClose={() => setSelectedAssignmentId(null)}
-                planId={planId ?? ''}
-                assignment={selectedAssignment}
-                allAssignments={sortedAssignments}
-                employees={candidateEmployees}
-                onChanged={refreshGantt}
-              />
-            </div>
-          ) : (
-            <div className="pm-empty">
-              Щёлкните фазу на диаграмме — здесь откроются её часы, исполнитель и даты
-            </div>
-          )}
-        </PModule>
-      </div>
+      <PModule title="Диаграмма Ганта" className="rp-gantt-module" ariaLabel="Диаграмма Ганта">
+        {ganttBody}
+        <div className="pm-legend">
+          {(['analyst', 'dev', 'qa', 'opo'] as const).map((p) => (
+            <span key={p}><i style={{ background: phaseColors[p] }} />{PHASE_LABELS[p]}</span>
+          ))}
+          <span><i className="lg-conflict" />конфликт</span>
+          <span><i className="lg-cp" />критический путь</span>
+          <span><i className="lg-pinned" />закреплено вручную</span>
+          <span><i className="lg-ooq" />за пределами квартала</span>
+          <span><i className="lg-absence" />отпуск</span>
+          {gantt && <span className="rp-legend-hint">щелчок по фазе — её назначение откроется в панели</span>}
+        </div>
+      </PModule>
 
       {viewMode === 'two-level' && (
         <div className="rp-bottom">
@@ -321,11 +365,24 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
               </div>
             </PModule>
           )}
-          <PModule title="Нормированные работы — запас квартала" className="rp-reserve-module" ariaLabel="Нормированные работы">
-            {gantt?.reserve && gantt.plan.team ? (
-              <div className="pm-screen rp-reserve-screen">
-                <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} docked />
-              </div>
+          {/* Нормированные работы: на странице — итог, вся таблица — в панели подробностей */}
+          <PModule title="Нормированные работы — запас квартала" className="rp-reserve-sum" ariaLabel="Нормированные работы — запас квартала">
+            {totals ? (
+              <>
+                <dl className="pm-screen rp-rs-figs">
+                  <div><dt>заложено</dt><dd className="num">{fmtHours(totals.planned)}</dd></div>
+                  <div><dt>занято</dt><dd className="num">{fmtHours(totals.used)}</dd></div>
+                  <div><dt>осталось</dt><dd className="num">{fmtHours(totals.remaining)}</dd></div>
+                </dl>
+                <div className="rp-rs-foot">
+                  {totals.over > 0
+                    ? <span className="rp-rs-over">перерасход в {totals.over} {kindsWord(totals.over)} работ</span>
+                    : <span className="rp-rs-ok">перерасхода нет</span>}
+                  <Button size="small" className="rp-rs-more" aria-expanded={reserveShown} onClick={openReserve}>
+                    Подробнее
+                  </Button>
+                </div>
+              </>
             ) : (
               <div className="pm-empty">
                 {gantt ? 'Нормированных работ в квартале нет' : 'Запас квартала появится после выбора плана'}
@@ -334,6 +391,64 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
           </PModule>
         </div>
       )}
+
+      <DetailSheet
+        open={!!selectedAssignment}
+        onClose={() => setSelectedAssignmentId(null)}
+        title={selectedAssignment && (
+          <>
+            {selectedAssignment.backlog_item_key && <span className="num">{selectedAssignment.backlog_item_key} · </span>}
+            {selectedAssignment.backlog_item_title}
+          </>
+        )}
+        subtitle={selectedAssignment && phaseLine(selectedAssignment)}
+        extra={(prevPhase || nextPhase) && (
+          <>
+            <Button size="small" disabled={!prevPhase} onClick={() => prevPhase && setSelectedAssignmentId(prevPhase.id)}>
+              ← предыдущая
+            </Button>
+            <Button size="small" disabled={!nextPhase} onClick={() => nextPhase && setSelectedAssignmentId(nextPhase.id)}>
+              следующая →
+            </Button>
+          </>
+        )}
+        ariaLabel="Назначение"
+        className="rp-assign-sheet"
+      >
+        {selectedAssignment && (
+          <div ref={assignRef}>
+            <AssignmentSidebar
+              docked
+              columns={assignCols}
+              open
+              onClose={() => setSelectedAssignmentId(null)}
+              planId={planId ?? ''}
+              assignment={selectedAssignment}
+              allAssignments={sortedAssignments}
+              employees={candidateEmployees}
+              onChanged={refreshGantt}
+            />
+          </div>
+        )}
+      </DetailSheet>
+
+      <DetailSheet
+        open={reserveShown}
+        onClose={() => setReserveOpen(false)}
+        title="Нормированные работы — запас квартала"
+        subtitle={reserve && totals
+          && `${reserve.scenario_name} · заложено ${fmtHours(totals.planned)} · занято ${fmtHours(totals.used)} · осталось ${fmtHours(totals.remaining)}`}
+        ariaLabel="Нормированные работы — запас квартала"
+        className="rp-reserve-sheet"
+      >
+        {reserve && gantt && (
+          <section className="pm rp-reserve-module">
+            <div className="pm-screen rp-reserve-screen">
+              <NormedReserveSummary key={gantt.plan.id} reserve={reserve} docked />
+            </div>
+          </section>
+        )}
+      </DetailSheet>
 
       <ResourcePlanningDialogs rp={rp} />
     </PultScreen>
