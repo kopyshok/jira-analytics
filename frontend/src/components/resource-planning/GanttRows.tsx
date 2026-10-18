@@ -39,6 +39,8 @@ interface Props {
   onToggleCollapse?: (itemId: string, collapsed: boolean) => void;
   conflictAssignmentIds?: string[];
   onAssignmentClick?: (assignmentId: string) => void;
+  /** Фаза, открытая в панели подробностей, — полоса выделена. */
+  selectedAssignmentId?: string | null;
   highlightedEmployeeId?: string | null;
   /** Приглушать полосы остальных людей при подсветке (не при фильтре по людям). */
   fadeOthers?: boolean;
@@ -376,6 +378,8 @@ interface PhaseBarProps {
   hasConflict?: boolean;
   dimmed?: boolean;
   onClick?: () => void;
+  /** Фаза открыта в панели подробностей. */
+  selected?: boolean;
   unavailableDays?: Array<{ date: string; type: 'weekend' | 'holiday' | 'absence' | 'block' }>;
   highlightedEmployeeId?: string | null;
   /** Приглушать полосу, если она не подсвеченного человека. */
@@ -390,7 +394,7 @@ interface PhaseBarProps {
   dragLocked?: boolean;
 }
 
-function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, fadeOthers, pulseEmp, pulseCp, quarterEndDate, busyDays, dragLocked }: PhaseBarProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, hasConflict, dimmed, onClick, selected, unavailableDays, highlightedEmployeeId, fadeOthers, pulseEmp, pulseCp, quarterEndDate, busyDays, dragLocked }: PhaseBarProps) {
   const { message } = App.useApp();
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
@@ -501,6 +505,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
   const barClassName = [
     isMe && pulseEmp ? 'rp-bar-emp-highlighted' : '',
     assignment.is_on_critical_path && pulseCp ? 'rp-bar-critical' : '',
+    selected ? 'rp-bar-selected' : '',
   ].filter(Boolean).join(' ');
 
   const bar = (
@@ -855,7 +860,7 @@ function hexToRgb(hex: string): [number, number, number] {
 function TwoLevelRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   depDrawMode, pendingFromItem, onItemClick,
-  collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
+  collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick, selectedAssignmentId,
   highlightedEmployeeId, fadeOthers, onEmployeeRowClick, quarterEndDate, sectionByItem,
   collapsedSections, onToggleSection, subgroupByEmployee, busyByAssignment, dragLocked,
 }: SubProps) {
@@ -1210,6 +1215,7 @@ function TwoLevelRows({
                             hasConflict={conflictSet.has(a.id)}
                             dimmed={isDimmed}
                             onClick={onAssignmentClick ? () => onAssignmentClick(a.id) : undefined}
+                            selected={a.id === selectedAssignmentId}
                             unavailableDays={
                               (a as AssignmentOut & {
                                 unavailable_days?: Array<{
@@ -1276,7 +1282,7 @@ function PeopleRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   conflictAssignmentIds, onAssignmentClick, highlightedEmployeeId, fadeOthers, onEmployeeRowClick,
   quarterEndDate, externalBookings, employeeLoad, planTeam, busyByAssignment, isWorkday, dragLocked,
-  selectedEmployeeIds,
+  selectedEmployeeIds, selectedAssignmentId,
 }: SubProps) {
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
@@ -1434,6 +1440,7 @@ function PeopleRows({
                         employees={employees}
                         hasConflict={conflictSet.has(a.id)}
                         onClick={onAssignmentClick ? () => onAssignmentClick(a.id) : undefined}
+                        selected={a.id === selectedAssignmentId}
                         unavailableDays={a.unavailable_days}
                         highlightedEmployeeId={highlightedEmployeeId}
                         fadeOthers={fadeOthers}

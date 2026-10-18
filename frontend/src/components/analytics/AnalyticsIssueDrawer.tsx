@@ -68,6 +68,7 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
       />
       {/* Worklogs section */}
       <div
+        className="an-issue-worklogs"
         style={{
           background: 'var(--an-card-bg, rgba(255,255,255,0.03))',
           border: '1px solid var(--an-line, rgba(255,255,255,0.08))',

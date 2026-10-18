@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, App, Button, Checkbox, DatePicker, Descriptions, Divider, Drawer, InputNumber, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
 import type { SelectProps } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
@@ -52,7 +52,15 @@ interface Props {
   onChanged?: () => void | Promise<unknown>;
   /** Панель встроена в раскладку страницы, а не выезжает справа (обложки). */
   docked?: boolean;
+  /** Встроено в панель подробностей (вместе с docked): название задачи и «Закрыть» — в шапке панели,
+   *  содержимое — колонками. 3–4 — все секции развёрнуты и разложены рядом; 2 — параметры |
+   *  секции; 1 — одной колонкой. На 1–2 колонках секции сворачиваются. */
+  columns?: 1 | 2 | 3 | 4;
 }
+
+/** Порядок секций детализации (как в выезжающей панели). */
+const SECTION_KEYS = ['algorithm', 'day_table', 'absences', 'sources', 'duration', 'critical_path'] as const;
+type SectionKey = (typeof SECTION_KEYS)[number];
 
 const fmtDay = (iso: string) => dayjs(iso).format('DD.MM');
 
@@ -73,6 +81,7 @@ export default function AssignmentSidebar({
   employees,
   onChanged,
   docked = false,
+  columns,
 }: Props) {
   const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
@@ -263,7 +272,7 @@ export default function AssignmentSidebar({
     </Typography.Text>
   );
 
-  const body = (
+  const titleBlock = (
     <>
       <Typography.Title level={5} style={{ marginTop: 0 }}>
         {assignment.backlog_item_title}
@@ -272,6 +281,11 @@ export default function AssignmentSidebar({
         <Typography.Text type="secondary">{assignment.backlog_item_key}</Typography.Text>
       )}
       <Divider />
+    </>
+  );
+
+  const params = (
+    <>
       <Descriptions size="small" column={1} bordered>
         <Descriptions.Item label="Часов">
           {assignment.hours_allocated?.toFixed(0) ?? '—'}
@@ -348,9 +362,13 @@ export default function AssignmentSidebar({
       </Descriptions>
       {/* Во встроенной панели поля стоят сеткой в две колонки — пояснение на всю ширину под ними. */}
       {docked && endHint}
+    </>
+  );
 
-      <AssignmentExplainSection planId={planId} assignmentId={assignment.id} />
+  const explain = <AssignmentExplainSection planId={planId} assignmentId={assignment.id} />;
 
+  const actions = (
+    <>
       <Divider>Действия</Divider>
       <Space orientation="vertical" style={{ width: '100%' }}>
         {!hasSiblings && assignment.phase !== 'qa' && (
@@ -407,9 +425,22 @@ export default function AssignmentSidebar({
           </Button>
         )}
       </Space>
+    </>
+  );
 
-      <DetailSections planId={planId} assignment={assignment} prefs={prefs} patchPrefs={patchPrefs} />
+  const sections = (keys?: readonly SectionKey[], expanded = false) => (
+    <DetailSections
+      planId={planId}
+      assignment={assignment}
+      prefs={prefs}
+      patchPrefs={patchPrefs}
+      keys={keys}
+      expanded={expanded}
+    />
+  );
 
+  const modals = (
+    <>
       <SplitAssignmentModal
         open={splitOpen}
         onClose={() => setSplitOpen(false)}
@@ -491,6 +522,45 @@ export default function AssignmentSidebar({
       </Modal>
     </>
   );
+
+  const body = (
+    <>
+      {titleBlock}
+      {params}
+      {explain}
+      {actions}
+      {sections()}
+      {modals}
+    </>
+  );
+
+  // Панель подробностей: название, «Закрыть» и стрелки — в её шапке; здесь метки фазы и колонки.
+  if (docked && columns) {
+    const meta = <div className="rp-assign-docked-meta">{title}</div>;
+    const col = (key: string, children: ReactNode) => <div key={key} className="rp-assign-col">{children}</div>;
+    const cols =
+      columns === 4 ? [
+        col('params', <>{meta}{params}{actions}</>),
+        col('days', sections(['day_table', 'absences', 'duration'], true)),
+        col('start', sections(['algorithm', 'critical_path'], true)),
+        col('sources', <>{sections(['sources'], true)}{explain}</>),
+      ] : columns === 3 ? [
+        col('params', <>{meta}{params}{actions}</>),
+        col('days', sections(['day_table', 'absences', 'duration'], true)),
+        col('start', <>{sections(['algorithm', 'critical_path', 'sources'], true)}{explain}</>),
+      ] : columns === 2 ? [
+        col('params', <>{meta}{params}{explain}{actions}</>),
+        col('sections', sections()),
+      ] : [
+        col('all', <>{meta}{params}{explain}{actions}{sections()}</>),
+      ];
+    return (
+      <div className={`rp-assign-docked rp-assign-cols is-c${columns}`}>
+        <div className="rp-assign-docked-body rp-assign-cols-grid">{cols}</div>
+        {modals}
+      </div>
+    );
+  }
 
   if (docked) {
     return (
@@ -732,14 +802,19 @@ interface DetailSectionsProps {
   assignment: AssignmentOut;
   prefs: ReturnType<typeof useRpPreferences>['prefs'];
   patchPrefs: ReturnType<typeof useRpPreferences>['patch'];
+  /** Только эти секции и в этом порядке (колонка широкой панели); без списка — все под «Детализацией». */
+  keys?: readonly SectionKey[];
+  /** Секции развёрнуты и не сворачиваются — широкая панель подробностей. */
+  expanded?: boolean;
 }
 
-function DetailSections({ planId, assignment, prefs, patchPrefs }: DetailSectionsProps) {
+function DetailSections({ planId, assignment, prefs, patchPrefs, keys, expanded = false }: DetailSectionsProps) {
   const { data } = useExplainAssignment(planId, assignment.id, true) as { data: AssignmentExplainResponseV2 | undefined };
 
   const isVisible = (k: string) => prefs.detail_sections_visible[k] !== false;
-  const isCollapsed = (k: string) => !!prefs.detail_sections_collapsed[k];
+  const isCollapsed = (k: string) => !expanded && !!prefs.detail_sections_collapsed[k];
   const toggleCollapse = (key: string) => {
+    if (expanded) return;
     patchPrefs({
       detail_sections_collapsed: {
         ...prefs.detail_sections_collapsed,
@@ -752,58 +827,36 @@ function DetailSections({ planId, assignment, prefs, patchPrefs }: DetailSection
   // Fall back to the prop assignment for critical path display if data not yet loaded.
   const resolvedAssignment = data?.assignment ?? assignment;
 
+  const render = (key: SectionKey) => {
+    const common = { collapsed: isCollapsed(key), onToggleCollapse: () => toggleCollapse(key) };
+    switch (key) {
+      case 'algorithm':
+        return <AlgorithmSection log={data?.algorithm_log ?? []} {...common} />;
+      case 'day_table':
+        return (
+          <DailyBreakdownSection
+            items={data?.daily_breakdown ?? []}
+            involvementPct={data?.phase_calc?.involvement_pct ?? null}
+            {...common}
+          />
+        );
+      case 'absences':
+        return <AbsencesSection items={data?.absences_in_window ?? []} {...common} />;
+      case 'sources':
+        return <PhaseCalcSection data={data?.phase_calc ?? null} {...common} />;
+      case 'duration':
+        return <HoursSummarySection data={data?.hours_summary ?? null} {...common} />;
+      case 'critical_path':
+        return <CriticalPathSection assignment={resolvedAssignment} {...common} />;
+    }
+  };
+
   return (
     <>
-      <Divider>Детализация</Divider>
-
-      {isVisible('algorithm') && (
-        <AlgorithmSection
-          log={data?.algorithm_log ?? []}
-          collapsed={isCollapsed('algorithm')}
-          onToggleCollapse={() => toggleCollapse('algorithm')}
-        />
-      )}
-
-      {isVisible('day_table') && (
-        <DailyBreakdownSection
-          items={data?.daily_breakdown ?? []}
-          collapsed={isCollapsed('day_table')}
-          onToggleCollapse={() => toggleCollapse('day_table')}
-          involvementPct={data?.phase_calc?.involvement_pct ?? null}
-        />
-      )}
-
-      {isVisible('absences') && (
-        <AbsencesSection
-          items={data?.absences_in_window ?? []}
-          collapsed={isCollapsed('absences')}
-          onToggleCollapse={() => toggleCollapse('absences')}
-        />
-      )}
-
-      {isVisible('sources') && (
-        <PhaseCalcSection
-          data={data?.phase_calc ?? null}
-          collapsed={isCollapsed('sources')}
-          onToggleCollapse={() => toggleCollapse('sources')}
-        />
-      )}
-
-      {isVisible('duration') && (
-        <HoursSummarySection
-          data={data?.hours_summary ?? null}
-          collapsed={isCollapsed('duration')}
-          onToggleCollapse={() => toggleCollapse('duration')}
-        />
-      )}
-
-      {isVisible('critical_path') && (
-        <CriticalPathSection
-          assignment={resolvedAssignment}
-          collapsed={isCollapsed('critical_path')}
-          onToggleCollapse={() => toggleCollapse('critical_path')}
-        />
-      )}
+      {!keys && <Divider>Детализация</Divider>}
+      {(keys ?? SECTION_KEYS).filter(isVisible).map((key) => (
+        <Fragment key={key}>{render(key)}</Fragment>
+      ))}
     </>
   );
 }
