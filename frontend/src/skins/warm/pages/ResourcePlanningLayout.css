@@ -142,15 +142,8 @@ html[data-skin="warm"] .wr-rp-gantt-scroll {
   position: relative;
   --rp-page-sticky-h: 0px;
 }
-html[data-skin="warm"] .wr-rp-assign {
-  flex: 0 0 360px;
-  width: 360px;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-html[data-skin="warm"] .wr-rp-assign-empty { padding: 16px 18px; gap: 8px; }
+/* Панель подробностей открыта: диаграмма не сжимается в ноль, страница прокручивается */
+html[data-skin="warm"][data-detail-sheet] .wr-rp-mid { flex: 1 0 380px; height: auto; }
 html[data-skin="warm"] .wr-rp-empty-text { margin: 0; font-size: 13px; line-height: 1.5; color: #6B6358; }
 html[data-skin="warm"] .wr-rp-bottom {
   flex: none;
@@ -167,19 +160,53 @@ html[data-skin="warm"] .wr-rp-heat {
   padding: 8px 14px;
   overflow: hidden;
 }
+/* Нормированные работы на странице — итог: три числа и «Подробнее» (таблица — в панели) */
 html[data-skin="warm"] .wr-rp-norm {
-  flex: 0 1 420px;
-  width: 420px;
+  flex: 0 1 380px;
+  width: 380px;
   min-width: 0;
   min-height: 0;
-  padding: 10px 16px;
+  padding: 10px 16px 12px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
+html[data-skin="warm"] .wr-rp-norm-scn {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: #6B6358;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-skin="warm"] .wr-rp-norm-figs { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+html[data-skin="warm"] .wr-rp-norm-figs > div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #EEE9E1;
+  border-radius: 10px;
+  background: #FAF8F4;
+}
+html[data-skin="warm"] .wr-rp-norm-figs dt { font-size: 12px; color: #6B6358; }
+html[data-skin="warm"] .wr-rp-norm-figs dd {
+  margin: 2px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2A2620;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+html[data-skin="warm"] .wr-rp-norm-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+/* Панель подробностей справа: рабочая область узкая — итог запаса уходит строкой под загрузку,
+   загрузка по дням получает всю ширину */
+html[data-skin="warm"][data-detail-sheet="right"] .wr-rp-bottom { height: auto; flex-wrap: wrap; }
+html[data-skin="warm"][data-detail-sheet="right"] .wr-rp-heat { flex: 1 1 100%; height: 228px; }
+html[data-skin="warm"][data-detail-sheet="right"] .wr-rp-norm { flex: 1 1 100%; width: auto; }
 @media (max-width: 1100px) {
   html[data-skin="warm"] .wr-rp-mid,
   html[data-skin="warm"] .wr-rp-bottom { flex-direction: column; height: auto; }
   html[data-skin="warm"] .wr-rp-gantt { min-height: 520px; }
-  html[data-skin="warm"] .wr-rp-assign { flex-basis: auto; width: auto; max-height: 640px; }
   html[data-skin="warm"] .wr-rp-heat { height: 260px; }
   html[data-skin="warm"] .wr-rp-norm { width: auto; }
 }
@@ -208,6 +235,7 @@ html[data-skin="warm"] .wr-legend-hatch { width: 14px; height: 10px; border-radi
 html[data-skin="warm"] .wr-legend-hatch.is-ooq { background: var(--rp-ooq-fill), #3F6CA8; }
 html[data-skin="warm"] .wr-legend-hatch.is-absence { background: var(--rp-absence-fill), #3F6CA8; }
 html[data-skin="warm"] .wr-legend-hatch.is-busy { background: var(--rp-busy-fill), #3F6CA8; }
+html[data-skin="warm"] .wr-legend-hint { margin-left: auto; white-space: nowrap; }
 
 /* ---------- конфликты ---------- */
 html[data-skin="warm"] .wr-conflict-chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -359,7 +387,7 @@ html[data-skin="warm"] .rpc-bar-cp {
   align-items: center;
 }
 
-/* ---------- панель назначения ---------- */
+/* ---------- назначение (в панели подробностей) ---------- */
 html[data-skin="warm"] .rpc-assign-close { background: #F3EFE8; color: #4A443A; }
 html[data-skin="warm"] .rpc-assign-close:hover { background: #E7E2DA; color: #2A2620; }
 html[data-skin="warm"] .rpc-assign-sub { color: #6B6358; }
@@ -377,11 +405,65 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-field
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-fields .ant-descriptions-item-content { font-size: 13px; color: #2A2620; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-fields .ant-descriptions-row > td { padding-bottom: 8px !important; padding-right: 8px !important; vertical-align: top; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-fields .ant-picker { width: 100%; }
-html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign .ant-divider-horizontal.ant-divider-with-text {
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] :is(.rpc-assign, .rpc-assign-cols) .ant-divider-horizontal.ant-divider-with-text {
   margin: 10px 0 6px;
   font-size: 13px;
   font-weight: 600;
   color: #2A2620;
+}
+
+/* Колонки панели: параметры | дни × часы и длительность | откуда старт и критический путь |
+   часы по источникам и расчёт проблем; каждая — мягкая плашка темы */
+html[data-skin="warm"] .rpc-assign-cols { display: grid; gap: 12px; align-items: start; }
+html[data-skin="warm"] .rpc-assign-cols.is-c1 { grid-template-columns: minmax(0, 1fr); }
+html[data-skin="warm"] .rpc-assign-cols.is-c2 { grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr); }
+/* «Дни × часы» — самая широкая колонка: таблица дня не вылезает за край */
+html[data-skin="warm"] .rpc-assign-cols.is-c3 { grid-template-columns: minmax(300px, 0.8fr) minmax(420px, 1.5fr) minmax(0, 0.9fr); }
+html[data-skin="warm"] .rpc-assign-cols.is-c4 { grid-template-columns: minmax(300px, 0.8fr) minmax(440px, 1.5fr) minmax(0, 0.9fr) minmax(0, 0.9fr); }
+html[data-skin="warm"] .rpc-assign-col {
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid #EEE9E1;
+  border-radius: 12px;
+  background: #FBF9F5;
+}
+html[data-skin="warm"] .rpc-assign-col > .ant-divider:first-child { margin-top: 0 !important; }
+html[data-skin="warm"] .rpc-assign-marks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+html[data-skin="warm"] .rpc-assign-marks .ant-tag { margin: 0; }
+html[data-skin="warm"] .rpc-assign-marks > :last-child { margin-left: auto; }
+/* Подписи секций — как подзаголовки темы; таблицы не вылезают из колонки */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-cols .ant-collapse-header {
+  padding: 6px 0 !important;
+  align-items: center !important;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2A2620 !important;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-cols .ant-collapse-content-box { padding: 2px 0 10px !important; }
+html[data-skin="warm"] .rpc-assign-cols .ant-collapse + .ant-collapse { border-top: 1px solid #EEE9E1; }
+/* Все секции развёрнуты (3–4 колонки): подпись не сворачивает */
+html[data-skin="warm"] .rpc-assign-cols:is(.is-c3, .is-c4) .ant-collapse-header { pointer-events: none; cursor: default; }
+html[data-skin="warm"] .rpc-assign-cols:is(.is-c3, .is-c4) .ant-collapse-expand-icon { display: none !important; }
+html[data-skin="warm"] .rpc-assign-cols .ant-table-wrapper { max-width: 100%; overflow-x: auto; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-cols .ant-table { background: #FFFFFF; font-size: 12px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-cols .ant-table-small .ant-table-cell { padding: 6px !important; }
+/* «Часы по источникам»: подпись и значение без переноса по буквам */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-cols .ant-descriptions-bordered .ant-descriptions-item-label { width: 55%; padding: 6px 10px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-cols .ant-descriptions-bordered .ant-descriptions-item-content { padding: 6px 10px !important; word-break: normal; overflow-wrap: normal; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-cols .ant-statistic-title { font-size: 12px; color: #6B6358; }
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .rpc-assign-cols .ant-statistic-content { font-size: 18px !important; }
+
+/* ---------- нормированные работы в панели: таблица во всю ширину ---------- */
+html[data-skin="warm"] .wr-rp-reserve-sheet .rpc-card-title { display: none; }
+html[data-skin="warm"] .wr-rp-reserve-sheet .rpc-norm { height: auto !important; max-width: 1280px; }
+html[data-skin="warm"] .wr-rp-reserve-sheet .rpc-norm > div:last-child { overflow: visible !important; }
+/* Широкая панель: числа просторнее (узкая — прежние колонки компактного вида) */
+@container detail-sheet (min-width: 900px) {
+  html[data-skin="warm"] .wr-rp-reserve-sheet .rpc-norm-table col:nth-child(2) { width: 140px !important; }
+  html[data-skin="warm"] .wr-rp-reserve-sheet .rpc-norm-table col:nth-child(3) { width: 160px !important; }
+  html[data-skin="warm"] .wr-rp-reserve-sheet .rpc-norm-table col:nth-child(4) { width: 200px !important; }
+  html[data-skin="warm"] .wr-rp-reserve-sheet .rpc-norm-table :is(th, td) { padding-left: 10px !important; padding-right: 10px !important; }
 }
 
 /* ---------- загрузка по дням (компактно) ---------- */
@@ -466,4 +548,5 @@ html[data-skin="warm"] .rpc-ext-team { color: #6B6358; }
 /* Невысокий экран: страница прокручивается целиком (warm-layout.css), главный блок — своей высоты */
 @media (max-height: 860px) and (min-width: 1101px) {
   html[data-skin="warm"] .wr-rp-mid { flex: none; height: 520px; }
+  html[data-skin="warm"][data-detail-sheet] .wr-rp-mid { flex: 1 0 380px; height: auto; }
 }

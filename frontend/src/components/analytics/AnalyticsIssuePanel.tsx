@@ -28,11 +28,12 @@ interface Props {
 }
 
 /**
- * Карточка задачи, встроенная в раскладку скина справа от отчёта (вместо
- * выезжающей шторки). Сверху — как в макете: ключ и статус, название, ссылка
- * на страницу проекта, категория и родитель, соседние задачи, ворклоги за
- * период. Ниже — то, что есть в шторке Aurora: подзадачи с правкой категории
- * и признака «в анализ», смена категории самой задачи.
+ * Карточка задачи скина (в панели подробностей вместо выезжающей шторки).
+ * Сверху — как в макете: ключ и статус, название, ссылка на страницу проекта,
+ * категория и родитель, соседние задачи; затем ворклоги за период; ниже — то,
+ * что есть в шторке Aurora: подзадачи с правкой категории и признака
+ * «в анализ», смена категории самой задачи. Три части (anc-card-top / -logs /
+ * -rest) на широкой панели тема раскладывает колонками: ворклоги — справа.
  */
 export default function AnalyticsIssuePanel({
   issueId, issueKey, periodStart, periodEnd, canGoBack, onBack, onClose, onDrillDown,
@@ -62,98 +63,104 @@ export default function AnalyticsIssuePanel({
   return (
     <aside className="wr-card anc-panel" aria-label="Задача">
       <div className="anc-panel-scroll">
-        <div className="anc-panel-head">
-          <div className="anc-panel-keys">
-            {canGoBack && (
-              <button type="button" className="anc-panel-back" onClick={onBack}>← назад</button>
-            )}
-            <JiraIssueLink issueKey={context?.key ?? issueKey} className="anc-panel-key">
-              {context?.key ?? issueKey}
-            </JiraIssueLink>
-            {context && (
-              <Tag color={statusTagColor(context.status, context.status_category)} className="anc-status">
-                {context.status}
-              </Tag>
-            )}
-          </div>
-          <button type="button" className="anc-panel-close" aria-label="Закрыть" onClick={onClose}>
-            <X size={16} aria-hidden />
-          </button>
-        </div>
-
-        {isLoading ? (
-          <Skeleton active paragraph={{ rows: 6 }} style={{ marginTop: 12 }} />
-        ) : isError || !context ? (
-          <Alert
-            type="error"
-            title="Не удалось загрузить контекст задачи"
-            action={<Button size="small" onClick={() => refetch()}>Повторить</Button>}
-            style={{ marginTop: 12 }}
-          />
-        ) : (
-          <>
-            <h2 className="anc-panel-title">{context.summary}</h2>
-            {isProjectCategory(effectiveCode) && (
-              <button
-                type="button"
-                className="anc-panel-link"
-                onClick={() => navigate(`/projects/${encodeURIComponent(context.key)}`)}
-              >
-                Открыть страницу проекта <ArrowUpRight size={14} aria-hidden />
-              </button>
-            )}
-
-            <div className="anc-panel-sec anc-facts">
-              <div className="anc-fact">
-                <span className="anc-fact-label">Категория:</span>
-                <span className="anc-fact-value">
-                  {effectiveCat?.color && <span className="anc-dot" style={{ background: effectiveCat.color }} />}
-                  {effectiveCat?.label ?? effectiveCode ?? 'Без категории'}
-                  {isInherited && <span className="anc-fact-note"> · унаследована</span>}
-                </span>
-              </div>
-              <div className="anc-fact">
-                <span className="anc-fact-label">Тип:</span>
-                <span className="anc-fact-value">{context.issue_type}</span>
-              </div>
-              {parent && (
-                <div className="anc-fact">
-                  <span className="anc-fact-label">Родитель:</span>
-                  <span className="anc-fact-value">
-                    {keyButton(parent.id, parent.key)} {parent.summary}
-                  </span>
-                </div>
+        <div className="anc-card-top">
+          <div className="anc-panel-head">
+            <div className="anc-panel-keys">
+              {canGoBack && (
+                <button type="button" className="anc-panel-back" onClick={onBack}>← назад</button>
               )}
-              {upper.length > 0 && (
-                <div className="anc-fact">
-                  <span className="anc-fact-label">Выше:</span>
-                  <span className="anc-fact-value is-wrap">
-                    {[...upper].reverse().map((a) => (
-                      <span key={a.id}>{keyButton(a.id, a.key, a.summary)}</span>
-                    ))}
-                  </span>
-                </div>
+              <JiraIssueLink issueKey={context?.key ?? issueKey} className="anc-panel-key">
+                {context?.key ?? issueKey}
+              </JiraIssueLink>
+              {context && (
+                <Tag color={statusTagColor(context.status, context.status_category)} className="anc-status">
+                  {context.status}
+                </Tag>
               )}
             </div>
+            <button type="button" className="anc-panel-close" aria-label="Закрыть" onClick={onClose}>
+              <X size={16} aria-hidden />
+            </button>
+          </div>
 
-            {parent && siblingsCount > 0 && (
-              <div className="anc-panel-sec">
-                <h3 className="anc-panel-h3">Соседние задачи ({siblingsCount})</h3>
-                {(allSiblings ? siblings : siblings.slice(0, SIBLINGS_SHOWN)).map((s) => (
-                  <div key={s.id} className="anc-sib">
-                    {keyButton(s.id, s.key)}
-                    <span className="anc-sib-summary" title={s.summary}>{s.summary}</span>
+          {isLoading ? (
+            <Skeleton active paragraph={{ rows: 6 }} style={{ marginTop: 12 }} />
+          ) : isError || !context ? (
+            <Alert
+              type="error"
+              title="Не удалось загрузить контекст задачи"
+              action={<Button size="small" onClick={() => refetch()}>Повторить</Button>}
+              style={{ marginTop: 12 }}
+            />
+          ) : (
+            <>
+              <h2 className="anc-panel-title">{context.summary}</h2>
+              {isProjectCategory(effectiveCode) && (
+                <button
+                  type="button"
+                  className="anc-panel-link"
+                  onClick={() => navigate(`/projects/${encodeURIComponent(context.key)}`)}
+                >
+                  Открыть страницу проекта <ArrowUpRight size={14} aria-hidden />
+                </button>
+              )}
+
+              <div className="anc-panel-sec anc-facts">
+                <div className="anc-fact">
+                  <span className="anc-fact-label">Категория:</span>
+                  <span className="anc-fact-value">
+                    {effectiveCat?.color && <span className="anc-dot" style={{ background: effectiveCat.color }} />}
+                    {effectiveCat?.label ?? effectiveCode ?? 'Без категории'}
+                    {isInherited && <span className="anc-fact-note"> · унаследована</span>}
+                  </span>
+                </div>
+                <div className="anc-fact">
+                  <span className="anc-fact-label">Тип:</span>
+                  <span className="anc-fact-value">{context.issue_type}</span>
+                </div>
+                {parent && (
+                  <div className="anc-fact">
+                    <span className="anc-fact-label">Родитель:</span>
+                    <span className="anc-fact-value">
+                      {keyButton(parent.id, parent.key)} {parent.summary}
+                    </span>
                   </div>
-                ))}
-                {siblings.length > SIBLINGS_SHOWN && (
-                  <button type="button" className="wr-link anc-more" onClick={() => setAllSiblings((v) => !v)}>
-                    {allSiblings ? 'Свернуть' : `Показать все (${siblings.length})`}
-                  </button>
+                )}
+                {upper.length > 0 && (
+                  <div className="anc-fact">
+                    <span className="anc-fact-label">Выше:</span>
+                    <span className="anc-fact-value is-wrap">
+                      {[...upper].reverse().map((a) => (
+                        <span key={a.id}>{keyButton(a.id, a.key, a.summary)}</span>
+                      ))}
+                    </span>
+                  </div>
                 )}
               </div>
-            )}
 
-            <div className="anc-panel-sec">
+              {parent && siblingsCount > 0 && (
+                <div className="anc-panel-sec">
+                  <h3 className="anc-panel-h3">Соседние задачи ({siblingsCount})</h3>
+                  {(allSiblings ? siblings : siblings.slice(0, SIBLINGS_SHOWN)).map((s) => (
+                    <div key={s.id} className="anc-sib">
+                      {keyButton(s.id, s.key)}
+                      <span className="anc-sib-summary" title={s.summary}>{s.summary}</span>
+                    </div>
+                  ))}
+                  {siblings.length > SIBLINGS_SHOWN && (
+                    <button type="button" className="wr-link anc-more" onClick={() => setAllSiblings((v) => !v)}>
+                      {allSiblings ? 'Свернуть' : `Показать все (${siblings.length})`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {!isLoading && !isError && context && (
+          <>
+            <div className="anc-panel-sec anc-card-logs">
               <div className="anc-panel-h3row">
                 <h3 className="anc-panel-h3">Ворклоги за период</h3>
                 <span className="anc-panel-period">{formatIsoDate(periodStart)} – {formatIsoDate(periodEnd)}</span>
@@ -166,22 +173,24 @@ export default function AnalyticsIssuePanel({
               />
             </div>
 
-            {context.children.length > 0 && (
-              <div className="anc-panel-sec">
-                <h3 className="anc-panel-h3">Подзадачи ({context.children.length})</h3>
-                {context.children.map((child) => (
-                  <ChildItem
-                    key={child.id}
-                    child={child}
-                    categories={categories}
-                    onDrillDown={onDrillDown}
-                  />
-                ))}
-              </div>
-            )}
+            <div className="anc-card-rest">
+              {context.children.length > 0 && (
+                <div className="anc-panel-sec">
+                  <h3 className="anc-panel-h3">Подзадачи ({context.children.length})</h3>
+                  {context.children.map((child) => (
+                    <ChildItem
+                      key={child.id}
+                      child={child}
+                      categories={categories}
+                      onDrillDown={onDrillDown}
+                    />
+                  ))}
+                </div>
+              )}
 
-            <div className="anc-panel-sec">
-              <IssueCategorizer compact context={context} categories={categories} onSaved={() => {}} />
+              <div className="anc-panel-sec">
+                <IssueCategorizer compact context={context} categories={categories} onSaved={() => {}} />
+              </div>
             </div>
           </>
         )}

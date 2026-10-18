@@ -4,7 +4,8 @@
       разделители из переменных --an-*, у Aurora переменных нет — действуют
       прежние значения.
    2) Компактный вид компонентов (prop compact, классы anc-*) и раскладка
-      страницы (anc-page, anc-body, anc-panel).
+      страницы (anc-page, anc-body); карточка задачи (anc-panel) — в панели
+      подробностей (anc-sheet).
    ============================================================ */
 
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
@@ -203,7 +204,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .anc-filters .ant
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .anc-filters .ant-select-selection-placeholder { color: #2A2620; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .anc-filters .ant-input-prefix { color: #6B6358; margin-inline-end: 8px; }
 
-/* ---------- Тело: таблица и карточка задачи ---------- */
+/* ---------- Тело: таблица во всю ширину ---------- */
 html[data-skin="warm"] .anc-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -220,6 +221,16 @@ html[data-skin="warm"] .anc-table-card {
   overflow: hidden;
 }
 html[data-skin="warm"] .anc-table-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* Подпись под таблицей: куда откроется карточка задачи */
+html[data-skin="warm"] .anc-table-hint {
+  flex: none;
+  padding: 7px 16px;
+  border-top: 1px solid #EEE9E1;
+  font-size: 12px;
+  color: #6B6358;
+}
+/* Панель подробностей открыта: таблица не сжимается в ноль, страница прокручивается */
+html[data-skin="warm"][data-detail-sheet] .anc-body { flex: 1 0 380px; height: auto; }
 html[data-skin="warm"] .anc-empty {
   flex: 1 1 auto;
   min-height: 200px;
@@ -232,7 +243,6 @@ html[data-skin="warm"] .anc-empty {
   html[data-skin="warm"] .anc-filters { flex-wrap: wrap; }
   html[data-skin="warm"] .anc-body { flex-direction: column; }
   html[data-skin="warm"] .anc-table-card { flex: none; max-height: 70vh; }
-  html[data-skin="warm"] .anc-panel { flex: none; width: auto; }
 }
 
 /* Таблица-дерево: строки 40 px, шапка 13 px, команды на тёплом камне */
@@ -356,22 +366,19 @@ html[data-skin="warm"] .anc-pct.is-under { color: #7A4E0C; }
 /* Ворклоги строкой под задачей (режим inline) */
 html[data-skin="warm"] .anc-wl-inline { max-width: 720px; padding: 4px 0; }
 
-/* ---------- Карточка задачи справа ---------- */
-html[data-skin="warm"] .anc-panel {
-  flex: 0 0 380px;
-  width: 380px;
-  max-width: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+/* ---------- Карточка задачи в панели подробностей ---------- */
+/* Панель — сама карточка: своей рамки и прокрутки у содержимого нет */
+html[data-skin="warm"] .anc-sheet .anc-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   font-size: 14px;
   color: #2A2620;
 }
-html[data-skin="warm"] .anc-panel-empty { padding: 16px 18px; gap: 8px; }
-html[data-skin="warm"] .anc-panel-empty-text { margin: 0; font-size: 13px; line-height: 1.5; color: #6B6358; }
 html[data-skin="warm"] .anc-flow-empty { align-self: center; font-size: 13px; color: #6B6358; }
-html[data-skin="warm"] .anc-panel-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px 18px; }
+html[data-skin="warm"] .anc-sheet .anc-panel-scroll { padding: 0; }
+/* Закрывает панель её собственная кнопка в шапке */
+html[data-skin="warm"] .anc-sheet .anc-panel-close { display: none; }
 html[data-skin="warm"] .anc-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 html[data-skin="warm"] .anc-panel-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .anc-panel-key { color: #24584A; font-weight: 700; font-size: 16px; text-decoration: none; }
@@ -494,7 +501,24 @@ html[data-skin="warm"] .anc-cat-subtree .ant-switch { margin-top: 2px; flex: non
 html[data-skin="warm"] .anc-cat-actions { display: flex; justify-content: flex-end; gap: 8px; }
 html[data-skin="warm"] .anc-cat-alert { font-size: 12px; }
 
+/* Широкая панель: слева задача, категория, соседи, подзадачи; справа — ворклоги
+   широкой колонкой, комментарий в одну-две строки */
+@container detail-sheet (min-width: 900px) {
+  html[data-skin="warm"] .anc-sheet .anc-panel-scroll {
+    display: grid;
+    grid-template-columns: minmax(340px, 2fr) minmax(0, 3fr);
+    grid-template-areas: "top logs" "rest logs";
+    grid-template-rows: auto 1fr;
+    column-gap: 28px;
+    align-items: start;
+  }
+  html[data-skin="warm"] .anc-sheet .anc-card-top { grid-area: top; }
+  html[data-skin="warm"] .anc-sheet .anc-card-rest { grid-area: rest; }
+  html[data-skin="warm"] .anc-sheet .anc-card-logs { grid-area: logs; margin-top: 0; padding-top: 2px; border-top: 0; }
+}
+
 /* Невысокий экран: страница прокручивается целиком (warm-layout.css), главный блок — своей высоты */
 @media (max-height: 860px) and (min-width: 1101px) {
   html[data-skin="warm"] .anc-body { flex: none; height: 560px; }
+  html[data-skin="warm"][data-detail-sheet] .anc-body { flex: 1 0 380px; height: auto; }
 }

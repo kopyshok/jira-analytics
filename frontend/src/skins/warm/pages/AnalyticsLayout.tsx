@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Button, DatePicker, Empty, Segmented, Spin, Switch } from 'antd';
 import { Download, SlidersHorizontal } from 'lucide-react';
 import '../warm-layout.css';
@@ -9,6 +10,7 @@ import AnalyticsTable from '../../../components/analytics/AnalyticsTable';
 import AnalyticsReportSettings from '../../../components/analytics/AnalyticsReportSettings';
 import AnalyticsKpiTiles from '../../../components/analytics/AnalyticsKpiTiles';
 import AnalyticsIssueDrawer from '../../../components/analytics/AnalyticsIssueDrawer';
+import DetailSheet from '../../../components/common/DetailSheet';
 import SubgroupFlowLine from '../../../components/common/SubgroupFlowLine';
 
 /** 2026-10-01 → 01.10.2026: подсказка в пустых полях дат — границы выбранного периода. */
@@ -19,8 +21,9 @@ const ruDate = (iso: string) => iso.split('-').reverse().join('.');
  * одной строкой с уточнением дат, режимом ворклогов, иерархией, настройкой и
  * выгрузкой; сводка одной карточкой и рядом — переток внутри команды;
  * команды горизонтальным рядом-переключателем, справа — фильтры; ниже —
- * таблица-дерево с закреплённой шапкой и справа карточка задачи (в режиме
- * drawer она на месте всегда: без выбора — подсказка «Выберите задачу»). Страница помещается в экран, длинное прокручивается внутри блоков.
+ * таблица-дерево с закреплённой шапкой во всю ширину; карточка задачи с
+ * ворклогами (режим drawer) — в панели подробностей снизу или справа.
+ * Страница помещается в экран, длинное прокручивается внутри блоков.
  * Данные и обработчики — общие с раскладкой Aurora (useAnalyticsPage).
  */
 export default function WarmAnalyticsLayout({ state }: { state: AnalyticsPageState }) {
@@ -36,6 +39,15 @@ export default function WarmAnalyticsLayout({ state }: { state: AnalyticsPageSta
     periodStart, periodEnd,
     exportXlsx,
   } = state;
+
+  // Рабочая область ужалась под панель — выбранная строка таблицы остаётся на виду.
+  const openedId = openedIssue?.id;
+  useEffect(() => {
+    if (!openedId) return;
+    const frame = requestAnimationFrame(() =>
+      document.querySelector('.anc-table-card tr.anc-row-selected')?.scrollIntoView({ block: 'nearest' }));
+    return () => cancelAnimationFrame(frame);
+  }, [openedId]);
 
   return (
     <div className="wr-fit anc-page">
@@ -145,27 +157,33 @@ export default function WarmAnalyticsLayout({ state }: { state: AnalyticsPageSta
                 onOpenIssue={setOpenedIssue}
                 openIssueId={openedIssue?.id ?? null}
               />
+              {worklogMode === 'drawer' && (
+                <div className="anc-table-hint">
+                  Щелчок по задаче — карточка с категорией и ворклогами откроется в панели
+                </div>
+              )}
             </section>
-            {!openedIssue && worklogMode === 'drawer' && (
-              <aside className="wr-card anc-panel anc-panel-empty" aria-label="Карточка задачи">
-                <h2 className="rpc-card-title">Карточка задачи</h2>
-                <p className="anc-panel-empty-text">
-                  Выберите задачу в таблице — здесь появятся её категория, родитель,
-                  соседние задачи и ворклоги за период.
-                </p>
-              </aside>
-            )}
-            <AnalyticsIssueDrawer
-              docked
-              issueId={openedIssue?.id ?? null}
-              issueKey={openedIssue?.key ?? null}
-              periodStart={periodStart}
-              periodEnd={periodEnd}
-              onClose={() => setOpenedIssue(null)}
-            />
           </div>
         </>
       )}
+
+      <DetailSheet
+        open={!!openedIssue}
+        onClose={() => setOpenedIssue(null)}
+        title="Карточка задачи"
+        subtitle={`категория, соседние задачи и ворклоги за ${ruDate(periodStart)} – ${ruDate(periodEnd)}`}
+        ariaLabel="Карточка задачи"
+        className="anc-sheet"
+      >
+        <AnalyticsIssueDrawer
+          docked
+          issueId={openedIssue?.id ?? null}
+          issueKey={openedIssue?.key ?? null}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+          onClose={() => setOpenedIssue(null)}
+        />
+      </DetailSheet>
     </div>
   );
 }

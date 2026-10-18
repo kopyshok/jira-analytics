@@ -284,3 +284,74 @@ html[data-skin="warm"] .feedback-pill:disabled { cursor: progress; color: #4A443
   html[data-skin="warm"] .wm-main { padding: 0 12px; }
   html[data-skin="warm"] .wm-scroll { overflow: visible; }
 }
+
+/* ---------------- Панель подробностей (DetailSheet) ----------------
+   Белая карточка темы: садится справа от меню и под верхней полосой, от краёв окна —
+   те же отступы, что у страницы. Рабочая область ужимается на размер панели — под ней
+   ничего не прячется. Пилюли обратной связи остаются в углу окна поверх панели, у тела
+   панели снизу для них запас — конец списка в панели не уходит под них. */
+html[data-skin="warm"] {
+  --detail-sheet-inset-top: calc(var(--wm-topbar-bottom, 50px) + 10px);
+  --detail-sheet-inset-left: 240px; /* меню 232 + отступ страницы 8 */
+  --detail-sheet-inset-right: 20px;
+  --detail-sheet-inset-bottom: 10px;
+  --detail-sheet-bg: #FFFFFF;
+  --detail-sheet-head-bg: #FFFFFF;
+}
+html[data-skin="warm"][data-detail-sheet="bottom"] .wm-main { padding-bottom: calc(var(--detail-sheet-size) + 20px); }
+html[data-skin="warm"][data-detail-sheet="right"] .wm-scroll { padding-right: calc(var(--detail-sheet-size) + 12px); }
+html[data-skin="warm"][data-detail-sheet] .feedback-pills { z-index: 960; }
+
+html[data-skin="warm"] .detail-sheet {
+  box-sizing: border-box;
+  border: 1px solid #D9D2C6;
+  border-radius: 14px;
+  box-shadow: none;
+  color: #2A2620;
+  font-family: var(--font-body);
+}
+html[data-skin="warm"] .detail-sheet__head {
+  gap: 12px;
+  padding: 14px 16px 12px 20px;
+  border-bottom: 1px solid #EEE9E1;
+  border-radius: 14px 14px 0 0;
+}
+/* Длинное название — в две строки, а не обрезается рядом с кнопками шапки */
+html[data-skin="warm"] .detail-sheet__name {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+  color: #2A2620;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+html[data-skin="warm"] .detail-sheet__name .wr-sheet-key { margin-right: 10px; font-weight: 700; color: #24584A; }
+html[data-skin="warm"] .detail-sheet__sub { margin-top: 2px; font-size: 13px; color: #6B6358; white-space: normal; }
+html[data-skin="warm"] .detail-sheet__extra { gap: 8px; }
+html[data-skin="warm"] .detail-sheet__tools { gap: 6px; }
+html[data-skin="warm"] .detail-sheet__tool {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #E3DDD3;
+  border-radius: 17px;
+  background: #FFFFFF;
+  color: #4A443A;
+  font-size: 14px;
+}
+html[data-skin="warm"] .detail-sheet__tool:hover { border-color: #2F6B5A; color: #2F6B5A; }
+html[data-skin="warm"] .detail-sheet__tool:focus-visible { outline: 2px solid #2F6B5A; outline-offset: 2px; border-color: #2F6B5A; color: #2F6B5A; }
+html[data-skin="warm"] .detail-sheet__tool[aria-pressed="true"] { background: #E2ECE7; border-color: #E2ECE7; color: #2F6B5A; }
+html[data-skin="warm"] .detail-sheet__handle::after { background: #D9D2C6; }
+html[data-skin="warm"] .detail-sheet__handle:hover::after,
+html[data-skin="warm"] .detail-sheet__handle:focus-visible::after { background: #2F6B5A; }
+html[data-skin="warm"] .detail-sheet__body { padding: 16px 20px 52px; box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #D3CCC0 transparent; }
+
+@media (max-width: 1100px) {
+  html[data-skin="warm"] { --detail-sheet-inset-left: 76px; } /* меню-колонка значков 68 + 8 */
+}
+@media (max-width: 720px) {
+  html[data-skin="warm"] { --detail-sheet-inset-left: 12px; --detail-sheet-inset-right: 12px; }
+  html[data-skin="warm"][data-detail-sheet="right"] .wm-scroll { padding-right: 0; }
+}

@@ -3,7 +3,8 @@
    1) Палитра: компоненты стола берут цвета шкалы и минуса из переменных
       --td-*, у Aurora переменных нет — действуют прежние значения.
    2) Компактный вид компонентов стола (prop compact, классы tdc-*) и
-      раскладка страницы (tdc-desk, tdc-body, tdc-side).
+      раскладка страницы (tdc-desk, tdc-body); списки бывшей правой колонки —
+      счётчики в полосе отборов и панель подробностей (tdc-sheet).
    ============================================================ */
 
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
@@ -33,42 +34,23 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wr-fit .tdc-tabs
   font-size: 14px;
 }
 
-/* Тело: слева отборы и задачи, справа три блока */
+/* Тело: отборы и таблица задач во всю ширину */
 html[data-skin="warm"] .tdc-body {
   flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  gap: 12px;
-  align-items: stretch;
-}
-html[data-skin="warm"] .tdc-main {
-  flex: 1 1 640px;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-html[data-skin="warm"] .tdc-side {
-  flex: 0 0 360px;
-  width: 360px;
-  min-height: 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-html[data-skin="warm"] .tdc-side-card { flex: none; padding: 14px 16px; }
+/* Панель подробностей открыта: таблица не сжимается в ноль, страница прокручивается */
+html[data-skin="warm"][data-detail-sheet] .tdc-body { flex: 1 0 460px; height: auto; }
 html[data-skin="warm"] .tdc-empty-card {
   flex: 1 1 auto;
   min-height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-@media (max-width: 1100px) {
-  html[data-skin="warm"] .tdc-body { flex-direction: column; }
-  html[data-skin="warm"] .tdc-side { flex: none; width: auto; }
 }
 
 /* ---------- Фильтры: поля с подписью внутри рамки ---------- */
@@ -335,6 +317,9 @@ html[data-skin="warm"] .tdc-chip.is-info { border-color: #CBD9EC; background: #E
 html[data-skin="warm"] .tdc-chip.is-good { border-color: #C6DDCC; background: #E1EFE4; color: #2D6140; }
 html[data-skin="warm"] .tdc-chip.is-violet { border-color: #E2CCDD; background: #F1E3EE; color: #6E3B63; }
 html[data-skin="warm"] .tdc-chip.is-active { outline: 2px solid #2F6B5A; outline-offset: 1px; font-weight: 700; }
+/* Счётчики списков: ноль — приглушён и не нажимается */
+html[data-skin="warm"] .tdc-list-chip:disabled { background: transparent; border-color: #E3DDD3; color: #6B6358; cursor: default; filter: none; }
+html[data-skin="warm"] .tdc-list-note { font-size: 12px; font-weight: 600; color: #8F3A18; }
 
 /* ---------- Таблица задач ---------- */
 html[data-skin="warm"] .tdc-issues-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
@@ -516,7 +501,7 @@ html[data-skin="warm"] .tdc-dev-text { display: flex; flex-direction: column; mi
 html[data-skin="warm"] .tdc-dev-team { font-size: 12px; color: #6B6358; }
 html[data-skin="warm"] .tdc-queue-line.is-active { background: #E2ECE7; }
 
-/* ---------- Правая колонка ---------- */
+/* ---------- Списки (в панели подробностей) ---------- */
 html[data-skin="warm"] .tdc-note { margin: 2px 0 10px; font-size: 12px; line-height: 1.4; color: #6B6358; }
 html[data-skin="warm"] .tdc-wl .tdc-note { margin: 6px 0 0; }
 html[data-skin="warm"] .tdc-empty { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: #6B6358; }
@@ -601,7 +586,27 @@ html[data-skin="warm"] .tdc-abs-legend {
 html[data-skin="warm"] .tdc-abs-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 html[data-skin="warm"] .tdc-abs-legend-sq { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 
+/* Заголовок и пояснение списка — в шапке панели */
+html[data-skin="warm"] .tdc-sheet-rubber > .rpc-card-title,
+html[data-skin="warm"] .tdc-sheet-rubber > .tdc-note { display: none; }
+html[data-skin="warm"] .tdc-sheet-wip { max-width: 980px; }
+html[data-skin="warm"] .tdc-sheet-wip .tdc-wl { margin-top: 0; }
+html[data-skin="warm"] .tdc-sheet-wip .tdc-wl-name { width: 220px; }
+html[data-skin="warm"] .tdc-sheet-abs { min-width: 0; }
+/* Широкая панель: резиновая задача — одной строкой: кто и статус | задача | цифры и норма */
+@container detail-sheet (min-width: 900px) {
+  html[data-skin="warm"] .tdc-sheet-rubber .tdc-rubber {
+    display: grid;
+    grid-template-columns: minmax(260px, 360px) minmax(0, 1fr) minmax(400px, 480px);
+    align-items: center;
+    column-gap: 20px;
+  }
+  html[data-skin="warm"] .tdc-sheet-rubber .tdc-rubber-task,
+  html[data-skin="warm"] .tdc-sheet-rubber .tdc-rubber-stats { margin-top: 0; }
+}
+
 /* Невысокий экран: страница прокручивается целиком (warm-layout.css), главный блок — своей высоты */
 @media (max-height: 860px) and (min-width: 1101px) {
   html[data-skin="warm"] .tdc-body { flex: none; height: 600px; }
+  html[data-skin="warm"][data-detail-sheet] .tdc-body { flex: 1 0 460px; height: auto; }
 }

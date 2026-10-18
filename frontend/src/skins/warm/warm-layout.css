@@ -174,3 +174,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-float-btn-gr
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-float-btn-group .ant-float-btn { width: 30px; height: 30px; min-height: 30px; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-float-btn-group .ant-float-btn .ant-float-btn-body { width: 30px; height: 30px; }
 html[data-skin="warm"] .wr-fit { padding-bottom: 40px; }
+
+/* Открыта панель подробностей: экран стал ниже или уже — страница прокручивается
+   целиком, главный блок каждой раскладки держит свою наименьшую высоту (CSS страницы),
+   остальное не прячется и не сжимается в ноль. */
+html[data-skin="warm"][data-detail-sheet] .app-main > .scroll-y:has(> .wr-fit) { overflow: auto; }
+html[data-skin="warm"][data-detail-sheet] .wr-fit { height: auto; min-height: 100%; }

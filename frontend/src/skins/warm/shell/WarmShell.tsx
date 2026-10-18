@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from 'react';
+import { useCallback, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Outlet, useNavigate } from 'react-router';
 import {
   BriefcaseBusiness,
@@ -120,8 +120,23 @@ function WarmTopbar() {
     navigate('/login', { replace: true });
   }, [logout, navigate]);
 
+  // Нижний край полосы (на узком экране она переносится) — панель подробностей справа садится под неё.
+  const barRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() =>
+      root.style.setProperty('--wm-topbar-bottom', `${Math.round(bar.getBoundingClientRect().bottom)}px`));
+    observer.observe(bar);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--wm-topbar-bottom');
+    };
+  }, []);
+
   return (
-    <header className="wm-topbar">
+    <header ref={barRef} className="wm-topbar">
       <div className="wm-caption">Анализ Jira · Планирование квартала</div>
       <div className="wm-controls">
         <SyncIndicator />
