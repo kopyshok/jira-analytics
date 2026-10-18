@@ -356,6 +356,81 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-shell .sw-co
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-controls { justify-content: flex-start; }
 }
 
+/* ---------------- Панель подробностей (DetailSheet) ----------------
+   Снизу — на всю ширину до низа окна, справа — под меню. Рабочая область
+   ужимается на размер панели: страница становится ниже или уже, длинное
+   прокручивается, под панелью ничего не прячется. Плоско: вместо тени —
+   чёрная линейка, шапка — номер, название, клавиши в рамке. */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
+  --detail-sheet-inset-top: var(--sw-head-h, 89px);
+  --detail-sheet-inset-left: 0px;
+  --detail-sheet-inset-bottom: 0px;
+  --detail-sheet-bg: #FFFFFF;
+  --detail-sheet-head-bg: #FFFFFF;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"][data-detail-sheet="bottom"] .sw-main {
+  padding-bottom: calc(var(--detail-sheet-size) + 16px) !important;
+  /* «показать выбранное» прокручивает так, чтобы строка была над панелью, а не под ней */
+  scroll-padding-bottom: calc(var(--detail-sheet-size) + 16px);
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"][data-detail-sheet="right"] .sw-main {
+  padding-right: calc(var(--detail-sheet-size) + 24px) !important;
+  scroll-padding-right: calc(var(--detail-sheet-size) + 24px);
+}
+/* Лист снизу: страница — по содержимому (как на низком экране), главный блок держит свою
+   минимальную высоту (правило в файле страницы); всё прокручивается выше панели, а не прячется под ней */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"][data-detail-sheet="bottom"] .sw-page { height: auto; min-height: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet {
+  border-color: #111111;
+  box-shadow: none;
+  color: #111111;
+  font-family: var(--sw-font);
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet--bottom { border-top-width: 2px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet--right { border-left-width: 2px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__handle::after { background: #111111; border-radius: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet--bottom .detail-sheet__handle::after { top: 5px; width: 56px; height: 3px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet--right .detail-sheet__handle::after { left: 5px; width: 3px; height: 56px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__handle:hover::after,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__handle:focus-visible::after { background: var(--sw-accent); }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__head {
+  gap: 16px;
+  padding: 12px 24px 10px 32px;
+  border-bottom: 1px solid #111111;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__name { font-size: 18px; font-weight: 700; line-height: 1.25; letter-spacing: -0.005em; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__name .sw-sheet-num { margin-right: 10px; font-size: 11px; font-weight: 700; color: #5E5E5E; vertical-align: 2px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__sub { margin-top: 2px; font-size: 12px; color: #5E5E5E; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__tools { gap: 6px; padding-left: 16px; border-left: 1px solid #E2E2E2; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__tool {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #111111;
+  border-radius: 0;
+  background: #FFFFFF;
+  color: #111111;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__tool:hover,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__tool:focus-visible,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__tool[aria-pressed="true"] { background: #111111; border-color: #111111; color: #FFFFFF; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__extra { gap: 8px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__extra .ant-btn { height: 30px; padding: 0 12px; font-size: 12px; font-weight: 500; }
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__body { padding: 14px 32px 20px; box-sizing: border-box; scrollbar-width: thin; }
+@media (max-width: 1500px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__head { padding: 10px 16px 8px 24px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__body { padding: 12px 24px 16px; }
+}
+/* Узкая панель справа: стрелки «предыдущая / следующая» — второй строкой, название не сжимается в многоточие */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet { container: sw-sheet / inline-size; }
+@container sw-sheet (max-width: 820px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__head { flex-wrap: wrap; row-gap: 8px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__title { order: 1; flex: 1 1 0; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__tools { order: 2; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__extra { order: 3; flex: 1 1 100%; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__name,
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .detail-sheet__sub { white-space: normal; }
+}
+
 /* ---------------- Шапка страницы (PageHeader) ---------------- */
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .page-header { margin-bottom: 24px !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .page-header-eyebrow {

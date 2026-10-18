@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router';
 import { Dropdown, Popover } from 'antd';
 import { Contrast, LogOut } from 'lucide-react';
@@ -100,6 +100,24 @@ export default function SwissShell() {
     navigate('/login', { replace: true });
   }, [logout, navigate]);
 
+  // Высота меню (ярусы переносятся на узком экране) — панель подробностей справа садится под ним.
+  const mainRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const root = document.documentElement;
+    const measure = () => root.style.setProperty('--sw-head-h', `${Math.round(main.getBoundingClientRect().top)}px`);
+    const observer = new ResizeObserver(measure);
+    // Меню меняет высоту — меняется и рабочая область под ним (в том числе когда появляется второй ярус).
+    observer.observe(main);
+    for (const el of main.parentElement?.children ?? []) if (el !== main) observer.observe(el);
+    measure();
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--sw-head-h');
+    };
+  }, []);
+
   return (
     <HelpProvider>
       <div className="sw-shell">
@@ -169,7 +187,7 @@ export default function SwissShell() {
             ))}
           </nav>
         )}
-        <main className="sw-main scroll-y">
+        <main ref={mainRef} className="sw-main scroll-y">
           <Outlet />
         </main>
       </div>

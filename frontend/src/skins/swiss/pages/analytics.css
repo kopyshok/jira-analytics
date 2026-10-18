@@ -65,15 +65,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-an-flow-empty { color: #5E5E5E; }
   & .sw-an-flow-empty b { margin-right: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #111111; }
 
-  & .sw-an-main {
-    flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 446px;
-    column-gap: 24px;
-  }
-  & .sw-an-main.is-wide { grid-template-columns: minmax(0, 1fr); }
-  & .sw-an-table { min-height: 0; }
+  /* Таблица — во всю ширину; под открытой панелью держит высоту, остальное прокручивается */
+  & .sw-an-table { flex: 1; min-height: 0; }
+  &[data-detail-sheet] .sw-an-table { flex: 1 0 300px; }
   & .sw-an-table-scroll {
     flex: 1;
     min-height: 0;
@@ -136,31 +130,23 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     font-size: 10px;
   }
 
-  /* ---------- 2.4 Задача: панель встроена справа ---------- */
-  & .sw-an-issue {
-    min-height: 0;
-    overflow: auto;
-    border-top: 2px solid #111111;
-    padding-top: 8px;
-    display: flex;
-    flex-direction: column;
-    scrollbar-width: thin;
-  }
-  & .sw-an-issue-eyebrow {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  & .sw-an-issue-eyebrow .sw-block-num { margin-right: 6px; }
-  & .an-issue-docked { --mini-tile-bg: #FFFFFF; --glass-border: #E2E2E2; --bg: #FFFFFF; display: flex; flex-direction: column; min-height: 0; }
+  /* ---------- 2.4 Задача: карточка в панели подробностей ---------- */
+  & .an-issue-docked { --mini-tile-bg: #FFFFFF; --glass-border: #E2E2E2; --bg: #FFFFFF; display: flex; flex-direction: column; }
   & .an-issue-head {
     position: relative;
-    padding: 8px 0 12px !important;
+    padding: 0 0 12px !important;
     border-bottom: 1px solid #E2E2E2 !important;
     background: #FFFFFF !important;
   }
-  & .an-issue-head > div:first-child { flex-wrap: wrap; gap: 4px 12px !important; align-items: baseline !important; padding-right: 32px; }
+  & .an-issue-head > div:first-child { flex-wrap: wrap; gap: 4px 12px !important; align-items: baseline !important; }
+  /* закрывает панель её собственная клавиша в шапке */
+  & .sw-an-sheet .an-issue-close { display: none !important; }
+  & .sw-an-sheet .an-issue-body { overflow: visible !important; }
+  & .sw-an-sheet .an-issue-worklogs .ant-table-wrapper { margin: 0 !important; max-width: none !important; }
+  & .sw-an-sheet .an-issue-worklogs .ant-table-tbody > tr > td { vertical-align: top; font-size: 12px; line-height: 1.4; }
+  /* Когда, кто, часы — в одну строку; комментарий получает остальную ширину */
+  & .sw-an-sheet .an-issue-worklogs .ant-table-tbody > tr > td:nth-child(-n + 3),
+  & .sw-an-sheet .an-issue-worklogs .ant-table-thead > tr > th:nth-child(-n + 3) { white-space: nowrap; }
   & .an-issue-key {
     padding: 0 !important;
     border: 0 !important;
@@ -195,11 +181,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
 }
 
 @media (max-width: 1500px) {
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-main { grid-template-columns: minmax(0, 1fr) 360px; }
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-table-scroll .ant-table colgroup col:first-child { width: 280px !important; }
 }
 @media (max-width: 1100px) {
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-main { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-table-scroll { max-height: 70vh; }
 }
 
@@ -208,4 +192,22 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-range .ant-picker-range { column-gap: 16px; }
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-range-labels { column-gap: 16px; }
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-range .ant-picker-input > input { font-size: 12px; }
+}
+
+/* Широкая панель (от 1040 px): слева шапка задачи, контекст и категория, справа — ворклоги во всю высоту */
+@container detail-sheet (min-width: 1040px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-sheet .an-issue-docked {
+    display: grid;
+    grid-template-columns: minmax(360px, 34%) minmax(0, 1fr);
+    grid-template-rows: max-content max-content max-content 1fr;
+    align-items: start;
+    column-gap: 32px;
+    min-height: 100%;
+  }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-sheet .an-issue-body,
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-sheet .an-issue-body > div { display: contents !important; }
+  /* строки левой колонки — по содержимому: в низкой панели блоки не сжимаются и не наезжают друг на друга */
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-sheet .an-issue-head,
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-sheet .an-issue-body > div > :not(.an-issue-worklogs) { grid-column: 1; margin-bottom: 12px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-sheet .an-issue-worklogs { grid-column: 2; grid-row: 1 / -1; align-self: stretch; margin: 0 !important; }
 }

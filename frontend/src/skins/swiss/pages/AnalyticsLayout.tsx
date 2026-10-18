@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button, Checkbox, DatePicker, Empty, Segmented, Spin } from 'antd';
+import DetailSheet from '../../../components/common/DetailSheet';
 import { Download } from 'lucide-react';
 import type { AnalyticsPageModel } from '../../../hooks/useAnalyticsPage';
 import { LEVEL_LABELS, useAnalyticsLayout } from '../../../hooks/useAnalyticsLayout';
@@ -11,15 +12,20 @@ import AnalyticsIssueDrawer from '../../../components/analytics/AnalyticsIssueDr
 import SubgroupFlowLine from '../../../components/common/SubgroupFlowLine';
 import { planPercent } from '../../../utils/analyticsTotals';
 import { BlockHead, Field, Figure, Figures, PassSection, Passport, SwissData, SwissPage } from '../components/Passport';
+import { useKeepInView } from '../useKeepInView';
 import './analytics.css';
 
 const hours = (v: number, digits = 1) =>
   v.toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
+/** «2026-10-01» → «01.10.2026». */
+const ddmmyyyy = (iso: string) => iso.split('-').reverse().join('.');
+
 /**
  * «Иерархический отчёт по часам» в обложке «Швейцарская»: паспорт (итоги
  * отчёта крупно, отбор столбиком, настройка и выгрузка), справа команды
- * вкладками, переток, таблица-дерево и встроенная панель задачи.
+ * вкладками, переток и таблица-дерево во всю ширину; карточка задачи —
+ * в панели подробностей снизу или справа.
  */
 export default function SwissAnalyticsLayout({ vm }: { vm: AnalyticsPageModel }) {
   const {
@@ -28,7 +34,7 @@ export default function SwissAnalyticsLayout({ vm }: { vm: AnalyticsPageModel })
     columnSettingsOpen, setColumnSettingsOpen, data, isLoading, periodStart, periodEnd,
     handleFilterChange, hasActiveFilters, resetFilters, exportXlsx,
   } = vm;
-  // Открытая задача: в режиме «drawer» панель стоит справа от таблицы.
+  // Открытая задача: в режиме «drawer» карточка открывается в панели подробностей.
   const [issue, setIssue] = useState<{ id: string; key: string } | null>(null);
   const { resolved } = useAnalyticsLayout();
   const totals = data?.grand_totals;
@@ -38,6 +44,9 @@ export default function SwissAnalyticsLayout({ vm }: { vm: AnalyticsPageModel })
     .map((l) => LEVEL_LABELS[l].toLowerCase());
   if (!levels.includes('задача')) levels.push('задача');
   const showIssuePanel = worklogMode === 'drawer';
+  const shownIssue = showIssuePanel ? issue : null;
+  // Рабочая область ужалась под панель — выбранная строка таблицы остаётся на виду.
+  useKeepInView(shownIssue?.id, '.sw-an-table-scroll tr.tree-row-selected');
 
   return (
     <SwissPage className="sw-an">
@@ -148,46 +157,48 @@ export default function SwissAnalyticsLayout({ vm }: { vm: AnalyticsPageModel })
                 )}
               </div>
             )}
-            <div className={`sw-an-main${showIssuePanel ? '' : ' is-wide'}`}>
-              <section className="sw-block sw-an-table">
-                <BlockHead num="2.3" title="Часы по иерархии" size="lg" meta={levels.join(' · ')} />
-                <div className="sw-an-table-scroll" data-tour="analytics-table">
-                  <AnalyticsTable
-                    data={data}
-                    selectedTeam={selectedTeam}
-                    worklogMode={worklogMode}
-                    periodStart={periodStart}
-                    periodEnd={periodEnd}
-                    selectedIssueId={showIssuePanel ? issue?.id ?? null : null}
-                    onIssueOpen={setIssue}
-                  />
-                </div>
-              </section>
-              {showIssuePanel && (
-                <aside className="sw-an-issue" aria-label="Задача">
-                  <div className="sw-an-issue-eyebrow">
-                    <span className="sw-block-num">2.4</span> Задача
-                  </div>
-                  {issue ? (
-                    <AnalyticsIssueDrawer
-                      docked
-                      issueId={issue.id}
-                      issueKey={issue.key}
-                      periodStart={periodStart}
-                      periodEnd={periodEnd}
-                      onClose={() => setIssue(null)}
-                    />
-                  ) : (
-                    <div className="sw-empty">
-                      Щёлкните задачу в таблице — здесь появятся её категория, родитель, соседние задачи и ворклоги за период.
-                    </div>
-                  )}
-                </aside>
-              )}
-            </div>
+            <section className="sw-block sw-an-table">
+              <BlockHead num="2.3" title="Часы по иерархии" size="lg" meta={levels.join(' · ')}>
+                {showIssuePanel && (
+                  <span className="sw-tool-label">щелчок по задаче — карточка с ворклогами в панели</span>
+                )}
+              </BlockHead>
+              <div className="sw-an-table-scroll" data-tour="analytics-table">
+                <AnalyticsTable
+                  data={data}
+                  selectedTeam={selectedTeam}
+                  worklogMode={worklogMode}
+                  periodStart={periodStart}
+                  periodEnd={periodEnd}
+                  selectedIssueId={shownIssue?.id ?? null}
+                  onIssueOpen={setIssue}
+                />
+              </div>
+            </section>
           </>
         )}
       </SwissData>
+
+      {/* Карточка задачи — в панели подробностей снизу или справа (в Aurora — выезжает справа). */}
+      <DetailSheet
+        open={!!shownIssue}
+        onClose={() => setIssue(null)}
+        title={<><span className="sw-sheet-num">2.4</span>Задача</>}
+        subtitle={`категория, родитель, соседние задачи и ворклоги за ${ddmmyyyy(periodStart)} – ${ddmmyyyy(periodEnd)}`}
+        ariaLabel="Задача"
+        className="sw-an-sheet"
+      >
+        {shownIssue && (
+          <AnalyticsIssueDrawer
+            docked
+            issueId={shownIssue.id}
+            issueKey={shownIssue.key}
+            periodStart={periodStart}
+            periodEnd={periodEnd}
+            onClose={() => setIssue(null)}
+          />
+        )}
+      </DetailSheet>
 
       <AnalyticsReportSettings open={columnSettingsOpen} onClose={() => setColumnSettingsOpen(false)} />
     </SwissPage>

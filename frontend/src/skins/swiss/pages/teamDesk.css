@@ -64,7 +64,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-desk-thresholds { flex: none; max-height: 40vh; overflow: auto; }
 
   /* ---------- Плитки людей ---------- */
-  & .sw-desk-cards { flex: none; max-height: 38vh; overflow: auto; scrollbar-width: thin; }
+  & .sw-desk-cards { flex: none; max-height: 38vh; overflow: auto; scrollbar-width: thin; container: sw-desk-cards / inline-size; }
   & .sw-desk-cards > .ant-row { margin-inline: -12px !important; row-gap: 16px !important; }
   & .sw-desk-cards > .ant-row > .ant-col { padding-inline: 12px !important; }
   & .desk-card.ant-card {
@@ -176,15 +176,34 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .desk-scale-hours { font-weight: 700; }
   & .desk-scale-pct { font-weight: 700; }
 
-  /* ---------- Низ: ленты, задачи, правая колонка ---------- */
-  & .sw-desk-bottom {
-    flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 446px;
-    column-gap: 24px;
+  /* ---------- Низ: ленты и задачи во всю ширину ---------- */
+  & .sw-desk-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+  /* под открытой панелью таблица держит высоту, остальное прокручивается */
+  &[data-detail-sheet] .sw-desk-main { flex: 1 0 auto; }
+  &[data-detail-sheet] .sw-desk-issues { flex: 1 0 300px; }
+
+  /* Строка «Списки»: резиновые, в работе одновременно, отсутствия — счётчики, список в панели */
+  & .sw-desk-lists { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 20px; font-size: 12px; }
+  & .sw-desk-lists-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #111111; }
+  & .sw-desk-list {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 0 0 1px;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid #111111;
+    font: inherit;
+    font-size: 12px;
+    color: #111111;
+    cursor: pointer;
   }
-  & .sw-desk-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+  & .sw-desk-list b { font-weight: 700; }
+  & .sw-desk-list-num { font-size: 10px; font-weight: 700; color: #5E5E5E; }
+  & .sw-desk-list-note { font-size: 11px; font-weight: 700; color: var(--sw-accent-ink); }
+  & .sw-desk-list:not(:disabled):hover { color: var(--sw-accent-ink); border-bottom-color: var(--sw-accent-ink); }
+  & .sw-desk-list.is-active { font-weight: 700; border-bottom-width: 2px; padding-bottom: 0; }
+  & .sw-desk-list:disabled { border-bottom-color: transparent; color: #5E5E5E; cursor: default; }
   & .sw-desk-bars { flex: none; gap: 4px !important; }
   & .desk-bar.ant-card { border-top: 0 !important; }
   & .desk-bar.ant-card > .ant-card-body { padding: 0 !important; }
@@ -275,16 +294,24 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .desk-issues .ant-input-number .ant-input-number-handler-wrap { display: none; }
   & .desk-issues .desk-flagchip:not(:last-child)::after { content: ','; color: #111111; font-weight: 400; margin-right: 4px; }
 
-  /* Правая колонка */
-  & .sw-desk-side {
-    min-height: 0;
-    overflow: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    scrollbar-width: thin;
+  /* Списки в панели подробностей: название и пояснение — в шапке панели */
+  & .sw-desk-sheet .desk-rubber > .sw-block-title,
+  & .sw-desk-sheet .desk-rubber-note,
+  & .sw-desk-sheet .desk-abs .sw-block-title { display: none; }
+  & .sw-desk-sheet .desk-abs .sw-block-head { justify-content: flex-start; }
+  & .sw-desk-sheet .ant-card { border: 0 !important; background: none !important; }
+  & .sw-desk-sheet .ant-card > .ant-card-head { display: none; }
+  & .sw-desk-sheet .ant-card > .ant-card-body { padding: 0 !important; }
+  & .sw-desk-sheet .ant-table-thead > tr > th { padding: 6px 8px !important; border-bottom: 1px solid #111111 !important; font-weight: 700; }
+  & .sw-desk-sheet .ant-table-tbody > tr > td { padding: 8px !important; font-size: 13px; }
+  & .sw-desk-sheet .ant-table-tbody .ant-input-number {
+    border: 0 !important;
+    border-bottom: 1px solid #111111 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
   }
-  & .sw-desk-side > section { border-top: 2px solid #111111; padding-top: 8px; }
+  & .sw-desk-sheet .desk-wip-block { max-width: 980px; }
   & .desk-rubber-note { margin: 4px 0 8px; font-size: 11px; color: #5E5E5E; }
   & .desk-rubber-item + .desk-rubber-item { margin-top: 12px; }
   & .desk-rubber-line { font-size: 12px; line-height: 1.4; }
@@ -339,10 +366,17 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-desk-summary .desk-flag { margin-right: 10px !important; font-weight: 700; }
 }
 
-@media (max-width: 1500px) {
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-desk-bottom { grid-template-columns: minmax(0, 1fr) 340px; }
-}
 @media (max-width: 1100px) {
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-desk-bottom { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-desk-issues { min-height: 60vh; }
+}
+
+/* Плитки людей — по ширине зоны данных, а не окна: при панели справа зона уже, плиток в ряд меньше */
+@container sw-desk-cards (max-width: 1100px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-desk-cards > .ant-row > .ant-col { flex: 0 0 33.333% !important; max-width: 33.333% !important; }
+}
+@container sw-desk-cards (max-width: 820px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-desk-cards > .ant-row > .ant-col { flex: 0 0 50% !important; max-width: 50% !important; }
+}
+@container sw-desk-cards (max-width: 520px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-desk-cards > .ant-row > .ant-col { flex: 0 0 100% !important; max-width: 100% !important; }
 }

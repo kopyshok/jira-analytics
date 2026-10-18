@@ -1,5 +1,11 @@
+import { useMemo, useState } from 'react';
 import { Empty, Spin } from 'antd';
+import dayjs from 'dayjs';
+import type { DeskDeveloper, DeskIssue, DeskWorkload } from '../../../api/teamDesk';
 import type { TeamDeskPageModel, DeskLayout } from '../../../hooks/useTeamDeskPage';
+import { useAbsences } from '../../../hooks/useAbsences';
+import DetailSheet from '../../../components/common/DetailSheet';
+import { useDetailSheetWidth } from '../../../components/common/detailSheetWidth';
 import { DeskFilters } from '../../../components/teamdesk/DeskFilters';
 import { ThresholdsPanel } from '../../../components/teamdesk/ThresholdsPanel';
 import { DeveloperCards } from '../../../components/teamdesk/DeveloperCards';
@@ -13,6 +19,7 @@ import { ActiveFilters } from '../../../components/teamdesk/ActiveFilters';
 import { RubberTasks } from '../../../components/teamdesk/RubberTasks';
 import { deskTaskCount, developersWord, tasksWord, teamAccuracy } from '../../../utils/deskSummary';
 import { BlockHead, Figure, Figures, PassSection, Passport, SwissData, SwissPage } from '../components/Passport';
+import { useKeepInView } from '../useKeepInView';
 import './teamDesk.css';
 
 /** Колонки списка задач под ширину зоны данных (макет: видно до «Дней», дальше — прокрутка в блоке). */
@@ -27,10 +34,87 @@ const TABS: { key: DeskLayout; num: string; label: string }[] = [
   { key: 'grouped', num: '1.3', label: 'Проблемы вперёд' },
 ];
 
+type DeskList = 'rubber' | 'wip' | 'absence';
+
+const LISTS: Record<DeskList, { num: string; title: string }> = {
+  rubber: { num: '1.5', title: 'Резиновые задачи' },
+  wip: { num: '1.6', title: 'Задач в работе одновременно' },
+  absence: { num: '1.7', title: 'Отсутствия' },
+};
+
+/** Счётчик над таблицей: открывает список в панели подробностей; ноль — приглушён и не нажимается. */
+function ListKey({ num, label, count, note, active, onClick, title }: {
+  num: string;
+  label: string;
+  count: number;
+  note?: string | null;
+  active: boolean;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`sw-desk-list${active ? ' is-active' : ''}`}
+      aria-pressed={active}
+      disabled={count === 0}
+      onClick={onClick}
+      title={title}
+    >
+      <span className="sw-desk-list-num">{num}</span>
+      {label}
+      <b>{count}</b>
+      {note && <span className="sw-desk-list-note">{note}</span>}
+    </button>
+  );
+}
+
+/** Список в панели: на широкой — таблицей и теплокартой по дням, на узкой — строками и неделями. */
+function DeskListBody({ list, issues, developers, workload, wipLimit, employeeIds, rubberDays, jiraBaseUrl, onDailyRate }: {
+  list: DeskList;
+  issues: DeskIssue[];
+  developers: DeskDeveloper[];
+  workload: Record<string, DeskWorkload>;
+  wipLimit: number;
+  employeeIds: Record<string, string>;
+  rubberDays: number;
+  jiraBaseUrl: string;
+  onDailyRate: (issueId: string, hours: number | null) => void;
+}) {
+  const wide = useDetailSheetWidth() >= 960;
+  if (list === 'rubber') {
+    return (
+      <RubberTasks
+        compact={!wide}
+        issues={issues}
+        rubberDays={rubberDays}
+        jiraBaseUrl={jiraBaseUrl}
+        onDailyRate={onDailyRate}
+      />
+    );
+  }
+  if (list === 'wip') {
+    return (
+      <section className="desk-wip-block">
+        <WorkloadBars developers={developers} workload={workload} limit={wipLimit} />
+      </section>
+    );
+  }
+  return <AbsenceStrip compact={!wide} employeeIds={employeeIds} />;
+}
+
+/** Границы текущего квартала, «2026-10-01» … «2026-12-31». */
+function currentQuarter(): [string, string] {
+  const now = dayjs();
+  const start = now.month(now.month() - (now.month() % 3)).date(1);
+  return [start.format('YYYY-MM-DD'), start.add(2, 'month').endOf('month').format('YYYY-MM-DD')];
+}
+
 /**
  * «Рабочий стол тимлида» в обложке «Швейцарская»: паспорт (цифры среза и
- * отбор столбиком), справа вкладки-разрезы, плитки людей, список задач и
- * узкая колонка — резиновые задачи, задачи в работе, отсутствия.
+ * отбор столбиком), справа вкладки-разрезы, плитки людей и список задач во
+ * всю ширину. Резиновые задачи, «в работе одновременно» и отсутствия —
+ * счётчики над таблицей, сам список открывается в панели подробностей.
  */
 export default function SwissTeamDeskLayout({ vm }: { vm: TeamDeskPageModel }) {
   const {
@@ -47,6 +131,27 @@ export default function SwissTeamDeskLayout({ vm }: { vm: TeamDeskPageModel }) {
   const people = data?.developers.length ?? null;
   const over = data?.flag_counts.over ?? 0;
   const accuracy = data ? teamAccuracy(data.issues) : null;
+
+  // Списки бывшей правой колонки: на странице — счётчики, сам список — в панели (одна за раз).
+  // «В работе одновременно» в разрезе «Проблемы вперёд» не показывался и сейчас не показывается.
+  const showWip = layout !== 'grouped';
+  const [list, setList] = useState<DeskList | null>(null);
+  const toggleList = (next: DeskList) => setList(list === next ? null : next);
+  const absences = useAbsences();
+  const rubberCount = useMemo(() => (data?.issues ?? []).filter((issue) => issue.daily_rate).length, [data]);
+  const wipTotal = (data?.developers ?? []).reduce((n, d) => n + d.in_progress, 0);
+  const wipOver = (data?.developers ?? []).filter((d) => d.in_progress > wipLimit).length;
+  const absenceCount = useMemo(() => {
+    const ids = new Set(Object.values(data?.employee_ids ?? {}));
+    const [from, to] = currentQuarter();
+    return (absences.data ?? []).filter((a) => ids.has(a.employee_id) && a.start_date <= to && a.end_date >= from).length;
+  }, [absences.data, data]);
+  const counts: Record<DeskList, number> = { rubber: rubberCount, wip: showWip ? wipTotal : 0, absence: absenceCount };
+  // Список опустел (сменили отбор или разрез) — панель закрывается и сама не вернётся.
+  if (list && data && counts[list] === 0) setList(null);
+  const shownList = list && data && counts[list] > 0 ? list : null;
+  // Рабочая область ужалась под панель — нажатый счётчик остаётся на виду.
+  useKeepInView(shownList, '.sw-desk-list.is-active');
 
   const issuesBlock = data && (
     <div data-tour="desk-issues" className="sw-desk-issues">
@@ -196,46 +301,86 @@ export default function SwissTeamDeskLayout({ vm }: { vm: TeamDeskPageModel }) {
         )}
 
         {data && (
-          <div className="sw-desk-bottom">
-            <div className="sw-desk-main">
-              <div data-tour="desk-flags" className="sw-desk-bars">
-                <FlagFilterBar flagCounts={data.flag_counts} value={flagFilter} onChange={setFlagFilter} />
-                <StatusFilterBar
-                  counts={totalStatusCounts}
-                  statuses={statusOptions}
-                  statusGroups={statusGroups}
-                  value={statusFilter}
-                  onChange={pickSliceStatus}
+          <div className="sw-desk-main">
+            <div data-tour="desk-flags" className="sw-desk-bars">
+              <FlagFilterBar flagCounts={data.flag_counts} value={flagFilter} onChange={setFlagFilter} />
+              <StatusFilterBar
+                counts={totalStatusCounts}
+                statuses={statusOptions}
+                statusGroups={statusGroups}
+                value={statusFilter}
+                onChange={pickSliceStatus}
+              />
+              {/* Списки бывшей правой колонки — счётчиками; сам список — в панели подробностей */}
+              <div className="sw-desk-lists" role="group" aria-label="Списки стола">
+                <span className="sw-desk-lists-label">Списки</span>
+                <ListKey
+                  num="1.5"
+                  label="Резиновые"
+                  count={counts.rubber}
+                  active={shownList === 'rubber'}
+                  onClick={() => toggleList('rubber')}
+                  title="Задачи с дневной нормой: что из неё уходит в очередь"
                 />
-                <ActiveFilters
-                  developerName={selectedName}
-                  flag={flagFilter}
-                  status={statusFilter}
-                  queueScope={queueScope}
-                  onReset={resetFilters}
+                {showWip && (
+                  <ListKey
+                    num="1.6"
+                    label="В работе одновременно"
+                    count={counts.wip}
+                    note={wipOver > 0 ? `сверх лимита у ${wipOver}` : null}
+                    active={shownList === 'wip'}
+                    onClick={() => toggleList('wip')}
+                    title={`Задач в работе сейчас; лимит — ${wipLimit} на человека`}
+                  />
+                )}
+                <ListKey
+                  num="1.7"
+                  label="Отсутствия"
+                  count={counts.absence}
+                  active={shownList === 'absence'}
+                  onClick={() => toggleList('absence')}
+                  title="Отсутствия людей стола в текущем квартале"
                 />
               </div>
-              {issuesBlock}
-            </div>
-            <aside className="sw-desk-side">
-              <RubberTasks
-                compact
-                issues={data.issues}
-                rubberDays={rubberDays}
-                jiraBaseUrl={jiraBaseUrl}
-                onDailyRate={setDailyRate}
+              <ActiveFilters
+                developerName={selectedName}
+                flag={flagFilter}
+                status={statusFilter}
+                queueScope={queueScope}
+                onReset={resetFilters}
               />
-              {layout !== 'grouped' && (
-                <section className="desk-wip-block">
-                  <div className="sw-block-title"><span className="sw-block-num">1.6</span><b>Задач в работе одновременно</b></div>
-                  <WorkloadBars developers={data.developers} workload={data.workload} limit={wipLimit} />
-                </section>
-              )}
-              <AbsenceStrip compact employeeIds={data.employee_ids ?? {}} />
-            </aside>
+            </div>
+            {issuesBlock}
           </div>
         )}
       </SwissData>
+
+      <DetailSheet
+        open={!!shownList}
+        onClose={() => setList(null)}
+        title={<><span className="sw-sheet-num">{shownList ? LISTS[shownList].num : ''}</span>{shownList ? LISTS[shownList].title : ''}</>}
+        subtitle={shownList === 'rubber'
+          ? `в очередь идёт норма за ${rubberDays} дн, но не больше остатка; дневную норму можно поправить прямо здесь`
+          : shownList === 'wip'
+            ? `задачи в работе у каждого сейчас; лимит на человека — ${wipLimit}`
+            : 'люди стола по дням квартала'}
+        ariaLabel="Списки стола тимлида"
+        className="sw-desk-sheet"
+      >
+        {data && shownList && (
+          <DeskListBody
+            list={shownList}
+            issues={data.issues}
+            developers={data.developers}
+            workload={data.workload}
+            wipLimit={wipLimit}
+            employeeIds={data.employee_ids ?? {}}
+            rubberDays={rubberDays}
+            jiraBaseUrl={jiraBaseUrl}
+            onDailyRate={setDailyRate}
+          />
+        )}
+      </DetailSheet>
     </SwissPage>
   );
 }

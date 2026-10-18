@@ -1,8 +1,13 @@
-import type { CSSProperties } from 'react';
+import { useMemo, useState, type ComponentProps, type CSSProperties } from 'react';
 import { Alert, Badge, Button, Empty, Popover, Segmented, Select, Spin } from 'antd';
 import { Lock } from 'lucide-react';
+import dayjs from 'dayjs';
 import type { ResourcePlanningPageModel } from '../../../hooks/useResourcePlanningPage';
 import { usePlanQuality } from '../../../hooks/useResourcePlanning';
+import type { AssignmentOut, ReserveOut } from '../../../api/resourcePlanning';
+import { fmtHours, overuseCount, usedHours } from '../../../utils/normedReserve';
+import DetailSheet from '../../../components/common/DetailSheet';
+import { useDetailSheetWidth } from '../../../components/common/detailSheetWidth';
 import GanttChart from '../../../components/resource-planning/GanttChart';
 import AssignmentSidebar from '../../../components/resource-planning/AssignmentSidebar';
 import PlanLoadHeatmap from '../../../components/resource-planning/PlanLoadHeatmap';
@@ -14,6 +19,7 @@ import type { TimelineScale } from '../../../utils/gantt';
 import { PHASE_LABELS } from '../../../utils/gantt';
 import { splitConflicts } from '../../../utils/rpConflicts';
 import { BlockHead, Figure, Figures, PassportStrip, StripCell, SwissData, SwissPage } from '../components/Passport';
+import { useKeepInView } from '../useKeepInView';
 import ConflictStrip from './rp/ConflictStrip';
 import './resourcePlanning.css';
 
@@ -35,10 +41,49 @@ function criticalCaption(n: number): string {
   return 'критических конфликтов';
 }
 
+const PHASE_ORDER: Record<string, number> = { analyst: 0, dev: 1, qa: 2, opo: 3 };
+const ddmm = (iso: string | null) => (iso ? dayjs(iso).format('DD.MM') : '—');
+
+/** Итог запаса нормированных работ квартала: заложено, занято, осталось, видов с перерасходом. */
+function reserveTotals(reserve: ReserveOut) {
+  let planned = 0;
+  let used = 0;
+  let remaining = 0;
+  for (const role of reserve.roles) {
+    for (const row of role.rows) {
+      planned += row.planned_hours;
+      used += usedHours(row);
+      remaining += row.remaining_hours;
+    }
+  }
+  return { planned, used, remaining, over: overuseCount(reserve) };
+}
+
+/** «в 1 виде», «в 3 видах» работ. */
+const kindsWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'виде' : 'видах');
+
+/** Подпись фазы в шапке панели: фаза, исполнитель, часы, сроки. */
+function phaseLine(a: AssignmentOut): string {
+  return [
+    `${PHASE_LABELS[a.phase] ?? a.phase}${a.part_number > 1 ? ` · часть ${a.part_number}` : ''}`,
+    a.employee_name ?? (a.phase === 'qa' ? 'QA — без сотрудника' : 'исполнитель не назначен'),
+    `${Math.round(a.hours_allocated ?? 0)} ч`,
+    `${ddmm(a.start_date)}–${ddmm(a.end_date)}`,
+  ].join(' · ');
+}
+
+/** «Назначение» в панели подробностей: число колонок — по ширине тела панели. */
+function SheetAssignment(props: Omit<ComponentProps<typeof AssignmentSidebar>, 'columns' | 'docked'>) {
+  const width = useDetailSheetWidth();
+  const columns = width >= 1500 ? 4 : width >= 1100 ? 3 : width >= 760 ? 2 : 1;
+  return <AssignmentSidebar {...props} docked columns={columns} />;
+}
+
 /**
  * «Ресурсное планирование» в обложке «Швейцарская»: паспорт полосой под меню
  * (цифры качества плана, выбор плана, действия), ниже во всю ширину конфликты,
- * диаграмма с панелью назначения и снизу — загрузка по дням и запас нормированных работ.
+ * диаграмма и снизу — загрузка по дням и итог запаса нормированных работ.
+ * Назначение фазы и таблица запаса — в панели подробностей (снизу или справа).
  */
 export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanningPageModel }) {
   const {
@@ -64,6 +109,38 @@ export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanni
   const quarterLabel = gantt ? `${gantt.plan.quarter ?? ''} ${gantt.plan.year ?? ''}`.trim() : '';
   const phases = appearanceSettings.phase_colors;
   const computing = compute.isPending || gantt?.plan.status === 'computing';
+
+  // На странице одна панель подробностей: фаза плана или запас нормированных работ.
+  const [reserveOpen, setReserveOpen] = useState(false);
+  if (reserveOpen && selectedAssignment) setReserveOpen(false);
+  const reserve = gantt?.reserve && gantt.plan.team ? gantt.reserve : null;
+  const totals = useMemo(() => (reserve ? reserveTotals(reserve) : null), [reserve]);
+  const reserveShown = reserveOpen && !!reserve && viewMode === 'two-level';
+  const openReserve = () => {
+    setSelectedAssignmentId(null);
+    setReserveOpen(true);
+  };
+
+  // Соседние фазы для стрелок в шапке панели: порядок задач диаграммы, внутри — фазы по порядку.
+  const phaseNav = useMemo(() => {
+    const itemIdx = new Map<string, number>();
+    for (const a of shownAssignments) if (!itemIdx.has(a.backlog_item_id)) itemIdx.set(a.backlog_item_id, itemIdx.size);
+    return shownAssignments
+      .filter((a) => a.start_date && a.end_date)
+      .sort((a, b) =>
+        (itemIdx.get(a.backlog_item_id) ?? 0) - (itemIdx.get(b.backlog_item_id) ?? 0)
+        || (PHASE_ORDER[a.phase] ?? 9) - (PHASE_ORDER[b.phase] ?? 9)
+        || (a.start_date ?? '').localeCompare(b.start_date ?? '')
+        || a.part_number - b.part_number);
+  }, [shownAssignments]);
+  const navIdx = selectedAssignment ? phaseNav.findIndex((a) => a.id === selectedAssignment.id) : -1;
+  const prevPhase = navIdx > 0 ? phaseNav[navIdx - 1] : null;
+  const nextPhase = navIdx >= 0 && navIdx < phaseNav.length - 1 ? phaseNav[navIdx + 1] : null;
+  // Рабочая область ужалась под панель — выбранная фаза (или итог запаса) остаётся на виду.
+  useKeepInView(
+    selectedAssignment?.id ?? (reserveShown ? 'reserve' : null),
+    selectedAssignment ? '.sw-rp-gantt-scroll .rp-bar-selected' : '.sw-rp-reserve-sum',
+  );
 
   return (
     <SwissPage strip className="sw-rp">
@@ -251,6 +328,7 @@ export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanni
                   onToggleCollapse={handleToggleCollapse}
                   conflictAssignmentIds={conflictAssignmentIds}
                   onAssignmentClick={(id) => setSelectedAssignmentId(id)}
+                  selectedAssignmentId={selectedAssignment?.id ?? null}
                   hideWeekends={prefs.hide_weekends}
                   highlightedEmployeeId={highlightedEmployeeId}
                   selectedEmployeeIds={peopleFilter}
@@ -280,37 +358,14 @@ export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanni
                 <span><i className="lg-ooq" />за пределами квартала</span>
                 <span><i className="lg-absence" />отпуск</span>
                 <span><i className="lg-holiday" />праздник</span>
+                <span className="sw-rp-legend-hint">щелчок по фазе — её назначение откроется в панели</span>
               </div>
-            )}
-          </section>
-
-          <section className="sw-block sw-rp-assign" aria-label="Назначение">
-            {selectedAssignment ? (
-              <>
-                <AssignmentSidebar
-                  docked
-                  open
-                  onClose={() => setSelectedAssignmentId(null)}
-                  planId={planId ?? ''}
-                  assignment={selectedAssignment}
-                  allAssignments={sortedAssignments}
-                  employees={candidateEmployees}
-                  onChanged={onAssignmentChanged}
-                />
-              </>
-            ) : (
-              <>
-                <BlockHead num="2.4" title="Назначение" />
-                <div className="sw-empty">
-                  Щёлкните полосу фазы на диаграмме — здесь появятся исполнитель, даты, вовлечённость и расчёт фазы.
-                </div>
-              </>
             )}
           </section>
         </div>
 
         {viewMode === 'two-level' && gantt && (
-          <div className={`sw-rp-bottom${gantt.reserve && gantt.plan.team ? '' : ' is-single'}`}>
+          <div className={`sw-rp-bottom${reserve ? '' : ' is-single'}`}>
             {gantt.employee_load && gantt.employee_load.length > 0 && (
               <section className="sw-block sw-rp-load" data-tour="rp-load">
                 <PlanLoadHeatmap
@@ -325,14 +380,82 @@ export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanni
                 />
               </section>
             )}
-            {gantt.reserve && gantt.plan.team && (
-              <section className="sw-block sw-rp-reserve">
-                <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} defaultExpanded />
+            {/* Нормированные работы: на странице — итог, вся таблица — в панели подробностей */}
+            {reserve && totals && (
+              <section className={`sw-block sw-rp-reserve-sum${reserveShown ? ' is-open' : ''}`} aria-label="Нормированные работы — запас квартала">
+                <BlockHead num="2.6" title="Нормированные работы" meta="запас квартала" />
+                <dl className="sw-rp-rs-figs">
+                  <div><dt>заложено</dt><dd>{fmtHours(totals.planned)}</dd></div>
+                  <div><dt>занято</dt><dd>{fmtHours(totals.used)}</dd></div>
+                  <div><dt>осталось</dt><dd>{fmtHours(totals.remaining)}</dd></div>
+                </dl>
+                <div className="sw-rp-rs-foot">
+                  {totals.over > 0
+                    ? <span className="sw-rp-rs-over">перерасход в {totals.over} {kindsWord(totals.over)} работ</span>
+                    : <span className="sw-rp-rs-ok">перерасхода нет</span>}
+                  <button type="button" className="sw-link" aria-expanded={reserveShown} onClick={openReserve}>
+                    Подробнее
+                  </button>
+                </div>
               </section>
             )}
           </div>
         )}
       </SwissData>
+
+      <DetailSheet
+        open={!!selectedAssignment}
+        onClose={() => setSelectedAssignmentId(null)}
+        title={selectedAssignment && (
+          <>
+            <span className="sw-sheet-num">2.4</span>
+            {selectedAssignment.backlog_item_key && `${selectedAssignment.backlog_item_key} · `}
+            {selectedAssignment.backlog_item_title}
+          </>
+        )}
+        subtitle={selectedAssignment && phaseLine(selectedAssignment)}
+        extra={(prevPhase || nextPhase) && (
+          <>
+            <Button size="small" disabled={!prevPhase} onClick={() => prevPhase && setSelectedAssignmentId(prevPhase.id)}>
+              ← предыдущая
+            </Button>
+            <Button size="small" disabled={!nextPhase} onClick={() => nextPhase && setSelectedAssignmentId(nextPhase.id)}>
+              следующая →
+            </Button>
+          </>
+        )}
+        ariaLabel="Назначение"
+        className="sw-rp-assign-sheet"
+      >
+        {selectedAssignment && (
+          <SheetAssignment
+            open
+            onClose={() => setSelectedAssignmentId(null)}
+            planId={planId ?? ''}
+            assignment={selectedAssignment}
+            allAssignments={sortedAssignments}
+            employees={candidateEmployees}
+            onChanged={onAssignmentChanged}
+          />
+        )}
+      </DetailSheet>
+
+      <DetailSheet
+        open={reserveShown}
+        onClose={() => setReserveOpen(false)}
+        title={<><span className="sw-sheet-num">2.6</span>Нормированные работы — запас квартала</>}
+        subtitle={reserve && totals && [
+          reserve.scenario_name,
+          `заложено ${fmtHours(totals.planned)}`,
+          `занято ${fmtHours(totals.used)}`,
+          `осталось ${fmtHours(totals.remaining)}`,
+          totals.over > 0 ? `перерасход в ${totals.over} ${kindsWord(totals.over)} работ` : 'перерасхода нет',
+        ].join(' · ')}
+        ariaLabel="Нормированные работы — запас квартала"
+        className="sw-rp-reserve-sheet"
+      >
+        {reserve && gantt && <NormedReserveSummary key={gantt.plan.id} reserve={reserve} defaultExpanded />}
+      </DetailSheet>
     </SwissPage>
   );
 }

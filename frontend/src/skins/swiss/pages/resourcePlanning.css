@@ -39,15 +39,13 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     font-size: 14px;
     font-weight: 700;
   }
-  & .sw-rp-reserve .rp-reserve-caret { order: 2; margin-left: 4px; }
-  & .sw-rp-reserve [data-testid="rp-reserve-toggle"] > span:first-child { display: inline-flex; }
-
   & .sw-rp-data { gap: 16px; }
   & .sw-rp-stale.ant-alert { padding: 6px 12px; }
   & .sw-accent { color: var(--sw-accent-ink); }
 
   /* ---------- 2.2 Конфликты ---------- */
-  & .sw-rp-conflicts { flex: none; }
+  /* колонок конфликтов — по ширине блока: при панели справа он уже окна */
+  & .sw-rp-conflicts { flex: none; container: sw-rp-conf / inline-size; }
   & .sw-rp-conflict-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -110,15 +108,19 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-rp-conflict-status:hover .sw-chip { background: #F4F4F4; }
   & .sw-rp-error { color: var(--sw-accent-ink); font-size: 12px; }
 
-  /* ---------- Диаграмма + назначение ---------- */
+  /* ---------- Диаграмма во всю ширину (назначение фазы — в панели подробностей) ---------- */
   & .sw-rp-mid {
     flex: 1;
     min-height: 260px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
-    column-gap: 24px;
+    grid-template-columns: minmax(0, 1fr);
   }
+  /* под открытой панелью диаграмма держит высоту, остальное прокручивается */
+  &[data-detail-sheet] .sw-rp-mid { flex: 1 0 320px; }
   & .sw-rp-gantt { min-height: 0; }
+  /* фаза, открытая в панели, — в чёрной рамке поверх соседних полос */
+  & .sw-rp .rp-bar.rp-bar-selected { z-index: 7 !important; outline: 2px solid #111111 !important; outline-offset: 2px; }
+  & .sw-rp-legend-hint { margin-left: auto; }
   & .sw-rp-gantt .sw-block-tools .ant-select { min-width: 72px; max-width: 220px; }
   & .sw-rp-people { display: inline-flex; align-items: center; gap: 6px; }
   & .sw-rp-people .ant-select { min-width: 72px; }
@@ -305,24 +307,45 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-rp-legend .lg-absence { background: repeating-linear-gradient(135deg, #111111 0 1.5px, #FFFFFF 1.5px 4px); border: 1px solid #111111; }
   & .sw-rp-legend .lg-holiday { width: 6px !important; height: 6px !important; border-radius: 50%; background: #111111; }
 
-  /* ---------- 2.4 Назначение (панель встроена) ---------- */
-  & .sw-rp-assign { min-height: 0; overflow: auto; scrollbar-width: thin; }
+  /* ---------- 2.4 Назначение — в панели подробностей ---------- */
   & .rp-assign-docked { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-  & .rp-assign-docked-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  & .rp-assign-docked-title { font-size: 16px; font-weight: 700; }
-  & .rp-assign-docked-title::before { content: '2.4'; margin-right: 8px; font-size: 11px; font-weight: 700; color: #5E5E5E; }
-  & .rp-assign-close {
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    background: #FFFFFF;
-    border: 1px solid #111111;
-    font-size: 15px;
-    line-height: 18px;
-    color: #111111;
-    cursor: pointer;
+  /* Колонки широкой панели: параметры | дни × часы и длительность | откуда старт и КП | источники часов */
+  & .rp-assign-cols-grid { display: grid; column-gap: 32px; row-gap: 16px; align-items: start; }
+  & .rp-assign-cols.is-c1 .rp-assign-cols-grid { grid-template-columns: minmax(0, 1fr); }
+  & .rp-assign-cols.is-c2 .rp-assign-cols-grid { grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr); }
+  & .rp-assign-cols.is-c3 .rp-assign-cols-grid { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.3fr) minmax(0, 1fr); }
+  & .rp-assign-cols.is-c4 .rp-assign-cols-grid { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
+  & .rp-assign-col { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  /* колонки разделены тонкой линейкой */
+  & .rp-assign-col + .rp-assign-col { position: relative; }
+  & .rp-assign-col + .rp-assign-col::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -16px;
+    border-left: 1px solid #E2E2E2;
   }
-  & .rp-assign-close:hover { background: #111111; color: #FFFFFF; }
+  & .rp-assign-col > .ant-divider:first-child,
+  & .rp-assign-col > .ant-collapse:first-child { margin-top: 0 !important; }
+  /* на 3–4 колонках секции развёрнуты всегда: подпись — заголовок колонки, не сворачивает */
+  & .rp-assign-cols:is(.is-c3, .is-c4) .ant-collapse-header {
+    pointer-events: none;
+    cursor: default;
+    padding-top: 0 !important;
+    border-top: 2px solid #111111;
+    padding: 6px 0 4px !important;
+    font-size: 11px !important;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  & .rp-assign-cols:is(.is-c3, .is-c4) .ant-collapse-expand-icon { display: none !important; }
+  & .rp-assign-cols:is(.is-c3, .is-c4) .ant-collapse-ghost > .ant-collapse-item { border-top: 0 !important; }
+  & .rp-assign-cols:is(.is-c3, .is-c4) .ant-collapse + .ant-collapse { margin-top: 12px; }
+  /* таблицы «Дни × часы» и источников — не шире колонки, прокрутка внутри */
+  & .rp-assign-cols .ant-table-wrapper { max-width: 100%; overflow-x: auto; }
+  & .rp-assign-cols .ant-statistic-content { font-size: 20px !important; }
   & .rp-assign-docked-meta { font-size: 12px; color: #5E5E5E; }
   & .rp-assign-docked-meta .ant-space { gap: 6px !important; }
   & .rp-assign-docked-meta .ant-tag { margin: 0; font-size: 10px; line-height: 16px; padding: 0 4px; }
@@ -341,7 +364,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .rp-assign-docked-body h5.ant-typography { font-size: 14px !important; margin-bottom: 2px !important; }
   & .rp-assign-docked-body .ant-divider { margin: 12px 0 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
   & .rp-assign-docked-body .ant-divider-horizontal.ant-divider-with-text { border-block-start-color: #111111; }
-  & .rp-assign-docked-body .ant-divider-horizontal.ant-divider-with-text::before { width: 0 !important; }
+  /* подпись раздела («Действия», «Расчёт проблем») — слева, линейка тянется после неё */
+  & .rp-assign-docked-body .ant-divider-horizontal.ant-divider-with-text::before,
+  & .rp-assign-docked-body .ant-divider-with-text > .ant-divider-rail-start { display: none !important; }
   & .rp-assign-docked-body .ant-divider-inner-text { padding-left: 0 !important; }
 
   /* Поля назначения — подпись над значением, сеткой как в макете */
@@ -405,17 +430,16 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .rp-assign-docked-body .ant-collapse-ghost > .ant-collapse-item > .ant-collapse-panel > .ant-collapse-body,
   & .rp-assign-docked-body .ant-collapse-ghost .ant-collapse-content-box { padding: 4px 0 8px !important; }
 
-  /* ---------- Низ: загрузка по дням + запас ---------- */
+  /* ---------- Низ: загрузка по дням + итог запаса ---------- */
   & .sw-rp-bottom {
     flex: none;
     height: 262px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 420px;
+    grid-template-columns: minmax(0, 1fr) 300px;
     column-gap: 24px;
   }
   & .sw-rp-bottom.is-single { grid-template-columns: minmax(0, 1fr); }
-  & .sw-rp-load,
-  & .sw-rp-reserve { min-height: 0; overflow: hidden; }
+  & .sw-rp-load { min-height: 0; overflow: hidden; }
 
   /* 2.5 Загрузка по дням — заголовок блока, клетки мельче, без коробки */
   & .sw-rp-load .rp-hm { height: 100%; display: flex; flex-direction: column; min-height: 0; }
@@ -463,32 +487,43 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-rp-load .rp-hm-legend > span { font-size: 10px !important; color: #5E5E5E !important; }
   & .sw-rp-load .rp-hm-legend > span > span { width: 10px !important; height: 10px !important; box-sizing: border-box; }
 
-  /* 2.6 Запас нормированных работ — таблица с линиями */
-  & .sw-rp-reserve { overflow: auto; scrollbar-width: thin; }
-  & .sw-rp-reserve .rp-reserve-title { font-size: 14px !important; font-weight: 700 !important; }
-  & .sw-rp-reserve .rp-reserve-title::before { content: '2.6'; margin-right: 8px; font-size: 11px; color: #5E5E5E; }
-  & .sw-rp-reserve .rp-reserve-caret { color: #111111 !important; }
-  & .sw-rp-reserve [data-testid="rp-reserve-toggle"] { min-height: 26px; flex-wrap: wrap; gap: 0 12px; }
-  & .sw-rp-reserve [data-testid="rp-reserve-toggle"] > span:first-child { white-space: nowrap; }
-  & .sw-rp-reserve table { margin-top: 4px; }
-  & .sw-rp-reserve table col:nth-child(2) { width: 72px !important; }
-  & .sw-rp-reserve table col:nth-child(3) { width: 132px !important; }
-  & .sw-rp-reserve table col:nth-child(4) { width: 76px !important; }
-  & .sw-rp-reserve table th { padding: 4px 0 !important; border-bottom: 1px solid #111111 !important; }
-  & .sw-rp-reserve table td { padding: 6px 0 !important; }
-  & .sw-rp-reserve table td + td,
-  & .sw-rp-reserve table th + th { padding-left: 8px !important; }
-  & .sw-rp-reserve table th { color: #111111 !important; font-weight: 700 !important; }
-  & .sw-rp-reserve table td { color: #111111 !important; }
+  /* 2.6 Нормированные работы на странице — итог: три цифры строками и «Подробнее» */
+  & .sw-rp-reserve-sum { min-height: 0; }
+  & .sw-rp-reserve-sum.is-open { border-top-color: var(--sw-accent); }
+  & .sw-rp-rs-figs { margin: 0; display: flex; flex-direction: column; }
+  & .sw-rp-rs-figs > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #E2E2E2; }
+  & .sw-rp-rs-figs dt { font-size: 12px; color: #5E5E5E; }
+  & .sw-rp-rs-figs dd { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; color: #111111; }
+  & .sw-rp-rs-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; padding-top: 4px; font-size: 12px; }
+  & .sw-rp-rs-over { font-weight: 700; color: var(--sw-accent-ink); }
+  & .sw-rp-rs-ok { color: #5E5E5E; }
+
+  /* 2.6 Запас в панели подробностей — вся таблица с линиями во всю ширину */
+  & .sw-rp-reserve-sheet .rp-reserve { margin: 0 !important; padding: 0 !important; background: none !important; border: 0 !important; }
+  /* название и перерасход — в шапке панели; свернуть таблицу можно, закрыв панель */
+  & .sw-rp-reserve-sheet [data-testid="rp-reserve-toggle"] { display: none !important; }
+  & .sw-rp-reserve-sheet .rp-reserve > div:last-child { margin-top: 0 !important; }
+  & .sw-rp-reserve-sheet table { max-width: 1240px; }
+  & .sw-rp-reserve-sheet table col:nth-child(2) { width: 140px !important; }
+  & .sw-rp-reserve-sheet table col:nth-child(3) { width: min(420px, 36%) !important; }
+  & .sw-rp-reserve-sheet table col:nth-child(4) { width: 140px !important; }
+  & .sw-rp-reserve-sheet table th { padding: 6px 0 !important; border-bottom: 1px solid #111111 !important; color: #111111 !important; font-weight: 700 !important; }
+  & .sw-rp-reserve-sheet table td { padding: 8px 0 !important; color: #111111 !important; font-size: 13px !important; }
+  & .sw-rp-reserve-sheet table td + td,
+  & .sw-rp-reserve-sheet table th + th { padding-left: 16px !important; }
 }
 
 @media (max-width: 1500px) {
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-rp-mid { grid-template-columns: minmax(0, 1fr) 280px; }
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-rp-bottom { grid-template-columns: minmax(0, 1fr) 340px; }
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-rp-conflict-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-rp-bottom { grid-template-columns: minmax(0, 1fr) 260px; }
 }
 @media (max-width: 1100px) {
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-rp-mid,
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-rp-bottom { grid-template-columns: minmax(0, 1fr); row-gap: 16px; height: auto; }
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-rp-gantt-scroll { max-height: 70vh; }
+}
+
+@container sw-rp-conf (max-width: 1340px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-rp-conflict-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container sw-rp-conf (max-width: 720px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-rp-conflict-grid { grid-template-columns: minmax(0, 1fr); }
 }
