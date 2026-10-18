@@ -382,47 +382,94 @@ function ProjectRow({
   );
 }
 
-function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
+function KpiTiles({ data, inRow = false }: { data: DashboardProjectsResponse; inRow?: boolean }) {
+  const hasHelp = data.total_alien_fact_hours > 0;
+  // Подписи обычным регистром: в Aurora они набраны прописными через стиль.
   const tiles = [
     {
-      label: 'ВСЕГО ФАКТОМ',
+      key: 'fact',
+      label: 'Всего фактом',
       value: `${Math.round(data.total_team_fact_hours)} ч`,
       sub: `из ${Math.round(data.total_plan_hours)} план`,
       color: DARK_THEME.textPrimary,
+      skinColor: 'var(--text)',
     },
     {
-      label: 'СРЕДНЯЯ ЗАГРУЗКА',
+      key: 'load',
+      label: 'Средняя загрузка',
       value: `${Math.round(data.avg_load_pct)}%`,
       sub: 'факт / план',
       color: loadColor(data.avg_load_pct),
+      skinColor: loadColor(data.avg_load_pct),
     },
     {
-      label: 'ПОМОЩЬ ИЗВНЕ',
-      value: data.total_alien_fact_hours > 0 ? `+${Math.round(data.total_alien_fact_hours)} ч` : '—',
-      sub: data.total_alien_fact_hours > 0
+      key: 'help',
+      label: 'Помощь извне',
+      value: hasHelp ? `+${Math.round(data.total_alien_fact_hours)} ч` : '—',
+      sub: hasHelp
         ? `${data.alien_helper_count} чел · ${data.alien_projects_count} проектов`
         : 'нет внешней помощи',
-      color: data.total_alien_fact_hours > 0 ? '#84cc16' : DARK_THEME.textMuted,
+      color: hasHelp ? '#84cc16' : DARK_THEME.textMuted,
+      skinColor: hasHelp ? 'var(--good)' : 'var(--text-muted)',
     },
     {
-      label: 'МОЛЧАТ > 14 ДНЕЙ',
+      key: 'silent',
+      label: 'Молчат > 14 дней',
       value: `${data.silent_count}`,
       sub: 'проекта без активности',
       color: data.silent_count > 0 ? '#faad14' : DARK_THEME.textMuted,
+      skinColor: data.silent_count > 0 ? 'var(--warn)' : 'var(--text-muted)',
     },
     {
-      label: 'ЗАКРОЮТСЯ В СРОК',
+      key: 'forecast',
+      label: 'Закроются в срок',
       value: `${data.forecast_done}`,
       sub: `(${data.forecast_pct}%) прогноз по темпу`,
       color: '#67d68d',
+      skinColor: 'var(--good)',
     },
   ];
+
+  // Скин: плитки — ячейки общей сетки блока (ряд над кольцом и таблицей), одной высоты.
+  if (inRow) {
+    return (
+      <>
+        {tiles.map((t) => {
+          const isHelp = t.key === 'help' && hasHelp;
+          return (
+            <div key={t.key} data-testid="dash-kpi-tile" style={{
+              alignSelf: 'stretch',
+              minWidth: 0,
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              padding: 14,
+              background: isHelp ? 'var(--row-included-bg)' : 'var(--modal-tile-bg)',
+              border: `1px solid ${isHelp ? 'var(--accent-border)' : 'var(--glass-border)'}`,
+              borderRadius: 'var(--radius-sm)',
+            }}>
+              <div style={{ fontSize: 13, lineHeight: '18px', fontWeight: 500, color: 'var(--text-muted)' }}>{t.label}</div>
+              <div style={{
+                fontSize: 28, lineHeight: '32px', fontWeight: 700, color: t.skinColor,
+                fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+              }}>
+                {t.value}
+              </div>
+              <div style={{ fontSize: 13, lineHeight: '18px', color: 'var(--text-muted)' }}>{t.sub}</div>
+            </div>
+          );
+        })}
+      </>
+    );
+  }
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
       {tiles.map((t, idx) => {
-        const isHelp = t.label === 'ПОМОЩЬ ИЗВНЕ' && data.total_alien_fact_hours > 0;
+        const isHelp = t.key === 'help' && hasHelp;
         return (
-          <div key={t.label} data-testid="dash-kpi-tile" style={{
+          <div key={t.key} data-testid="dash-kpi-tile" style={{
             background: isHelp ? 'rgba(132,204,22,0.06)' : DARK_THEME.cardBg,
             border: isHelp ? '1px solid rgba(132,204,22,0.25)' : `1px solid ${DARK_THEME.border}`,
             borderRadius: 8,
@@ -572,23 +619,31 @@ export default function ProjectsWidget({ data, loading }: Props) {
     prefs.blocks.kpi ? '280px' : null,
     prefs.blocks.sparklines ? '280px' : null,
   ].filter(Boolean).join(' ');
-  // Скин: сводка, плитки и активность — одной колонкой слева; в четыре колонки
-  // таблица не помещается, и правый блок уезжает за край карточки.
-  const hasAside = prefs.blocks.donut || prefs.blocks.kpi || prefs.blocks.sparklines;
-  const skinCols = hasAside ? '280px minmax(0, 1fr)' : 'minmax(0, 1fr)';
+  // Скин: одна сетка на пять колонок. Сверху — ряд плиток сводки; под ним кольцо и
+  // активность занимают первую колонку (ширина первой плитки), таблица — остальные четыре.
+  const hasAside = prefs.blocks.donut || prefs.blocks.sparklines;
+  const skinGrid = 'minmax(220px, 1fr) repeat(4, minmax(0, 1fr))';
 
   return (
     <Card title="Проекты квартала" extra={extra}>
-      <div style={{ display: 'grid', gridTemplateColumns: skin ? skinCols : outerCols, gap: 20, alignItems: 'flex-start' }}>
-        {skin ? hasAside && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-            {prefs.blocks.donut && <Donut data={data} />}
-            {prefs.blocks.kpi && <KpiTiles data={data} />}
-            {prefs.blocks.sparklines && <Sparklines projects={data.projects} />}
-          </div>
+      <div
+        style={skin
+          ? { display: 'grid', gridTemplateColumns: skinGrid, gap: 20, alignItems: 'start' }
+          : { display: 'grid', gridTemplateColumns: outerCols, gap: 20, alignItems: 'flex-start' }}
+      >
+        {skin ? (
+          <>
+            {prefs.blocks.kpi && <KpiTiles data={data} inRow />}
+            {hasAside && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+                {prefs.blocks.donut && <Donut data={data} />}
+                {prefs.blocks.sparklines && <Sparklines projects={data.projects} />}
+              </div>
+            )}
+          </>
         ) : prefs.blocks.donut && <Donut data={data} />}
 
-        <div style={skin ? { overflowX: 'auto', minWidth: 0 } : undefined}>
+        <div style={skin ? { overflowX: 'auto', minWidth: 0, gridColumn: hasAside ? '2 / -1' : '1 / -1' } : undefined}>
           <div style={skin ? { minWidth: tableMinWidth } : undefined}>
           <div style={{
             display: 'grid',
