@@ -1,6 +1,7 @@
 /* Панель подробностей (DetailSheet).
    Оболочка темы может задать на <html>:
      --detail-sheet-inset-top / -left / -bottom — не закрывать меню и строку состояния;
+     --detail-sheet-inset-right — отступ от правого края окна (по умолчанию 0);
      --detail-sheet-bg, --detail-sheet-head-bg — фон панели и шапки.
    И обязана ужать рабочую область, пока панель открыта:
      html[data-detail-sheet="bottom"] .<рабочая-область> { padding-bottom: var(--detail-sheet-size); }
@@ -19,7 +20,7 @@
 
 .detail-sheet--bottom {
   left: var(--detail-sheet-inset-left, 0);
-  right: 0;
+  right: var(--detail-sheet-inset-right, 0);
   bottom: var(--detail-sheet-inset-bottom, 0);
   border-width: 1px 0 0;
   box-shadow: 0 -8px 32px rgba(20, 22, 26, 0.1);
@@ -27,7 +28,7 @@
 
 .detail-sheet--right {
   top: var(--detail-sheet-inset-top, 0);
-  right: 0;
+  right: var(--detail-sheet-inset-right, 0);
   bottom: var(--detail-sheet-inset-bottom, 0);
   border-width: 0 0 0 1px;
   box-shadow: -8px 0 32px rgba(20, 22, 26, 0.1);
@@ -36,7 +37,7 @@
 .detail-sheet.is-expanded {
   top: var(--detail-sheet-inset-top, 0);
   left: var(--detail-sheet-inset-left, 0);
-  right: 0;
+  right: var(--detail-sheet-inset-right, 0);
   bottom: var(--detail-sheet-inset-bottom, 0);
 }
 

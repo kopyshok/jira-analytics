@@ -111,10 +111,13 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
     });
   }, []);
 
-  const fractionAt = (e: PointerEvent) =>
-    placement === 'bottom'
-      ? (window.innerHeight - e.clientY) / window.innerHeight
-      : (window.innerWidth - e.clientX) / window.innerWidth;
+  // Размер — от закреплённого края самой панели: тема может отодвинуть панель от краёв окна.
+  const fractionAt = (e: PointerEvent<HTMLDivElement>) => {
+    const rect = (e.currentTarget.parentElement ?? e.currentTarget).getBoundingClientRect();
+    return placement === 'bottom'
+      ? (rect.bottom - e.clientY) / window.innerHeight
+      : (rect.right - e.clientX) / window.innerWidth;
+  };
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     dragging.current = true;
@@ -123,7 +126,9 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return;
     // Во время перетаскивания не пишем в браузер на каждый кадр — только в конце.
-    setPrefs((prev) => ({ ...prev, [placement]: clamp(placement, fractionAt(e)) }));
+    // Долю считаем сразу: после обработчика у события уже нет элемента.
+    const next = clamp(placement, fractionAt(e));
+    setPrefs((prev) => ({ ...prev, [placement]: next }));
   };
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return;
