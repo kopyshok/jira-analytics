@@ -82,11 +82,12 @@ function stripKeyPrefix(summary: string, key: string): string {
   return trimmed;
 }
 
-// Палитра с контрастом ≥4.5 на обоих фонах (white + #0d1c33).
-// Старые #22d3ee/#10b981 не проходили на белом — буквы команд сливались с фоном.
+// Палитра цветов команд. Старые #22d3ee/#10b981 не проходили на белом — буквы команд сливались с фоном.
+// Четыре цвета на светлом фоне (и серой подложке строки) ниже 4,5:1 — в светлых темах их
+// подменяют переменные из glass.css; в тёмной переменные не заданы, вид прежний.
 const TEAM_COLOR_PALETTE = [
-  '#7c3aed', '#0891b2', '#ea580c', '#047857',
-  '#b45309', '#dc2626', '#6d28d9', '#0e7490',
+  '#7c3aed', 'var(--an-team-cyan, #0891b2)', 'var(--an-team-orange, #ea580c)', '#047857',
+  'var(--an-team-amber, #b45309)', 'var(--an-team-red, #dc2626)', '#6d28d9', '#0e7490',
 ];
 
 function teamColor(name: string | null | undefined): string {

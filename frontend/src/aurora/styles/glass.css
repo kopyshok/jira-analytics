@@ -200,6 +200,12 @@
   --check-ink: #3b6ef5;
   --icon-muted: #5d6680;
   --empty-ink: #5d6680;
+
+  /* Цвета команд в строке задачи аналитики, которые на светлом фоне ниже 4,5:1 */
+  --an-team-cyan: #0b6a80;
+  --an-team-orange: #b23c0a;
+  --an-team-amber: #96460a;
+  --an-team-red: #b91c1c;
 }
 
 /* ---------- Фарфор neu overrides ----------
