@@ -71,6 +71,13 @@ export function resolveLayout(layout: AnalyticsLayout | undefined): ResolvedLayo
   };
 }
 
+/** Уровни дерева отчёта по факту: выбрана одна команда — уровня «Команда» нет; «Задача» всегда последняя. */
+export function treeLevels(visibleLevels: AnalyticsLevel[], selectedTeam: string): AnalyticsLevel[] {
+  let levels = selectedTeam === 'all' ? visibleLevels : visibleLevels.filter((l) => l !== 'team');
+  if (!levels.includes('issue')) levels = [...levels, 'issue'];
+  return levels;
+}
+
 export function useAnalyticsLayout() {
   const qc = useQueryClient();
   const query = useQuery({

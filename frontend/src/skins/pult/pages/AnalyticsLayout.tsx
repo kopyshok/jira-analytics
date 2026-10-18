@@ -7,6 +7,7 @@ import AnalyticsReportSettings from '../../../components/analytics/AnalyticsRepo
 import AnalyticsIssueDrawer from '../../../components/analytics/AnalyticsIssueDrawer';
 import DetailSheet from '../../../components/common/DetailSheet';
 import type { AnalyticsPageState } from '../../../hooks/useAnalyticsPage';
+import { LEVEL_LABELS, treeLevels, useAnalyticsLayout } from '../../../hooks/useAnalyticsLayout';
 import { PcField, PcRow, PcTitle, PModule, PultScreen } from '../ui';
 
 const fmt1 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -27,6 +28,8 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
     data, isLoading, periodStart, periodEnd,
     handleFilterChange, hasActiveFilters, resetFilters, exportXlsx,
   } = page;
+  // Подпись дерева — по тем же уровням, что и само дерево («Настройка отчёта» меняет порядок).
+  const { resolved } = useAnalyticsLayout();
   // Карточка задачи — в панели подробностей поверх страницы (в Aurora — выезжающая справа).
   const [issue, setIssue] = useState<{ id: string; key: string } | null>(null);
   // Рабочая область ужалась под панель — выбранная строка дерева остаётся на виду.
@@ -200,7 +203,7 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
           </PModule>
 
           <PModule
-            title="Дерево: команда → группа → роль → сотрудник → вид работ → категория → задача"
+            title={`Дерево: ${treeLevels(resolved.visibleLevels, selectedTeam).map((l) => LEVEL_LABELS[l].toLowerCase()).join(' → ')}`}
             className="an-tree"
             extra={worklogMode === 'drawer' && (
               <span className="pm-push an-tree-hint">щелчок по задаче — карточка с ворклогами в панели</span>

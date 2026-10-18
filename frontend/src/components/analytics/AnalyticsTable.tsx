@@ -14,7 +14,7 @@ import type {
   AnalyticsIssueNode,
 } from '../../types/api';
 import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
-import { useAnalyticsLayout } from '../../hooks/useAnalyticsLayout';
+import { treeLevels, useAnalyticsLayout } from '../../hooks/useAnalyticsLayout';
 import type { AnalyticsLevel } from '../../hooks/useAnalyticsLayout';
 import { statusTagColor } from '../../utils/status';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
@@ -778,15 +778,7 @@ export default function AnalyticsTable({
     };
   }, [data, selectedTeam]);
 
-  const layout = useMemo(() => {
-    let levels = resolved.visibleLevels;
-    if (selectedTeam !== 'all') {
-      // when a single team is selected, drop 'team' from grouping (single value anyway)
-      levels = levels.filter((l) => l !== 'team');
-    }
-    if (!levels.includes('issue')) levels = [...levels, 'issue'];
-    return levels;
-  }, [resolved.visibleLevels, selectedTeam]);
+  const layout = useMemo(() => treeLevels(resolved.visibleLevels, selectedTeam), [resolved.visibleLevels, selectedTeam]);
 
   const tableData: TreeNode[] = useMemo(
     () =>
