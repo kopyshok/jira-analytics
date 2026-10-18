@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type Poin
 import { createPortal } from 'react-dom';
 import { CloseOutlined, FullscreenExitOutlined, FullscreenOutlined } from '@ant-design/icons';
 import { clamp, loadPrefs, savePrefs, type Placement, type Prefs } from './detailSheetPrefs';
+import { DetailSheetWidthContext } from './detailSheetWidth';
 import './DetailSheet.css';
 
 /**
@@ -10,6 +11,7 @@ import './DetailSheet.css';
  * выбор и размер запоминаются в браузере. Пока панель открыта, на <html> висят
  * data-detail-sheet и --detail-sheet-size — оболочка темы по ним ужимает рабочую
  * область, чтобы панель ничего не закрывала.
+ * Ширину тела содержимое берёт из useDetailSheetWidth() — по ней раскладывает колонки.
  * На странице открыта не больше одной панели.
  */
 
@@ -44,13 +46,18 @@ function PlacementIcon({ placement }: { placement: Placement }) {
 export default function DetailSheet({ open, onClose, title, subtitle, extra, ariaLabel, className, children }: Props) {
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
   const [expanded, setExpanded] = useState(false);
-  // Закрыли панель — следующее открытие начинается не развёрнутым. Открыли — место и размер
-  // перечитываются: на странице могут быть другие панели, и пользователь мог их поменять там.
+  const [body, setBody] = useState<HTMLDivElement | null>(null);
+  const [bodyWidth, setBodyWidth] = useState(0);
+  // Закрыли панель — следующее открытие начинается не развёрнутым.
+  // Открыли — место и размер перечитываем: их могла сменить другая панель страницы.
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) setPrefs(loadPrefs());
-    else setExpanded(false);
+    if (!open) setExpanded(false);
+    else {
+      setPrefs(loadPrefs());
+      setBodyWidth(0);
+    }
   }
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
   const dragging = useRef(false);
@@ -75,6 +82,13 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
       root.style.removeProperty('--detail-sheet-size');
     };
   }, [open, placement, size]);
+
+  useEffect(() => {
+    if (!body || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) => setBodyWidth(Math.round(entry.contentRect.width)));
+    ro.observe(body);
+    return () => ro.disconnect();
+  }, [body]);
 
   useEffect(() => {
     if (!open) return;
@@ -133,6 +147,8 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
 
   const style = expanded ? undefined : placement === 'bottom' ? { height: size } : { width: size };
   const other: Placement = placement === 'bottom' ? 'right' : 'bottom';
+  // До первого замера — оценка по окну, чтобы содержимое не мигало узкой раскладкой.
+  const width = bodyWidth || (placement === 'right' && !expanded ? size : viewport.w);
 
   return createPortal(
     <section
@@ -185,7 +201,9 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
           </button>
         </div>
       </header>
-      <div className="detail-sheet__body">{children}</div>
+      <div className="detail-sheet__body" ref={setBody}>
+        <DetailSheetWidthContext.Provider value={width}>{children}</DetailSheetWidthContext.Provider>
+      </div>
     </section>,
     document.body,
   );
