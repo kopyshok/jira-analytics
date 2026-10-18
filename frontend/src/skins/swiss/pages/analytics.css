@@ -4,10 +4,9 @@
 
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   /* ---------- Паспорт ---------- */
-  & .sw-an-figures { gap: 12px 24px !important; margin-top: 20px !important; padding-top: 12px !important; }
+  & .sw-an-figures { gap: 12px 16px !important; margin-top: 20px !important; padding-top: 12px !important; }
   & .sw-an-figures .sw-figure--xl { display: flex; flex-direction: column-reverse; }
   & .sw-an-figures .sw-figure--xl .sw-figure-caption { margin: 0 0 2px; }
-  & .sw-an-figures .sw-figure--m .sw-figure-value { font-size: 36px; }
   & .sw-an .sw-passport .sw-figures + .sw-pass-section { margin-top: 20px; }
 
   & .sw-an-range-labels { margin-bottom: 0; }
@@ -31,7 +30,12 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-an-range .ant-picker-range .ant-picker-suffix,
   & .sw-an-range .ant-picker-range .ant-picker-clear { position: absolute; right: 0; top: 7px; margin: 0; }
   & .sw-an-range .ant-picker-input > input { font-size: 13px; }
-  & .sw-an-hierarchy .ant-checkbox-wrapper { font-size: 12px; align-items: center; }
+  /* значок календаря стоит поверх второго поля — текст до него не доходит */
+  & .sw-an-range .ant-picker-range .ant-picker-range-separator + .ant-picker-input { padding-right: 18px; }
+  & .sw-an-hierarchy .ant-checkbox-wrapper { font-size: 12px; align-items: flex-start; }
+  & .sw-an-hierarchy .ant-checkbox { margin-top: 1px; }
+  /* В узкой колонке категория и поиск — каждая на всю ширину: подсказка поиска не режется */
+  & .an-filters-stack > .sw-field:nth-child(n + 3) { grid-column: 1 / -1; }
   & .sw-an-hierarchy .ant-checkbox-label { display: inline-flex; gap: 8px; align-items: baseline; }
   & .sw-an-hint { font-size: 11px; color: #5E5E5E; }
   & .an-filters-stack { row-gap: 12px; }
@@ -197,4 +201,11 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
 @media (max-width: 1100px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-main { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-table-scroll { max-height: 70vh; }
+}
+
+/* Узкая колонка паспорта (1366 px): даты отбора мельче — «весь период» и «31.12.2026» видны целиком */
+@container sw-pass (max-width: 260px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-range .ant-picker-range { column-gap: 16px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-range-labels { column-gap: 16px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-an-range .ant-picker-input > input { font-size: 12px; }
 }

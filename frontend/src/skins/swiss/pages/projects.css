@@ -28,20 +28,21 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-pj-figures {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    margin-top: 24px;
-    padding-top: 16px;
+    gap: 14px;
+    margin-top: 20px;
+    padding-top: 14px;
     border-top: 1px solid #111111;
   }
-  & .sw-pj-fig-inline { display: flex; align-items: flex-end; gap: 16px; }
-  & .sw-pj-big { font-size: 56px; font-weight: 800; line-height: 0.9; letter-spacing: -0.02em; }
+  & .sw-pj-fig-inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 12px; }
+  /* Размеры — от ширины колонки паспорта: «204 / 2 186 ч» в одну строку и на 1366 */
+  & .sw-pj-big { font-size: clamp(34px, 18cqi, 56px); font-weight: 800; line-height: 0.9; letter-spacing: -0.02em; }
   & .sw-pj-big.is-ok { color: #1E7A3E; }
   & .sw-pj-big.is-over { color: var(--sw-accent-ink); }
-  & .sw-pj-mid { font-size: 40px; font-weight: 800; line-height: 0.95; letter-spacing: -0.02em; white-space: nowrap; }
+  & .sw-pj-mid { font-size: clamp(20px, 10cqi, 36px); font-weight: 800; line-height: 0.95; letter-spacing: -0.02em; white-space: nowrap; }
   & .sw-pj-cap { font-size: 11px; color: #5E5E5E; padding-bottom: 4px; }
   & .sw-pj-fig-inline + div .sw-pj-cap { display: block; margin-top: 4px; padding: 0; }
   & .pj-filters-stack { display: flex; flex-direction: column; gap: 12px; }
-  & .pj-filters-period { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 24px; align-items: end; }
+  & .pj-filters-period { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 16px; align-items: end; }
 
   /* ---------- Каркас данных ---------- */
   & .sw-pj-data {
@@ -278,4 +279,9 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pj-tl .pj-tl-ba
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pj-column,
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-pj-main { grid-column: 1 / -1; }
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pj-column-list { max-height: 50vh; }
+}
+
+/* Узкая колонка паспорта (1366 px): год и квартал — одно под другим */
+@container sw-pass (max-width: 260px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .pj-filters-period { grid-template-columns: minmax(0, 1fr); gap: 12px; }
 }

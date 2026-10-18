@@ -1,19 +1,22 @@
 /* ============================================================
    Обложка «Швейцарская» — общий каркас страниц с «паспортом экрана».
-   12 колонок, поля 32 px, промежуток 24 px; слева паспорт (заголовок,
-   крупные цифры, фильтры столбиком), справа данные. Экран целиком —
-   длинное прокручивается внутри своих блоков.
+   Поля 32 px, промежуток 24 px; слева узкая колонка паспорта (заголовок,
+   крупные цифры, фильтры столбиком), справа данные. На плотных экранах
+   (ресурсное планирование, сценарии) паспорт — полосой под меню, данные —
+   во всю ширину. Экран целиком — длинное прокручивается внутри своих блоков.
    Только под обложкой: у Aurora-тем атрибута data-skin нет.
    ============================================================ */
 
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
+  /* Ширина колонки паспорта: 296 px на 1920, 212 px на 1366 (на треть уже трёх колонок сетки). */
+  --sw-pass-w: clamp(212px, calc(15vw + 8px), 300px);
+
   /* Страница с паспортом сама держит высоту экрана. */
   & .sw-main:has(> .sw-page) { padding: 24px 32px 16px; overflow: auto; }
-  & body:has(.sw-passport .sw-feedback) .ant-float-btn-group { display: none; }
+  & body:has(.sw-passport .sw-feedback, .sw-strip .sw-feedback) .ant-float-btn-group { display: none; }
 
   & .sw-page {
     display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
     column-gap: 24px;
     height: 100%;
     min-height: 680px;
@@ -21,12 +24,14 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     font-size: 13px;
     line-height: 1.35;
   }
-  & .sw-page--p3 > .sw-passport { grid-column: 1 / span 3; }
-  & .sw-page--p3 > .sw-data { grid-column: 4 / -1; }
-  & .sw-page--p2 > .sw-passport { grid-column: 1 / span 2; }
-  & .sw-page--p2 > .sw-data { grid-column: 3 / -1; }
+  & .sw-page--side { grid-template-columns: var(--sw-pass-w) minmax(0, 1fr); }
+  & .sw-page--strip {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    row-gap: 16px;
+  }
 
-  /* ---------- Паспорт ---------- */
+  /* ---------- Паспорт колонкой ---------- */
   & .sw-passport {
     min-height: 0;
     min-width: 0;
@@ -35,6 +40,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     flex-direction: column;
     padding-right: 4px;
     scrollbar-width: thin;
+    /* размеры цифр и раскладка полей — от ширины колонки */
+    container: sw-pass / inline-size;
   }
   & .sw-eyebrow {
     font-size: 11px;
@@ -46,13 +53,14 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-title {
     margin: 8px 0 8px;
     font-family: var(--sw-font);
-    font-size: 30px;
+    /* 30 px в колонке 296 px, 22 px в колонке 212 px */
+    font-size: clamp(22px, 10cqi, 30px);
     line-height: 1.05;
     font-weight: 700;
     letter-spacing: -0.01em;
     color: #111111;
+    overflow-wrap: break-word;
   }
-  & .sw-page--p2 .sw-title { font-size: 28px; margin-bottom: 12px; }
   & .sw-subtitle {
     margin: 0;
     max-width: 380px;
@@ -64,16 +72,16 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-figures {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 16px 24px;
-    margin-top: 24px;
-    padding-top: 16px;
+    gap: 14px 16px;
+    margin-top: 20px;
+    padding-top: 14px;
     border-top: 1px solid #111111;
   }
-  & .sw-page--p2 .sw-figures { gap: 16px; margin-top: 20px; padding-top: 12px; }
   & .sw-figure { min-width: 0; }
   & .sw-figure--xl { grid-column: 1 / -1; }
+  /* Крупные цифры — от ширины колонки паспорта: «×0.60» и «1 424» влезают в половину колонки */
   & .sw-figure-value {
-    font-size: 52px;
+    font-size: clamp(26px, 13.5cqi, 44px);
     font-weight: 800;
     line-height: 0.95;
     letter-spacing: -0.02em;
@@ -82,9 +90,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  & .sw-page--p2 .sw-figure-value { font-size: 46px; }
-  & .sw-figure--xl .sw-figure-value { font-size: 56px; }
-  & .sw-figure--m .sw-figure-value { font-size: 40px; }
+  & .sw-figure--xl .sw-figure-value { font-size: clamp(32px, 16.5cqi, 52px); }
+  & .sw-figure--m .sw-figure-value { font-size: clamp(22px, 11cqi, 36px); }
   & .sw-figure-value.is-accent { color: var(--sw-accent-ink); }
   & .sw-figure-value.is-good { color: #1E7A3E; }
   & .sw-figure-caption { margin-top: 4px; font-size: 11px; color: #5E5E5E; }
@@ -92,14 +99,13 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-figure-caption.is-strong.is-accent { color: var(--sw-accent-ink); }
 
   & .sw-pass-section {
-    margin-top: 24px;
+    margin-top: 20px;
     padding-top: 12px;
     border-top: 1px solid #111111;
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
-  & .sw-page--p2 .sw-pass-section { margin-top: 20px; }
   & .sw-field { min-width: 0; }
   & .sw-field-label {
     display: block;
@@ -135,12 +141,20 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-passport .ant-input::placeholder,
   & .sw-passport .ant-picker-input > input::placeholder { color: #5E5E5E !important; }
 
-  /* Переключатели режимов в паспорте — на всю ширину */
+  /* Переключатели режимов в паспорте — на всю ширину; длинное слово получает больше места,
+     подпись из двух слов переносится («Открытые / сейчас»), а не режется многоточием */
+  & .sw-passport .ant-segmented.ant-segmented-block .ant-segmented-item { flex: 1 1 auto; min-width: 0; }
   & .sw-passport .ant-segmented.ant-segmented-block .ant-segmented-item-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     min-height: 28px;
-    line-height: 28px;
-    padding: 0 4px;
+    padding: 3px 6px;
     font-size: 12px;
+    line-height: 1.2;
+    white-space: normal;
+    text-align: center;
+    overflow: visible;
   }
   & .sw-checks {
     display: flex;
@@ -201,6 +215,106 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     cursor: pointer;
   }
   & .sw-feedback button:hover { color: var(--sw-accent-ink); }
+
+  /* ---------- Паспорт полосой (плотные экраны) ----------
+     Строка рубрики с обратной связью, под ней в один ряд: название, цифры,
+     поля и действия — отрезками, разделёнными тонкими линейками. */
+  & .sw-strip { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  & .sw-strip-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 16px;
+    min-width: 0;
+  }
+  & .sw-strip-hint { font-size: 11px; color: #5E5E5E; }
+  & .sw-strip-top .sw-feedback { margin: 0 0 0 auto; padding: 0; }
+  & .sw-strip-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    row-gap: 8px;
+    min-width: 0;
+  }
+  & .sw-strip .sw-title {
+    flex: none;
+    align-self: flex-end;
+    /* по слову в строке: «Ресурсное / планирование» */
+    width: min-content;
+    margin: 0;
+    padding-right: 24px;
+    font-size: 26px;
+    line-height: 1.02;
+  }
+  & .sw-strip-cell {
+    flex: none;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 4px;
+    padding: 0 24px;
+    border-left: 1px solid #E2E2E2;
+  }
+  & .sw-strip-cell--btn { flex-direction: row; align-items: flex-end; gap: 8px; }
+  & .sw-strip .sw-figures {
+    display: flex;
+    gap: 0 24px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  & .sw-strip .sw-figure { flex: none; }
+  & .sw-strip .sw-figure-value { font-size: 34px; overflow: visible; }
+  & .sw-strip .sw-figure-caption { white-space: nowrap; }
+  & .sw-strip .sw-field-label { margin-bottom: 0; }
+  & .sw-strip .ant-select {
+    width: 100%;
+    border: 0 !important;
+    border-bottom: 1px solid #111111 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  & .sw-strip .ant-select .ant-select-selector,
+  & .sw-strip .ant-select-content { padding-left: 0 !important; }
+  & .sw-strip .ant-select-focused { border-bottom-width: 2px !important; }
+  & .sw-strip .ant-select-selection-placeholder,
+  & .sw-strip .ant-select-placeholder { color: #5E5E5E !important; }
+  & .sw-strip .ant-btn { height: 32px; padding: 0 14px; font-size: 13px; }
+  /* Действия текстом с подчёркиванием — сеткой в две строки */
+  & .sw-strip-links {
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
+    align-content: end;
+    gap: 6px 20px;
+    font-size: 12px;
+  }
+  & .sw-page .sw-strip-links .sw-link-row,
+  & .sw-page .sw-strip-links > .ant-btn.ant-btn.ant-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    gap: 6px;
+    height: auto;
+    padding: 0 0 1px !important;
+    background: none !important;
+    border: 0 !important;
+    border-bottom: 1px solid #111111 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 400 !important;
+    line-height: 1.35;
+    color: #111111 !important;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  & .sw-page .sw-strip-links .sw-link-row:hover,
+  & .sw-page .sw-strip-links > .ant-btn.ant-btn.ant-btn:hover { color: var(--sw-accent-ink) !important; border-bottom-color: var(--sw-accent-ink) !important; }
+  & .sw-strip-links > .ant-btn > .ant-btn-icon { display: none; }
+  & .sw-strip-links > .ant-btn .anticon-down { font-size: 9px; }
 
   /* ---------- Данные ---------- */
   & .sw-data {
@@ -336,23 +450,33 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   }
 }
 
+/* Узкая колонка паспорта (≤ 260 px, 1366 px): пары полей — одно под другим. */
+@container sw-pass (max-width: 260px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-field-row:not(.sw-an-range-labels) { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-checks { justify-content: flex-start; }
+  /* подсказки полей («Поиск по названию или ключу») — целиком */
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-passport .ant-input { font-size: 12px; }
+}
+
 /* Низкие экраны: страница длиннее окна — прокрутка всей страницы, блоки сохраняют свои высоты. */
 @media (max-height: 760px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page { height: auto; }
 }
-/* 1366 px: паспорт узкий — крупные цифры и заголовок мельче, чтобы не резались многоточием. */
+/* 1366 px: полоса паспорта плотнее — заголовок и цифры мельче, промежутки уже. */
 @media (max-width: 1500px) {
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-title { font-size: 24px; overflow-wrap: anywhere; hyphens: auto; }
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page--p2 .sw-title { font-size: 21px; }
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-figure-value { font-size: 38px; }
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page--p2 .sw-figure-value { font-size: 30px; }
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-figure--xl .sw-figure-value { font-size: 44px; }
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-figure--m .sw-figure-value { font-size: 30px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page { column-gap: 20px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-strip .sw-title { font-size: 21px; padding-right: 16px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-strip-cell { padding: 0 14px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-strip .sw-figures { gap: 0 16px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-strip .sw-figure-value { font-size: 27px; }
+  /* длинная подпись цифры («критических конфликтов») — в две строки, ряд остаётся одним */
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-strip .sw-figure-caption { white-space: normal; max-width: 9em; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-strip .ant-btn { padding: 0 12px; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-strip-links { column-gap: 14px; }
 }
 /* Узкие экраны: паспорт над данными. */
 @media (max-width: 1100px) {
   html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page { height: auto; row-gap: 24px; }
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page > .sw-passport,
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page > .sw-data { grid-column: 1 / -1; }
-  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-passport { overflow: visible; }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-page--side { grid-template-columns: minmax(0, 1fr); }
+  html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .sw-passport { overflow: visible; container-type: normal; }
 }

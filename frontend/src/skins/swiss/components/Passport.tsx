@@ -3,18 +3,19 @@ import FeedbackLinks from './FeedbackLinks';
 import '../swiss-pages.css';
 
 /**
- * Каркас страницы обложки «Швейцарская»: 12-колоночная сетка, слева —
+ * Каркас страницы обложки «Швейцарская». Обычно слева узкая колонка —
  * «паспорт экрана» (заголовок, крупные цифры, фильтры), справа — данные.
+ * На плотных экранах (strip) паспорт — полосой под меню, данные — во всю ширину.
  * Страница занимает экран целиком, длинное прокручивается внутри блоков.
  */
-export function SwissPage({ passportSpan = 3, className, children }: {
-  /** Ширина паспорта в колонках сетки: 3 — обычно, 2 — у плотных экранов. */
-  passportSpan?: 2 | 3;
+export function SwissPage({ strip = false, className, children }: {
+  /** Паспорт полосой над данными (<PassportStrip>), а не колонкой слева. */
+  strip?: boolean;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <div className={`sw-page sw-page--p${passportSpan}${className ? ` ${className}` : ''}`}>
+    <div className={`sw-page ${strip ? 'sw-page--strip' : 'sw-page--side'}${className ? ` ${className}` : ''}`}>
       {children}
     </div>
   );
@@ -47,7 +48,48 @@ export function Passport({ eyebrow, title, subtitle, children }: {
   );
 }
 
-/** Ключевые цифры раздела — сеткой 2×N под линией. */
+/**
+ * Паспорт полосой под меню: сверху строкой рубрика, пояснение и обратная связь,
+ * ниже в один ряд — название экрана и отрезки (<StripCell>): цифры, поля, действия.
+ */
+export function PassportStrip({ eyebrow, title, hint, children }: {
+  eyebrow: string;
+  title: ReactNode;
+  /** Пояснение экрана — мелко в строке рубрики. */
+  hint?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <header className="sw-strip" aria-label="Паспорт экрана">
+      <div className="sw-strip-top">
+        <span className="sw-eyebrow">{eyebrow}</span>
+        {hint && <span className="sw-strip-hint">{hint}</span>}
+        <FeedbackLinks />
+      </div>
+      <div className="sw-strip-row">
+        <h1 className="sw-title">{title}</h1>
+        {children}
+      </div>
+    </header>
+  );
+}
+
+/** Отрезок полосы паспорта: отделён тонкой линейкой слева. */
+export function StripCell({ children, className, label }: {
+  children: ReactNode;
+  className?: string;
+  /** Подпись заглавными над содержимым («ПЛАН», «ВЫБОР СЦЕНАРИЯ»). */
+  label?: ReactNode;
+}) {
+  return (
+    <div className={`sw-strip-cell${className ? ` ${className}` : ''}`}>
+      {label && <div className="sw-field-label">{label}</div>}
+      {children}
+    </div>
+  );
+}
+
+/** Ключевые цифры раздела — сеткой 2×N под линией (в полосе — в ряд). */
 export function Figures({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={`sw-figures${className ? ` ${className}` : ''}`}>{children}</div>;
 }

@@ -20,31 +20,25 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     --rp-hm-label-w: 200px;
     --rp-hm-row-h: 22px;
   }
-  & .sw-rp .sw-passport .sw-title { margin-bottom: 12px; }
-  & .sw-rp .sw-rp-blocks.ant-btn {
-    height: auto;
-    padding: 6px 12px;
-    font-size: 12px;
-    font-weight: 400;
+  /* ---------- Полоса паспорта: план, «Распределить», действия ---------- */
+  /* выбор плана забирает свободное место полосы — длинное название видно целиком на широком экране */
+  & .sw-strip-cell.sw-rp-plan { flex: 1 1 224px; max-width: 460px; }
+  & .sw-rp-plan-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+  & .sw-rp-plan-state {
+    display: flex;
+    align-items: center;
     gap: 8px;
+    min-width: 0;
+    font-size: 12px;
+    white-space: nowrap;
   }
+  & .sw-rp-plan-state .sw-chip.is-plain { overflow: hidden; text-overflow: ellipsis; }
   & .sw-rp .sw-rp-distribute.ant-btn {
-    height: auto;
-    justify-content: flex-start;
-    padding: 8px 12px;
+    height: 34px;
+    padding: 0 20px;
     font-size: 14px;
     font-weight: 700;
   }
-  & .sw-rp .sw-rp-plan-state {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 12px;
-    font-size: 12px;
-  }
-  & .sw-rp .sw-linklist .ant-btn .anticon-down { font-size: 10px; }
-  & .sw-rp .sw-linklist > .ant-btn > .ant-btn-icon { display: none; }
-  & .sw-rp .sw-linklist > .ant-btn > span:not(.ant-btn-icon) { flex: 1 1 auto; width: 100%; display: flex; justify-content: space-between; align-items: center; }
   & .sw-rp-reserve .rp-reserve-caret { order: 2; margin-left: 4px; }
   & .sw-rp-reserve [data-testid="rp-reserve-toggle"] > span:first-child { display: inline-flex; }
 

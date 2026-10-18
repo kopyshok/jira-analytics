@@ -33,12 +33,12 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
     --rs-deficit-bg: #FFFFFF;
   }
 
-  /* ---------- Паспорт ---------- */
-  & .sw-pl-figures { grid-template-columns: 1fr; gap: 20px; }
-  & .sw-pl-figures .sw-figure--xl .sw-figure-value { font-size: 60px; }
-  & .sw-pl-pass-btns { display: flex; flex-wrap: wrap; gap: 8px; }
-  & .sw-pl-pass-btns .ant-btn { height: 28px; padding: 0 12px; font-size: 12px; font-weight: 500; }
-  & .sw-pl-new.ant-btn { height: 34px; justify-content: flex-start; font-weight: 700; }
+  /* ---------- Полоса паспорта ---------- */
+  /* Подпись дефицита по ролям бывает длинной — переносится под цифрой, а не режется */
+  & .sw-pl-figures .sw-figure:last-child .sw-figure-caption { white-space: normal; max-width: 300px; }
+  & .sw-strip-cell.sw-pl-pick { flex: 1 1 240px; max-width: 420px; }
+  & .sw-pl-pass-btns .ant-btn { font-weight: 500; }
+  & .sw-pl-new.ant-btn { font-weight: 700; }
 
   /* ---------- Каркас данных ---------- */
   & .sw-pl-data { gap: 10px; }

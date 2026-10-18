@@ -13,7 +13,7 @@ import type { RpLayout } from '../../../components/resource-planning/GanttRows';
 import type { TimelineScale } from '../../../utils/gantt';
 import { PHASE_LABELS } from '../../../utils/gantt';
 import { splitConflicts } from '../../../utils/rpConflicts';
-import { BlockHead, Field, Figure, Figures, PassSection, Passport, SwissData, SwissPage } from '../components/Passport';
+import { BlockHead, Figure, Figures, PassportStrip, StripCell, SwissData, SwissPage } from '../components/Passport';
 import ConflictStrip from './rp/ConflictStrip';
 import './resourcePlanning.css';
 
@@ -36,9 +36,9 @@ function criticalCaption(n: number): string {
 }
 
 /**
- * «Ресурсное планирование» в обложке «Швейцарская»: паспорт (цифры качества
- * плана, выбор плана, действия), справа конфликты, диаграмма с панелью
- * назначения и снизу — загрузка по дням и запас нормированных работ.
+ * «Ресурсное планирование» в обложке «Швейцарская»: паспорт полосой под меню
+ * (цифры качества плана, выбор плана, действия), ниже во всю ширину конфликты,
+ * диаграмма с панелью назначения и снизу — загрузка по дням и запас нормированных работ.
  */
 export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanningPageModel }) {
   const {
@@ -66,45 +66,55 @@ export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanni
   const computing = compute.isPending || gantt?.plan.status === 'computing';
 
   return (
-    <SwissPage passportSpan={2} className="sw-rp">
-      <Passport eyebrow="2.0 Паспорт экрана" title="Ресурсное планирование">
-        <Button block className="sw-rp-blocks" icon={<Lock size={14} strokeWidth={1.5} />} onClick={() => setBlocksOpen(true)}>
-          Заблокированные периоды
-        </Button>
-
-        <Figures>
-          <Figure value={pct(quality?.overload_days_pct)} caption="Перегрузки" title="Доля перегруженных дней" />
-          <Figure value={quality?.late_count ?? '—'} caption="Просрочки" />
-          <Figure value={pct(quality?.mean_utilization_pct)} caption="Утилизация" title="Среднее использование ёмкости" />
-          <Figure
-            value={gantt ? criticals : '—'}
-            caption={criticalCaption(criticals)}
-            tone={criticals > 0 ? 'accent' : undefined}
-            strong
-          />
-        </Figures>
-
-        <PassSection eyebrow="2.1 План">
-          <Field label="План">
-            <Select
-              data-tour="rp-scenario-select"
-              variant="underlined"
-              loading={plansLoading || createPlan.isPending}
-              placeholder="Выберите утверждённый сценарий"
-              value={currentScenarioId}
-              onChange={handlePickScenario}
-              options={scenarioOptions}
-              showSearch
-              optionFilterProp="label"
-              allowClear
-              onClear={() => setPlanId(null)}
-              popupMatchSelectWidth={360}
+    <SwissPage strip className="sw-rp">
+      <PassportStrip eyebrow="2.0 Паспорт экрана" title="Ресурсное планирование">
+        <StripCell>
+          <Figures>
+            <Figure value={pct(quality?.overload_days_pct)} caption="Перегрузки" title="Доля перегруженных дней" />
+            <Figure value={quality?.late_count ?? '—'} caption="Просрочки" />
+            <Figure value={pct(quality?.mean_utilization_pct)} caption="Утилизация" title="Среднее использование ёмкости" />
+            <Figure
+              value={gantt ? criticals : '—'}
+              caption={criticalCaption(criticals)}
+              tone={criticals > 0 ? 'accent' : undefined}
+              strong
             />
-          </Field>
-          {planId && (
+          </Figures>
+        </StripCell>
+
+        <StripCell className="sw-rp-plan">
+          {/* Подпись поля и состояние плана — одной строкой над выбором. */}
+          <div className="sw-rp-plan-head">
+            <span className="sw-field-label">План</span>
+            {gantt && status && (
+              <span className="sw-rp-plan-state">
+                <span className={`sw-status ${status.tone}`}><span className="sw-dot" />{status.label}</span>
+                {gantt.plan.is_baseline && <span className="sw-chip">Базовый</span>}
+                {gantt.plan.label && <span className="sw-chip is-plain" title="Метка копии плана">{gantt.plan.label}</span>}
+              </span>
+            )}
+          </div>
+          <Select
+            data-tour="rp-scenario-select"
+            variant="underlined"
+            aria-label="План"
+            loading={plansLoading || createPlan.isPending}
+            placeholder="Выберите утверждённый сценарий"
+            value={currentScenarioId}
+            onChange={handlePickScenario}
+            options={scenarioOptions}
+            showSearch
+            optionFilterProp="label"
+            allowClear
+            onClear={() => setPlanId(null)}
+            popupMatchSelectWidth={360}
+          />
+        </StripCell>
+
+        {planId && (
+          <StripCell className="sw-strip-cell--btn">
             <Button
               type="primary"
-              block
               className="sw-rp-distribute"
               loading={computing}
               onClick={handleCompute}
@@ -112,16 +122,12 @@ export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanni
             >
               Распределить
             </Button>
-          )}
-          {gantt && status && (
-            <div className="sw-rp-plan-state">
-              <span className={`sw-status ${status.tone}`}><span className="sw-dot" />{status.label}</span>
-              {gantt.plan.is_baseline && <span className="sw-chip">Базовый</span>}
-              {gantt.plan.label && <span className="sw-chip is-plain" title="Метка копии плана">{gantt.plan.label}</span>}
-            </div>
-          )}
+          </StripCell>
+        )}
+
+        <StripCell className="sw-strip-links">
           {planId && gantt && (
-            <div className="sw-linklist">
+            <>
               <button type="button" className="sw-link-row" onClick={() => setForkModalOpen(true)}>
                 Сделать копию плана
               </button>
@@ -129,10 +135,14 @@ export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanni
               {gantt.plan.parent_plan_id && (
                 <button type="button" className="sw-link-row" onClick={openCompare}>Сравнить с базовым</button>
               )}
-            </div>
+            </>
           )}
-        </PassSection>
-      </Passport>
+          <button type="button" className="sw-link-row" onClick={() => setBlocksOpen(true)}>
+            <Lock size={13} strokeWidth={1.5} aria-hidden="true" />
+            Заблокированные периоды
+          </button>
+        </StripCell>
+      </PassportStrip>
 
       <SwissData
         className="sw-rp-data"

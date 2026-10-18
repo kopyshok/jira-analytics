@@ -13,7 +13,7 @@ import { TeamSelector } from '../../../components/planning/TeamSelector';
 import { planningOverlays } from '../../../components/planning/planningOverlays';
 import { includedHours } from '../../../utils/planning';
 import { getRoleLabel } from '../../../utils/roles';
-import { BlockHead, Field, Figure, Figures, PassSection, Passport, SwissData, SwissPage } from '../components/Passport';
+import { BlockHead, Figure, Figures, PassportStrip, StripCell, SwissData, SwissPage } from '../components/Passport';
 import './planning.css';
 
 const num = (v: number) => Math.round(v).toLocaleString('ru-RU');
@@ -23,10 +23,10 @@ const ROLE_SHORT: Record<string, string> = {
 };
 
 /**
- * «Сценарии» в обложке «Швейцарская» (макет G-scenarios): паспорт — ресурс
- * на бэклог, включено идей, самый большой дефицит, выбор сценария; справа —
- * шапка сценария 2.2, строка сводки ресурса, вкладки 2.3/2.4, таблица
- * бэклога 2.5 и колонка ресурса команды 2.6–2.9.
+ * «Сценарии» в обложке «Швейцарская» (макет G-scenarios): паспорт полосой под
+ * меню — ресурс на бэклог, включено идей, самый большой дефицит, выбор сценария;
+ * ниже во всю ширину — шапка сценария 2.2, строка сводки ресурса, вкладки 2.3/2.4,
+ * таблица бэклога 2.5 и колонка ресурса команды 2.6–2.9.
  */
 export default function SwissPlanningLayout({ vm }: { vm: PlanningPageModel }) {
   const {
@@ -49,59 +49,58 @@ export default function SwissPlanningLayout({ vm }: { vm: PlanningPageModel }) {
 
   return (
     <>
-      <SwissPage className="sw-pl">
-        <Passport
+      <SwissPage strip className="sw-pl">
+        <PassportStrip
           eyebrow="2.0 Планирование · паспорт экрана"
           title="Сценарии"
-          subtitle="Отметьте галочками задачи из бэклога — сформируется план квартала."
+          hint="Отметьте галочками задачи из бэклога — сформируется план квартала."
         >
-          <Figures className="sw-pl-figures">
-            <Figure size="xl" value={backlog == null ? '—' : `${num(backlog)} ч`} caption="на бэклог" />
-            <Figure
-              size="xl"
-              value={allocations ? `${includedIds.length} из ${allocations.length}` : '—'}
-              caption="идей включено в сценарий"
-            />
-            {worstRole ? (
+          <StripCell>
+            <Figures className="sw-pl-figures">
+              <Figure value={backlog == null ? '—' : `${num(backlog)} ч`} caption="на бэклог" />
               <Figure
-                size="xl"
-                tone="accent"
-                strong
-                value={`−${num(worstHours as number)} ч ${short(worstRole)}`}
-                caption={`Дефицит по роли «${getRoleLabel(roles, worstRole)}»${restDeficits ? `; ещё ${restDeficits}` : ''}`}
+                value={allocations ? `${includedIds.length} из ${allocations.length}` : '—'}
+                caption="идей включено в сценарий"
               />
-            ) : (
-              <Figure size="xl" tone="good" value="0 ч" caption={ready ? 'дефицита нет' : 'дефицит'} />
-            )}
-          </Figures>
+              {worstRole ? (
+                <Figure
+                  tone="accent"
+                  strong
+                  value={`−${num(worstHours as number)} ч ${short(worstRole)}`}
+                  caption={`Дефицит по роли «${getRoleLabel(roles, worstRole)}»${restDeficits ? `; ещё ${restDeficits}` : ''}`}
+                />
+              ) : (
+                <Figure tone="good" value="0 ч" caption={ready ? 'дефицита нет' : 'дефицит'} />
+              )}
+            </Figures>
+          </StripCell>
 
-          <PassSection eyebrow="2.1 Сценарий">
-            <Field label="Выбор сценария">
-              <Select
-                data-tour="planning-scenario-select"
-                variant="underlined"
-                placeholder="Выберите сценарий"
-                value={scenarioId ?? undefined}
-                onChange={(v) => setScenarioId(v)}
-                options={scenarioOptions}
-                allowClear
-                onClear={() => setScenarioId(null)}
-                popupMatchSelectWidth={false}
-              />
-            </Field>
-            <div className="sw-pl-pass-btns">
-              <Tooltip title="Сравнить два сценария">
-                <Button size="small" onClick={() => setCompareOpen(true)}>Сравнить</Button>
-              </Tooltip>
-              <Tooltip title="Вовлечённость и нормированные работы">
-                <Button size="small" onClick={() => setInvolvementOpen(true)} data-tour="planning-involvement">
-                  Вовлечённость
-                </Button>
-              </Tooltip>
-            </div>
+          <StripCell className="sw-pl-pick" label="Выбор сценария">
+            <Select
+              data-tour="planning-scenario-select"
+              variant="underlined"
+              aria-label="Выбор сценария"
+              placeholder="Выберите сценарий"
+              value={scenarioId ?? undefined}
+              onChange={(v) => setScenarioId(v)}
+              options={scenarioOptions}
+              allowClear
+              onClear={() => setScenarioId(null)}
+              popupMatchSelectWidth={false}
+            />
+          </StripCell>
+
+          <StripCell className="sw-strip-cell--btn sw-pl-pass-btns">
+            <Tooltip title="Сравнить два сценария">
+              <Button onClick={() => setCompareOpen(true)}>Сравнить</Button>
+            </Tooltip>
+            <Tooltip title="Вовлечённость и нормированные работы">
+              <Button onClick={() => setInvolvementOpen(true)} data-tour="planning-involvement">
+                Вовлечённость
+              </Button>
+            </Tooltip>
             <Button
               type="primary"
-              block
               icon={<PlusOutlined />}
               className="sw-pl-new"
               onClick={() => setCreateOpen(true)}
@@ -109,8 +108,8 @@ export default function SwissPlanningLayout({ vm }: { vm: PlanningPageModel }) {
             >
               Новый сценарий
             </Button>
-          </PassSection>
-        </Passport>
+          </StripCell>
+        </PassportStrip>
 
         <SwissData className="sw-pl-data">
           {!scenarioId && (
