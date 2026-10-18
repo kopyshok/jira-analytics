@@ -19,8 +19,11 @@ import {
 interface Props {
   /** Запас нормированных работ команды плана на квартал. */
   reserve: ReserveOut;
-  /** Блок всегда раскрыт, заголовок — без сворачивания (панель, закреплённая в раскладке). */
-  alwaysOpen?: boolean;
+  /**
+   * Только таблица — без рамки, заголовка и сворачивания: панель подробностей
+   * (скин «Цветовые зоны»), где заголовок и сценарий — в шапке панели.
+   */
+  bare?: boolean;
 }
 
 /** Ключ строки таблицы запаса (React `key`) — уникален по задаче+команде+роли. */
@@ -35,14 +38,14 @@ const tdStyle: React.CSSProperties = {
   borderBottom: '1px solid var(--rp-row-line-2, rgba(30,58,95,0.4))',
 };
 
-export default function NormedReserveSummary({ reserve, alwaysOpen = false }: Props) {
+export default function NormedReserveSummary({ reserve, bare = false }: Props) {
   const { message } = App.useApp();
   const setOverride = useSetWorkTypeOverride();
   const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
   // При каждом открытии плана: развёрнут, если у команды есть часы других команд
   // (видно, сколько запаса они заняли), иначе свёрнут. Состояние не персистится.
   const [expandedState, setExpanded] = useState(() => hasOtherTeamHours(reserve));
-  const expanded = alwaysOpen || expandedState;
+  const expanded = bare || expandedState;
   // Раскрытые строки видов работ (задачи других команд) — ключ «роль::вид работ».
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   // Вид работ хранится на сервере per задача (backlog_item_id), а не per задача+роль — задача с
@@ -151,11 +154,9 @@ export default function NormedReserveSummary({ reserve, alwaysOpen = false }: Pr
   const headContent = (
     <>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {!alwaysOpen && (
-          <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 11, color: 'var(--rp-text-3, #7a9ab8)' }}>
-            {expanded ? '▾' : '▸'}
-          </span>
-        )}
+        <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 11, color: 'var(--rp-text-3, #7a9ab8)' }}>
+          {expanded ? '▾' : '▸'}
+        </span>
         <span className="rp-reserve-title" style={{ fontSize: 13, fontWeight: 600, color: 'var(--rp-heat-text, #fff)' }}>
           Нормированные работы — запас квартала
         </span>
@@ -171,7 +172,8 @@ export default function NormedReserveSummary({ reserve, alwaysOpen = false }: Pr
   return (
     <div
       data-testid="rp-reserve-summary"
-      style={{
+      className={bare ? 'rp-reserve-bare' : undefined}
+      style={bare ? undefined : {
         background: 'var(--rp-heat-bg, #0f2340)',
         border: '1px solid var(--rp-border, #1e3a5f)',
         borderRadius: 'var(--rp-frame-radius, 8px)',
@@ -179,11 +181,7 @@ export default function NormedReserveSummary({ reserve, alwaysOpen = false }: Pr
         marginTop: 'var(--rp-block-gap, 16px)',
       }}
     >
-      {alwaysOpen ? (
-        <div className="rp-reserve-head" style={headStyle}>
-          {headContent}
-        </div>
-      ) : (
+      {!bare && (
         <button
           type="button"
           data-testid="rp-reserve-toggle"
@@ -200,10 +198,12 @@ export default function NormedReserveSummary({ reserve, alwaysOpen = false }: Pr
       )}
 
       {expanded && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)', marginBottom: 8 }}>
-            {reserve.scenario_name}
-          </div>
+        <div style={bare ? undefined : { marginTop: 8 }}>
+          {!bare && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)', marginBottom: 8 }}>
+              {reserve.scenario_name}
+            </div>
+          )}
 
           {visibleRoles.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--rp-text-3, #7a9ab8)' }}>

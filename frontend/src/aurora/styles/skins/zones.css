@@ -141,7 +141,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] {
 /* ---------------- Цвета зон ----------------
    --zn-c — цвет зоны, --zn-on — текст на нём, --zn-on-2 — вторичный текст
    (тот же тон с прозрачностью, контраст ≥ 4.5), --zn-ctl-* — поля и кнопки на полосе. */
-html[data-skin="zones"] [data-zone="overview"] {
+html[data-skin="zones"] [data-zone="overview"],
+html[data-skin="zones"][data-zone="overview"] .detail-sheet {
   --zn-c: #2546A6;
   --zn-on: #FFFFFF;
   --zn-on-2: rgba(255, 255, 255, 0.86);
@@ -156,7 +157,8 @@ html[data-skin="zones"] [data-zone="overview"] {
   --zn-ctl-border: rgba(255, 255, 255, 0.45);
   --zn-tint: #E9ECF6;
 }
-html[data-skin="zones"] [data-zone="planning"] {
+html[data-skin="zones"] [data-zone="planning"],
+html[data-skin="zones"][data-zone="planning"] .detail-sheet {
   --zn-c: #E0AC2B;
   --zn-on: #1D1A12;
   --zn-on-2: rgba(29, 26, 18, 0.84);
@@ -171,7 +173,8 @@ html[data-skin="zones"] [data-zone="planning"] {
   --zn-ctl-border: rgba(29, 26, 18, 0.45);
   --zn-tint: #F9EED5;
 }
-html[data-skin="zones"] [data-zone="data"] {
+html[data-skin="zones"] [data-zone="data"],
+html[data-skin="zones"][data-zone="data"] .detail-sheet {
   --zn-c: #2F3337;
   --zn-on: #FFFFFF;
   --zn-on-2: rgba(255, 255, 255, 0.86);
@@ -571,12 +574,15 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .zn-band [data-t
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .zn-band [data-testid="onboarding-button"]:not(:disabled):hover { background: #F2F3F5 !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .zn-band .ant-btn.ant-btn-dangerous:not(:disabled) { color: var(--zn-on) !important; }
 html[data-skin="zones"] [data-zone="overview"],
-html[data-skin="zones"] [data-zone="data"] {
+html[data-skin="zones"] [data-zone="data"],
+html[data-skin="zones"][data-zone="overview"] .detail-sheet,
+html[data-skin="zones"][data-zone="data"] .detail-sheet {
   --zn-primary-bg: #FFFFFF;
   --zn-primary-hover: #F2F3F5;
   --zn-primary-fg: var(--za-ink);
 }
-html[data-skin="zones"] [data-zone="planning"] {
+html[data-skin="zones"] [data-zone="planning"],
+html[data-skin="zones"][data-zone="planning"] .detail-sheet {
   --zn-primary-bg: #9A6F00;
   --zn-primary-hover: #845F00;
   --zn-primary-fg: #FFFFFF;
@@ -1553,3 +1559,118 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-empty-descr
 /* Меню настроек длиннее окна — листается само, а не уводит короткий раздел за верх экрана */
 html[data-skin="zones"] .settings-nav { max-height: calc(100vh - 150px); overflow-y: auto; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-pagination-item-ellipsis { color: #5A5F66 !important; }
+
+/* ============================================================
+   Панель подробностей (DetailSheet): лист снизу или широкая справа.
+   Не закрывает колонку зон и пункты (слева) и цветную полосу (сверху);
+   рабочая область ужимается на размер панели — под ней ничего не прячется.
+   Шапка — цветом зоны раздела, как полоса.
+   ============================================================ */
+html[data-skin="zones"] {
+  --detail-sheet-inset-top: var(--zn-band-h, 0px);
+  --detail-sheet-inset-left: 64px;
+  --detail-sheet-bg: #FFFFFF;
+}
+html[data-skin="zones"]:has(.zn-app.is-items-open:not(.is-narrow)) { --detail-sheet-inset-left: 264px; }
+/* панель не съедает страницу: справа остаётся не меньше 640 px рабочей области,
+   снизу — не меньше 220 px под полосой; ужимается ровно на видимый размер панели */
+html[data-skin="zones"][data-detail-sheet] {
+  --zs-right-max: calc(100vw - var(--detail-sheet-inset-left) - 640px);
+  --zs-bottom-max: calc(100vh - var(--zn-band-h, 0px) - 220px);
+  --zs-right: min(var(--detail-sheet-size), var(--zs-right-max));
+  --zs-bottom: min(var(--detail-sheet-size), var(--zs-bottom-max));
+}
+html[data-skin="zones"] .detail-sheet--right:not(.is-expanded) { max-width: var(--zs-right-max); }
+html[data-skin="zones"] .detail-sheet--bottom:not(.is-expanded) { max-height: var(--zs-bottom-max); }
+html[data-skin="zones"][data-detail-sheet="bottom"] .zn-content { padding-bottom: calc(var(--zs-bottom) + 46px); }
+html[data-skin="zones"][data-detail-sheet="right"] .zn-content { padding-right: calc(var(--zs-right) + 16px); }
+html[data-skin="zones"][data-detail-sheet="bottom"] .zn-feedback { bottom: calc(var(--zs-bottom) + 10px); }
+html[data-skin="zones"][data-detail-sheet="right"] .zn-feedback { right: calc(var(--zs-right) + 16px); }
+/* экран «в один экран» стал ниже/уже: блоки не сжимаются в ноль — лента листается внутри */
+html[data-skin="zones"][data-detail-sheet] .zn-fit { overflow-y: auto; }
+/* узкий экран: выезжающие пункты зоны — поверх панели */
+html[data-skin="zones"] .zn-app.is-narrow .zn-items { z-index: 960; }
+html[data-skin="zones"] .zn-scrim { z-index: 959; }
+
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet {
+  border-color: #D5D8DE;
+  box-shadow: none;
+  color: #17191C;
+  font-family: var(--font-body);
+}
+html[data-skin="zones"] .detail-sheet--bottom { border-radius: 10px 10px 0 0; }
+html[data-skin="zones"] .detail-sheet--right { border-radius: 10px 0 0 0; }
+html[data-skin="zones"] .detail-sheet.is-expanded { border-radius: 0; border-width: 1px 0 0 1px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__head {
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 12px 8px 20px;
+  box-sizing: border-box;
+  border-bottom: 0;
+  border-radius: inherit;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background: var(--zn-c);
+  color: var(--zn-on);
+}
+/* узкая панель: кнопки шапки уходят второй строкой, заголовок не сжимается в многоточие */
+html[data-skin="zones"] .detail-sheet__head { flex-wrap: wrap; row-gap: 6px; }
+html[data-skin="zones"] .detail-sheet__title { flex: 1 1 280px; }
+html[data-skin="zones"] .detail-sheet__extra { margin-left: auto; flex-wrap: wrap; }
+html[data-skin="zones"] .detail-sheet__tools { margin-left: auto; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 24px;
+  color: var(--zn-on);
+  /* длинное название на узкой панели — в две строки, а не многоточием в одну */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__sub { font-size: 12.5px; color: var(--zn-on-2); }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__head a { color: var(--zn-on) !important; text-decoration: underline; text-underline-offset: 3px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__head :focus-visible { outline: 2px solid var(--zn-focus); outline-offset: 2px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__tool {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--zn-ctl-border);
+  border-radius: 8px;
+  background: var(--zn-ctl-bg);
+  color: var(--zn-on);
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__tool:hover {
+  background: var(--zn-ctl-hover);
+  border-color: var(--zn-on);
+  color: var(--zn-on);
+}
+/* кнопки в шапке — как на полосе зоны */
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__head .ant-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px !important;
+  border: 1px solid var(--zn-ctl-border) !important;
+  background: var(--zn-ctl-bg) !important;
+  color: var(--zn-on) !important;
+  box-shadow: none !important;
+  font-size: 13px;
+}
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__head .ant-btn-icon-only { width: 34px; padding: 0; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__head .ant-btn:not(:disabled):hover { background: var(--zn-ctl-hover) !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__head .ant-btn:disabled { color: var(--zn-on-2) !important; opacity: .6; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .detail-sheet__head .ant-btn-primary:not(:disabled) {
+  background: var(--zn-primary-bg) !important;
+  border-color: var(--zn-primary-bg) !important;
+  color: var(--zn-primary-fg) !important;
+  font-weight: 600;
+}
+html[data-skin="zones"] .detail-sheet__head .ant-tag { margin-inline-end: 0; vertical-align: 2px; }
+/* ручка края: на цветной шапке — в тон текста, на белом — серая */
+html[data-skin="zones"] .detail-sheet--bottom .detail-sheet__handle::after { background: var(--zn-on-2); opacity: .7; }
+html[data-skin="zones"] .detail-sheet--right .detail-sheet__handle::after { background: #A9AEB6; }
+html[data-skin="zones"] .detail-sheet--bottom .detail-sheet__handle:hover::after,
+html[data-skin="zones"] .detail-sheet--bottom .detail-sheet__handle:focus-visible::after { background: var(--zn-on); opacity: 1; }
+html[data-skin="zones"] .detail-sheet--right .detail-sheet__handle:hover::after,
+html[data-skin="zones"] .detail-sheet--right .detail-sheet__handle:focus-visible::after { background: var(--za); }

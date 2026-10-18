@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { FLAG_LABELS, FLAG_ORDER, type FlagCode } from '../../../../api/teamDesk';
 import { StatusCounters } from '../../../../components/teamdesk/StatusCounters';
 import { ActiveFilters } from '../../../../components/teamdesk/ActiveFilters';
@@ -15,15 +16,19 @@ interface Props {
   developerName?: string | null;
   queueScope: QueueScope;
   onReset: () => void;
+  /** Строка счётчиков списков, которые открываются в панели подробностей. */
+  panels?: ReactNode;
 }
 
 /**
  * «Требует внимания» и «Задачи по статусам» одним блоком над таблицей задач —
  * те же отборы, что полосы Aurora: щелчок оставляет в списке только эти задачи.
+ * Ниже — счётчики списков (резиновые, в работе одновременно, отсутствия),
+ * которые открываются в панели подробностей.
  */
 export function DeskAttention({
   flagCounts, flag, onFlag, statusCounts, statuses, statusGroups, status, onStatus,
-  developerName, queueScope, onReset,
+  developerName, queueScope, onReset, panels,
 }: Props) {
   const flags = FLAG_ORDER.filter((f) => flagCounts[f]);
   const anyStatus = statuses.some((s) => statusCounts[s]);
@@ -58,6 +63,7 @@ export function DeskAttention({
         />
         {!anyStatus && <span className="dz-attention-empty">Задач нет</span>}
       </div>
+      {panels}
       <ActiveFilters
         developerName={developerName}
         flag={flag}

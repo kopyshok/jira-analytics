@@ -9,7 +9,11 @@ interface Props {
   rubberDays: number;
   jiraBaseUrl?: string;
   onDailyRate: (issueId: string, hours: number | null) => void;
-  /** Узкая колонка (скин «Цветовые зоны»): задачи карточками, не таблицей. */
+  /**
+   * Панель подробностей скина «Цветовые зоны»: без карточки с заголовком
+   * (он — в шапке панели); `compact` — задачи карточками, не таблицей.
+   */
+  bare?: boolean;
   compact?: boolean;
 }
 
@@ -17,7 +21,7 @@ interface Props {
  * Все «резиновые» задачи среза одним списком: по каким задачам очередь
  * считается по дневной норме и сколько из них в неё уходит.
  */
-export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate, compact = false }: Props) {
+export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate, compact = false, bare = false }: Props) {
   const rows = issues.filter((issue) => issue.daily_rate);
   if (!rows.length) return null;
 
@@ -43,32 +47,29 @@ export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate, comp
 
   if (compact) {
     return (
-      <Card size="small" className="desk-rubber" title={<>Резиновые задачи · {rows.length}</>}>
-        <div className="desk-rubber-hint">в очередь идёт норма за {rubberDays} дн, но не больше остатка</div>
-        <div className="desk-rubber-list">
-          {rows.map((row) => {
-            const value = left(row);
-            return (
-              <div key={row.id} className="desk-rubber-item">
-                <div className="desk-rubber-head">
-                  <b>{row.developer_name ?? '—'}</b>
-                  <IssueKey issueKey={row.key} jiraBaseUrl={jiraBaseUrl} />
-                  <StatusTag status={row.status} group={row.status_group} />
-                </div>
-                <div className="desk-rubber-summary" title={row.summary}>{row.summary}</div>
-                <div className="desk-rubber-grid">
-                  <span>в день</span><span>оценка</span><span>факт</span><span>осталось</span><span>в очередь</span>
-                  <b>{rateInput(row)}</b>
-                  <b>{row.est_hours == null ? '—' : roundHours(row.est_hours)}</b>
-                  <b>{roundHours(row.fact_hours)}</b>
-                  <b>{value == null ? '—' : roundHours(value)}</b>
-                  <b className="desk-rubber-queue">{toQueue(row)}</b>
-                </div>
+      <div className="desk-rubber-list">
+        {rows.map((row) => {
+          const value = left(row);
+          return (
+            <div key={row.id} className="desk-rubber-item">
+              <div className="desk-rubber-head">
+                <b>{row.developer_name ?? '—'}</b>
+                <IssueKey issueKey={row.key} jiraBaseUrl={jiraBaseUrl} />
+                <StatusTag status={row.status} group={row.status_group} />
               </div>
-            );
-          })}
-        </div>
-      </Card>
+              <div className="desk-rubber-summary" title={row.summary}>{row.summary}</div>
+              <div className="desk-rubber-grid">
+                <span>в день</span><span>оценка</span><span>факт</span><span>осталось</span><span>в очередь</span>
+                <b>{rateInput(row)}</b>
+                <b>{row.est_hours == null ? '—' : roundHours(row.est_hours)}</b>
+                <b>{roundHours(row.fact_hours)}</b>
+                <b>{value == null ? '—' : roundHours(value)}</b>
+                <b className="desk-rubber-queue">{toQueue(row)}</b>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     );
   }
 
@@ -108,6 +109,17 @@ export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate, comp
     },
   ];
 
+  const table = (
+    <Table<DeskIssue>
+      size="small"
+      rowKey="id"
+      dataSource={rows}
+      columns={columns}
+      pagination={false}
+      scroll={{ x: 1100 }}
+    />
+  );
+  if (bare) return table;
   return (
     <Card
       size="small"
@@ -118,14 +130,7 @@ export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate, comp
         </Typography.Text>
       }
     >
-      <Table<DeskIssue>
-        size="small"
-        rowKey="id"
-        dataSource={rows}
-        columns={columns}
-        pagination={false}
-        scroll={{ x: 1100 }}
-      />
+      {table}
     </Card>
   );
 }

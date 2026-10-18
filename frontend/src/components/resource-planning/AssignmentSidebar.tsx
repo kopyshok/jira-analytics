@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, App, Button, Checkbox, DatePicker, Descriptions, Divider, Drawer, InputNumber, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
 import type { SelectProps } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
@@ -33,6 +33,8 @@ import HoursSummarySection from './sidebar/HoursSummarySection';
 import PhaseCalcSection from './sidebar/PhaseCalcSection';
 import SectionVisibilityPopover from './sidebar/SectionVisibilityPopover';
 import SplitAssignmentModal from './SplitAssignmentModal';
+import DetailSheet from '../common/DetailSheet';
+import { useDetailSheetWidth } from '../common/detailSheetWidth';
 
 /** Кандидат в исполнители: состав квартала плана + границы участия внутри него. */
 export interface EmployeeCandidate {
@@ -51,10 +53,13 @@ interface Props {
   employees: EmployeeCandidate[];
   onChanged?: () => void | Promise<unknown>;
   /**
-   * Панель в раскладке страницы рядом с диаграммой (скин «Цветовые зоны»),
-   * а не выезжающая справа. Открывается тем же щелчком по фазе.
+   * Панель подробностей — лист снизу или широкая справа (скин «Цветовые зоны»),
+   * а не выезжающее окно. Открывается тем же щелчком по фазе; на широкой
+   * панели секции развёрнуты и разложены колонками.
    */
-  docked?: boolean;
+  sheet?: boolean;
+  /** Стрелки «предыдущая / следующая фаза» для шапки панели. */
+  nav?: ReactNode;
 }
 
 const fmtDay = (iso: string) => dayjs(iso).format('DD.MM');
@@ -75,7 +80,8 @@ export default function AssignmentSidebar({
   allAssignments,
   employees,
   onChanged,
-  docked = false,
+  sheet = false,
+  nav,
 }: Props) {
   const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
@@ -131,7 +137,7 @@ export default function AssignmentSidebar({
   }, [assignment, employees]);
 
   if (!assignment) {
-    if (docked) return null;
+    if (sheet) return null;
     return (
       <Drawer
         open={open}
@@ -259,7 +265,7 @@ export default function AssignmentSidebar({
     </Space>
   );
 
-  const body = (
+  const heading = (
     <>
       <Typography.Title level={5} style={{ marginTop: 0 }}>
         {assignment.backlog_item_title}
@@ -267,145 +273,148 @@ export default function AssignmentSidebar({
       {assignment.backlog_item_key && (
         <Typography.Text type="secondary">{assignment.backlog_item_key}</Typography.Text>
       )}
-      <Divider />
-      <Descriptions size="small" column={docked ? 2 : 1} bordered={!docked} layout={docked ? 'vertical' : undefined} colon={docked ? false : undefined}>
-        <Descriptions.Item label="Часов">
-          {assignment.hours_allocated?.toFixed(0) ?? '—'}
-        </Descriptions.Item>
-        <Descriptions.Item label="Часть">
-          {assignment.part_number}
-        </Descriptions.Item>
-        <Descriptions.Item label="Вовлечённость" span={docked ? 2 : undefined}>
-          <InvolvementEditor planId={planId} assignment={assignment} onChanged={onChanged} />
-        </Descriptions.Item>
-        <Descriptions.Item label="Сотрудник" span={docked ? 2 : undefined}>
-          {assignment.phase === 'qa' ? (
-            <Typography.Text type="secondary">QA — без сотрудника</Typography.Text>
-          ) : (
-            <Select
-              value={assignment.employee_id ?? undefined}
-              placeholder="Не назначен"
-              style={{ width: '100%' }}
-              loading={saving || candidatesQuery.isFetching}
-              showSearch
-              optionFilterProp="label"
-              onChange={(empId) => handleEmployeeChange(empId)}
-              options={employeeOptions}
-              // В закрытом поле — только имя; роль, команда и загрузка — в списке.
-              labelRender={({ label }) => assignment.employee_name ?? label}
-            />
-          )}
-          {membershipWarning && (
-            <Alert
-              type="warning"
-              showIcon
-              style={{ marginTop: 6 }}
-              title={membershipWarning}
-            />
-          )}
-          {assignment.employee_name && (
-            <Space style={{ marginTop: 6 }}>
-              <EmployeeAvatar name={assignment.employee_name} role={assignment.employee_role} size={20} />
-              <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>{assignment.employee_name}</span>
-            </Space>
-          )}
-        </Descriptions.Item>
-        <Descriptions.Item label="Начало">
-          <DatePicker
-            value={assignment.start_date ? dayjs(assignment.start_date) : null}
-            format={docked ? 'DD.MM.YYYY' : undefined}
-            disabled={saving}
-            allowClear={false}
-            onChange={(d) => d && updateField({ start_date: d.format('YYYY-MM-DD') })}
-          />
-        </Descriptions.Item>
-        <Descriptions.Item label="Окончание">
-          {/* Конец считает планировщик по свободным дням исполнителя от даты начала. */}
-          <Typography.Text>
-            {assignment.end_date ? dayjs(assignment.end_date).format('DD.MM.YYYY') : '—'}
-          </Typography.Text>
-          <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
-            Окончание рассчитывается по часам и свободным дням; чтобы сдвинуть — перетащите начало
-            или измените вовлечённость
-          </Typography.Text>
-        </Descriptions.Item>
-        <Descriptions.Item label="Предшественники" span={docked ? 2 : undefined}>
-          <Select
-            mode="multiple"
-            placeholder="Зависит от…"
-            value={(assignment as AssignmentOut & { predecessor_ids?: string[] }).predecessor_ids ?? []}
-            style={{ width: '100%' }}
-            disabled={saving}
-            onChange={(ids) => updateField({ predecessor_ids: ids })}
-            options={sameItemAssignments.map((a) => ({
-              value: a.id,
-              label: `${PHASE_LABELS[a.phase] ?? a.phase}${a.part_number > 1 ? ` ч.${a.part_number}` : ''} — ${a.employee_name ?? '—'}`,
-            }))}
-          />
-        </Descriptions.Item>
-      </Descriptions>
+    </>
+  );
 
-      <AssignmentExplainSection planId={planId} assignmentId={assignment.id} />
-
-      <Divider>Действия</Divider>
-      <Space orientation="vertical" style={{ width: '100%' }}>
-        {!hasSiblings && assignment.phase !== 'qa' && (
-          <Button block onClick={() => setSplitOpen(true)} disabled={saving}>
-            Разбить на части
-          </Button>
-        )}
-        {hasSiblings && (
-          <Button block onClick={handleMerge} disabled={saving}>
-            Слить части в одну
-          </Button>
-        )}
-        {assignment.pinned_employee && (
-          <Button
-            block
-            danger
-            onClick={() => handleClearManual(['employee'])}
-            disabled={saving}
-          >
-            Сбросить закреплённого исполнителя
-          </Button>
-        )}
-        {assignment.pinned_start ? (
-          <Button
-            block
-            danger
-            onClick={() => updateField({ pinned_start: false })}
-            disabled={saving}
-          >
-            Снять фиксацию даты
-          </Button>
+  const params = (
+    <Descriptions size="small" column={sheet ? 2 : 1} bordered={!sheet} layout={sheet ? 'vertical' : undefined} colon={sheet ? false : undefined}>
+      <Descriptions.Item label="Часов">
+        {assignment.hours_allocated?.toFixed(0) ?? '—'}
+      </Descriptions.Item>
+      <Descriptions.Item label="Часть">
+        {assignment.part_number}
+      </Descriptions.Item>
+      <Descriptions.Item label="Вовлечённость" span={sheet ? 2 : undefined}>
+        <InvolvementEditor planId={planId} assignment={assignment} onChanged={onChanged} />
+      </Descriptions.Item>
+      <Descriptions.Item label="Сотрудник" span={sheet ? 2 : undefined}>
+        {assignment.phase === 'qa' ? (
+          <Typography.Text type="secondary">QA — без сотрудника</Typography.Text>
         ) : (
-          <Button
-            block
-            onClick={() => updateField({ pinned_start: true })}
-            disabled={saving}
-          >
-            Зафиксировать дату
-          </Button>
+          <Select
+            value={assignment.employee_id ?? undefined}
+            placeholder="Не назначен"
+            style={{ width: '100%' }}
+            loading={saving || candidatesQuery.isFetching}
+            showSearch
+            optionFilterProp="label"
+            onChange={(empId) => handleEmployeeChange(empId)}
+            options={employeeOptions}
+            // В закрытом поле — только имя; роль, команда и загрузка — в списке.
+            labelRender={({ label }) => assignment.employee_name ?? label}
+          />
         )}
-        {assignment.pinned_split && hasSiblings && (
-          <Button
-            block
-            danger
-            onClick={() => handleClearManual(['split'])}
-            disabled={saving}
-          >
-            Сбросить признак разбивки
-          </Button>
+        {membershipWarning && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginTop: 6 }}
+            title={membershipWarning}
+          />
         )}
-        {assignment.is_pinned && (
-          <Button block onClick={() => handleClearManual()} disabled={saving}>
-            Снять все ручные правки
-          </Button>
+        {assignment.employee_name && (
+          <Space style={{ marginTop: 6 }}>
+            <EmployeeAvatar name={assignment.employee_name} role={assignment.employee_role} size={20} />
+            <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>{assignment.employee_name}</span>
+          </Space>
         )}
-      </Space>
+      </Descriptions.Item>
+      <Descriptions.Item label="Начало">
+        <DatePicker
+          value={assignment.start_date ? dayjs(assignment.start_date) : null}
+          format={sheet ? 'DD.MM.YYYY' : undefined}
+          disabled={saving}
+          allowClear={false}
+          onChange={(d) => d && updateField({ start_date: d.format('YYYY-MM-DD') })}
+        />
+      </Descriptions.Item>
+      <Descriptions.Item label="Окончание">
+        {/* Конец считает планировщик по свободным дням исполнителя от даты начала. */}
+        <Typography.Text>
+          {assignment.end_date ? dayjs(assignment.end_date).format('DD.MM.YYYY') : '—'}
+        </Typography.Text>
+        <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
+          Окончание рассчитывается по часам и свободным дням; чтобы сдвинуть — перетащите начало
+          или измените вовлечённость
+        </Typography.Text>
+      </Descriptions.Item>
+      <Descriptions.Item label="Предшественники" span={sheet ? 2 : undefined}>
+        <Select
+          mode="multiple"
+          placeholder="Зависит от…"
+          value={(assignment as AssignmentOut & { predecessor_ids?: string[] }).predecessor_ids ?? []}
+          style={{ width: '100%' }}
+          disabled={saving}
+          onChange={(ids) => updateField({ predecessor_ids: ids })}
+          options={sameItemAssignments.map((a) => ({
+            value: a.id,
+            label: `${PHASE_LABELS[a.phase] ?? a.phase}${a.part_number > 1 ? ` ч.${a.part_number}` : ''} — ${a.employee_name ?? '—'}`,
+          }))}
+        />
+      </Descriptions.Item>
+    </Descriptions>
+  );
 
-      <DetailSections planId={planId} assignment={assignment} prefs={prefs} patchPrefs={patchPrefs} />
+  const actions = (
+    <Space orientation="vertical" style={{ width: '100%' }}>
+      {!hasSiblings && assignment.phase !== 'qa' && (
+        <Button block onClick={() => setSplitOpen(true)} disabled={saving}>
+          Разбить на части
+        </Button>
+      )}
+      {hasSiblings && (
+        <Button block onClick={handleMerge} disabled={saving}>
+          Слить части в одну
+        </Button>
+      )}
+      {assignment.pinned_employee && (
+        <Button
+          block
+          danger
+          onClick={() => handleClearManual(['employee'])}
+          disabled={saving}
+        >
+          Сбросить закреплённого исполнителя
+        </Button>
+      )}
+      {assignment.pinned_start ? (
+        <Button
+          block
+          danger
+          onClick={() => updateField({ pinned_start: false })}
+          disabled={saving}
+        >
+          Снять фиксацию даты
+        </Button>
+      ) : (
+        <Button
+          block
+          onClick={() => updateField({ pinned_start: true })}
+          disabled={saving}
+        >
+          Зафиксировать дату
+        </Button>
+      )}
+      {assignment.pinned_split && hasSiblings && (
+        <Button
+          block
+          danger
+          onClick={() => handleClearManual(['split'])}
+          disabled={saving}
+        >
+          Сбросить признак разбивки
+        </Button>
+      )}
+      {assignment.is_pinned && (
+        <Button block onClick={() => handleClearManual()} disabled={saving}>
+          Снять все ручные правки
+        </Button>
+      )}
+    </Space>
+  );
 
+  const modals = (
+    <>
       <SplitAssignmentModal
         open={splitOpen}
         onClose={() => setSplitOpen(false)}
@@ -488,18 +497,53 @@ export default function AssignmentSidebar({
     </>
   );
 
-  if (docked) {
+  if (sheet) {
+    const span = [
+      assignment.start_date && dayjs(assignment.start_date).format('DD.MM'),
+      assignment.end_date && dayjs(assignment.end_date).format('DD.MM'),
+    ].filter(Boolean).join('–');
+    const subtitle = [
+      assignment.backlog_item_title,
+      assignment.employee_name,
+      assignment.hours_allocated != null ? `${assignment.hours_allocated.toFixed(0)} ч` : null,
+      span,
+    ].filter(Boolean).join(' · ');
     return (
-      <aside className="rp-assign-docked" aria-label="Назначение">
-        <div className="rp-assign-head">
-          <div className="rp-assign-head-main">
-            <h2>Назначение</h2>
-            {titleNode}
-          </div>
-          <Button size="small" aria-label="Закрыть" onClick={onClose}>×</Button>
-        </div>
-        <div className="rp-assign-body">{body}</div>
-      </aside>
+      <DetailSheet
+        open={open}
+        onClose={onClose}
+        ariaLabel="Назначение"
+        className="rp-assign-sheet"
+        title={(
+          <>
+            {assignment.backlog_item_key && `${assignment.backlog_item_key} · `}
+            {PHASE_LABELS[assignment.phase] ?? assignment.phase}{' '}
+            {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
+            {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
+            {assignment.out_of_quarter && <Tag color="orange">Вне квартала</Tag>}
+          </>
+        )}
+        subtitle={subtitle}
+        extra={(
+          <>
+            {nav}
+            <SectionVisibilityPopover
+              visible={prefs.detail_sections_visible}
+              onChange={(next) => patchPrefs({ detail_sections_visible: next })}
+            />
+          </>
+        )}
+      >
+        <AssignmentSheetBody
+          params={params}
+          actions={actions}
+          planId={planId}
+          assignment={assignment}
+          prefs={prefs}
+          patchPrefs={patchPrefs}
+        />
+        {modals}
+      </DetailSheet>
     );
   }
 
@@ -511,8 +555,65 @@ export default function AssignmentSidebar({
       mask={{ closable: true }}
       title={titleNode}
     >
-      {body}
+      {heading}
+      <Divider />
+      {params}
+
+      <AssignmentExplainSection planId={planId} assignmentId={assignment.id} />
+
+      <Divider>Действия</Divider>
+      {actions}
+
+      <DetailSections planId={planId} assignment={assignment} prefs={prefs} patchPrefs={patchPrefs} />
+
+      {modals}
     </Drawer>
+  );
+}
+
+/**
+ * Тело панели назначения. Широкая панель — четыре колонки, как в макете:
+ * параметры | дни × часы и длительность | откуда старт и критический путь |
+ * часы по источникам и конфликты; секции развёрнуты. Уже — 3, 2 или 1 колонка,
+ * при двух и одной секции сворачиваются.
+ */
+function AssignmentSheetBody({
+  params,
+  actions,
+  planId,
+  assignment,
+  prefs,
+  patchPrefs,
+}: DetailSectionsProps & { params: ReactNode; actions: ReactNode }) {
+  const width = useDetailSheetWidth();
+  const cols = width >= 1360 ? 4 : width >= 1160 ? 3 : width >= 760 ? 2 : 1;
+  const wide = cols >= 3;
+  const sec = (k: SectionKey) => (
+    <DetailSection key={k} k={k} planId={planId} assignment={assignment} prefs={prefs} patchPrefs={patchPrefs} expanded={wide} />
+  );
+  const paramsCol = (
+    <Fragment key="params">
+      <Divider>Параметры</Divider>
+      {params}
+      <Divider>Действия</Divider>
+      {actions}
+    </Fragment>
+  );
+  const explain = <AssignmentExplainSection key="explain" planId={planId} assignmentId={assignment.id} />;
+  const columns: ReactNode[][] =
+    cols === 4
+      ? [[paramsCol], [sec('day_table'), sec('duration'), sec('absences')], [sec('algorithm'), sec('critical_path')], [sec('sources'), explain]]
+      : cols === 3
+        ? [[paramsCol], [sec('day_table'), sec('duration'), sec('absences')], [explain, sec('algorithm'), sec('critical_path'), sec('sources')]]
+        : cols === 2
+          ? [[paramsCol, explain], SECTION_ORDER.map(sec)]
+          : [[paramsCol, explain, ...SECTION_ORDER.map(sec)]];
+  return (
+    <div className={`rp-sheet${wide ? ' is-wide' : ''}`} data-cols={cols}>
+      {columns.map((col, i) => (
+        <div key={i} className="rp-sheet-col">{col}</div>
+      ))}
+    </div>
   );
 }
 
@@ -732,76 +833,67 @@ interface DetailSectionsProps {
   patchPrefs: ReturnType<typeof useRpPreferences>['patch'];
 }
 
-function DetailSections({ planId, assignment, prefs, patchPrefs }: DetailSectionsProps) {
+type SectionKey = 'algorithm' | 'day_table' | 'absences' | 'sources' | 'duration' | 'critical_path';
+const SECTION_ORDER: SectionKey[] = ['algorithm', 'day_table', 'absences', 'sources', 'duration', 'critical_path'];
+
+function DetailSections(props: DetailSectionsProps) {
+  return (
+    <>
+      <Divider>Детализация</Divider>
+      {SECTION_ORDER.map((k) => <DetailSection key={k} k={k} {...props} />)}
+    </>
+  );
+}
+
+/** Одна секция детализации; `expanded` — развёрнута всегда (широкая панель), без сворачивания. */
+function DetailSection({
+  k,
+  planId,
+  assignment,
+  prefs,
+  patchPrefs,
+  expanded = false,
+}: DetailSectionsProps & { k: SectionKey; expanded?: boolean }) {
   const { data } = useExplainAssignment(planId, assignment.id, true) as { data: AssignmentExplainResponseV2 | undefined };
 
-  const isVisible = (k: string) => prefs.detail_sections_visible[k] !== false;
-  const isCollapsed = (k: string) => !!prefs.detail_sections_collapsed[k];
-  const toggleCollapse = (key: string) => {
+  if (prefs.detail_sections_visible[k] === false) return null;
+  const collapsed = !expanded && !!prefs.detail_sections_collapsed[k];
+  const onToggleCollapse = () => {
+    if (expanded) return;
     patchPrefs({
       detail_sections_collapsed: {
         ...prefs.detail_sections_collapsed,
-        [key]: !prefs.detail_sections_collapsed[key],
+        [k]: !prefs.detail_sections_collapsed[k],
       },
     });
   };
 
-  // Resolve assignment from explain data (has full fields like daily_hours, out_of_quarter)
-  // Fall back to the prop assignment for critical path display if data not yet loaded.
-  const resolvedAssignment = data?.assignment ?? assignment;
-
-  return (
-    <>
-      <Divider>Детализация</Divider>
-
-      {isVisible('algorithm') && (
-        <AlgorithmSection
-          log={data?.algorithm_log ?? []}
-          collapsed={isCollapsed('algorithm')}
-          onToggleCollapse={() => toggleCollapse('algorithm')}
-        />
-      )}
-
-      {isVisible('day_table') && (
+  switch (k) {
+    case 'algorithm':
+      return <AlgorithmSection log={data?.algorithm_log ?? []} collapsed={collapsed} onToggleCollapse={onToggleCollapse} />;
+    case 'day_table':
+      return (
         <DailyBreakdownSection
           items={data?.daily_breakdown ?? []}
-          collapsed={isCollapsed('day_table')}
-          onToggleCollapse={() => toggleCollapse('day_table')}
+          collapsed={collapsed}
+          onToggleCollapse={onToggleCollapse}
           involvementPct={data?.phase_calc?.involvement_pct ?? null}
         />
-      )}
-
-      {isVisible('absences') && (
-        <AbsencesSection
-          items={data?.absences_in_window ?? []}
-          collapsed={isCollapsed('absences')}
-          onToggleCollapse={() => toggleCollapse('absences')}
-        />
-      )}
-
-      {isVisible('sources') && (
-        <PhaseCalcSection
-          data={data?.phase_calc ?? null}
-          collapsed={isCollapsed('sources')}
-          onToggleCollapse={() => toggleCollapse('sources')}
-        />
-      )}
-
-      {isVisible('duration') && (
-        <HoursSummarySection
-          data={data?.hours_summary ?? null}
-          collapsed={isCollapsed('duration')}
-          onToggleCollapse={() => toggleCollapse('duration')}
-        />
-      )}
-
-      {isVisible('critical_path') && (
+      );
+    case 'absences':
+      return <AbsencesSection items={data?.absences_in_window ?? []} collapsed={collapsed} onToggleCollapse={onToggleCollapse} />;
+    case 'sources':
+      return <PhaseCalcSection data={data?.phase_calc ?? null} collapsed={collapsed} onToggleCollapse={onToggleCollapse} />;
+    case 'duration':
+      return <HoursSummarySection data={data?.hours_summary ?? null} collapsed={collapsed} onToggleCollapse={onToggleCollapse} />;
+    case 'critical_path':
+      // Полные поля фазы — из расчёта; пока он грузится — из строки плана.
+      return (
         <CriticalPathSection
-          assignment={resolvedAssignment}
-          collapsed={isCollapsed('critical_path')}
-          onToggleCollapse={() => toggleCollapse('critical_path')}
+          assignment={data?.assignment ?? assignment}
+          collapsed={collapsed}
+          onToggleCollapse={onToggleCollapse}
         />
-      )}
-    </>
-  );
+      );
+  }
 }

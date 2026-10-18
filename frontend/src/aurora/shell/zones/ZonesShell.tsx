@@ -156,6 +156,19 @@ export default function ZonesShell() {
   }, [routeZone]);
   const accentTheme = ACCENT_THEMES[routeZone];
 
+  // Высота цветной полосы — на <html>: панель подробностей справа начинается под ней.
+  const [bandEl, setBandEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!bandEl || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => root.style.setProperty('--zn-band-h', `${bandEl.offsetHeight}px`));
+    ro.observe(bandEl);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty('--zn-band-h');
+    };
+  }, [bandEl]);
+
   // Места в цветной полосе, куда страница переносит заголовок и фильтры.
   const [bandHead, setBandHead] = useState<HTMLDivElement | null>(null);
   const [bandTools, setBandTools] = useState<HTMLDivElement | null>(null);
@@ -265,7 +278,7 @@ export default function ZonesShell() {
         )}
 
         <div className="zn-main">
-          <header className="zn-band" data-zone={routeZone}>
+          <header className="zn-band" data-zone={routeZone} ref={setBandEl}>
             <div className="zn-band-top">
               <div className="zn-band-left">
                 {narrow && (

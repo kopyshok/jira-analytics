@@ -51,24 +51,17 @@ html[data-skin="zones"] .dz-thresholds { flex: none; max-height: 40%; overflow: 
 html[data-skin="zones"] .dz-summary { flex: none; max-height: 34%; overflow: auto; }
 html[data-skin="zones"] .dz-main { flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; }
 html[data-skin="zones"] .dz-left { flex: 999 1 640px; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-html[data-skin="zones"] .dz-right {
-  flex: 1 1 360px;
-  max-width: 360px;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow: auto;
-}
-html[data-skin="zones"] .dz-right > .ant-card { flex: none; }
-html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .dz-right .ant-card-head,
+/* лист снизу отнял высоту: таблица задач не сжимается до одной шапки — держит свою высоту, страница листается */
+html[data-skin="zones"][data-detail-sheet] .dz-main,
+html[data-skin="zones"][data-detail-sheet] .dz-left { min-height: auto; }
+html[data-skin="zones"][data-detail-sheet] .dz-issues { min-height: 320px; }
+/* узкая таблица рядом с панелью справа: колонка «Задача» не сжимается в ноль — таблица листается вбок */
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"][data-detail-sheet="right"] .desk-issues-card .ant-table table { min-width: 1120px; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .dz-summary .ant-card-head {
   min-height: 0;
   padding: 12px 14px 0;
   border-bottom: 0 !important;
 }
-html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .dz-right .ant-card-body { padding: 10px 14px 12px; }
 
 /* --- лента плиток --- */
 html[data-skin="zones"] .dz-cards {
@@ -240,6 +233,10 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .desk-issues-car
   overflow: auto;
   padding: 0;
 }
+/* узкая таблица (панель подробностей справа): кнопки шапки уходят второй строкой, а не наезжают на переключатель */
+html[data-skin="zones"] .desk-issues-card > .ant-card-head .ant-card-head-wrapper { flex-wrap: wrap; row-gap: 6px; }
+html[data-skin="zones"] .desk-issues-card > .ant-card-head .ant-card-head-title { flex: 1 0 auto; overflow: visible; }
+html[data-skin="zones"] .desk-issues-card > .ant-card-head .ant-card-extra { margin-left: auto; }
 html[data-skin="zones"] .desk-issues-title { display: inline-flex; align-items: center; gap: 10px; }
 html[data-skin="zones"] .desk-issues-title > :first-child { font-size: 16px; }
 html[data-skin="zones"] .desk-issues-count { font-family: var(--font-body); font-weight: 400; font-size: 13px; color: #5A5F66; }
@@ -310,8 +307,35 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .ant-tag[data-fl
 html[data-skin="zones"] .desk-scale-pct { color: #17191C !important; }
 html[data-skin="zones"] .desk-scale-pct[data-over] { color: #B42A1E !important; }
 
-/* --- правая колонка --- */
-html[data-skin="zones"] .desk-rubber-hint { margin: 0 0 10px; font-size: 11.5px; line-height: 16px; color: #5A5F66; }
+/* --- счётчики списков над таблицей: открывают панель подробностей --- */
+html[data-skin="zones"] .dz-sheet-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--za-border);
+  border-radius: 13px;
+  background: #FFFFFF;
+  color: var(--za-ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+html[data-skin="zones"] .dz-sheet-counter b { font-weight: 700; }
+html[data-skin="zones"] .dz-sheet-counter:not(:disabled):not(.is-active):hover { background: var(--za-tint); border-color: var(--za-border-hover); }
+html[data-skin="zones"] .dz-sheet-counter-extra { font-weight: 600; color: #B42A1E; }
+html[data-skin="zones"] .dz-sheet-counter.is-active { background: var(--za); border-color: var(--za); color: #FFFFFF; }
+html[data-skin="zones"] .dz-sheet-counter.is-active b,
+html[data-skin="zones"] .dz-sheet-counter.is-active .dz-sheet-counter-extra { color: #FFFFFF; }
+html[data-skin="zones"] .dz-sheet-counter:disabled { border-color: #E1E3E8; background: #F7F8FA; color: #6B7078; font-weight: 400; cursor: default; }
+
+/* --- списки в панели подробностей --- */
+html[data-skin="zones"] .dz-sheet-body { padding: 12px 20px 20px; }
+html[data-skin="zones"] .dz-sheet-body.dz-wip { max-width: 980px; }
+html[data-skin="zones"] .dz-sheet .desk-rubber-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+html[data-skin="zones"] .dz-sheet .absence-strip-period { position: static; margin-bottom: 10px; }
 html[data-skin="zones"] .desk-rubber-list { display: flex; flex-direction: column; gap: 8px; }
 html[data-skin="zones"] .desk-rubber-item { border: 1px solid #E1E3E8; border-radius: 8px; padding: 8px 10px; background: #F7F8FA; }
 html[data-skin="zones"] .desk-rubber-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12.5px; }
@@ -372,8 +396,3 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .desk-issues-car
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* правая колонка как в макете: все три блока на виду — длинный список «в работе одновременно» листается внутри */
-html[data-skin="zones"] .dz-right > .dz-wip { flex: 0 1 auto; min-height: 140px; display: flex; flex-direction: column; overflow: hidden; }
-html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .dz-right > .dz-wip > .ant-card-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-html[data-skin="zones"] .dz-right > .dz-absence { flex: none; }

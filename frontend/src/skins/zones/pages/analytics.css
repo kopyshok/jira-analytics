@@ -21,6 +21,7 @@ html[data-skin="zones"] {
 }
 
 html[data-skin="zones"] .anz { gap: 12px; }
+html[data-skin="zones"] .anz-band-hint { display: inline-flex; align-items: center; height: 34px; font-size: 12.5px; color: var(--zn-on-2); white-space: nowrap; }
 html[data-skin="zones"] .anz-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 
 /* --- итоги и переток --- */
@@ -113,6 +114,14 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-search .ant-
 /* --- таблица и карточка задачи --- */
 html[data-skin="zones"] .an-split { flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; }
 html[data-skin="zones"] .an-table-card { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; }
+html[data-skin="zones"][data-detail-sheet] .an-split { min-height: 240px; }
+/* панель справа: итоги и переток — друг под другом, плитки итогов не обрезаются */
+html[data-skin="zones"][data-detail-sheet="right"] .anz-top { flex-wrap: wrap; max-height: none; }
+html[data-skin="zones"][data-detail-sheet="right"] .anz-kpi,
+html[data-skin="zones"][data-detail-sheet="right"] .anz-flow { flex: 1 1 100%; }
+html[data-skin="zones"][data-detail-sheet="right"] .anz-flow { max-height: none; overflow: visible; }
+/* узкая таблица рядом с панелью: колонка «Группа / Задача» не сжимается в ноль — таблица листается вбок */
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"][data-detail-sheet="right"] .an-table-card .ant-table table { min-width: 900px; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .ant-table-thead > tr > th {
   position: sticky;
   top: 0;
@@ -138,32 +147,18 @@ html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .tree-row-depth-5 > td { background: #FFFFFF !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .an-row-selected > td { background: var(--za-tint) !important; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .an-row-selected > td:first-child { box-shadow: inset 2px 0 0 var(--za), inset 0 2px 0 var(--za), inset 0 -2px 0 var(--za); }
-html[data-skin="zones"] .an-drawer-docked {
-  flex: 0 0 380px;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #FFFFFF;
-  border: 1px solid #E1E3E8;
-  border-radius: 10px;
+/* карточка задачи в панели подробностей: о задаче — слева, ворклоги — широкой колонкой */
+html[data-skin="zones"] .an-sheet-grid { display: grid; gap: 16px; align-items: start; padding: 14px 20px 20px; }
+/* две колонки — когда ворклогам остаётся ≥ 600 px (лист снизу и на ноутбуке); панель справа в пол-экрана — одна колонка */
+@container detail-sheet (min-width: 1040px) {
+  html[data-skin="zones"] .an-sheet-grid { grid-template-columns: minmax(340px, 2fr) minmax(0, 3fr); }
 }
-html[data-skin="zones"] .an-drawer-empty { box-sizing: border-box; align-items: center; justify-content: center; padding: 24px; text-align: center; }
-html[data-skin="zones"] .an-drawer-empty .ant-empty-description { color: #5A5F66; font-size: 12.5px; }
-html[data-skin="zones"] .an-drawer-docked .an-drawer-head { padding: 12px 14px 10px !important; }
-html[data-skin="zones"] .an-drawer-docked .an-drawer-head a {
-  font-family: var(--font-display) !important;
-  font-size: 18px !important;
-  padding: 0 !important;
-  text-decoration: underline !important;
-}
-html[data-skin="zones"] .an-drawer-docked .an-drawer-close {
-  border: 1px solid #D5D8DE;
-  color: #3F444B !important;
-  font-size: 16px !important;
-}
-html[data-skin="zones"] .an-drawer-docked > div:last-child > div { padding: 12px 14px !important; }
+html[data-skin="zones"] .an-sheet-side { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+html[data-skin="zones"] .an-sheet-main { min-width: 0; }
+/* ворклоги во всю колонку: комментарий — строкой, а не столбиком */
+html[data-skin="zones"] .an-issue-sheet .an-drawer-worklogs .ant-table-wrapper { margin: 0 !important; max-width: none !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-issue-sheet .an-drawer-worklogs .ant-table-thead > tr > th { font-size: 11px; padding: 6px 12px !important; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-issue-sheet .an-drawer-worklogs .ant-table-tbody > tr > td { font-size: 13px; padding: 7px 12px !important; vertical-align: top; }
 
 /* карточка задачи: контекст, категория, ворклоги */
 html[data-skin="zones"] {

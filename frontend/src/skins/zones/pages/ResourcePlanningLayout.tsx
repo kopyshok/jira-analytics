@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Alert, Badge, Button, Empty, Input, Modal, Popover, Select, Segmented, Spin } from 'antd';
-import { Check, Copy, LockKeyhole, SlidersHorizontal } from 'lucide-react';
+import { Check, Copy, LockKeyhole, PanelBottomOpen, SlidersHorizontal } from 'lucide-react';
 import '../../../utils/gantt.css';
 import './resource-planning.css';
 import PlanQualityBadge from '../../../components/resource-planning/PlanQualityBadge';
@@ -12,10 +12,13 @@ import AssignmentSidebar from '../../../components/resource-planning/AssignmentS
 import PlanLoadHeatmap from '../../../components/resource-planning/PlanLoadHeatmap';
 import NormedReserveSummary from '../../../components/resource-planning/NormedReserveSummary';
 import AppearanceModal from '../../../components/resource-planning/AppearanceModal';
+import DetailSheet from '../../../components/common/DetailSheet';
 import BulkResetDropdown from '../../../components/resource-planning/BulkResetDropdown';
 import RpViewOptions from '../../../components/resource-planning/RpViewOptions';
 import type { RpLayout } from '../../../components/resource-planning/GanttRows';
 import type { TimelineScale } from '../../../utils/gantt';
+import { fmtHours, overuseCount, overuseLabel, usedHours, visibleReserveRows } from '../../../utils/normedReserve';
+import type { ReserveOut } from '../../../api/resourcePlanning';
 import { AppearanceContext } from '../../../contexts/AppearanceContext';
 import { zonesAppearance } from '../rpAppearance';
 import { planStatusTag, type ResourcePlanningPageState } from '../../../hooks/useResourcePlanningPage';
@@ -23,10 +26,84 @@ import ZonesBand, { BandField } from '../ZonesBand';
 
 const SCALE_CAPTION: Record<TimelineScale, string> = { day: 'по дням', week: 'по неделям', month: 'по месяцам' };
 
+const RESERVE_TITLE = 'Нормированные работы — запас квартала';
+
+/** «в 1 виде работ», «в 3 видах работ». */
+const kindsLabel = (n: number) => `в ${n} ${n % 10 === 1 && n % 100 !== 11 ? 'виде' : 'видах'} работ`;
+
+/** Итог запаса по всем видам работ квартала. */
+function reserveTotals(reserve: ReserveOut) {
+  const rows = reserve.roles.flatMap((r) => r.rows);
+  const sum = (f: (row: (typeof rows)[number]) => number) => rows.reduce((n, row) => n + f(row), 0);
+  return {
+    kinds: rows.length,
+    planned: sum((r) => r.planned_hours),
+    used: sum(usedHours),
+    remaining: sum((r) => r.remaining_hours),
+  };
+}
+
+/**
+ * Запас нормированных работ одной строкой: заложено, занято, осталось и
+ * перерасход; таблица целиком — в панели по кнопке «Подробнее».
+ */
+function ReserveLine({ reserve, open, onOpen }: { reserve: ReserveOut | null; open: boolean; onOpen: () => void }) {
+  const totals = reserve ? reserveTotals(reserve) : null;
+  if (!reserve || !totals || totals.kinds === 0) {
+    return (
+      <section className="zn-card rpz-reserve-line" aria-label={RESERVE_TITLE}>
+        <h2>{RESERVE_TITLE}</h2>
+        <span className="rpz-reserve-muted">нормированных работ в квартале нет</span>
+      </section>
+    );
+  }
+  const over = overuseCount(reserve);
+  return (
+    <section className="zn-card rpz-reserve-line" aria-label={RESERVE_TITLE}>
+      <h2>{RESERVE_TITLE}</h2>
+      <span>заложено <b>{fmtHours(totals.planned)}</b></span>
+      <span>занято <b>{fmtHours(totals.used)}</b></span>
+      <span>осталось <b>{fmtHours(totals.remaining)}</b></span>
+      {over > 0
+        ? <span className="rpz-reserve-over">перерасход {kindsLabel(over)}</span>
+        : <span className="rpz-reserve-muted">перерасхода нет</span>}
+      <Button
+        size="small"
+        className="rpz-reserve-more"
+        icon={<PanelBottomOpen size={14} strokeWidth={1.6} />}
+        aria-pressed={open}
+        onClick={onOpen}
+      >
+        Подробнее
+      </Button>
+    </section>
+  );
+}
+
+/**
+ * Над таблицей запаса — итог квартала, как в строке на странице, и сколько
+ * видов работ в таблице: она показывает только те, что уже расходуются.
+ */
+function ReserveSheetNote({ reserve }: { reserve: ReserveOut }) {
+  const totals = reserveTotals(reserve);
+  const shown = visibleReserveRows(reserve).reduce((n, r) => n + r.rows.length, 0);
+  return (
+    <p className="rpz-reserve-note">
+      За квартал заложено <b>{fmtHours(totals.planned)}</b>, занято <b>{fmtHours(totals.used)}</b>,
+      осталось <b>{fmtHours(totals.remaining)}</b>.
+      {shown > 0 && shown < totals.kinds && (
+        <> В таблице — виды работ, запас которых уже расходуется (заблокированные периоды или работа
+          других команд): {shown} из {totals.kinds}.</>
+      )}
+    </p>
+  );
+}
+
 /**
  * «Ресурсное планирование» в скине «Цветовые зоны»: заголовок, план и
- * переключатели — в полосе зоны; в теле — конфликты, диаграмма с панелью
- * назначения справа и полоса загрузки внизу. Экран — в высоту окна.
+ * переключатели — в полосе зоны; в теле — конфликты, диаграмма во всю ширину
+ * и полоса загрузки внизу. Назначение фазы и запас нормированных работ —
+ * в панели подробностей (одна на странице). Экран — в высоту окна.
  */
 export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanningPageState }) {
   const navigate = useNavigate();
@@ -53,6 +130,31 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
     ? `${gantt.plan.quarter} ${gantt.plan.year} · ${SCALE_CAPTION[effectiveScale]}`
     : SCALE_CAPTION[effectiveScale];
   const computing = compute.isPending || gantt?.plan.status === 'computing';
+
+  // На странице одна панель: фаза или запас нормированных работ.
+  const [reserveOpen, setReserveOpen] = useState(false);
+  const pickAssignment = (id: string) => {
+    setReserveOpen(false);
+    setSelectedAssignmentId(id);
+  };
+  const openReserve = () => {
+    setSelectedAssignmentId(null);
+    setReserveOpen(true);
+  };
+  const reserve = gantt?.reserve && gantt.plan.team ? gantt.reserve : null;
+  // Соседние фазы — в порядке строк диаграммы, только те, что на ней видны.
+  const bars = shownAssignments.filter((a) => a.start_date && a.end_date);
+  const at = selectedAssignment ? bars.findIndex((a) => a.id === selectedAssignment.id) : -1;
+  const prevBar = at > 0 ? bars[at - 1] : null;
+  const nextBar = at >= 0 && at < bars.length - 1 ? bars[at + 1] : null;
+  // Панель ужала диаграмму — выбранная фаза остаётся на виду.
+  const selectedId = selectedAssignment?.id;
+  useEffect(() => {
+    if (!selectedId) return;
+    document
+      .querySelector(`.rpz-gantt [data-assignment-id="${selectedId}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [selectedId]);
 
   return (
     <AppearanceContext.Provider value={appearance}>
@@ -192,7 +294,7 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
             variant="zones"
             conflicts={gantt.conflicts}
             planId={planId}
-            onSelectAssignment={(id) => setSelectedAssignmentId(id)}
+            onSelectAssignment={pickAssignment}
           />
         )}
 
@@ -208,7 +310,7 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
             <section className="zn-card rpz-gantt" aria-label="Диаграмма Ганта">
               <div className="zn-card-head">
                 <h2>Диаграмма Ганта</h2>
-                <span className="zn-card-sub">{planCaption}</span>
+                <span className="zn-card-sub">{planCaption} · щелчок по фазе — подробности</span>
               </div>
               <div className="rpz-gantt-scroll">
                 <GanttChart
@@ -231,7 +333,7 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
                   collapsedItemIds={prefs.collapsed_initiative_ids}
                   onToggleCollapse={handleToggleCollapse}
                   conflictAssignmentIds={conflictAssignmentIds}
-                  onAssignmentClick={(id) => setSelectedAssignmentId(id)}
+                  onAssignmentClick={pickAssignment}
                   hideWeekends={prefs.hide_weekends}
                   highlightedEmployeeId={highlightedEmployeeId}
                   selectedEmployeeIds={peopleFilter}
@@ -268,58 +370,61 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
                 <span><i className="rpz-lg-holiday" aria-hidden>●</i>праздник</span>
               </div>
             </section>
-            {selectedAssignment ? (
-              <AssignmentSidebar
-                docked
-                open
-                onClose={() => setSelectedAssignmentId(null)}
-                planId={planId}
-                assignment={selectedAssignment}
-                allAssignments={sortedAssignments}
-                employees={candidateEmployees}
-                onChanged={onAssignmentChanged}
-              />
-            ) : (
-              <aside className="rp-assign-docked rpz-assign-empty" aria-label="Назначение">
-                <div className="rp-assign-head">
-                  <div className="rp-assign-head-main"><h2>Назначение</h2></div>
-                </div>
-                <div className="rp-assign-body">
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Выберите фазу на диаграмме" />
-                </div>
-              </aside>
-            )}
           </div>
+        )}
+        {selectedAssignment && planId && (
+          <>
+            {/* Выбранная фаза обведена на диаграмме, пока открыта панель. */}
+            <style>{`.rpz-gantt [data-assignment-id="${selectedAssignment.id}"]{outline:2px solid #17191C;outline-offset:2px;z-index:4}`}</style>
+            <AssignmentSidebar
+              sheet
+              open
+              onClose={() => setSelectedAssignmentId(null)}
+              planId={planId}
+              assignment={selectedAssignment}
+              allAssignments={sortedAssignments}
+              employees={candidateEmployees}
+              onChanged={onAssignmentChanged}
+              nav={at >= 0 && (
+                <>
+                  <Button disabled={!prevBar} onClick={() => prevBar && pickAssignment(prevBar.id)}>← предыдущая</Button>
+                  <Button disabled={!nextBar} onClick={() => nextBar && pickAssignment(nextBar.id)}>следующая →</Button>
+                </>
+              )}
+            />
+          </>
         )}
 
         {gantt && !ganttLoading && planId && viewMode === 'two-level' && (
-          <div className="rpz-bottom">
-            {gantt.employee_load && gantt.employee_load.length > 0 && (
-              <div className="rpz-load" data-tour="rp-load">
-                <PlanLoadHeatmap
-                  compact
-                  planId={gantt.plan.id}
-                  rows={gantt.employee_load}
-                  subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
-                  subgroupOrder={subgroupOrder}
-                  assignments={gantt.assignments}
-                  bookings={gantt.external_bookings ?? []}
-                  selectedIds={peopleFilter}
-                  onEmployeeClick={togglePerson}
-                />
-              </div>
-            )}
-            <div className="rpz-reserve">
-              {gantt.reserve && gantt.plan.team ? (
-                <NormedReserveSummary key={gantt.plan.id} reserve={gantt.reserve} alwaysOpen />
-              ) : (
-                <div className="rpz-reserve-empty">
-                  <h2>Нормированные работы — запас квартала</h2>
-                  <p>Нормированных работ в квартале нет</p>
-                </div>
-              )}
-            </div>
+          <ReserveLine reserve={reserve} open={reserveOpen} onOpen={openReserve} />
+        )}
+        {gantt && !ganttLoading && planId && viewMode === 'two-level' && gantt.employee_load && gantt.employee_load.length > 0 && (
+          <div className="rpz-bottom" data-tour="rp-load">
+            <PlanLoadHeatmap
+              compact
+              planId={gantt.plan.id}
+              rows={gantt.employee_load}
+              subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
+              subgroupOrder={subgroupOrder}
+              assignments={gantt.assignments}
+              bookings={gantt.external_bookings ?? []}
+              selectedIds={peopleFilter}
+              onEmployeeClick={togglePerson}
+            />
           </div>
+        )}
+        {reserveOpen && !selectedAssignment && reserve && gantt && (
+          <DetailSheet
+            open
+            onClose={() => setReserveOpen(false)}
+            ariaLabel={RESERVE_TITLE}
+            className="rpz-reserve-sheet"
+            title={RESERVE_TITLE}
+            subtitle={`${reserve.scenario_name} · ${overuseLabel(reserve) ?? 'перерасхода нет'}`}
+          >
+            <ReserveSheetNote reserve={reserve} />
+            <NormedReserveSummary key={gantt.plan.id} reserve={reserve} bare />
+          </DetailSheet>
         )}
 
         <ScheduledBlocksModal

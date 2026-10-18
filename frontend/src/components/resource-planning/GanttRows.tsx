@@ -597,6 +597,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         }
       }}
       data-testid={`rp-bar-${refKey}`}
+      data-assignment-id={assignment.id}
       onMouseDown={beginDrag}
       onClick={(e) => {
         if (movedRef.current) return;

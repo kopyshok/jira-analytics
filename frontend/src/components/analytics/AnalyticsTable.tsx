@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Empty, Table, Tag, Tooltip } from 'antd';
+import { Button, Table, Tag, Tooltip } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
@@ -702,7 +702,7 @@ interface Props {
   periodEnd: string;
   /**
    * Скин «Цветовые зоны»: таблица в блоке на высоту окна с липкой шапкой,
-   * карточка задачи — панелью справа (тот же щелчок по задаче).
+   * карточка задачи — панелью подробностей (тот же щелчок по задаче).
    */
   docked?: boolean;
 }
@@ -804,6 +804,12 @@ export default function AnalyticsTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filteredData, layout, worklogMode, periodStart, periodEnd, navigate, skin],
   );
+
+  // Панель подробностей ужала таблицу — выбранная строка остаётся на виду.
+  useEffect(() => {
+    if (!docked || !drawerIssue) return;
+    document.querySelector('.an-table-card .an-row-selected')?.scrollIntoView({ block: 'nearest' });
+  }, [docked, drawerIssue]);
 
   const isBlock = (r: TreeNode) => r.kind === 'worklog-block';
 
@@ -986,24 +992,35 @@ export default function AnalyticsTable({
   );
 
   if (docked) {
+    // Соседние задачи — в порядке строк таблицы, только видимые (родители раскрыты).
+    const shown: { id: string; key: string }[] = [];
+    const walk = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        if (n.kind === 'issue' && n.issueId && !n.children?.length) shown.push({ id: n.issueId, key: n.issueKey! });
+        if (n.children?.length && expandedRowKeys.includes(n.key)) walk(n.children);
+      }
+    };
+    if (drawerIssue) walk(tableData);
+    const at = drawerIssue ? shown.findIndex((i) => i.id === drawerIssue.id) : -1;
+    const prev = at > 0 ? shown[at - 1] : null;
+    const next = at >= 0 && at < shown.length - 1 ? shown[at + 1] : null;
     return (
       <div className="an-split">
         <section className="zn-card an-table-card" data-tour="analytics-table">{table}</section>
-        {drawerIssue ? (
-          <AnalyticsIssueDrawer
-            docked
-            issueId={drawerIssue.id}
-            issueKey={drawerIssue.key}
-            periodStart={periodStart}
-            periodEnd={periodEnd}
-            onClose={() => setDrawerIssue(null)}
-          />
-        ) : worklogMode === 'drawer' && (
-          // Карточка задачи закреплена в раскладке: пока задача не выбрана — подсказка на её месте.
-          <aside className="an-drawer-docked an-drawer-empty" aria-label="Карточка задачи">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Выберите задачу в таблице — здесь откроется её карточка" />
-          </aside>
-        )}
+        <AnalyticsIssueDrawer
+          sheet
+          issueId={drawerIssue?.id ?? null}
+          issueKey={drawerIssue?.key ?? null}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+          onClose={() => setDrawerIssue(null)}
+          nav={at >= 0 && (
+            <>
+              <Button disabled={!prev} onClick={() => prev && setDrawerIssue(prev)}>← предыдущая</Button>
+              <Button disabled={!next} onClick={() => next && setDrawerIssue(next)}>следующая →</Button>
+            </>
+          )}
+        />
       </div>
     );
   }

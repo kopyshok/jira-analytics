@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Drawer, Skeleton, Alert, Button, Tag } from 'antd';
 import { useIssueContext } from '../../hooks/useIssueContext';
 import { useCategories } from '../../hooks/useCategories';
@@ -8,6 +8,7 @@ import IssueContextBlock from './IssueContextBlock';
 import IssueCategorizer from './IssueCategorizer';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
 import JiraIssueLink from '../shared/JiraIssueLink';
+import DetailSheet from '../common/DetailSheet';
 import { useSkin } from '../../contexts/ThemeContext';
 import { isoDateToRu } from '../../utils/format';
 
@@ -18,8 +19,13 @@ interface Props {
   periodStart: string;
   periodEnd: string;
   onClose: () => void;
-  /** Панель в раскладке страницы (скин «Цветовые зоны»), а не выезжающая справа. */
-  docked?: boolean;
+  /**
+   * Панель подробностей — лист снизу или широкая справа (скин «Цветовые зоны»),
+   * а не выезжающее окно: шапка задачи слева, ворклоги — широкой колонкой.
+   */
+  sheet?: boolean;
+  /** Стрелки «предыдущая / следующая» для шапки панели. */
+  nav?: ReactNode;
 }
 
 interface DrawerContentProps {
@@ -29,9 +35,10 @@ interface DrawerContentProps {
   periodEnd: string;
   onDrillDown: (id: string) => void;
   onSaved: () => void;
+  sheet?: boolean;
 }
 
-function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }: DrawerContentProps) {
+function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved, sheet = false }: DrawerContentProps) {
   const { data: context, isLoading, isError, refetch } = useIssueContext(issueId);
   const { items: categories } = useCategories();
   // В скине период — по-русски («01.10.2026 – 31.10.2026»), в Aurora — как прежде.
@@ -57,8 +64,8 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
     );
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '16px 20px' }}>
+  const about = (
+    <>
       <IssueContextBlock
         context={context}
         categories={categories}
@@ -70,44 +77,88 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
         categories={categories}
         onSaved={onSaved}
       />
-      {/* Worklogs section */}
+    </>
+  );
+  const worklogs = (
+    <div
+      className="an-drawer-worklogs"
+      style={{
+        background: 'var(--an-panel-bg, var(--faint-fill, rgba(255,255,255,0.03)))',
+        border: '1px solid var(--an-panel-border, var(--hairline, rgba(255,255,255,0.08)))',
+        borderRadius: 8,
+        overflow: 'hidden',
+      }}
+    >
       <div
-        className="an-drawer-worklogs"
         style={{
-          background: 'var(--an-panel-bg, var(--faint-fill, rgba(255,255,255,0.03)))',
-          border: '1px solid var(--an-panel-border, var(--hairline, rgba(255,255,255,0.08)))',
-          borderRadius: 8,
-          overflow: 'hidden',
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: 'var(--text-muted, #64748b)',
+          padding: '10px 14px 8px',
+          borderBottom: '1px solid var(--an-panel-line, var(--hairline, rgba(255,255,255,0.06)))',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
         }}
       >
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--text-muted, #64748b)',
-            padding: '10px 14px 8px',
-            borderBottom: '1px solid var(--an-panel-line, var(--hairline, rgba(255,255,255,0.06)))',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <span>Ворклоги за период</span>
-          <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--text-muted, #64748b)' }}>
-            {ru ? `${isoDateToRu(periodStart)} – ${isoDateToRu(periodEnd)}` : `${periodStart} – ${periodEnd}`}
-          </span>
-        </div>
-        <div style={{ padding: '8px 0' }}>
-          <AnalyticsWorklogsBlock
-            issueId={issueId}
-            periodStart={periodStart}
-            periodEnd={periodEnd}
-          />
-        </div>
+        <span>Ворклоги за период</span>
+        <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--text-muted, #64748b)' }}>
+          {ru ? `${isoDateToRu(periodStart)} – ${isoDateToRu(periodEnd)}` : `${periodStart} – ${periodEnd}`}
+        </span>
+      </div>
+      <div style={{ padding: '8px 0' }}>
+        <AnalyticsWorklogsBlock
+          issueId={issueId}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+        />
       </div>
     </div>
+  );
+
+  // Панель: о задаче — слева, ворклоги с комментариями — широкой колонкой справа.
+  if (sheet) {
+    return (
+      <div className="an-sheet-grid">
+        <div className="an-sheet-side">{about}</div>
+        <div className="an-sheet-main">{worklogs}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '16px 20px' }}>
+      {about}
+      {/* Worklogs section */}
+      {worklogs}
+    </div>
+  );
+}
+
+/** Заголовок панели: ключ задачи ссылкой на Jira и название. */
+function SheetTitle({ issueId, issueKey }: { issueId: string; issueKey: string }) {
+  const { data: context } = useIssueContext(issueId);
+  return (
+    <>
+      <JiraIssueLink issueKey={issueKey}>{issueKey}</JiraIssueLink>
+      {context && <> · {context.summary}</>}
+    </>
+  );
+}
+
+/** Под заголовком: тип и статус задачи. */
+function SheetSubtitle({ issueId }: { issueId: string }) {
+  const { data: context } = useIssueContext(issueId);
+  if (!context) return null;
+  return (
+    <>
+      {context.issue_type}{' '}
+      <Tag color={statusTagColor(context.status, context.status_category)} style={{ fontSize: 11 }}>
+        {context.status}
+      </Tag>
+    </>
   );
 }
 
@@ -208,7 +259,8 @@ export default function AnalyticsIssueDrawer({
   periodStart,
   periodEnd,
   onClose,
-  docked = false,
+  sheet = false,
+  nav,
 }: Props) {
   // Back-stack: stack of {id, key} entries. Current is top of stack.
   const [stack, setStack] = useState<Array<{ id: string; key: string }>>([]);
@@ -273,9 +325,35 @@ export default function AnalyticsIssueDrawer({
     </>
   );
 
-  if (docked) {
-    if (!open) return null;
-    return <aside className="an-drawer-docked" aria-label="Карточка задачи">{body}</aside>;
+  if (sheet) {
+    if (!currentEntry) return null;
+    return (
+      <DetailSheet
+        open
+        onClose={handleClose}
+        ariaLabel="Карточка задачи"
+        className="an-issue-sheet"
+        title={<SheetTitle issueId={currentEntry.id} issueKey={currentEntry.key} />}
+        subtitle={<SheetSubtitle issueId={currentEntry.id} />}
+        extra={(
+          <>
+            {stack.length > 1 && <Button onClick={handleBack}>← назад</Button>}
+            {nav}
+          </>
+        )}
+      >
+        <DrawerContent
+          key={currentEntry.id}
+          issueId={currentEntry.id}
+          issueKey={currentEntry.key}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+          onDrillDown={handleDrillDown}
+          onSaved={handleSaved}
+          sheet
+        />
+      </DetailSheet>
+    );
   }
 
   return (

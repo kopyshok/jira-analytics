@@ -14,8 +14,9 @@ const fmtHours = (h: number) =>
 
 /**
  * «Аналитика» в скине «Цветовые зоны»: период, ворклоги, иерархия и выгрузка —
- * в полосе зоны; в теле итоги и переток, ряд команд с отборами, таблица с
- * карточкой задачи справа. Экран — в высоту окна, таблица листается внутри.
+ * в полосе зоны; в теле итоги и переток, ряд команд с отборами и таблица во
+ * всю ширину; карточка задачи — в панели подробностей (лист снизу или справа).
+ * Экран — в высоту окна, таблица листается внутри.
  */
 export default function AnalyticsZonesLayout({ an }: { an: AnalyticsPageState }) {
   const {
@@ -56,6 +57,9 @@ export default function AnalyticsZonesLayout({ an }: { an: AnalyticsPageState })
                 ]}
               />
             </BandField>
+            {worklogMode === 'drawer' && (
+              <span className="anz-band-hint">щелчок по задаче — карточка с ворклогами</span>
+            )}
             <label className="zn-band-switch" data-tour="analytics-hierarchy">
               Иерархия
               <Switch size="small" checked={hierarchy} onChange={setHierarchy} />
