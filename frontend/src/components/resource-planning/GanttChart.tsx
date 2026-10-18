@@ -44,6 +44,8 @@ interface Props {
   onToggleCollapse?: (itemId: string, collapsed: boolean) => void;
   conflictAssignmentIds?: string[];
   onAssignmentClick?: (assignmentId: string) => void;
+  /** Фаза, открытая в панели подробностей, — полоса выделена. */
+  selectedAssignmentId?: string | null;
   hideWeekends?: boolean;
   highlightedEmployeeId?: string | null;
   /** Люди в фильтре «Исполнители»; пусто — фильтра нет. */
@@ -85,6 +87,7 @@ export default function GanttChart({
   onToggleCollapse,
   conflictAssignmentIds,
   onAssignmentClick,
+  selectedAssignmentId,
   hideWeekends = false,
   sectionByItem,
   subgroupByEmployee,
@@ -420,6 +423,7 @@ export default function GanttChart({
             onToggleCollapse={onToggleCollapse}
             conflictAssignmentIds={conflictAssignmentIds}
             onAssignmentClick={onAssignmentClick}
+            selectedAssignmentId={selectedAssignmentId}
             highlightedEmployeeId={highlightedEmployeeId}
             fadeOthers={fadeOthers}
             selectedEmployeeIds={selectedEmployeeIds}

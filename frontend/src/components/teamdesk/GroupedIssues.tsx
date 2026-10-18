@@ -72,6 +72,8 @@ interface Props {
   refreshBlocked?: boolean;
   /** Встроено модулем раскладки (обложка): без карточки, шапка таблицы липкая, прокрутка внутри. */
   docked?: boolean;
+  /** Встроенный модуль: свои органы в строке над таблицей (между группировкой и кнопками). */
+  headExtra?: React.ReactNode;
 }
 
 /** Подписи колонок для настройки видимости. «Задача» не убирается. */
@@ -196,6 +198,7 @@ export function GroupedIssues({
   columnWidths = {}, onColumnWidthsChange,
   onHiddenColumnsChange, onGroupByDeveloperChange, onRefreshVisible, refreshing = false, refreshBlocked = false,
   docked = false,
+  headExtra,
 }: Props) {
   const [sort, setSort] = useState<SortState>(null);
   // Пока тянут мышкой, ширина живёт на экране; в профиль уходит один раз,
@@ -705,6 +708,7 @@ export function GroupedIssues({
           <span className="pc-count">{shown} задач</span>
           {hint && <span className="td-hint">{hint}</span>}
           {groupToggle}
+          {headExtra}
           <span className="pm-push td-tools">{tools}</span>
         </div>
         <div className="pm-screen td-issues-screen">{table}</div>
