@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type Poin
 import { createPortal } from 'react-dom';
 import { CloseOutlined, FullscreenExitOutlined, FullscreenOutlined } from '@ant-design/icons';
 import { clamp, loadPrefs, savePrefs, type Placement, type Prefs } from './detailSheetPrefs';
+import { DetailSheetWidthContext } from './detailSheetWidth';
 import './DetailSheet.css';
 
 /**
@@ -10,13 +11,15 @@ import './DetailSheet.css';
  * выбор и размер запоминаются в браузере. Пока панель открыта, на <html> висят
  * data-detail-sheet и --detail-sheet-size — оболочка темы по ним ужимает рабочую
  * область, чтобы панель ничего не закрывала.
+ * Ширину тела содержимое берёт из useDetailSheetWidth() — по ней раскладывает колонки.
  * На странице открыта не больше одной панели.
  */
 
 // ponytail: признаки открытых окон AntD по классам — если Esc закроет лишнее, перейти на счётчик открытых окон.
 const OVERLAY_OPEN =
   '.ant-modal-wrap:not([style*="display: none"]), .ant-select-dropdown:not(.ant-select-dropdown-hidden), ' +
-  '.ant-picker-dropdown:not(.ant-picker-dropdown-hidden), .ant-dropdown:not(.ant-dropdown-hidden)';
+  '.ant-picker-dropdown:not(.ant-picker-dropdown-hidden), .ant-dropdown:not(.ant-dropdown-hidden), ' +
+  '.ant-popover:not(.ant-popover-hidden)';
 
 interface Props {
   open: boolean;
@@ -43,11 +46,18 @@ function PlacementIcon({ placement }: { placement: Placement }) {
 export default function DetailSheet({ open, onClose, title, subtitle, extra, ariaLabel, className, children }: Props) {
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
   const [expanded, setExpanded] = useState(false);
+  const [body, setBody] = useState<HTMLDivElement | null>(null);
+  const [bodyWidth, setBodyWidth] = useState(0);
   // Закрыли панель — следующее открытие начинается не развёрнутым.
+  // Открыли — место и размер перечитываем: их могла сменить другая панель страницы.
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
     if (!open) setExpanded(false);
+    else {
+      setPrefs(loadPrefs());
+      setBodyWidth(0);
+    }
   }
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
   const dragging = useRef(false);
@@ -74,6 +84,13 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
   }, [open, placement, size]);
 
   useEffect(() => {
+    if (!body || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) => setBodyWidth(Math.round(entry.contentRect.width)));
+    ro.observe(body);
+    return () => ro.disconnect();
+  }, [body]);
+
+  useEffect(() => {
     if (!open) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -94,10 +111,13 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
     });
   }, []);
 
-  const fractionAt = (e: PointerEvent) =>
-    placement === 'bottom'
-      ? (window.innerHeight - e.clientY) / window.innerHeight
-      : (window.innerWidth - e.clientX) / window.innerWidth;
+  // Размер — от закреплённого края самой панели: тема может отодвинуть панель от краёв окна.
+  const fractionAt = (e: PointerEvent<HTMLDivElement>) => {
+    const rect = (e.currentTarget.parentElement ?? e.currentTarget).getBoundingClientRect();
+    return placement === 'bottom'
+      ? (rect.bottom - e.clientY) / window.innerHeight
+      : (rect.right - e.clientX) / window.innerWidth;
+  };
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     dragging.current = true;
@@ -106,7 +126,9 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return;
     // Во время перетаскивания не пишем в браузер на каждый кадр — только в конце.
-    setPrefs((prev) => ({ ...prev, [placement]: clamp(placement, fractionAt(e)) }));
+    // Долю считаем сразу: после обработчика у события уже нет элемента.
+    const next = clamp(placement, fractionAt(e));
+    setPrefs((prev) => ({ ...prev, [placement]: next }));
   };
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return;
@@ -125,6 +147,8 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
 
   const style = expanded ? undefined : placement === 'bottom' ? { height: size } : { width: size };
   const other: Placement = placement === 'bottom' ? 'right' : 'bottom';
+  // До первого замера — оценка по окну, чтобы содержимое не мигало узкой раскладкой.
+  const width = bodyWidth || (placement === 'right' && !expanded ? size : viewport.w);
 
   return createPortal(
     <section
@@ -177,7 +201,9 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
           </button>
         </div>
       </header>
-      <div className="detail-sheet__body">{children}</div>
+      <div className="detail-sheet__body" ref={setBody}>
+        <DetailSheetWidthContext.Provider value={width}>{children}</DetailSheetWidthContext.Provider>
+      </div>
     </section>,
     document.body,
   );
