@@ -9,7 +9,7 @@ from typing import List, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, noload, selectinload
 
 from app.database import get_db
 from app.models import Employee, EmployeeTeam, Role, TeamSubgroup
@@ -108,7 +108,13 @@ def list_employees(
     db: Session = Depends(get_db),
 ):
     """Список сотрудников."""
-    query = db.query(Employee).order_by(Employee.display_name)
+    # Участие в командах — одним запросом на всех, а без with_teams не грузим
+    # вовсе: иначе сборка ответа читает его по отдельному запросу на человека.
+    query = (
+        db.query(Employee)
+        .options(selectinload(Employee.teams) if with_teams else noload(Employee.teams))
+        .order_by(Employee.display_name)
+    )
     if is_active is not None:
         query = query.filter(Employee.is_active == is_active)
     employees = query.all()

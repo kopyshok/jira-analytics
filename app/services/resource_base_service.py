@@ -230,18 +230,11 @@ class ResourceBaseService:
         )
         result_emps: list[EmployeeBase] = []
         role_totals: dict[str, float] = {}
+        abs_by_emp = self._absences_by_emp(employees, period_start, period_end)
 
         for e in employees:
             # Отсутствия сотрудника, пересекающиеся с кварталом
-            abs_ranges = (
-                self.db.query(Absence)
-                .filter(
-                    Absence.employee_id == e.id,
-                    Absence.start_date < period_end,
-                    Absence.end_date >= period_start,
-                )
-                .all()
-            )
+            abs_ranges = abs_by_emp.get(e.id, [])
 
             emp_intervals = intervals.get(e.id, [])
             records = share_records.get(e.id, [])
@@ -357,6 +350,19 @@ class ResourceBaseService:
             role_totals=role_totals,
             external_qa_hours=scenario.external_qa_hours,
         )
+
+    def _absences_by_emp(
+        self, employees: list[Employee], period_start: date, period_end: date
+    ) -> dict[str, list[Absence]]:
+        """Отсутствия, пересекающиеся с периодом, — одним запросом на весь состав."""
+        out: dict[str, list[Absence]] = {}
+        for a in self.db.query(Absence).filter(
+            Absence.employee_id.in_([e.id for e in employees]),
+            Absence.start_date < period_end,
+            Absence.end_date >= period_start,
+        ):
+            out.setdefault(a.employee_id, []).append(a)
+        return out
 
     def _personal_normed(
         self, employee_ids: list[str], year: Optional[int], quarter: int
@@ -579,17 +585,10 @@ class ResourceBaseService:
         # Часы и брони по группам: день делится по доле человека в этот день.
         gross_by_emp_group: dict[str, dict[str, float]] = {}
         booked_by_emp_group: dict[str, dict[str, float]] = {}
+        abs_by_emp = self._absences_by_emp(employees, period_start, period_end)
 
         for e in employees:
-            abs_ranges = (
-                self.db.query(Absence)
-                .filter(
-                    Absence.employee_id == e.id,
-                    Absence.start_date < period_end,
-                    Absence.end_date >= period_start,
-                )
-                .all()
-            )
+            abs_ranges = abs_by_emp.get(e.id, [])
             total = 0.0
             taken = 0.0
             normed_taken = 0.0
@@ -639,15 +638,7 @@ class ResourceBaseService:
         absence_days_by_employee: list[dict] = []
         for e in employees:
             emp_intervals = intervals.get(e.id, [])
-            abs_ranges = (
-                self.db.query(Absence)
-                .filter(
-                    Absence.employee_id == e.id,
-                    Absence.start_date < period_end,
-                    Absence.end_date >= period_start,
-                )
-                .all()
-            )
+            abs_ranges = abs_by_emp.get(e.id, [])
             planned_days = 0.0
             unplanned_days = 0.0
             cur = period_start

@@ -6,7 +6,7 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 import logging
 
@@ -235,31 +235,48 @@ class HoursBalanceService:
 
         Результат — max(period_from, найденная_дата).
         """
-        q = self.db.query(EmployeeTeam).filter(
-            EmployeeTeam.employee_id == employee_id,
+        return self.team_starts([employee_id], teams_filter, period_from)[employee_id]
+
+    def team_starts(
+        self,
+        employee_ids: list[str],
+        teams_filter: list[str] | None,
+        period_from: date,
+    ) -> dict[str, date]:
+        """``team_start`` для пачки сотрудников: два запроса на всех, а не на каждого."""
+        if not employee_ids:
+            return {}
+        q = self.db.query(EmployeeTeam.employee_id, func.min(EmployeeTeam.joined_at)).filter(
+            EmployeeTeam.employee_id.in_(employee_ids),
             EmployeeTeam.joined_at.is_not(None),
             # Периоды, закончившиеся до начала окна, дату старта не задают.
             or_(EmployeeTeam.left_at.is_(None), EmployeeTeam.left_at > period_from),
         )
         if teams_filter:
             q = q.filter(EmployeeTeam.team.in_(teams_filter))
-        explicit_dates = [r.joined_at for r in q.all() if r.joined_at]
-        if explicit_dates:
-            return max(period_from, min(explicit_dates))
+        found: dict[str, date | datetime | None] = {
+            emp_id: d for emp_id, d in q.group_by(EmployeeTeam.employee_id).all()
+        }
 
         # Fallback β: first worklog on Issue.team in filter
-        q2 = (
-            self.db.query(func.min(Worklog.started_at))
-            .join(Issue, Worklog.issue_id == Issue.id)
-            .filter(Worklog.employee_id == employee_id)
-        )
-        if teams_filter:
-            q2 = q2.filter(Issue.team.in_(teams_filter))
-        first_wl = q2.scalar()
-        if first_wl:
-            first_d = first_wl.date() if hasattr(first_wl, "date") else first_wl
-            return max(period_from, first_d)
-        return period_from
+        rest = [e for e in employee_ids if e not in found]
+        if rest:
+            q2 = (
+                self.db.query(Worklog.employee_id, func.min(Worklog.started_at))
+                .join(Issue, Worklog.issue_id == Issue.id)
+                .filter(Worklog.employee_id.in_(rest))
+            )
+            if teams_filter:
+                q2 = q2.filter(Issue.team.in_(teams_filter))
+            found.update((emp_id, d) for emp_id, d in q2.group_by(Worklog.employee_id).all())
+
+        result: dict[str, date] = {}
+        for emp_id in employee_ids:
+            d = found.get(emp_id)
+            if isinstance(d, datetime):
+                d = d.date()
+            result[emp_id] = max(period_from, d) if d else period_from
+        return result
 
     def compute_team(
         self,
@@ -305,6 +322,7 @@ class HoursBalanceService:
         # Build list of working days + ALL days that have worklog activity
         working_days = 0
         days_iter: list[date] = []
+        logged_days = {d for (_, d), h in worklogs.items() if h > 0}
         cur = from_
         while cur <= to_:
             ch = cal_hours.get(cur)
@@ -315,30 +333,29 @@ class HoursBalanceService:
             if is_workday:
                 working_days += 1
                 days_iter.append(cur)
-            else:
+            elif cur in logged_days:
                 # Include weekend/holiday days only if someone logged work there
-                for emp in employees:
-                    if worklogs.get((emp.id, cur), 0.0) > 0:
-                        days_iter.append(cur)
-                        break
+                days_iter.append(cur)
             cur += timedelta(days=1)
         # Deduplicate and sort
         days_iter = sorted(set(days_iter))
 
         windows = self.membership_windows(teams_filter, from_, to_)
+        starts = self.team_starts([e.id for e in employees], teams_filter, from_)
 
         emp_results: list[EmployeeBalanceResult] = []
         team_overtime = 0.0
         team_skip = 0.0
         for e in employees:
-            intervals = None if windows is None else windows.get(e.id, [])
+            emp_id = e.id  # атрибут ORM дорог в цикле по дням × сотрудникам
+            intervals = None if windows is None else windows.get(emp_id, [])
             balance = 0.0
             overtime_days = 0
             overtime_hours = 0.0
             skip_days = 0
             skip_hours = 0.0
             sparkline: list[float] = []
-            eff_from = self.team_start(e.id, teams_filter, from_)
+            eff_from = starts[emp_id]
             for d in days_iter:
                 # Дни вне участия в выбранных командах — не наши: до вступления,
                 # после выбытия/перевода. Нулевая точка в спарклайне.
@@ -352,12 +369,12 @@ class HoursBalanceService:
                     base_norm = ch
                 else:
                     base_norm = 8.0 if d.weekday() < 5 else 0.0
-                absence_label = absences.get((e.id, d))
+                absence_label = absences.get((emp_id, d))
                 # Официальное отсутствие (кроме day_off) обнуляет норму.
                 # Если сотрудник всё равно работал в отпуск/больничный — это
                 # переработка (norm=0, fact>0 → +fact).
                 norm_eff = 0.0 if absence_label else max(0.0, base_norm)
-                fact = worklogs.get((e.id, d), 0.0)
+                fact = worklogs.get((emp_id, d), 0.0)
                 if norm_eff == 0 and fact == 0:
                     sparkline.append(balance)
                     continue
@@ -379,7 +396,7 @@ class HoursBalanceService:
 
             initials = "".join(p[0] for p in e.display_name.split()[:2]).upper() if e.display_name else "?"
             emp_results.append(EmployeeBalanceResult(
-                id=e.id,
+                id=emp_id,
                 full_name=e.display_name,
                 role_label=getattr(getattr(e, "role", None), "label", None),
                 avatar_url=getattr(e, "avatar_url", None),

@@ -12,11 +12,11 @@ from datetime import date
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth_deps import require_admin
 from app.database import get_db
-from app.models import Employee, EmployeeTeam, Issue, Team
+from app.models import Employee, EmployeeTeam, Team
 from app.schemas.team import (
     EmployeeSubgroupIn,
     SubgroupIn,
@@ -31,7 +31,7 @@ from app.schemas.team import (
 from app.services import subgroup_shares as ss
 from app.services.plan_common import quarter_bounds
 from app.services.subgroup_share_service import SubgroupShareService
-from app.services.team_registry_service import TeamRegistryService
+from app.services.team_registry_service import TeamRegistryService, issue_team_names
 
 
 router = APIRouter()
@@ -44,15 +44,9 @@ _admin_only = [Depends(require_admin)]
 @router.get("", response_model=List[str])
 def list_teams(db: Session = Depends(get_db)) -> List[str]:
     """Уникальные имена команд из локальной БД (issues + employee memberships)."""
-    issue_rows = db.query(Issue.team).filter(Issue.team.isnot(None)).distinct().all()
-    membership_rows = db.query(EmployeeTeam.team).distinct().all()
-
-    merged: set[str] = set()
-    for (value,) in issue_rows + membership_rows:
-        if value:
-            merged.add(value)
-
-    return sorted(merged)
+    merged = set(issue_team_names(db))
+    merged.update(value for (value,) in db.query(EmployeeTeam.team).distinct())
+    return sorted(v for v in merged if v)
 
 
 def _to_out(team: Team) -> TeamOut:
@@ -67,7 +61,8 @@ def _to_out(team: Team) -> TeamOut:
 def list_registry(db: Session = Depends(get_db)) -> List[TeamOut]:
     """Реестр команд. Перед выдачей подтягивает имена, появившиеся в данных."""
     TeamRegistryService(db).sync_names()
-    return [_to_out(t) for t in db.query(Team).order_by(Team.name).all()]
+    teams = db.query(Team).options(selectinload(Team.subgroups)).order_by(Team.name).all()
+    return [_to_out(t) for t in teams]
 
 
 @router.get("/ungrouped", response_model=List[UngroupedEmployeeOut])

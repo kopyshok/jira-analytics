@@ -248,6 +248,14 @@ def month_membership_share(
     Норма дня берётся из производственного календаря; если записи нет —
     8 ч Пн–Пт, 0 в выходные (тот же фолбэк, что в остальных расчётах).
     """
+    return month_membership_shares(db, teams, [employee_id], year, month)[employee_id]
+
+
+def month_membership_shares(
+    db: Session, teams: Sequence[str], employee_ids: Sequence[str], year: int, month: int
+) -> dict[str, float]:
+    """``month_membership_share`` для пачки сотрудников: календарь и участие
+    читаются один раз на месяц, а не на каждого человека."""
     from app.models import ProductionCalendarDay
 
     last_day = monthrange(year, month)[1]
@@ -267,20 +275,20 @@ def month_membership_share(
             return cal[d]
         return 8.0 if d.weekday() < 5 else 0.0
 
-    intervals = member_intervals(db, teams, month_start, month_end).get(employee_id, [])
-    total = 0.0
-    inside = 0.0
-    cur = month_start
-    while cur <= month_end:
-        norm = day_norm(cur)
-        total += norm
-        if norm > 0 and day_in_intervals(cur, intervals):
-            inside += norm
-        cur += timedelta(days=1)
+    days = [month_start + timedelta(days=i) for i in range(last_day)]
+    norms = [(d, day_norm(d)) for d in days]
+    total = sum(n for _, n in norms)
+    all_intervals = member_intervals(db, teams, month_start, month_end)
 
-    if total <= 0:
-        return 1.0
-    return min(1.0, inside / total)
+    result: dict[str, float] = {}
+    for emp_id in employee_ids:
+        if total <= 0:
+            result[emp_id] = 1.0
+            continue
+        intervals = all_intervals.get(emp_id, [])
+        inside = sum(n for d, n in norms if n > 0 and day_in_intervals(d, intervals))
+        result[emp_id] = min(1.0, inside / total)
+    return result
 
 
 def membership_on_column_exists(teams: Sequence[str], employee_col, date_col):

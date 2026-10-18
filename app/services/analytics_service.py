@@ -872,10 +872,16 @@ class AnalyticsService:
             team_caps = []
         # План режется долей участия в командах: переведённому в середине
         # квартала не выставляется норма за месяцы, когда он был уже не наш.
+        # Доли считаются пачкой на месяц — не по два запроса на человека.
+        cap_ids = [q.employee_id for q in team_caps]
+        shares_by_month: dict[int, dict[str, float]] = {}
+
         def _share(emp_id: str, m: int) -> float:
             if not teams:
                 return 1.0
-            return tm.month_membership_share(self.db, teams, emp_id, year, m)
+            if m not in shares_by_month:
+                shares_by_month[m] = tm.month_membership_shares(self.db, teams, cap_ids, year, m)
+            return shares_by_month[m][emp_id]
 
         for qcap in team_caps:
             if month is not None:

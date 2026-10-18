@@ -684,6 +684,7 @@ def build_report(
     month: int,
     direction: Optional[str] = None,
     months: int = 1,
+    months_breakdown: bool = True,
 ) -> dict:
     """Отчёт по людям выбранных команд за период (месяц, квартал или N месяцев).
 
@@ -728,7 +729,7 @@ def build_report(
         )
         for emp in evaluated
     ]
-    if months > 1:
+    if months > 1 and months_breakdown:
         _attach_months_breakdown(db, rows, evaluated, teams, year, month, months, st, direction, cache)
     rows.sort(key=lambda r: (r["total"] is None, r["total"] or 0))
 
@@ -911,6 +912,7 @@ def report_with_approvals(
     direction: Optional[str] = None,
     months: int = 1,
     subgroups: Optional[list[str]] = None,
+    months_breakdown: bool = True,
 ) -> dict:
     """Отчёт по командам: утверждённые команды отдаются из снимка, остальные считаются вживую.
 
@@ -931,7 +933,10 @@ def report_with_approvals(
     rows: list[dict] = []
     skipped: list[dict] = []
     if live_teams:
-        live = build_report(db, live_teams, year, month, direction=direction, months=months)
+        live = build_report(
+            db, live_teams, year, month, direction=direction, months=months,
+            months_breakdown=months_breakdown,
+        )
         rows.extend(live["rows"])
         skipped = live.get("skipped", [])
 
@@ -1039,12 +1044,15 @@ def build_teams_summary(
     пустая — сотрудник без команды), иначе для неё итог всегда был прочерк.
     """
     prev_year, prev_month = previous_period(year, month, months)
+    # Сводке нужны только итоги периода — помесячная разбивка квартала
+    # учетверяла бы расчёт впустую.
     current = report_with_approvals(
-        db, teams, year, month, direction=direction, months=months, subgroups=subgroups
+        db, teams, year, month, direction=direction, months=months, subgroups=subgroups,
+        months_breakdown=False,
     )
     prior = report_with_approvals(
         db, teams, prev_year, prev_month, direction=direction, months=months,
-        subgroups=subgroups,
+        subgroups=subgroups, months_breakdown=False,
     )
     current_by_team = group_rows_by_team(current["rows"])
     prior_by_team = group_rows_by_team(prior["rows"])

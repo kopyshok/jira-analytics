@@ -12,7 +12,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Callable, Dict, List, Optional
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models.work_desk import WorkDesk
 from app.services.plan_common import (
@@ -959,8 +959,10 @@ def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -
     if not acct:
         return {"my_tasks": [], "assigned": []}
 
-    # parent_id задач с детьми — чтобы оставить только листья.
-    parent_ids = select(Issue.parent_id).where(Issue.parent_id.is_not(None)).distinct()
+    # Только листья. NOT EXISTS по индексу parent_id проверяет лишь кандидатов;
+    # NOT IN по списку всех родителей перечитывал каждый раз всю таблицу задач.
+    child = aliased(Issue)
+    has_children = select(child.id).where(child.parent_id == Issue.id).exists()
 
     base = (
         select(
@@ -979,7 +981,7 @@ def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -
         .where(
             Project.key.in_(_STALE_PROJECTS),
             func.coalesce(Issue.status_category, "") != "done",
-            Issue.id.not_in(parent_ids),
+            ~has_children,
         )
     )
 

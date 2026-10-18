@@ -2,11 +2,28 @@
 
 from typing import Optional
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import EmployeeSubgroupShare, EmployeeTeam, Issue, Team, TeamSubgroup
 from app.services.subgroup_resolver import SubgroupResolver
 from app.services.subgroup_share_service import SubgroupShareService
+
+
+def issue_team_names(db: Session) -> list[str]:
+    """Имена команд, встречающиеся в задачах.
+
+    Обычный DISTINCT на Postgres читает индекс по команде целиком — сотни
+    тысяч задач ради нескольких десятков имён, а список нужен на каждом
+    открытии страницы. Рекурсивный запрос прыгает по индексу от имени к
+    следующему: шагов столько, сколько команд.
+    """
+    t = select(func.min(Issue.team).label("team")).cte("t", recursive=True)
+    t = t.union_all(
+        select(select(func.min(Issue.team)).where(Issue.team > t.c.team).scalar_subquery())
+        .where(t.c.team.is_not(None))
+    )
+    return [name for (name,) in db.execute(select(t.c.team).where(t.c.team.is_not(None)))]
 
 
 class TeamRegistryService:
@@ -19,10 +36,7 @@ class TeamRegistryService:
         """Завести в реестре команды, встречающиеся в данных. Вернуть число новых."""
         known = {name for (name,) in self.db.query(Team.name).all()}
 
-        found: set[str] = set()
-        for (value,) in self.db.query(Issue.team).filter(Issue.team.isnot(None)).distinct():
-            if value:
-                found.add(value)
+        found = {name for name in issue_team_names(self.db) if name}
         for (value,) in self.db.query(EmployeeTeam.team).distinct():
             if value:
                 found.add(value)

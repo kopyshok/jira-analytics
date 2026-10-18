@@ -2,7 +2,7 @@
 
 from app.models import Employee, EmployeeTeam, Issue, Project, Team, TeamSubgroup
 from app.services import subgroup_shares as ss
-from app.services.team_registry_service import TeamRegistryService
+from app.services.team_registry_service import TeamRegistryService, issue_team_names
 from tests.subgroup_fixtures import share
 
 
@@ -92,6 +92,28 @@ def test_sync_names_picks_up_teams_from_data(db_session):
     assert {t.name for t in db_session.query(Team).all()} == {"Команда А", "Команда Б"}
 
     assert TeamRegistryService(db_session).sync_names() == 0
+
+
+def test_issue_team_names_lists_each_team_once(db_session):
+    """Прыжки по индексу дают каждое имя ровно раз и пропускают задачи без команды."""
+    assert issue_team_names(db_session) == []
+
+    db_session.add(Project(id="p1", jira_project_id="1", key="OS", name="OS"))
+    for i, team in enumerate(["Б", "А", None, "Б", "В", "А"]):
+        db_session.add(
+            Issue(
+                jira_issue_id=str(10001 + i),
+                key=f"OS-{i}",
+                summary="x",
+                issue_type="Task",
+                status="Open",
+                project_id="p1",
+                team=team,
+            )
+        )
+    db_session.commit()
+
+    assert sorted(issue_team_names(db_session)) == ["А", "Б", "В"]
 
 
 def test_disable_keeps_subgroups(db_session):
