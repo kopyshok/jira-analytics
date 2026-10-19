@@ -172,30 +172,27 @@ async def renew_system(db: Session, system: str, now: Optional[datetime] = None)
     state = load_state(db, system)
     error: Optional[str] = None
     new_token: Optional[str] = None
-    try:
-        async with httpx.AsyncClient(
-            base_url=base_url.rstrip("/"), timeout=TIMEOUT, follow_redirects=False,
-        ) as client:
-            try:
-                await _revoke_previous(client, token, state, now)
-                expires = _parse_dt(state.get("expires_at"))
-                if expires is None or expires - now <= RENEW_WHEN_LEFT:
-                    new_token = await _issue(client, token, check_path, state, now)
-            except RenewalError as exc:
-                error = str(exc)
-            except httpx.HTTPError as exc:
-                error = f"нет связи с сервером ({type(exc).__name__})"
-            except ValueError:
-                error = "сервер ответил не данными — проверьте адрес"
-            # Администратор мог вставить свой ключ, пока мы ждали Jira: его ключ главнее.
-            db.expire_all()
-            if _get(db, token_key) != token:
-                if new_token:
-                    await _revoke_quietly(client, token, state.get("id"))
-                logger.info("token renewal %s: ключ заменён вручную во время продления — результат отброшен", system)
-                return
-    except httpx.HTTPError as exc:  # сбой при закрытии клиента
-        error = error or f"нет связи с сервером ({type(exc).__name__})"
+    async with httpx.AsyncClient(
+        base_url=base_url.rstrip("/"), timeout=TIMEOUT, follow_redirects=False,
+    ) as client:
+        try:
+            await _revoke_previous(client, token, state, now)
+            expires = _parse_dt(state.get("expires_at"))
+            if expires is None or expires - now <= RENEW_WHEN_LEFT:
+                new_token = await _issue(client, token, check_path, state, now)
+        except RenewalError as exc:
+            error = str(exc)
+        except httpx.HTTPError as exc:
+            error = f"нет связи с сервером ({type(exc).__name__})"
+        except ValueError:
+            error = "сервер ответил не данными — проверьте адрес"
+        # Администратор мог вставить свой ключ, пока мы ждали Jira: его ключ главнее.
+        db.expire_all()
+        if _get(db, token_key) != token:
+            if new_token:
+                await _revoke_quietly(client, token, state.get("id"))
+            logger.info("token renewal %s: ключ заменён вручную во время продления — результат отброшен", system)
+            return
     if new_token:
         _set(db, token_key, new_token)
     if error:
