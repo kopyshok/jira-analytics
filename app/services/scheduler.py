@@ -25,6 +25,8 @@ class SchedulerService:
     ) -> None:
         self.scheduler = scheduler or AsyncIOScheduler()
         self._trigger_runner = trigger_runner
+        #: id заданий расписаний синка — только их снимает register_jobs
+        self._schedule_job_ids: set[str] = set()
 
     # ------------------------------------------------------------------
     # Утилиты
@@ -141,8 +143,15 @@ class SchedulerService:
     # ------------------------------------------------------------------
 
     def register_jobs(self, schedules: list) -> None:
-        """Убрать все текущие job-ы и зарегистрировать по одному для каждого enabled расписания."""
-        self.scheduler.remove_all_jobs()
+        """Перерегистрировать задания расписаний синка: по одному на включённое расписание.
+
+        Служебные задания (сводки, агрегация, продление токенов) не трогаются —
+        раньше ``remove_all_jobs`` снимал и их до перезапуска сервиса.
+        """
+        for job_id in self._schedule_job_ids:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+        self._schedule_job_ids = set()
         if self._trigger_runner is None:
             return
 
@@ -163,6 +172,7 @@ class SchedulerService:
                     replace_existing=True,
                     **cron_fields,
                 )
+                self._schedule_job_ids.add(sched.id)
             except Exception:
                 logger.exception("scheduler: failed to register job for schedule %s", sched.id)
 

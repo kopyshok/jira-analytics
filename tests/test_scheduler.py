@@ -66,7 +66,7 @@ def test_register_jobs_creates_one_per_enabled_schedule():
 
     svc.register_jobs([enabled1, enabled2, disabled])
 
-    mock_scheduler.remove_all_jobs.assert_called_once()
+    mock_scheduler.remove_all_jobs.assert_not_called()
     assert mock_scheduler.add_job.call_count == 2
 
     # проверяем что disabled не зарегистрирован
@@ -74,3 +74,20 @@ def test_register_jobs_creates_one_per_enabled_schedule():
     assert "s1" in job_ids
     assert "s2" in job_ids
     assert "s3" not in job_ids
+
+
+def test_register_jobs_keeps_service_jobs():
+    """Смена расписаний синка не снимает служебные задания (сводки, продление токенов)."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+    scheduler = AsyncIOScheduler()
+    svc = SchedulerService(scheduler=scheduler, trigger_runner=MagicMock())
+    scheduler.add_job(MagicMock(), trigger="interval", hours=1, id="renew_tokens")
+
+    first = MagicMock(id="s1", enabled=True, cron_expr="0 6 * * *", mode="normal", team=None)
+    svc.register_jobs([first])
+    second = MagicMock(id="s2", enabled=True, cron_expr="0 7 * * *", mode="normal", team=None)
+    svc.register_jobs([second])
+
+    ids = {job.id for job in scheduler.get_jobs()}
+    assert ids == {"renew_tokens", "s2"}
