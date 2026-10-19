@@ -76,7 +76,7 @@ Base URL: https://jira.example.ru   (только из внутренней се
 
 ## Credentials resolution
 
-AppSetting (DB) → `.env` fallback. UI пишет `jira_base_url` / `jira_api_token` через `PUT /settings/jira` и `confluence_base_url` / `confluence_api_token` через `PUT /settings/confluence`; `.env` (`JIRA_BASE_URL`, `JIRA_API_TOKEN`) — только для dev/CI, когда база пуста. Проверка Jira с пустым токеном → 400. `GET /ui-config/jira-base-url` отдаёт адрес без хвостового `/`. Старая строка `jira_email` в базе ни на что не влияет.
+AppSetting (DB) → `.env` fallback. UI пишет `jira_base_url` / `jira_api_token` через `PUT /settings/jira` и `confluence_base_url` / `confluence_api_token` через `PUT /settings/confluence`; `.env` (`JIRA_BASE_URL`, `JIRA_API_TOKEN`) — только для dev/CI, когда база пуста. Проверка Jira с пустым токеном → 400. `GET /ui-config/jira-base-url` отдаёт адрес без хвостового `/`. Старая строка `jira_email` в базе ни на что не влияет. При `TOKEN_AUTO_RENEW` сервис сам заменяет `jira_api_token` / `confluence_api_token` в AppSetting новым (см. `token_renewal` в services).
 
 ## Блокировка синка
 
