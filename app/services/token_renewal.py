@@ -104,6 +104,21 @@ def _failure(what: str, resp: httpx.Response) -> RenewalError:
     return RenewalError(f"{what}: ответ {resp.status_code}" + (f" — {detail}" if detail else ""))
 
 
+async def _revoke_quietly(client: httpx.AsyncClient, token: str, token_id: Any) -> bool:
+    """Отозвать токен по номеру; сбой — только в журнал. True — отозван или его уже нет."""
+    if not token_id:
+        return False
+    try:
+        resp = await client.delete(f"{PAT_PATH}/{token_id}", headers=_headers(token))
+    except httpx.HTTPError as exc:
+        logger.warning("token renewal: токен %s не отозван: %s", token_id, type(exc).__name__)
+        return False
+    if resp.is_success or resp.status_code == 404:
+        return True
+    logger.warning("token renewal: токен %s не отозван, ответ %s", token_id, resp.status_code)
+    return False
+
+
 async def _revoke_previous(
     client: httpx.AsyncClient, token: str, state: dict[str, Any], now: datetime,
 ) -> None:
@@ -112,12 +127,9 @@ async def _revoke_previous(
     replaced_at = _parse_dt(state.get("replaced_at"))
     if not prev_id or (replaced_at and now - replaced_at < REVOKE_PREVIOUS_AFTER):
         return
-    resp = await client.delete(f"{PAT_PATH}/{prev_id}", headers=_headers(token))
-    if resp.is_success or resp.status_code == 404:
+    if await _revoke_quietly(client, token, prev_id):
         state.pop("prev_id", None)
         state.pop("replaced_at", None)
-    else:
-        logger.warning("token renewal: прежний токен %s не отозван, ответ %s", prev_id, resp.status_code)
 
 
 async def _issue(
@@ -134,9 +146,14 @@ async def _issue(
     new_token = data.get("rawToken") if isinstance(data, dict) else None
     if not new_token:
         raise RenewalError("выпуск нового ключа: в ответе нет ключа")
-    check = await client.get(check_path, headers=_headers(new_token))
-    if check.status_code != 200:
-        raise _failure("проверка нового ключа", check)
+    try:
+        check = await client.get(check_path, headers=_headers(new_token))
+        if check.status_code != 200:
+            raise _failure("проверка нового ключа", check)
+    except (RenewalError, httpx.HTTPError):
+        # Непроверенный ключ остался бы жить в Jira (лимит — 10 токенов): отзываем текущим.
+        await _revoke_quietly(client, token, data.get("id"))
+        raise
     if state.get("id"):
         state["prev_id"] = state["id"]
         state["replaced_at"] = now.isoformat()
@@ -153,23 +170,34 @@ async def renew_system(db: Session, system: str, now: Optional[datetime] = None)
     if not (base_url and token):
         return
     state = load_state(db, system)
-    error: Optional[str]
+    error: Optional[str] = None
+    new_token: Optional[str] = None
     try:
         async with httpx.AsyncClient(
             base_url=base_url.rstrip("/"), timeout=TIMEOUT, follow_redirects=False,
         ) as client:
-            await _revoke_previous(client, token, state, now)
-            expires = _parse_dt(state.get("expires_at"))
-            if expires is None or expires - now <= RENEW_WHEN_LEFT:
-                _set(db, token_key, await _issue(client, token, check_path, state, now))
-    except RenewalError as exc:
-        error = str(exc)
-    except httpx.HTTPError as exc:
-        error = f"нет связи с сервером ({type(exc).__name__})"
-    except ValueError:
-        error = "сервер ответил не данными — проверьте адрес"
-    else:
-        error = None
+            try:
+                await _revoke_previous(client, token, state, now)
+                expires = _parse_dt(state.get("expires_at"))
+                if expires is None or expires - now <= RENEW_WHEN_LEFT:
+                    new_token = await _issue(client, token, check_path, state, now)
+            except RenewalError as exc:
+                error = str(exc)
+            except httpx.HTTPError as exc:
+                error = f"нет связи с сервером ({type(exc).__name__})"
+            except ValueError:
+                error = "сервер ответил не данными — проверьте адрес"
+            # Администратор мог вставить свой ключ, пока мы ждали Jira: его ключ главнее.
+            db.expire_all()
+            if _get(db, token_key) != token:
+                if new_token:
+                    await _revoke_quietly(client, token, state.get("id"))
+                logger.info("token renewal %s: ключ заменён вручную во время продления — результат отброшен", system)
+                return
+    except httpx.HTTPError as exc:  # сбой при закрытии клиента
+        error = error or f"нет связи с сервером ({type(exc).__name__})"
+    if new_token:
+        _set(db, token_key, new_token)
     if error:
         state.update(error=error, error_at=now.isoformat())
         logger.warning("token renewal %s: %s", system, error)
@@ -189,7 +217,11 @@ async def renew_tokens_job() -> None:
     db = SessionLocal()
     try:
         for system in SYSTEMS:
-            await renew_system(db, system)
+            try:
+                await renew_system(db, system)
+            except Exception:
+                logger.exception("token renewal %s: сбой", system)
+                db.rollback()
     finally:
         db.close()
 

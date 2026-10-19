@@ -2,6 +2,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import httpx
 import respx
@@ -36,7 +37,7 @@ def _jira(db, token="old", state=None):
     _put(db, state_key("jira"), json.dumps(state) if state is not None else None)
 
 
-def _issued(token_id=7, raw="new", expiring="2026-11-02T15:00:00.000+0300"):
+def _issued(token_id=7, raw="new", expiring="2026-11-01T18:30:00.000+0300"):
     return httpx.Response(201, json={"id": token_id, "name": "x", "rawToken": raw, "expiringAt": expiring})
 
 
@@ -54,7 +55,7 @@ async def test_manual_token_is_renewed_at_once(db_session):
     assert json.loads(request.content) == {"name": token_renewal.TOKEN_NAME, "expirationDuration": 14}
     state = load_state(db_session, "jira")
     assert state["id"] == 7
-    assert state["expires_at"] == "2026-11-02T12:00:00+00:00"
+    assert state["expires_at"] == "2026-11-01T15:30:00+00:00"
     assert "prev_id" not in state  # ручной токен сервис не отзывает
 
 
@@ -143,12 +144,80 @@ async def test_refused_issue_keeps_old_token_and_records_error(db_session):
 async def test_new_token_failing_check_is_not_saved(db_session):
     _jira(db_session)
     respx.post(PAT).mock(return_value=_issued())
+    respx.delete(f"{PAT}/7").mock(return_value=httpx.Response(204))
     respx.get(f"{JIRA}/rest/api/2/myself").mock(return_value=httpx.Response(401))
 
     await renew_system(db_session, "jira", NOW)
 
     assert _get(db_session, "jira_api_token") == "old"
     assert "проверка нового ключа" in load_state(db_session, "jira")["error"]
+
+
+@respx.mock
+async def test_new_token_failing_check_is_revoked(db_session):
+    _jira(db_session)
+    respx.post(PAT).mock(return_value=_issued())
+    respx.get(f"{JIRA}/rest/api/2/myself").mock(return_value=httpx.Response(401))
+    revoke = respx.delete(f"{PAT}/7").mock(return_value=httpx.Response(204))
+
+    await renew_system(db_session, "jira", NOW)
+
+    assert revoke.calls.last.request.headers["Authorization"] == "Bearer old"
+    assert _get(db_session, "jira_api_token") == "old"
+    assert "проверка нового ключа" in load_state(db_session, "jira")["error"]
+
+
+@respx.mock
+async def test_new_token_check_network_error_is_revoked(db_session):
+    _jira(db_session)
+    respx.post(PAT).mock(return_value=_issued())
+    respx.get(f"{JIRA}/rest/api/2/myself").mock(side_effect=httpx.ConnectError("boom"))
+    revoke = respx.delete(f"{PAT}/7").mock(return_value=httpx.Response(204))
+
+    await renew_system(db_session, "jira", NOW)
+
+    assert revoke.called
+    assert _get(db_session, "jira_api_token") == "old"
+    assert "нет связи" in load_state(db_session, "jira")["error"]
+
+
+@respx.mock
+async def test_revoke_network_failure_does_not_block_renewal(db_session):
+    _jira(db_session, state={
+        "id": 5, "expires_at": (NOW + timedelta(days=1)).isoformat(),
+        "prev_id": 4, "replaced_at": (NOW - timedelta(days=2)).isoformat(),
+    })
+    respx.delete(f"{PAT}/4").mock(side_effect=httpx.ConnectTimeout("slow"))
+    respx.post(PAT).mock(return_value=_issued())
+    respx.get(f"{JIRA}/rest/api/2/myself").mock(return_value=httpx.Response(200, json={}))
+
+    await renew_system(db_session, "jira", NOW)
+
+    assert _get(db_session, "jira_api_token") == "new"
+    state = load_state(db_session, "jira")
+    assert "error" not in state
+    assert state["id"] == 7
+
+
+@respx.mock
+async def test_manual_token_pasted_during_renewal_wins(db_session):
+    _jira(db_session)
+
+    def check(request):
+        # Администратор вставил свой ключ, пока продление ждало Jira.
+        _put(db_session, "jira_api_token", "pasted")
+        _put(db_session, state_key("jira"), None)
+        return httpx.Response(200, json={})
+
+    respx.post(PAT).mock(return_value=_issued())
+    respx.get(f"{JIRA}/rest/api/2/myself").mock(side_effect=check)
+    revoke = respx.delete(f"{PAT}/7").mock(return_value=httpx.Response(204))
+
+    await renew_system(db_session, "jira", NOW)
+
+    assert _get(db_session, "jira_api_token") == "pasted"
+    assert load_state(db_session, "jira") == {}
+    assert revoke.calls.last.request.headers["Authorization"] == "Bearer old"
 
 
 @respx.mock
@@ -208,6 +277,23 @@ async def test_job_does_nothing_when_disabled(monkeypatch):
     await token_renewal.renew_tokens_job()
 
     assert called == []
+
+
+async def test_job_continues_after_one_system_fails(monkeypatch):
+    called = []
+
+    async def fake_renew(db, system, now=None):
+        if system == "jira":
+            raise RuntimeError("boom")
+        called.append(system)
+
+    monkeypatch.setattr(token_renewal, "get_settings", lambda: SimpleNamespace(token_auto_renew=True))
+    monkeypatch.setattr(token_renewal, "renew_system", fake_renew)
+    monkeypatch.setattr("app.database.SessionLocal", lambda: MagicMock())
+
+    await token_renewal.renew_tokens_job()
+
+    assert called == ["confluence"]
 
 
 def test_status_for_settings_and_banner(db_session, monkeypatch):
