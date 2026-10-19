@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, status
@@ -24,7 +25,9 @@ from app.repositories.sync_schedule import SyncScheduleRepository
 from app.services.scheduler import SchedulerService, scheduled_pipeline_runner
 from app.jobs.aggregate_usage import aggregate_usage_job
 from app.jobs.regenerate_summaries import regenerate_outdated_summaries_blocking
+from app.services.token_renewal import renew_tokens_job
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 settings = get_settings()
 
@@ -74,6 +77,15 @@ async def lifespan(app: FastAPI):
         id="aggregate_usage",
         replace_existing=True,
         max_instances=1,
+    )
+    # Самопродление токенов Jira/Confluence: раз в час, первый раз — через минуту после старта.
+    sched_svc.scheduler.add_job(
+        renew_tokens_job,
+        trigger=IntervalTrigger(hours=1),
+        id="renew_tokens",
+        replace_existing=True,
+        max_instances=1,
+        next_run_time=datetime.now() + timedelta(minutes=1),
     )
     app.state.scheduler = sched_svc
 
