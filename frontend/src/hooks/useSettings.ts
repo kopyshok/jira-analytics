@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getJiraSettings, saveJiraSettings, testJiraCredentials, saveGenericSetting, getGenericSetting,
   getConfluenceSettings, saveConfluenceSettings, testConfluenceConnection,
+  getTokenRenewal,
 } from '../api/settings';
 import { getJiraBaseUrl, getJiraMigrationState } from '../api/uiConfig';
 import { jiraBrowseUrl } from '../utils/jiraLinks';
@@ -32,7 +33,10 @@ export function useSaveJiraSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: saveJiraSettings,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['settings', 'jira'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['settings', 'jira'] });
+      qc.invalidateQueries({ queryKey: ['settings', 'token-renewal'] });
+    },
   });
 }
 
@@ -82,10 +86,24 @@ export function useSaveConfluenceSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: saveConfluenceSettings,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['settings', 'confluence'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['settings', 'confluence'] });
+      qc.invalidateQueries({ queryKey: ['settings', 'token-renewal'] });
+    },
   });
 }
 
 export function useTestConfluenceConnection() {
   return useMutation({ mutationFn: testConfluenceConnection });
+}
+
+/** Самопродление ключей Jira и Confluence — только администратору (раздел настроек под админом). */
+export function useTokenRenewal(enabled = true) {
+  return useQuery({
+    queryKey: ['settings', 'token-renewal'],
+    queryFn: getTokenRenewal,
+    enabled,
+    staleTime: 5 * 60_000,
+    refetchInterval: 30 * 60_000,
+  });
 }

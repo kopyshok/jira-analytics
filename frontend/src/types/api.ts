@@ -109,6 +109,20 @@ export interface ConfluenceSettingsResponse {
   has_token: boolean;
 }
 
+/** Самопродление ключа одной системы (Jira или Confluence). */
+export interface TokenRenewalSystem {
+  expires_at: string | null;
+  renewed_at: string | null;
+  error: string | null;
+  error_at: string | null;
+}
+
+export interface TokenRenewalStatus {
+  enabled: boolean;
+  jira: TokenRenewalSystem | null;
+  confluence: TokenRenewalSystem | null;
+}
+
 export interface ConfluenceTestResponse {
   connected: boolean;
   user_name: string | null;

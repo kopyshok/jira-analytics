@@ -1,6 +1,7 @@
 import { api } from './client';
 import type {
   ConfluenceSettingsResponse, ConfluenceTestResponse, JiraSettingsResponse, JiraTestResponse,
+  TokenRenewalStatus,
 } from '../types/api';
 
 export const getJiraSettings = () =>
@@ -17,6 +18,9 @@ export const saveGenericSetting = (key: string, value: string) =>
 
 export const getGenericSetting = (key: string) =>
   api.get<{ key: string; value: string | null }>(`/settings/generic/${key}`);
+
+export const getTokenRenewal = () =>
+  api.get<TokenRenewalStatus>('/settings/token-renewal');
 
 export const getConfluenceSettings = () =>
   api.get<ConfluenceSettingsResponse>('/settings/confluence');

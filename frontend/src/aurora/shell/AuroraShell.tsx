@@ -3,6 +3,7 @@ import { Outlet } from 'react-router';
 import { useAuth } from '../../hooks/useAuth';
 import { AuroraSidebar } from './AuroraSidebar';
 import { AuroraTopbar } from './AuroraTopbar';
+import TokenRenewalAlert from '../../components/Layout/TokenRenewalAlert';
 import FeedbackButton from '../../components/feedback/FeedbackButton';
 import WhatsNewGate from '../../components/release-notes/WhatsNewGate';
 import { HelpProvider } from '../../contexts/HelpContext';
@@ -44,6 +45,7 @@ export default function AuroraShell() {
           }}
         >
           <AuroraTopbar />
+          <TokenRenewalAlert />
           <div className="scroll-y" style={{ flex: 1, paddingRight: 4 }}>
             <Outlet />
           </div>

@@ -4,6 +4,7 @@ import { Typography } from 'antd';
 import { ApiOutlined, SaveOutlined } from '@ant-design/icons';
 import { testConnection } from '../api/sync';
 import { useJiraSettings, useSaveJiraSettings, useTestJiraCredentials } from '../hooks/useSettings';
+import TokenRenewalNote from './settings/TokenRenewalNote';
 
 const { Text } = Typography;
 
@@ -104,6 +105,7 @@ export default function ConnectionCard() {
             <Text type="success">{testMutation.data.user_name}</Text>
           )}
         </Space>
+        <TokenRenewalNote system="jira" />
       </Space>
     </Card>
   );

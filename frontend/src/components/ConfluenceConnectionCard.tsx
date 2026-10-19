@@ -4,6 +4,7 @@ import { ApiOutlined, SaveOutlined } from '@ant-design/icons';
 import {
   useConfluenceSettings, useSaveConfluenceSettings, useTestConfluenceConnection,
 } from '../hooks/useSettings';
+import TokenRenewalNote from './settings/TokenRenewalNote';
 
 const { Text } = Typography;
 
@@ -88,6 +89,7 @@ export default function ConfluenceConnectionCard() {
           </Button>
           {testMutation.data?.connected && <Text type="success">{testMutation.data.user_name}</Text>}
         </Space>
+        <TokenRenewalNote system="confluence" />
       </Space>
     </Card>
   );
