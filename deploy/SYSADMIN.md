@@ -290,6 +290,8 @@ rm /tmp/prod_dump.sql
 | Контейнер падает с OOM | Нехватка памяти | Проверить `docker stats`, увеличить лимиты в `deploy.resources.limits` |
 | `docker compose pull` возвращает 401 | GHCR токен истёк | Повторить `docker login ghcr.io` (§2.5) |
 
+Токены Jira и Confluence сервис продлевает сам: за 7 дней до конца выпускает новый на 14 дней, прежний свой отзывает через сутки. Выключить — `TOKEN_AUTO_RENEW=false` в `.env`; на staging всегда `false`.
+
 ---
 
 ## 11. Контакты

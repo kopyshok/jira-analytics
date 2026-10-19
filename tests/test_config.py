@@ -38,3 +38,13 @@ def test_cors_origins_accept_comma_separated_env(monkeypatch):
         "http://localhost:5174",
         "http://127.0.0.1:5174",
     ]
+
+
+def test_token_auto_renew_off_by_default(monkeypatch):
+    monkeypatch.delenv("TOKEN_AUTO_RENEW", raising=False)
+    assert Settings(_env_file=None).token_auto_renew is False
+
+
+def test_token_auto_renew_from_env(monkeypatch):
+    monkeypatch.setenv("TOKEN_AUTO_RENEW", "true")
+    assert Settings(_env_file=None).token_auto_renew is True

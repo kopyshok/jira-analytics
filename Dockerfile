@@ -80,6 +80,8 @@ RUN mkdir -p /app/data && chown -R app:app /app
 ENV TZ=Europe/Moscow
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+# Самопродление токенов Jira/Confluence — только на сервере (см. app/config.py)
+ENV TOKEN_AUTO_RENEW=true
 
 USER app
 
