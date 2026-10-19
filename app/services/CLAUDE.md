@@ -241,4 +241,4 @@ Per-day часы для RU календаря. `POST /production-calendar/sync` 
 
 ## token_renewal ([token_renewal.py](token_renewal.py))
 
-Самопродление персональных токенов Jira и Confluence: за 7 дней до окончания выпускает новый токен (срок 14 дней), проверяет его, записывает в AppSetting и отзывает старый; состояние — `jira_token_renewal` / `confluence_token_renewal`. Работает только при `TOKEN_AUTO_RENEW=true` (включён в серверном образе); проверка раз в час (задание в `app/main.py`). Статус для UI — `GET /settings/token-renewal` (только админ).
+Самопродление персональных токенов Jira и Confluence: за 7 дней до окончания выпускает новый токен (срок 14 дней), проверяет его и записывает в AppSetting; свой прежний токен отзывает через сутки (вставленный вручную и токен только из `.env` не трогает); состояние — `jira_token_renewal` / `confluence_token_renewal`. Работает только при `TOKEN_AUTO_RENEW=true` (включён в серверном образе); проверка раз в час (задание в `app/main.py`). Статус для UI — `GET /settings/token-renewal` (только админ).

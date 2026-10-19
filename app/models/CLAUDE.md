@@ -80,7 +80,7 @@
 
 **Ключи:**
 - Credentials: `jira_base_url`, `jira_api_token` (Bearer); `confluence_base_url`, `confluence_api_token`; `jira_email` — устарела, не читается
-- Самопродление ключей: `jira_token_renewal`, `confluence_token_renewal` — JSON состояния (`expires_at`, `renewed_at`, `error`, `error_at`); пишет `token_renewal`, сбрасывается при ручной замене токена
+- Самопродление ключей: `jira_token_renewal`, `confluence_token_renewal` — JSON состояния (`expires_at`, `renewed_at`, `error`, `error_at` — отдаются в UI; служебные `id`, `prev_id`, `replaced_at`); пишет `token_renewal`, сбрасывается при ручной замене токена
 - Переезд на Jira DC: `jira_migration_state` (`pending` | `done`; нет строки = `done`) — пока `pending`, синк запрещён
 - Автопоиск полей по типу: `jira_sprint_field_id`, `jira_epic_link_field_id`, `jira_parent_link_field_id`
 - Jira custom field IDs: `jira_team_field_id`, `jira_participating_teams_field_id`, `jira_goals_field_id` (seeded `customfield_11421` миграцией 012)

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router';
 import {
   Menu,
   Grid,
@@ -127,12 +128,13 @@ export default function SettingsPage() {
 
   const [activeKey, setActiveKey] = useState<string>(() => readHashKey(sections));
 
+  // Ссылка роутера на «/settings#раздел» (например, с плашки) не шлёт hashchange —
+  // раздел переключаем по адресу роутера.
+  const { hash } = useLocation();
   useEffect(() => {
-    const handler = () => setActiveKey(readHashKey(sections));
-    window.addEventListener('hashchange', handler);
-    return () => window.removeEventListener('hashchange', handler);
+    setActiveKey(readHashKey(sections));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hash]);
 
   const onChange = (k: string) => {
     setActiveKey(k);

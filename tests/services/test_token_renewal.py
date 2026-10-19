@@ -128,6 +128,19 @@ async def test_failed_revoke_is_retried_later_without_error(db_session):
 
 
 @respx.mock
+async def test_json_refusal_shows_only_message(db_session):
+    _jira(db_session)
+    respx.post(PAT).mock(return_value=httpx.Response(
+        400, json={"errors": [{"message": "Достигнут предел числа токенов."}]},
+    ))
+
+    await renew_system(db_session, "jira", NOW)
+
+    error = load_state(db_session, "jira")["error"]
+    assert error == "выпуск нового ключа: ответ 400 — Достигнут предел числа токенов."
+
+
+@respx.mock
 async def test_refused_issue_keeps_old_token_and_records_error(db_session):
     _jira(db_session)
     respx.post(PAT).mock(return_value=httpx.Response(403, text="Forbidden"))

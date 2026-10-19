@@ -1,6 +1,6 @@
 import { Typography } from 'antd';
-import dayjs from 'dayjs';
 import { useTokenRenewal } from '../../hooks/useSettings';
+import { renewalExpiry, renewalReason } from './tokenRenewalText';
 
 const { Text } = Typography;
 
@@ -10,14 +10,15 @@ export default function TokenRenewalNote({ system }: { system: 'jira' | 'conflue
   const state = data?.[system];
   if (!data || !state) return null;
   if (!data.enabled) return <Text type="secondary">Автопродление ключа на этом сервере выключено</Text>;
-  const until = state.expires_at ? dayjs(state.expires_at).format('DD.MM.YYYY') : null;
+  const exp = renewalExpiry(state);
+  const when = exp ? `${exp.expired ? 'истёк' : 'действует до'} ${exp.date}` : null;
   if (state.error) {
     return (
       <Text type="danger">
-        Не удалось продлить ключ: {state.error}{until ? `. Действует до ${until}` : ''}
+        Не удалось продлить ключ: {renewalReason(state.error)}{when ? `. Ключ ${when}` : ''}
       </Text>
     );
   }
-  if (!until) return <Text type="secondary">Ключ продлится автоматически в течение часа</Text>;
-  return <Text type="secondary">Ключ продлевается автоматически, действует до {until}</Text>;
+  if (!when) return <Text type="secondary">Ключ продлится автоматически в течение часа</Text>;
+  return <Text type="secondary">Ключ продлевается автоматически, {when}</Text>;
 }

@@ -97,10 +97,21 @@ def _headers(token: str) -> dict[str, str]:
 
 
 def _failure(what: str, resp: httpx.Response) -> RenewalError:
-    """Ошибка шага с кодом ответа и коротким текстом (страница вместо данных — без текста)."""
-    detail = resp.text.strip()[:200]
-    if detail.startswith("<"):
-        detail = ""
+    """Ошибка шага с кодом ответа и пояснением сервера: из JSON — только тексты, страница — без текста."""
+    try:
+        data = resp.json()
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        errors = data.get("errors")
+        items = list(data.get("errorMessages") or []) + [data.get("message")] + (
+            list(errors.values()) if isinstance(errors, dict)
+            else [e.get("message") for e in errors or [] if isinstance(e, dict)]
+        )
+        detail = "; ".join(str(m) for m in items if m)
+    else:
+        detail = "" if resp.text.lstrip().startswith("<") else resp.text.strip()
+    detail = detail[:200]
     return RenewalError(f"{what}: ответ {resp.status_code}" + (f" — {detail}" if detail else ""))
 
 
