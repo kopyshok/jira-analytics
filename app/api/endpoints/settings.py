@@ -16,6 +16,7 @@ from app.connectors.confluence_client import ConfluenceClient, ConfluenceClientE
 from app.services.plan_sources import PLAN_HOURS_SETTING_KEYS, field_layout, parse_field_setting
 from app.services.jira_migration.fields import FIELD_SETTING_RE
 from app.services.jira_migration.state import STATE_DONE, get_migration_state
+from app.services.token_renewal import renewal_status, state_key
 
 router = APIRouter()
 
@@ -149,6 +150,8 @@ async def save_jira_settings(
     """Сохранить адрес Jira и персональный токен в БД."""
     if body.api_token is not None:
         _set_setting(db, "jira_api_token", body.api_token.strip())
+        # Срок вставленного вручную токена неизвестен — самопродление начнёт заново.
+        _set_setting(db, state_key("jira"), None)
     if body.base_url is not None:
         _set_setting(db, "jira_base_url", _with_scheme(body.base_url))
     db.commit()
@@ -220,6 +223,12 @@ async def test_jira_credentials(body: JiraTestRequest):
         return JiraTestResponse(connected=False, error=str(e))
 
 
+@router.get("/token-renewal")
+async def get_token_renewal(db: Session = Depends(get_db)):
+    """Самопродление токенов Jira и Confluence: включено ли, до какого числа ключ, последняя ошибка."""
+    return renewal_status(db)
+
+
 def _confluence_settings(db: Session) -> ConfluenceSettingsResponse:
     return ConfluenceSettingsResponse(
         base_url=_get_setting(db, "confluence_base_url"),
@@ -243,6 +252,7 @@ async def save_confluence_settings(
         _set_setting(db, "confluence_base_url", _with_scheme(body.base_url))
     if body.api_token is not None:
         _set_setting(db, "confluence_api_token", body.api_token.strip())
+        _set_setting(db, state_key("confluence"), None)
     db.commit()
     return _confluence_settings(db)
 
