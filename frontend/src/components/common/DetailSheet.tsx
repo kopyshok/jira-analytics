@@ -95,7 +95,10 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const t = e.target as HTMLElement | null;
-      if (t?.closest('input, textarea, select, [contenteditable="true"]') || document.querySelector(OVERLAY_OPEN)) return;
+      // Набор текста Esc не прерывает; фокус в закрытом выпадающем списке или календаре — не набор
+      // (первый Esc закрыл список, второй закрывает панель, как у выезжающего окна).
+      const typing = t?.closest('input, textarea, select, [contenteditable="true"]') && !t.closest('.ant-select, .ant-picker');
+      if (typing || document.querySelector(OVERLAY_OPEN)) return;
       if (expanded) setExpanded(false);
       else onClose();
     };
