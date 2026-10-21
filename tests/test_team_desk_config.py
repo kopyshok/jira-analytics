@@ -13,7 +13,7 @@ def test_defaults_when_nothing_saved(db_session):
     assert cfg.thresholds["stale_days"] == 5
     assert "В РАБОТЕ" in cfg.status_groups["dev"]
     assert "ФИЧА-РЕВЬЮ" in cfg.status_groups["waiting"]
-    assert cfg.queue_statuses == ["К выполнению", "В РАБОТЕ", "Ожидает помещения"]
+    assert cfg.queue_statuses == ["К выполнению", "Сделать", "В РАБОТЕ", "Ожидает помещения"]
     assert "Подзадача" in cfg.subtask_types
     assert cfg.assignee_types == ["Research"]
 
@@ -48,3 +48,14 @@ def test_broken_stored_value_falls_back_to_defaults(db_session):
 
     cfg = load_config(db_session)
     assert cfg.thresholds["decomposition_hours"] == 16
+
+
+def test_defaults_know_jira_dc_statuses():
+    """После переезда на Jira DC: Won't Do — завершена, Сделать — к выполнению,
+    IDEA BACKLOG — бэклог (скрыт), Hold — пауза."""
+    from app.services.team_desk.config import DEFAULT_HIDDEN_STATUSES, DEFAULT_STATUS_GROUPS
+
+    assert "Won't Do" in DEFAULT_STATUS_GROUPS["done"]
+    for status in ("Сделать", "IDEA BACKLOG", "APPROVED IDEA BACKLOG", "Hold"):
+        assert status in DEFAULT_STATUS_GROUPS["todo"]
+    assert {"IDEA BACKLOG", "APPROVED IDEA BACKLOG"} <= set(DEFAULT_HIDDEN_STATUSES)

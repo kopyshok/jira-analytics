@@ -38,7 +38,7 @@ def _issue(db, project, jid, key, **kw):
     defaults = dict(
         jira_issue_id=jid, key=key, summary="Задача", issue_type="Задача",
         status="ГОТОВО", status_category="done", project_id=project.id, team=TEAM,
-        resolution="Done", resolved_at=datetime(2026, 7, 10),
+        resolution="Готово", resolved_at=datetime(2026, 7, 10),
         jira_created_at=datetime(2026, 7, 1),
         reporter_account_id=ACCOUNT_ID,
         goal_text="цель", current_behavior="как сейчас", description="описание",

@@ -21,9 +21,8 @@ EPIC_OR_IT_TASK = ["Эпик", "ИТ-задача"]
 # заказчика поверх ТЗ, см. раздел 3.2 спеки).
 EPIC_ONLY = ["Эпик"]
 PROJECT_SUBTYPES = ["RFC_STANDARD", "PROJECT"]
-# «Готово» из ТЗ — значение резолюции этого арендатора Jira называется Done
-# (см. раздел 3.8 спеки).
-RESOLUTION_DONE = "Done"
+# «Готово» из ТЗ — так резолюция и называется в Jira DC (в облаке была Done).
+RESOLUTION_DONE = "Готово"
 
 
 def _ensure_metric(db: Session, metric: KpiMetric) -> KpiMetric:
@@ -139,7 +138,8 @@ METRIC_SEEDS: list[dict] = [
             "conditions": [
                 {"attr": "project_key", "op": "in", "value": [PROJECT_1C]},
                 {"attr": "issue_type", "op": "in", "value": ["Задача"]},
-                {"attr": "status", "op": "not_in", "value": ["Backlog", "Бэклог"]},
+                {"attr": "status", "op": "not_in",
+                 "value": ["Backlog", "Бэклог", "IDEA BACKLOG", "APPROVED IDEA BACKLOG"]},
                 {"attr": "field_filled", "op": "all",
                  "value": ["goal_text", "current_behavior", "description"]},
             ],
@@ -150,7 +150,8 @@ METRIC_SEEDS: list[dict] = [
             "conditions": [
                 {"attr": "project_key", "op": "in", "value": [PROJECT_1C]},
                 {"attr": "issue_type", "op": "in", "value": ["Задача"]},
-                {"attr": "status", "op": "not_in", "value": ["Backlog", "Бэклог"]},
+                {"attr": "status", "op": "not_in",
+                 "value": ["Backlog", "Бэклог", "IDEA BACKLOG", "APPROVED IDEA BACKLOG"]},
             ],
         }, ensure_ascii=False),
     ),

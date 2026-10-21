@@ -5,7 +5,7 @@ from app.services.kpi.settings import read_kpi_settings
 
 def test_defaults_when_db_empty(db_session):
     s = read_kpi_settings(db_session)
-    assert s.excluded_statuses == ["Отменено"]
+    assert s.excluded_statuses == ["Отменено", "Won't Do"]
     assert s.worklog_deadline_days == 1
     assert s.worklog_deadline_time == "12:00"
     assert s.empty_policy == "redistribute"

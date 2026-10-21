@@ -356,7 +356,7 @@ class TestGeneral:
         resp = admin_client.get("/api/v1/kpi-settings/general")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["excluded_statuses"] == ["Отменено"]
+        assert body["excluded_statuses"] == ["Отменено", "Won't Do"]
         assert body["empty_policy"] == "redistribute"
 
     def test_save_general_rejects_bad_policy(self, admin_client):

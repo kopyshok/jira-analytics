@@ -19,6 +19,8 @@ SETTING_KEY = "team_desk_config"
 # (тестировщика, аналитика, заказчика), todo — ещё не в работе, done — закрыта.
 # В Jira у части статусов латинская «a»/«o» внутри русского слова — оба
 # написания перечислены намеренно.
+# Jira DC переименовала часть статусов (Отменено → Won't Do, К выполнению →
+# Сделать, Backlog → IDEA BACKLOG, Приостановлено → Hold) — перечислены оба имени.
 DEFAULT_STATUS_GROUPS: dict[str, list[str]] = {
     "dev": ["В РАБОТЕ", "КОД-РЕВЬЮ", "Ожидает помещения"],
     "waiting": [
@@ -30,11 +32,14 @@ DEFAULT_STATUS_GROUPS: dict[str, list[str]] = {
         "Ожидает обновления",
         "Ожидает oбновления",
     ],
-    "todo": ["Backlog", "К выполнению", "Приостановлено"],
-    "done": ["ГОТОВО", "Готово", "Отменено"],
+    "todo": [
+        "Backlog", "IDEA BACKLOG", "APPROVED IDEA BACKLOG",
+        "К выполнению", "Сделать", "Приостановлено", "Hold",
+    ],
+    "done": ["ГОТОВО", "Готово", "Отменено", "Won't Do"],
 }
 
-DEFAULT_QUEUE_STATUSES = ["К выполнению", "В РАБОТЕ", "Ожидает помещения"]
+DEFAULT_QUEUE_STATUSES = ["К выполнению", "Сделать", "В РАБОТЕ", "Ожидает помещения"]
 
 # Статусы, в которых человек реально делает работу руками. Группа «у
 # разработчика» шире: код-ревью и ожидание помещения мяч тоже держат за ним, но
@@ -53,7 +58,7 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
 
 # Статусы, которых в разделе быть не должно вовсе: задача ещё не взята в
 # работу, тимлиду смотреть на неё нечего. В счётчики и очередь тоже не идут.
-DEFAULT_HIDDEN_STATUSES = ["Backlog"]
+DEFAULT_HIDDEN_STATUSES = ["Backlog", "IDEA BACKLOG", "APPROVED IDEA BACKLOG"]
 
 DEFAULT_SUBTASK_TYPES = ["Подзадача", "Sub-task"]
 DEFAULT_ASSIGNEE_TYPES = ["Research"]

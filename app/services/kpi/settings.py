@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.models.app_setting import AppSetting
 
-DEFAULT_EXCLUDED_STATUSES = ["Отменено"]
+# «Won't Do» — отмена в Jira DC (в облаке был статус «Отменено»).
+DEFAULT_EXCLUDED_STATUSES = ["Отменено", "Won't Do"]
 
 # Способы расчёта срока внесения трудозатрат:
 #   hours_from_start — «часов от времени работы», формулировка ТЗ: запись

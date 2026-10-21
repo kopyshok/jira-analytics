@@ -66,7 +66,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     for i in range(15):
         issue = _issue(
             db_session, project, f"q-rel-{i}", f"OS-{1000 + i}",
-            resolution="Done", resolved_at=datetime(2026, 7, 10),
+            resolution="Готово", resolved_at=datetime(2026, 7, 10),
             reporter_account_id=ACCOUNT_ID,
         )
         released.append(issue)
@@ -74,7 +74,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     for i in range(3):
         bug = _issue(
             db_session, project, f"q-bug-{i}", f"OS-{1100 + i}",
-            issue_type="Баг", resolution="Done", environment="PROD",
+            issue_type="Баг", resolution="Готово", environment="PROD",
             resolved_at=datetime(2026, 7, 12),
         )
         db_session.commit()
@@ -91,7 +91,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     for i in range(8):
         _issue(
             db_session, project, f"dl-{i}", f"OS-{1200 + i}",
-            issue_type="Эпик", subtype="PROJECT", resolution="Done",
+            issue_type="Эпик", subtype="PROJECT", resolution="Готово",
             resolved_at=datetime(2026, 7, 15, 10, 0),
             planned_end_date=datetime(2026, 7, 15, 0, 0),
             assignee_account_id=ACCOUNT_ID,
@@ -99,7 +99,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     for i in range(2):
         _issue(
             db_session, project, f"dl-late-{i}", f"OS-{1250 + i}",
-            issue_type="Эпик", subtype="PROJECT", resolution="Done",
+            issue_type="Эпик", subtype="PROJECT", resolution="Готово",
             resolved_at=datetime(2026, 7, 16, 10, 0),
             planned_end_date=datetime(2026, 7, 15, 0, 0),
             assignee_account_id=ACCOUNT_ID,
@@ -126,7 +126,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     # --- Cycle Time: норматив 80 при факте 75 → 80/75*100 = 106,7, потолок 100 ---
     _issue(
         db_session, project, "ct-1", "OS-1400",
-        issue_type="ИТ-задача", resolution="Done", subtype="RFC_STANDARD", cost_type="Change",
+        issue_type="ИТ-задача", resolution="Готово", subtype="RFC_STANDARD", cost_type="Change",
         cycle_time_fact=75.0, resolved_at=datetime(2026, 7, 20),
         assignee_account_id=ACCOUNT_ID,
     )
@@ -136,7 +136,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     # --- Оценка заказчика: 4 из 5 → 80,0 ---
     _issue(
         db_session, project, "cs-1", "OS-1401",
-        issue_type="ИТ-задача", resolution="Done", subtype="PROJECT",
+        issue_type="ИТ-задача", resolution="Готово", subtype="PROJECT",
         resolved_at=datetime(2026, 7, 22), jira_created_at=datetime(2026, 7, 1),
         assignee_account_id=ACCOUNT_ID,
         rating_speed=4, rating_quality=4, rating_result=4,
@@ -199,7 +199,7 @@ def test_new_metric_added_as_dictionary_row_is_computed_without_code_changes(db_
     for i in range(4):
         db_session.add(Issue(
             jira_issue_id=f"nm-{i}", key=f"OS-{2000 + i}", summary="s", issue_type="Задача",
-            status="ГОТОВО", status_category="done", resolution="Done",
+            status="ГОТОВО", status_category="done", resolution="Готово",
             resolved_at=datetime(2026, 7, 10), project_id=project.id,
             reporter_account_id="acc-new-metric", team=TEAM,
         ))
@@ -258,13 +258,13 @@ def test_cancelled_issue_excluded_from_denominator(db_session):
 
     db_session.add(Issue(
         jira_issue_id="cx-1", key="OS-3000", summary="s", issue_type="Задача",
-        status="Отменено", status_category="done", resolution="Done",
+        status="Отменено", status_category="done", resolution="Готово",
         resolved_at=datetime(2026, 7, 10), project_id=project.id,
         reporter_account_id="acc-cancel", team=TEAM,
     ))
     db_session.add(Issue(
         jira_issue_id="cx-2", key="OS-3001", summary="s", issue_type="Задача",
-        status="ГОТОВО", status_category="done", resolution="Done",
+        status="ГОТОВО", status_category="done", resolution="Готово",
         resolved_at=datetime(2026, 7, 12), project_id=project.id,
         reporter_account_id="acc-cancel", team=TEAM,
     ))
@@ -314,13 +314,13 @@ def test_employee_moved_between_teams_mid_month_not_duplicated(db_session):
 
     db_session.add(Issue(
         jira_issue_id="mv-1", key="OS-4000", summary="до переезда", issue_type="Задача",
-        status="ГОТОВО", status_category="done", resolution="Done",
+        status="ГОТОВО", status_category="done", resolution="Готово",
         resolved_at=datetime(2026, 7, 5), project_id=project.id,
         reporter_account_id=account_id, team=team_before,
     ))
     db_session.add(Issue(
         jira_issue_id="mv-2", key="OS-4001", summary="после переезда", issue_type="Задача",
-        status="ГОТОВО", status_category="done", resolution="Done",
+        status="ГОТОВО", status_category="done", resolution="Готово",
         resolved_at=datetime(2026, 7, 25), project_id=project.id,
         reporter_account_id=account_id, team=team_after,
     ))
@@ -364,7 +364,7 @@ def test_metric_without_data_redistributes_weight_not_zeroes_total(db_session):
     for i in range(15):
         issue = Issue(
             jira_issue_id=f"nd-rel-{i}", key=f"OS-{5000 + i}", summary="s", issue_type="Задача",
-            status="ГОТОВО", status_category="done", resolution="Done",
+            status="ГОТОВО", status_category="done", resolution="Готово",
             resolved_at=datetime(2026, 7, 10), project_id=project.id,
             reporter_account_id=account_id, team=TEAM,
         )
@@ -374,7 +374,7 @@ def test_metric_without_data_redistributes_weight_not_zeroes_total(db_session):
     for i in range(3):
         bug = Issue(
             jira_issue_id=f"nd-bug-{i}", key=f"OS-{5100 + i}", summary="s", issue_type="Баг",
-            status="ГОТОВО", status_category="done", resolution="Done", environment="PROD",
+            status="ГОТОВО", status_category="done", resolution="Готово", environment="PROD",
             resolved_at=datetime(2026, 7, 12), project_id=project.id, team=TEAM,
         )
         db_session.add(bug)
@@ -391,14 +391,14 @@ def test_metric_without_data_redistributes_weight_not_zeroes_total(db_session):
         db_session.add(Issue(
             jira_issue_id=f"nd-dl-{i}", key=f"OS-{5200 + i}", summary="s",
             issue_type="Эпик", subtype="PROJECT", status="ГОТОВО", status_category="done",
-            resolution="Done", resolved_at=datetime(2026, 7, 15, 10, 0),
+            resolution="Готово", resolved_at=datetime(2026, 7, 15, 10, 0),
             planned_end_date=datetime(2026, 7, 15, 0, 0), project_id=project.id,
             assignee_account_id=account_id, team=TEAM,
         ))
     db_session.add(Issue(
         jira_issue_id="nd-dl-late", key="OS-5250", summary="s",
         issue_type="Эпик", subtype="PROJECT", status="ГОТОВО", status_category="done",
-        resolution="Done", resolved_at=datetime(2026, 7, 16, 10, 0),
+        resolution="Готово", resolved_at=datetime(2026, 7, 16, 10, 0),
         planned_end_date=datetime(2026, 7, 15, 0, 0), project_id=project.id,
         assignee_account_id=account_id, team=TEAM,
     ))
@@ -420,7 +420,7 @@ def test_metric_without_data_redistributes_weight_not_zeroes_total(db_session):
     # Cycle Time: норматив 80 при факте 75 → 106,7, потолок 100
     db_session.add(Issue(
         jira_issue_id="nd-ct-1", key="OS-5400", summary="s", issue_type="ИТ-задача",
-        status="ГОТОВО", status_category="done", resolution="Done",
+        status="ГОТОВО", status_category="done", resolution="Готово",
         subtype="RFC_STANDARD", cost_type="Change", cycle_time_fact=75.0,
         resolved_at=datetime(2026, 7, 20), project_id=project.id,
         assignee_account_id=account_id, team=TEAM,
@@ -491,7 +491,7 @@ def test_approved_quarter_frozen_after_weight_change(db_session):
     for i in range(15):
         issue = Issue(
             jira_issue_id=f"fz-rel-{i}", key=f"OS-{6000 + i}", summary="s", issue_type="Задача",
-            status="ГОТОВО", status_category="done", resolution="Done",
+            status="ГОТОВО", status_category="done", resolution="Готово",
             resolved_at=datetime(2026, 7, 10), project_id=project.id,
             reporter_account_id=account_id, team=team,
         )
@@ -501,7 +501,7 @@ def test_approved_quarter_frozen_after_weight_change(db_session):
     for i in range(3):
         bug = Issue(
             jira_issue_id=f"fz-bug-{i}", key=f"OS-{6100 + i}", summary="s", issue_type="Баг",
-            status="ГОТОВО", status_category="done", resolution="Done", environment="PROD",
+            status="ГОТОВО", status_category="done", resolution="Готово", environment="PROD",
             resolved_at=datetime(2026, 7, 12), project_id=project.id, team=team,
         )
         db_session.add(bug)
@@ -513,7 +513,7 @@ def test_approved_quarter_frozen_after_weight_change(db_session):
     # Соблюдение сроков: 1 из 1 в срок → 100,0
     db_session.add(Issue(
         jira_issue_id="fz-dl-1", key="OS-6200", summary="s", issue_type="Эпик",
-        subtype="PROJECT", status="ГОТОВО", status_category="done", resolution="Done",
+        subtype="PROJECT", status="ГОТОВО", status_category="done", resolution="Готово",
         resolved_at=datetime(2026, 7, 15, 10, 0), planned_end_date=datetime(2026, 7, 15, 0, 0),
         project_id=project.id, assignee_account_id=account_id, team=team,
     ))

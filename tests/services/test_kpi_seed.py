@@ -47,7 +47,7 @@ def _issue_types(cond_json: str) -> set:
 
 
 def test_seed_uses_actual_done_resolution_value(db_session):
-    """Дефект 1: у этого арендатора резолюция называется Done, не «Готово» из ТЗ."""
+    """Резолюция «выполнено» в Jira DC называется «Готово» (в облаке была Done)."""
     seed_defaults(db_session)
     db_session.commit()
 
@@ -56,9 +56,23 @@ def test_seed_uses_actual_done_resolution_value(db_session):
             if not cond_json:
                 continue
             values = _resolution_values(cond_json)
-            assert "Готово" not in values
+            assert "Done" not in values
             if values:
-                assert values == {"Done"}
+                assert values == {"Готово"}
+
+
+def test_seed_backlog_exclusion_knows_jira_dc_statuses(db_session):
+    seed_defaults(db_session)
+    db_session.commit()
+
+    found = False
+    for metric in db_session.query(KpiMetric).all():
+        for cond_json in (metric.numerator_json, metric.denominator_json):
+            for c in (json.loads(cond_json).get("conditions") if cond_json else []) or []:
+                if c.get("attr") == "status" and c.get("op") == "not_in":
+                    found = True
+                    assert {"Backlog", "Бэклог", "IDEA BACKLOG", "APPROVED IDEA BACKLOG"} <= set(c["value"])
+    assert found
 
 
 def test_seed_deadlines_metric_scoped_to_epics_only(db_session):
