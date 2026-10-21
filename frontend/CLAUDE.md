@@ -42,7 +42,7 @@ Source-of-truth для текущих роутов — [`routes.tsx`](src/routes
 
 ## Themes
 
-Две темы, обе Aurora: `aurora-dark` (по умолчанию) и `aurora-light`. Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu` — оболочка теперь всегда `aurora/shell/AuroraShell`, меню Aurora: [`AuroraSidebar.tsx`](src/aurora/shell/AuroraSidebar.tsx), пункты берёт из `navConfig.ts` (см. ниже).
+Темы Aurora: `aurora-dark` (по умолчанию) и `aurora-light`; поверх светлой — обложка «Пульт» (`pult-light`, см. ниже). Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu` — у тем Aurora оболочка `aurora/shell/AuroraShell`, меню Aurora: [`AuroraSidebar.tsx`](src/aurora/shell/AuroraSidebar.tsx), пункты берёт из `navConfig.ts` (см. ниже).
 
 `ThemeContext` ставит на `<html>` атрибуты `data-theme="aurora"` + `data-mode="dark|light"`; `DARK_THEME` — Proxy в `utils/constants.ts`, читающий их и отдающий нужный набор токенов. Прежние значения тем (`dark-blue`, `dark`, `dark-slate`, `dark-charcoal`) сводятся к `aurora-dark` и на фронте (`normalizeTheme`), и в БД (миграция `td03a`).
 
