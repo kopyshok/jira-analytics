@@ -680,8 +680,9 @@ class AnalyticsService:
             total_plan += plan_h
 
             last_wl = epic_last_wl(issue.id)
-            silent_d = (today_dt - last_wl).days if last_wl else 9999
-            if silent_d > silence_days and issue.status_category != "done":
+            # Списаний не было вовсе — дней тишины нет, но проект молчит.
+            silent_d = (today_dt - last_wl).days if last_wl else None
+            if (silent_d is None or silent_d > silence_days) and issue.status_category != "done":
                 silent_count += 1
 
             trend_h, trend_dir = epic_trend(issue.id)
@@ -745,7 +746,7 @@ class AnalyticsService:
                 trend_dir=trend_dir,
                 forecast_close_date=forecast_close,
                 forecast_in_quarter=in_qtr,
-                silent_days=min(silent_d, 9999),
+                silent_days=silent_d,
                 weekly_activity=[round(h, 1) for h in weekly_activity_per_epic.get(issue.id, [0.0] * 8)],
             ))
 

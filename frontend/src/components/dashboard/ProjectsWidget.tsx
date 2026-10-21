@@ -7,6 +7,7 @@ import { statusTagColor } from '../../utils/status';
 import { DARK_THEME, CHART_COLORS } from '../../utils/constants';
 import { useSkin } from '../../contexts/ThemeContext';
 import { readablePair } from '../../utils/readableColor';
+import { silenceLabel } from '../../utils/projectSilence';
 
 // Помощники из чужих команд в скине — светлая зелёная пара вместо градиента.
 const HELPER_PAIR = readablePair('#22c55e');
@@ -336,6 +337,7 @@ function ProjectRow({
   const overrun = project.team_fact_hours > project.plan_hours && project.plan_hours > 0;
   const pct = project.plan_hours > 0 ? (project.team_fact_hours / project.plan_hours) * 100 : 0;
   const barColor = STATUS_COLORS[project.status_category] || DARK_THEME.textMuted;
+  const silence = isDone ? null : silenceLabel(project.silent_days, SILENCE_THRESHOLD);
 
   return (
     <div
@@ -364,9 +366,9 @@ function ProjectRow({
         display: 'flex', alignItems: 'center', gap: 6,
       }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.title}</span>
-        {project.silent_days > SILENCE_THRESHOLD && !isDone && (
-          <span style={{ background: '#faad1422', color: '#faad14', fontSize: 10, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
-            тишина {project.silent_days}д
+        {silence && (
+          <span style={{ background: '#faad1422', color: 'var(--ink-warn, #faad14)', fontSize: 10, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
+            {silence}
           </span>
         )}
         {overrun && (
@@ -501,7 +503,7 @@ function Sparklines({ projects }: { projects: ProjectItem[] }) {
         const points = p.weekly_activity
           .map((v, i) => `${(i / Math.max(1, p.weekly_activity.length - 1)) * 100},${100 - (v / max) * 100}`)
           .join(' ');
-        const isActive = p.silent_days <= SILENCE_THRESHOLD;
+        const isActive = p.silent_days != null && p.silent_days <= SILENCE_THRESHOLD;
         const stroke = isActive
           ? (p.status_category === 'overdue' || p.team_fact_hours > p.plan_hours ? '#ff4d4f' : (p.status_category === 'done' ? '#67d68d' : CHART_COLORS.cyan))
           : '#2a4060';

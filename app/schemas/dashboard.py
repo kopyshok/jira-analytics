@@ -28,7 +28,7 @@ class ProjectItem(BaseModel):
     trend_dir: str                     # 'up' | 'down' | 'flat'
     forecast_close_date: date | None
     forecast_in_quarter: bool          # успевает ли к концу квартала
-    silent_days: int                   # дни с последнего ворклога (0 если был сегодня)
+    silent_days: int | None            # дни с последнего ворклога (0 — сегодня; None — списаний не было)
     weekly_activity: list[float]       # 8 точек спарклайна (часы/неделю с конца периода назад)
     team_fact_hours: float = 0.0       # часы команды по эпику (включая детей)
     alien_fact_hours: float = 0.0      # часы помощников извне
@@ -45,7 +45,7 @@ class DashboardProjectsResponse(BaseModel):
     total_fact_hours: float
     total_plan_hours: float
     avg_load_pct: float          # total_fact / total_plan * 100
-    silent_count: int            # проекты с silent_days > 14
+    silent_count: int            # незакрытые проекты: silent_days > 14 или списаний не было (None)
     forecast_done: int
     forecast_pct: float
     projects: list[ProjectItem]
