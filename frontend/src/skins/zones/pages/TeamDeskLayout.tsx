@@ -131,7 +131,8 @@ export default function TeamDeskZonesLayout({ desk }: { desk: TeamDeskPageState 
   }, [openSheet]);
 
   const rubberCount = data ? data.issues.filter((i) => i.daily_rate).length : 0;
-  const busyCount = data ? data.developers.filter((d) => d.in_progress > 0).length : 0;
+  // Задач в работе у людей стола (как в других темах), а не число занятых людей.
+  const busyCount = data ? data.developers.reduce((n, d) => n + d.in_progress, 0) : 0;
   const overLimit = data ? data.developers.filter((d) => d.in_progress > wipLimit).length : 0;
   const deskPeople = new Set(Object.values(data?.employee_ids ?? {}));
   const absentIn = (q: QuarterRef) => {
@@ -282,7 +283,7 @@ export default function TeamDeskZonesLayout({ desk }: { desk: TeamDeskPageState 
                     <SheetCounter
                       label="В работе одновременно"
                       count={busyCount}
-                      extra={overLimit > 0 ? `${overLimit} сверх лимита` : undefined}
+                      extra={overLimit > 0 ? `сверх лимита у ${overLimit}` : undefined}
                       active={openSheet === 'wip'}
                       onClick={() => toggleSheet('wip')}
                     />
