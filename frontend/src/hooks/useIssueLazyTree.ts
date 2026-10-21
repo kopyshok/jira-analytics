@@ -1,27 +1,26 @@
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, keepPreviousData } from '@tanstack/react-query';
 import {
   getTreeRoots,
   getTreeCounts,
   getIssueChildrenByTab,
   getEpicCandidates,
 } from '../api/issues';
+import type { RootsQuery, TriageTab } from '../utils/categoryTriage';
 
-type Tab = 'stack' | 'active' | 'initiatives' | 'archive_target' | 'archive';
+type Tab = TriageTab;
 
-type RootsParams = {
-  project_keys?: string;
-  teams?: string;
-  tab: Tab;
-  search?: string;
-};
+/** Ключ кэша страницы верхних строк — по нему же страницу кладут в кэш заранее. */
+export const issueRootsKey = (params: RootsQuery) => ['issues', 'tree', 'roots', params] as const;
 
-export function useIssueRoots(params: RootsParams) {
+export function useIssueRoots(params: RootsQuery) {
   return useQuery({
-    queryKey: ['issues', 'tree', 'roots', params],
+    queryKey: issueRootsKey(params),
     queryFn: ({ signal }) => getTreeRoots(params, signal),
     enabled: !!(params.teams || params.project_keys),
     retry: false,
     staleTime: 30_000,
+    // Пока грузится соседняя страница, на экране остаётся текущая.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -50,8 +49,10 @@ export function useEpicCandidates(params: CountsParams) {
 export function useLoadChildrenMutation() {
   return useMutation({
     mutationFn: ({
-      parentId, tab, teams, project_keys, search,
-    }: { parentId: string; tab: Tab; teams?: string; project_keys?: string; search?: string }) =>
-      getIssueChildrenByTab(parentId, tab, { teams, project_keys, search }),
+      parentId, tab, teams, project_keys, search, only_moved,
+    }: {
+      parentId: string; tab: Tab; teams?: string; project_keys?: string; search?: string; only_moved?: boolean;
+    }) =>
+      getIssueChildrenByTab(parentId, tab, { teams, project_keys, search, only_moved }),
   });
 }

@@ -67,10 +67,10 @@ test('categorize-issue', async ({ page }) => {
   })).ok()).toBeTruthy();
 
   const rootsRes = await page.request.get(`${api}/api/v1/issues/tree/roots`, {
-    params: { teams: TEAM, tab: 'stack' },
+    params: { teams: TEAM, tab: 'stack', limit: 500 },
   });
   expect(rootsRes.ok()).toBeTruthy();
-  const roots = (await rootsRes.json()) as IssueRoot[];
+  const roots = ((await rootsRes.json()) as { items: IssueRoot[] }).items;
   const epics = roots.filter((r) => r.has_children && !r.is_context);
 
   // Первый эпик — с небольшим числом неразобранных задач внутри: сохранение на всё поддерево

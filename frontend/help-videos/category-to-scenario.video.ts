@@ -94,8 +94,8 @@ test.beforeAll(async ({ playwright }, testInfo) => {
   // покажем, как категория сама протягивает задачу в бэклог и в сценарий.
   // Предпочитаем «чистую» (без своих неподтверждённых потомков) — тогда строка
   // после сохранения сразу и видимо уходит из «К разбору».
-  const roots = await getJson<IssueRoot[]>(
-    `${api}/issues/tree/roots?teams=${encodeURIComponent(TEAM)}&tab=stack`,
+  const { items: roots } = await getJson<{ items: IssueRoot[] }>(
+    `${api}/issues/tree/roots?teams=${encodeURIComponent(TEAM)}&tab=stack&limit=500`,
   );
   const eligible = roots.filter((r) => r.is_container && !r.is_context && r.category !== CATEGORY_CODE);
   // Нужна задача с подзадачами (тогда при сохранении появляется выбор «всё поддерево»),
@@ -177,8 +177,10 @@ test('category-to-scenario', async ({ page }) => {
   // категория при этом уже сохранена (проверяем через API).
   let saved = false;
   for (let i = 0; i < 15 && !saved; i++) {
-    const res = await page.request.get(`${api}/issues/tree/roots`, { params: { teams: TEAM, tab: 'stack' } });
-    const found = (await res.json() as IssueRoot[]).find((r) => r.id === issue.id);
+    const res = await page.request.get(`${api}/issues/tree/roots`, {
+      params: { teams: TEAM, tab: 'stack', focus_id: issue.id },
+    });
+    const found = (await res.json() as { items: IssueRoot[] }).items.find((r) => r.id === issue.id);
     saved = !found || (found.assigned_category === CATEGORY_CODE && found.category_verified);
     if (!saved) await page.waitForTimeout(400);
   }

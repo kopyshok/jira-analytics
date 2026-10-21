@@ -35,8 +35,8 @@ async function findUnlinkedIssueKeys(request: APIRequestContext, api: string): P
   }
   const candidates: RootNode[] = [];
   for (const tab of ['active', 'stack'] as const) {
-    const nodes: RootNode[] = await (
-      await request.get(`${api}/issues/tree/roots`, { params: { teams: TEAM, tab } })
+    const { items: nodes }: { items: RootNode[] } = await (
+      await request.get(`${api}/issues/tree/roots`, { params: { teams: TEAM, tab, limit: 500 } })
     ).json();
     candidates.push(...nodes);
   }

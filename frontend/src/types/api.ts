@@ -242,6 +242,19 @@ export interface IssueTreeRootNode {
   subgroup_verified?: boolean;
 }
 
+/** Страница верхних строк очереди разбора. */
+export interface IssueTreeRootsPage {
+  items: IssueTreeRootNode[];
+  /** Сколько верхних строк в очереди с учётом отбора. */
+  total: number;
+  offset: number;
+  limit: number;
+  /** Статусы всей очереди — варианты для «Скрытых статусов». */
+  statuses: string[];
+  /** Только при прыжке к задаче: нашлась ли её ветка в очереди. */
+  focus_found?: boolean | null;
+}
+
 export interface IssueTreeCounts {
   stack: number;
   active: number;

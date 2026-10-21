@@ -1,11 +1,13 @@
-import { useState, useMemo, useEffect, useCallback, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
 import { useTeamRegistry } from '../hooks/useTeamRegistry';
 import { useSetIssueSubgroup } from '../hooks/useIssueTree';
 import {
   Button, Space, Table, Tag, App,
   Select, Typography, Modal, Checkbox,
-  Empty, Input, Popover, Tooltip, Switch, Popconfirm,
+  Empty, Input, Popover, Tooltip, Switch, Popconfirm, Pagination,
+  type TableProps,
 } from 'antd';
+import type { TableRef } from 'antd/es/table';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import categoriesHelp from '../../../docs/help/categories.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
@@ -21,12 +23,23 @@ import { DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
 import { useSetIssueInclude, useBatchSetCategory, useVerifyIssue } from '../hooks/useIssueTree';
 import {
+  issueRootsKey,
   useIssueRoots,
   useIssueTreeCounts,
   useLoadChildrenMutation,
 } from '../hooks/useIssueLazyTree';
-import { getIssueChildrenByTab, locateIssue } from '../api/issues';
-import type { IssueTreeRootNode } from '../types/api';
+import { getIssueChildrenByTab, getTreeRoots, locateIssue } from '../api/issues';
+import type { IssueTreeRootNode, IssueTreeRootsPage } from '../types/api';
+import {
+  buildRootsQuery,
+  clampPage,
+  pageOfOffset,
+  sortRows,
+  ROOTS_DEFAULT_PAGE_SIZE,
+  ROOTS_PAGE_SIZES,
+  type RootSort,
+  type TriageTab,
+} from '../utils/categoryTriage';
 
 const { Text } = Typography;
 
@@ -62,7 +75,7 @@ type TreeNodeWithChildren = IssueTreeRootNode & {
   __depth?: number;
 };
 
-type InnerTab = 'stack' | 'active' | 'initiatives' | 'archive_target' | 'archive';
+type InnerTab = TriageTab;
 type SearchMode = 'filter' | 'jump';
 const QUEUE_ORDER: InnerTab[] = ['stack', 'active', 'initiatives', 'archive_target', 'archive'];
 const QUEUE_META: Record<InnerTab, { title: string; hint: string; tone: string }> = {
@@ -239,8 +252,16 @@ export default function CategoriesEditorPage() {
   });
   const [innerTab, setInnerTab] = useState<InnerTab>('stack');
   const [onlyMoved, setOnlyMoved] = useState(false);
+  // «Только переехавшие» есть только в «К разбору».
+  const onlyMovedActive = onlyMoved && innerTab === 'stack';
+  // Порядок верхних строк по колонке — считает сервер по всей очереди.
+  const [sort, setSort] = useState<RootSort>(null);
+  const [pageSize, setPageSize] = useState(ROOTS_DEFAULT_PAGE_SIZE);
+  const tableRef = useRef<TableRef>(null);
   const [pendingCats, setPendingCats] = useState<Map<string, string | null>>(new Map());
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Отмеченные контекстные строки с любых страниц — категорию они не получают.
+  const [selectedContextIds, setSelectedContextIds] = useState<Set<string>>(new Set());
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<string | undefined>();
   // Какая из двух кнопок диалога нажата — нужно только для спиннера на ней.
@@ -252,12 +273,36 @@ export default function CategoriesEditorPage() {
   const scopeProjects = useScopeProjects();
   const scopeKeys = (scopeProjects.data ?? []).map(p => p.jira_project_key).join(',');
 
-  const rootsQuery = useIssueRoots({
-    project_keys: scopeKeys || undefined,
+  // Очередь приходит страницами верхних строк. Смена очереди, отбора или
+  // порядка начинает с первой страницы — без лишнего запроса старой.
+  const rootsInput = useMemo(() => ({
+    projectKeys: scopeKeys || undefined,
     teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
     tab: innerTab,
     search: SEARCH_MODE === 'filter' ? (normalizedSearch || undefined) : undefined,
-  });
+    pageSize,
+    sort,
+    hiddenStatuses,
+    onlyMoved,
+  }), [scopeKeys, selectedTeams, innerTab, SEARCH_MODE, normalizedSearch, pageSize, sort, hiddenStatuses, onlyMoved]);
+  const listSignature = JSON.stringify(buildRootsQuery({ ...rootsInput, page: 1 }));
+  const [pageState, setPageState] = useState({ signature: listSignature, page: 1 });
+  const page = pageState.signature === listSignature ? pageState.page : 1;
+  const setPage = useCallback((next: number) => {
+    setPageState({ signature: listSignature, page: next });
+    tableRef.current?.scrollTo({ top: 0 });
+  }, [listSignature]);
+  const rootsParams = useMemo(() => buildRootsQuery({ ...rootsInput, page }), [rootsInput, page]);
+  const rootsQuery = useIssueRoots(rootsParams);
+  const rootItems = rootsQuery.data?.items;
+  const rootsTotal = rootsQuery.data?.total ?? 0;
+
+  // Разобрали хвост очереди — остаёмся на последней непустой странице.
+  useEffect(() => {
+    if (!rootsQuery.data || rootsQuery.isPlaceholderData) return;
+    const clamped = clampPage(page, pageSize, rootsQuery.data.total);
+    if (clamped !== page) setPage(clamped);
+  }, [rootsQuery.data, rootsQuery.isPlaceholderData, page, pageSize, setPage]);
   const countsQuery = useIssueTreeCounts({
     project_keys: scopeKeys || undefined,
     teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
@@ -278,13 +323,14 @@ export default function CategoriesEditorPage() {
   // В режиме 'filter' сброс также при изменении поиска (т.к. дерево
   // перефильтровывается на сервере). В 'jump' дерево не зависит от
   // поиска — не сбрасываем, чтобы раскрытый путь не схлопывался.
+  // «Только переехавшие» тоже отбирает подзадачи на сервере — сброс.
   useEffect(() => {
     setLoadedChildren(new Map());
     setExpandedRowKeys([]);
     setJumpedKey(null);
     if (innerTab !== 'stack') setOnlyMoved(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [innerTab, selectedTeams.join(','), scopeKeys, ...(SEARCH_MODE === 'filter' ? [normalizedSearch] : [])]);
+  }, [innerTab, selectedTeams.join(','), scopeKeys, onlyMovedActive, ...(SEARCH_MODE === 'filter' ? [normalizedSearch] : [])]);
 
   const onExpand = useCallback(async (expanded: boolean, record: TreeNodeWithChildren) => {
     if (!expanded) return;
@@ -296,13 +342,14 @@ export default function CategoriesEditorPage() {
       teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
       project_keys: scopeKeys || undefined,
       search: SEARCH_MODE === 'filter' ? (normalizedSearch || undefined) : undefined,
+      only_moved: onlyMovedActive,
     });
     setLoadedChildren(prev => {
       const next = new Map(prev);
       next.set(record.id, children);
       return next;
     });
-  }, [loadedChildren, loadChildrenMut, innerTab, selectedTeams, scopeKeys, normalizedSearch]);
+  }, [loadedChildren, loadChildrenMut, innerTab, selectedTeams, scopeKeys, normalizedSearch, onlyMovedActive]);
 
   // ─── Группа: правка строки без перезагрузки дерева ───────────
 
@@ -318,9 +365,9 @@ export default function CategoriesEditorPage() {
       n.id === issueId
         ? { ...n, assigned_subgroup_id: assigned, subgroup_id: resolved, subgroup_source: source }
         : n;
-    qc.setQueriesData<IssueTreeRootNode[]>(
+    qc.setQueriesData<IssueTreeRootsPage>(
       { queryKey: ['issues', 'tree', 'roots'] },
-      (old) => (old ? old.map(patch) : old),
+      (old) => (old ? { ...old, items: old.items.map(patch) } : old),
     );
     setLoadedChildren(prev => {
       const next = new Map(prev);
@@ -348,13 +395,14 @@ export default function CategoriesEditorPage() {
       teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
       project_keys: scopeKeys || undefined,
       search: SEARCH_MODE === 'filter' ? (normalizedSearch || undefined) : undefined,
+      only_moved: onlyMovedActive,
     })));
     setLoadedChildren(prev => {
       const next = new Map(prev);
       ids.forEach((id, i) => next.set(id, fetched[i]));
       return next;
     });
-  }, [loadedChildren, loadChildrenMut, innerTab, selectedTeams, scopeKeys, normalizedSearch]);
+  }, [loadedChildren, loadChildrenMut, innerTab, selectedTeams, scopeKeys, normalizedSearch, onlyMovedActive]);
 
   // ─── displayData from roots + loadedChildren ─────────────────
 
@@ -379,7 +427,8 @@ export default function CategoriesEditorPage() {
     const attachChildren = (node: IssueTreeRootNode, depth: number): TreeNodeWithChildren => {
       const kids = loadedChildren.get(node.id);
       if (kids) {
-        const real = kids.filter(passesHiddenStatuses).map(k => attachChildren(k, depth + 1));
+        // Верхние строки отбирает и сортирует сервер, раскрытые подзадачи — здесь.
+        const real = sortRows(kids.filter(passesHiddenStatuses), sort).map(k => attachChildren(k, depth + 1));
         return {
           ...node,
           __depth: depth,
@@ -393,35 +442,20 @@ export default function CategoriesEditorPage() {
       }
       return { ...node, __depth: depth };
     };
-    return (rootsQuery.data ?? []).filter(passesHiddenStatuses).map(r => attachChildren(r, 0));
-  }, [rootsQuery.data, loadedChildren, passesHiddenStatuses]);
+    return (rootItems ?? []).filter(passesHiddenStatuses).map(r => attachChildren(r, 0));
+  }, [rootItems, loadedChildren, passesHiddenStatuses, sort]);
 
-  // «Только переехавшие»: оставляем строки со сменой родителя и их предков
-  // (чтобы отмеченный потомок не пропал под неотмеченным родителем).
-  const stackData = useMemo<TreeNodeWithChildren[]>(() => {
-    if (!onlyMoved || innerTab !== 'stack') return displayData;
-    const prune = (node: TreeNodeWithChildren): TreeNodeWithChildren | null => {
-      const keptKids = (node.children ?? [])
-        .map(prune)
-        .filter((c): c is TreeNodeWithChildren => c !== null);
-      if (node.parent_changed || keptKids.length > 0) {
-        return { ...node, children: keptKids.length > 0 ? keptKids : undefined };
-      }
-      return null;
-    };
-    return displayData
-      .map(prune)
-      .filter((n): n is TreeNodeWithChildren => n !== null);
-  }, [displayData, onlyMoved, innerTab]);
+  // «Только переехавшие» отбирает сервер: ветки, где сама задача или любая
+  // ниже сменила родителя, и внутри них — только путь к таким задачам.
 
-  // ─── Unique statuses from loaded data ────────────────────────
+  // ─── Статусы для «Скрытых статусов»: вся очередь + раскрытые строки ──
 
+  const queueStatuses = rootsQuery.data?.statuses;
   const uniqueStatuses = useMemo(() => {
-    const s = new Set<string>();
-    (rootsQuery.data ?? []).forEach(n => { if (n.status) s.add(n.status); });
+    const s = new Set<string>(queueStatuses ?? []);
     Array.from(loadedChildren.values()).flat().forEach(n => { if (n.status) s.add(n.status); });
     return Array.from(s).sort();
-  }, [rootsQuery.data, loadedChildren]);
+  }, [queueStatuses, loadedChildren]);
 
   // ─── Tab counters from server ─────────────────────────────────
 
@@ -453,11 +487,11 @@ export default function CategoriesEditorPage() {
   // ─── Context rows set ─────────────────────────────────────────
 
   const contextIdSet = useMemo(() => {
-    const out = new Set<string>();
-    (rootsQuery.data ?? []).forEach(n => { if (n.is_context) out.add(n.id); });
+    const out = new Set<string>(selectedContextIds);
+    (rootItems ?? []).forEach(n => { if (n.is_context) out.add(n.id); });
     Array.from(loadedChildren.values()).flat().forEach(n => { if (n.is_context) out.add(n.id); });
     return out;
-  }, [rootsQuery.data, loadedChildren]);
+  }, [rootItems, loadedChildren, selectedContextIds]);
 
   const applicableSelectedIds = useMemo(
     () => selectedIds.filter(id => !contextIdSet.has(id)),
@@ -546,6 +580,7 @@ export default function CategoriesEditorPage() {
           teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
           project_keys: scopeKeys || undefined,
           search: SEARCH_MODE === 'filter' ? (normalizedSearch || undefined) : undefined,
+          only_moved: onlyMovedActive,
         });
         next.set(pid, kids);
       } catch {
@@ -554,7 +589,7 @@ export default function CategoriesEditorPage() {
       }
     }));
     setLoadedChildren(next);
-  }, [loadedChildren, innerTab, selectedTeams, scopeKeys, normalizedSearch]);
+  }, [loadedChildren, innerTab, selectedTeams, scopeKeys, normalizedSearch, onlyMovedActive]);
 
   // ─── Mutations → invalidate tree ─────────────────────────────
 
@@ -643,7 +678,7 @@ export default function CategoriesEditorPage() {
     const newLoaded = new Map(loadedChildren);
     const expandIds = new Set<string>(expandedRowKeys.map(String));
     const visited = new Set<string>();
-    const queue: IssueTreeRootNode[] = [...(rootsQuery.data ?? [])];
+    const queue: IssueTreeRootNode[] = [...(rootItems ?? [])];
     let safety = 0;
     while (queue.length > 0 && safety < SAFETY_LIMIT) {
       safety++;
@@ -660,6 +695,7 @@ export default function CategoriesEditorPage() {
           teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
           project_keys: scopeKeys || undefined,
           search: SEARCH_MODE === 'filter' ? (normalizedSearch || undefined) : undefined,
+          only_moved: onlyMovedActive,
         });
         newLoaded.set(node.id, kids);
       }
@@ -670,7 +706,7 @@ export default function CategoriesEditorPage() {
     }
     setLoadedChildren(newLoaded);
     setExpandedRowKeys(Array.from(expandIds));
-  }, [rootsQuery.data, loadedChildren, expandedRowKeys, loadChildrenMut, innerTab, message, selectedTeams, scopeKeys, normalizedSearch]);
+  }, [rootItems, loadedChildren, expandedRowKeys, loadChildrenMut, innerTab, message, selectedTeams, scopeKeys, normalizedSearch, onlyMovedActive]);
 
   const collapseAll = useCallback(() => {
     setExpandedRowKeys([]);
@@ -692,6 +728,21 @@ export default function CategoriesEditorPage() {
       message.warning(`Задача ${key} не найдена`);
       return;
     }
+    // Ветка задачи может быть на другой странице — сервер отдаёт ту, где она.
+    let focusPage: IssueTreeRootsPage;
+    try {
+      focusPage = await getTreeRoots({ ...rootsParams, focus_id: located.id });
+    } catch (e) {
+      notification.error({ title: 'Не удалось найти задачу', description: (e as Error).message });
+      return;
+    }
+    if (!focusPage.focus_found) {
+      message.warning(`Задача ${key} не входит в очередь «${QUEUE_META[innerTab].title}» при текущем отборе`);
+      return;
+    }
+    const targetPage = pageOfOffset(focusPage.offset, pageSize);
+    qc.setQueryData(issueRootsKey(buildRootsQuery({ ...rootsInput, page: targetPage })), focusPage);
+    if (targetPage !== page) setPage(targetPage);
     // Load every ancestor's children sequentially (path is short — typically ≤4 levels).
     const newLoaded = new Map(loadedChildren);
     for (const ancestorId of located.ancestor_ids) {
@@ -702,6 +753,7 @@ export default function CategoriesEditorPage() {
           tab: innerTab,
           teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
           project_keys: scopeKeys || undefined,
+          only_moved: onlyMovedActive,
         });
         newLoaded.set(ancestorId, kids);
       } catch (e) {
@@ -719,7 +771,10 @@ export default function CategoriesEditorPage() {
       const row = document.querySelector<HTMLElement>(`tr[data-row-key="${located.id}"]`);
       if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 200);
-  }, [loadedChildren, loadChildrenMut, innerTab, selectedTeams, scopeKeys, expandedRowKeys, notification, message]);
+  }, [
+    loadedChildren, loadChildrenMut, innerTab, selectedTeams, scopeKeys, expandedRowKeys, notification, message,
+    rootsParams, rootsInput, pageSize, page, setPage, qc, onlyMovedActive,
+  ]);
 
   // ─── Columns ──────────────────────────────────────────────────
 
@@ -859,11 +914,9 @@ export default function CategoriesEditorPage() {
         dataIndex: 'status_changed_at',
         key: 'statusChanged',
         width: widths.statusChanged,
-        sorter: (a: IssueTreeRootNode, b: IssueTreeRootNode) => {
-          const ta = a.status_changed_at ? new Date(a.status_changed_at).getTime() : 0;
-          const tb = b.status_changed_at ? new Date(b.status_changed_at).getTime() : 0;
-          return ta - tb;
-        },
+        // Сортирует сервер по всей очереди (страницы идут подряд).
+        sorter: true,
+        sortOrder: sort?.field === 'status_changed_at' ? sort.order : null,
         render: (iso: string | null, record: IssueTreeRootNode) => {
           if (record.issue_type === 'group') return null;
           if (!iso) return <Text type="secondary">—</Text>;
@@ -888,7 +941,8 @@ export default function CategoriesEditorPage() {
         dataIndex: 'goals',
         key: 'goals',
         width: widths.goals,
-        sorter: (a: IssueTreeRootNode, b: IssueTreeRootNode) => (a.goals ?? '').localeCompare(b.goals ?? ''),
+        sorter: true,
+        sortOrder: sort?.field === 'goals' ? sort.order : null,
         render: (v: string | null, record: IssueTreeRootNode) => {
           if (record.issue_type === 'group') return null;
           if (!v) return <Text type="secondary">—</Text>;
@@ -931,7 +985,18 @@ export default function CategoriesEditorPage() {
     pendingCats, categoryOptions, categoryLabels, savingRowId,
     setPendingCategory, toggleInclude, handleResize, handleSaveRow,
     anyTeamSplit, subgroupOptions, setIssueSubgroupMut, savingSubgroupId, patchSubgroupRow, reloadLoadedSubtree,
+    sort,
   ]);
+
+  const handleTableChange = useCallback<NonNullable<TableProps<TreeNodeWithChildren>['onChange']>>(
+    (_pagination, _filters, sorter) => {
+      const s = Array.isArray(sorter) ? sorter[0] : sorter;
+      const field = s?.columnKey === 'statusChanged' ? 'status_changed_at'
+        : s?.columnKey === 'goals' ? 'goals' : null;
+      setSort(field && s.order ? { field, order: s.order } : null);
+    },
+    [],
+  );
 
   const stackExtraColumns = useMemo(() => [
     {
@@ -976,9 +1041,14 @@ export default function CategoriesEditorPage() {
   // AntD updates only the checkbox column internally.
   // Context rows are selectable (as a cascade handle for their subtree),
   // but the apply step filters them out so they don't pick up a category.
+  // Отметки на других страницах сохраняются — массовое действие видит все.
   const rowSelection = useMemo(() => ({
     selectedRowKeys: selectedIds,
-    onChange: (keys: React.Key[]) => setSelectedIds(keys.map(String)),
+    preserveSelectedRowKeys: true,
+    onChange: (keys: React.Key[], rows: (TreeNodeWithChildren | undefined)[]) => {
+      setSelectedIds(keys.map(String));
+      setSelectedContextIds(new Set(rows.filter(r => r?.is_context).map(r => r!.id)));
+    },
     checkStrictly: false,
     getCheckboxProps: (record: TreeNodeWithChildren) => ({
       disabled: record.issue_type === 'group',
@@ -1113,8 +1183,9 @@ export default function CategoriesEditorPage() {
       </div>
       <div className="category-table-wrap" data-tour="categories-table">
         <Table<TreeNodeWithChildren>
+          ref={tableRef}
           className="category-issue-table"
-          dataSource={stackData}
+          dataSource={displayData}
           columns={columns as never}
           components={tableComponents}
           rowKey="id"
@@ -1122,12 +1193,29 @@ export default function CategoriesEditorPage() {
           rowClassName={rowClassName}
           loading={rootsQuery.isFetching || loadChildrenMut.isPending}
           pagination={false}
+          onChange={handleTableChange}
           size="small"
           expandable={tableExpandable}
           scroll={tableScroll}
           locale={{ emptyText }}
         />
       </div>
+      <Pagination
+        size="small"
+        align="end"
+        current={page}
+        pageSize={pageSize}
+        total={rootsTotal}
+        pageSizeOptions={ROOTS_PAGE_SIZES}
+        showSizeChanger
+        hideOnSinglePage
+        showTotal={(total, [from, to]) =>
+          `Строки ${from}–${to} из ${total.toLocaleString('ru-RU')}`}
+        onChange={(next, size) => {
+          if (size !== pageSize) setPageSize(size);
+          else setPage(next);
+        }}
+      />
       <Modal
         title={`Установить категорию для ${applicableSelectedIds.length} задач`}
         open={bulkModalOpen}

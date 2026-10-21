@@ -137,6 +137,27 @@ class IssueTreeRootNode(BaseModel):
     subgroup_verified: bool = True
 
 
+# Страница верхних строк вкладки. В «К разбору» рабочей базы ~32 тыс. верхних
+# строк (83 тыс. задач) — одним ответом это 33 МБ, браузер не справлялся.
+TREE_PAGE_DEFAULT = 100
+TREE_PAGE_MAX = 500
+# Порядок верхних строк: по ключу (как раньше) или по колонке таблицы; «-» —
+# по убыванию. Равные остаются в порядке ключей — страницы не перемешиваются.
+TREE_ROOT_SORTS = r"^-?(key|status_changed_at|goals)$"
+
+
+class TreeRootsPage(BaseModel):
+    items: List[IssueTreeRootNode]
+    # Сколько верхних строк во вкладке с учётом отбора — для листания.
+    total: int
+    offset: int
+    limit: int
+    # Статусы всей очереди (без учёта «Скрытых статусов») — варианты для отбора.
+    statuses: List[str] = []
+    # Только при прыжке к задаче: нашлась ли её ветка в этой очереди.
+    focus_found: Optional[bool] = None
+
+
 INITIATIVES_CODE = "initiatives_rfa"
 
 
@@ -460,17 +481,40 @@ def get_tree_counts(
     return TreeCountsResponse(**counts)
 
 
-@router.get("/tree/roots", response_model=List[IssueTreeRootNode])
+def _root_sort_key(field: str):
+    """Ключ сортировки верхних строк по колонке таблицы."""
+    if field == "status_changed_at":
+        # Без даты — раньше всех (как было в таблице: пусто = 0).
+        return lambda r: (0,) if r.status_changed_at is None else (1, r.status_changed_at)
+    if field == "goals":
+        return lambda r: (r.goals or "").casefold()
+    return lambda r: r.key or ""
+
+
+@router.get("/tree/roots", response_model=TreeRootsPage)
 def get_tree_roots(
     project_keys: Optional[str] = None,
     teams: Optional[str] = None,
     tab: str = "stack",
     search: Optional[str] = None,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=TREE_PAGE_DEFAULT, ge=1, le=TREE_PAGE_MAX),
+    sort: Optional[str] = Query(default=None, pattern=TREE_ROOT_SORTS),
+    hidden_statuses: Optional[str] = None,
+    only_moved: bool = False,
+    focus_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """Корневые узлы вкладки. «Корень» = верхнеуровневая задача (или эпик),
-    которая сама матчит вкладку ИЛИ содержит матчащих потомков. Поиск
-    применяется к key + summary (LIKE %q%).
+    """Корневые узлы вкладки — страницей. «Корень» = верхнеуровневая задача
+    (или эпик), которая сама матчит вкладку ИЛИ содержит матчащих потомков.
+    Поиск применяется к key + summary (LIKE %q%).
+
+    Отбор считается по всей вкладке до нарезки на страницы:
+    ``hidden_statuses`` (через запятую) убирает верхние строки с этими
+    статусами (контекстные остаются), ``only_moved`` оставляет ветки, где сама
+    строка или задача ниже на любой глубине «сменила родителя». ``sort`` —
+    порядок по колонке. ``focus_id`` — прыжок к задаче: вместо ``offset``
+    отдаётся страница с веткой этой задачи (``focus_found``).
 
     ``primary_only=True`` — participating-задачи не подтягиваются.
 
@@ -559,26 +603,37 @@ def get_tree_roots(
 
     desc_total: dict[str, int] = {}
     desc_match: dict[str, int] = {}
-    def compute_desc(node_id: str) -> tuple[int, int]:
+    # Сколько ниже совпавших с вкладкой задач «сменили родителя».
+    desc_moved: dict[str, int] = {}
+    def compute_desc(node_id: str) -> tuple[int, int, int]:
         if node_id in desc_total:
-            return desc_total[node_id], desc_match[node_id]
+            return desc_total[node_id], desc_match[node_id], desc_moved[node_id]
         t = 0
         m = 0
+        mv = 0
         for ch in children_by_parent.get(node_id, []):
             t += 1
             if self_match.get(ch.id):
                 m += 1
-            ct, cm = compute_desc(ch.id)
+                if ch.parent_changed:
+                    mv += 1
+            ct, cm, cmv = compute_desc(ch.id)
             t += ct
             m += cm
+            mv += cmv
         desc_total[node_id] = t
         desc_match[node_id] = m
-        return t, m
+        desc_moved[node_id] = mv
+        return t, m, mv
 
     for r in by_id.values():
         compute_desc(r.id)
 
-    roots: list[IssueTreeRootNode] = []
+    hidden = {s.strip() for s in (hidden_statuses or "").split(",") if s.strip()}
+    is_archive_tab = tab in ARCHIVE_CATEGORY_CODES
+    statuses: set[str] = {r.status for r in by_id.values() if r.status and self_match.get(r.id)}
+    # Верхние строки вкладки после отбора: (строка, контекстная ли).
+    candidates: list[tuple] = []
     for r in by_id.values():
         is_top = (not r.parent_id) or (r.parent_id not in by_id)
         if not is_top:
@@ -586,19 +641,47 @@ def get_tree_roots(
         node_self_match = self_match.get(r.id, False)
         if not node_self_match and desc_match.get(r.id, 0) == 0:
             continue
-        is_container = classify(rules, EvaluationInput(
-            project_key=project_key_by_id.get(r.project_id, ""),
-            issue_type=r.issue_type,
-            has_parent=bool(r.parent_id),
-        ))
+        if r.status:
+            statuses.add(r.status)
         # tab context: на архив-вкладках разобранный родитель без архивной
         # категории попадает как мост к архивным потомкам — помечаем
         # is_context=true, фронт рендерит read-only. На «stack»/«active»/
         # «initiatives» — наоборот: разобранный родитель с неразобранными
         # потомками должен оставаться полноценной строкой, чтобы PM мог
         # каскадно протянуть свою категорию на детей кнопкой «Подтвердить N».
-        is_archive_tab = tab in ARCHIVE_CATEGORY_CODES
         is_tab_context = (r.id in context_ids) or (is_archive_tab and not node_self_match)
+        if r.status in hidden and not is_tab_context:
+            continue
+        if only_moved and not (r.parent_changed or desc_moved.get(r.id, 0) > 0):
+            continue
+        candidates.append((r, is_tab_context))
+
+    candidates.sort(key=lambda c: c[0].key or "")
+    sort_field = (sort or "key").lstrip("-")
+    if sort_field != "key" or (sort or "").startswith("-"):
+        by_field = _root_sort_key(sort_field)
+        candidates.sort(key=lambda c: by_field(c[0]), reverse=(sort or "").startswith("-"))
+
+    focus_found: Optional[bool] = None
+    if focus_id:
+        # Верх ветки задачи — по той же цепочке родителей, что строит дерево.
+        top_id: Optional[str] = focus_id if focus_id in by_id else None
+        seen: set[str] = set()
+        while top_id and by_id[top_id].parent_id in by_id and top_id not in seen:
+            seen.add(top_id)
+            top_id = by_id[top_id].parent_id
+        index = next((i for i, (r, _) in enumerate(candidates) if r.id == top_id), None)
+        focus_found = index is not None
+        if index is not None:
+            offset = index // limit * limit
+
+    roots: list[IssueTreeRootNode] = []
+    for r, is_tab_context in candidates[offset:offset + limit]:
+        is_container = classify(rules, EvaluationInput(
+            project_key=project_key_by_id.get(r.project_id, ""),
+            issue_type=r.issue_type,
+            has_parent=bool(r.parent_id),
+        ))
         roots.append(IssueTreeRootNode(
             id=r.id,
             key=r.key,
@@ -625,14 +708,20 @@ def get_tree_roots(
             descendant_match_count=desc_match.get(r.id, 0),
         ))
 
-    roots.sort(key=lambda n: n.key)
-    # Резолверу групп нужны настоящие ORM-объекты, но только для попавших
-    # в ответ корней — их десятки, а не тысячи.
+    # Резолверу групп нужны настоящие ORM-объекты, но только для строк
+    # страницы — их не больше TREE_PAGE_MAX.
     root_issues = (
         db.query(Issue).filter(Issue.id.in_([n.id for n in roots])).all() if roots else []
     )
     _apply_subgroups(db, roots, root_issues)
-    return roots
+    return TreeRootsPage(
+        items=roots,
+        total=len(candidates),
+        offset=offset,
+        limit=limit,
+        statuses=sorted(statuses),
+        focus_found=focus_found,
+    )
 
 
 class LocateResponse(BaseModel):
@@ -1356,6 +1445,7 @@ def get_issue_children(
     teams: Optional[str] = None,
     project_keys: Optional[str] = None,
     search: Optional[str] = None,
+    only_moved: bool = False,
     limit: int = Query(default=200, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
@@ -1363,6 +1453,8 @@ def get_issue_children(
 
     Без `tab` — только прямые дети (обратная совместимость с popover-соседями).
     С `tab` — все потомки на любой глубине, матчащие вкладку.
+    ``only_moved`` (с `tab`) — как на /tree/roots: только сами «сменившие
+    родителя» и путь к таким задачам ниже.
 
     Если задан `teams` — применяется тот же ``primary_only=True`` фильтр,
     что и на /tree/roots: чужие дети с in-team потомками возвращаются как
@@ -1542,10 +1634,24 @@ def get_issue_children(
         desc_match_cache[node_id] = total
         return total
 
+    desc_moved_cache: dict[str, int] = {}
+    def desc_moved(node_id: str) -> int:
+        if node_id in desc_moved_cache:
+            return desc_moved_cache[node_id]
+        total = 0
+        for ch in children_by_parent.get(node_id, []):
+            if ch.parent_changed and in_team_match(ch):
+                total += 1
+            total += desc_moved(ch.id)
+        desc_moved_cache[node_id] = total
+        return total
+
     matched = [
         c for c in direct_children
         if in_team_match(c) or desc_match(c.id) > 0
     ]
+    if only_moved:
+        matched = [c for c in matched if c.parent_changed or desc_moved(c.id) > 0]
     matched.sort(key=lambda c: c.key)
     matched = matched[:limit]
 

@@ -58,7 +58,7 @@ def test_tree_roots_shows_foreign_parent_as_context_anchor(client, db):
             "project_keys": "OWN", "teams": "A", "tab": "stack",
         })
         assert resp.status_code == 200
-        items = resp.json()
+        items = resp.json()["items"]
         keys = sorted([n["key"] for n in items])
         assert keys == ["OWN-1", "OWN-3"], f"Ожидалось OWN-1+OWN-3, получено {keys}"
         foreign = next(n for n in items if n["key"] == "OWN-1")
@@ -105,7 +105,7 @@ def test_tree_roots_skips_participating_only_tasks(client, db):
             "project_keys": "PRI", "teams": "A", "tab": "stack",
         })
         assert resp.status_code == 200
-        keys = sorted([n["key"] for n in resp.json()])
+        keys = sorted([n["key"] for n in resp.json()["items"]])
         assert keys == ["PRI-1"], f"Ожидалось только PRI-1, получено {keys}"
 
         resp_counts = client.get("/api/v1/issues/tree/counts", params={
@@ -155,7 +155,7 @@ def test_tree_roots_returns_matching_for_stack_tab(client, db):
             "project_keys": "RTS", "tab": "stack",
         })
         assert resp.status_code == 200, resp.text
-        items = resp.json()
+        items = resp.json()["items"]
         keys = sorted([n["key"] for n in items])
         assert "RTS-1" in keys
         assert "RTS-3" in keys
@@ -206,7 +206,7 @@ def test_tree_roots_search_by_key_is_strict(client, db):
             "project_keys": "STR", "tab": "archive", "search": "STR-57",
         })
         assert resp.status_code == 200
-        keys = sorted([n["key"] for n in resp.json()])
+        keys = sorted([n["key"] for n in resp.json()["items"]])
         assert keys == ["STR-57"], f"Точный ключ-поиск, получено {keys}"
     finally:
         db.query(Issue).filter(Issue.project_id == p.id).delete()
@@ -226,7 +226,7 @@ def test_tree_roots_supports_search(client, db):
             "project_keys": "SRC", "tab": "stack", "search": "оплат",
         })
         assert resp.status_code == 200
-        items = resp.json()
+        items = resp.json()["items"]
         assert len(items) == 1
         assert items[0]["key"] == "SRC-1"
     finally:

@@ -154,7 +154,7 @@ def test_tree_roots_carry_resolved_subgroup(client, seeded):
     resp = tc.get("/api/v1/issues/tree/roots", params={"teams": TEAM})
 
     assert resp.status_code == 200
-    node = next(n for n in resp.json() if n["key"] == "OS-1")
+    node = next(n for n in resp.json()["items"] if n["key"] == "OS-1")
     assert node["subgroup_id"] == "sg-2"
     assert node["subgroup_name"] == "Интеграции"
     assert node["subgroup_source"] == "guess"

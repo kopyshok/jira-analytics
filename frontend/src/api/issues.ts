@@ -4,6 +4,7 @@ import type {
   IssueContextResponse,
   IssueTreeNode,
   IssueTreeRootNode,
+  IssueTreeRootsPage,
   IssueTreeCounts,
   EpicCandidateApi,
   BulkFilter,
@@ -13,6 +14,7 @@ import type {
   BulkCascadeResponse,
   PlanRole,
 } from '../types/api';
+import type { RootsQuery } from '../utils/categoryTriage';
 
 export const getIssueTree = (
   params?: { project_keys?: string; teams?: string },
@@ -104,9 +106,9 @@ export const bulkCascadeInherit = (ancestorIds: string[]) =>
   api.post<BulkCascadeResponse>('/issues/bulk/cascade-inherit', { ancestor_ids: ancestorIds });
 
 export const getTreeRoots = (
-  params: { project_keys?: string; teams?: string; tab: string; search?: string },
+  params: RootsQuery & { focus_id?: string },
   signal?: AbortSignal,
-) => api.get<IssueTreeRootNode[]>('/issues/tree/roots', params as Record<string, string | undefined>, signal);
+) => api.get<IssueTreeRootsPage>('/issues/tree/roots', { ...params }, signal);
 
 export const getTreeCounts = (
   params: { project_keys?: string; teams?: string },
@@ -116,7 +118,7 @@ export const getTreeCounts = (
 export const getIssueChildrenByTab = (
   parentId: string,
   tab: string,
-  opts: { teams?: string; project_keys?: string; search?: string; limit?: number } = {},
+  opts: { teams?: string; project_keys?: string; search?: string; only_moved?: boolean; limit?: number } = {},
 ) =>
   api.get<IssueTreeRootNode[]>(`/issues/${parentId}/children`, {
     tab,
@@ -124,6 +126,7 @@ export const getIssueChildrenByTab = (
     teams: opts.teams,
     project_keys: opts.project_keys,
     search: opts.search,
+    only_moved: opts.only_moved ? 'true' : undefined,
   });
 
 export const locateIssue = (key: string) =>

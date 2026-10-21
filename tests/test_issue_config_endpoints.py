@@ -955,7 +955,7 @@ def test_tree_roots_marks_context_ancestor_for_tab(client, db_session):
 
     response = client.get("/api/v1/issues/tree/roots?project_keys=CTX&tab=archive")
     assert response.status_code == 200
-    roots = response.json()
+    roots = response.json()["items"]
     keys = [r["key"] for r in roots]
     assert "CTX-1" in keys  # подтянут как контекст для архивного потомка
     parent_row = next(r for r in roots if r["key"] == "CTX-1")
@@ -974,7 +974,7 @@ def test_tree_roots_self_match_not_marked_context(client, project_and_issues, db
 
     response = client.get("/api/v1/issues/tree/roots?project_keys=TEST&tab=archive")
     assert response.status_code == 200
-    roots = response.json()
+    roots = response.json()["items"]
     self_row = next(r for r in roots if r["id"] == target.id)
     assert self_row["is_context"] is False
 
@@ -1014,7 +1014,7 @@ def test_tree_roots_stack_categorized_parent_not_marked_context(client, db_sessi
 
     response = client.get("/api/v1/issues/tree/roots?project_keys=STK&teams=Team A&tab=stack")
     assert response.status_code == 200
-    roots = response.json()
+    roots = response.json()["items"]
     parent_row = next(r for r in roots if r["key"] == "STK-1")
     assert parent_row["is_context"] is False
     assert parent_row["descendant_match_count"] == 1
