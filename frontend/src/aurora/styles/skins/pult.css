@@ -56,6 +56,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --track-bg: var(--p-body);
   --good: #237A45;
   --warn: #7E5800;
+  --warn-fill: #F2C14E;
   --bad: #B92E17;
   --modal-tile-bg: var(--p-screen);
   --mini-tile-bg: var(--p-row-alt);
@@ -931,12 +932,13 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .recharts-cartesian-grid line { stroke: var(--p-line-soft) !important; }
   & .recharts-cartesian-axis-tick-value { fill: var(--text-muted) !important; }
   & .backlog-row:hover { border-left-color: var(--p-accent); }
+  /* Полоса состояния строки (её цвета — в легенде «Сценариев»): перекрывает полосу «включено» из разметки строки. */
   & .backlog-row.row-state-no-estimates,
-  & .backlog-row.row-state-no-estimates:hover { border-left-color: var(--p-sig-amber); }
+  & .backlog-row.row-state-no-estimates:hover { border-left-color: var(--p-sig-amber) !important; }
   & .backlog-row.row-state-deficit,
-  & .backlog-row.row-state-deficit:hover { border-left-color: var(--p-sig-red); }
+  & .backlog-row.row-state-deficit:hover { border-left-color: var(--p-sig-red) !important; }
   & .backlog-row.row-state-in-work,
-  & .backlog-row.row-state-in-work:hover { border-left-color: var(--p-sig-green); }
+  & .backlog-row.row-state-in-work:hover { border-left-color: var(--p-sig-green) !important; }
   & .category-triage-header {
     background: var(--p-module) !important;
     border: 1px solid var(--p-line) !important;

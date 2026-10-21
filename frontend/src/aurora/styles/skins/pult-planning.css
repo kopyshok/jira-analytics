@@ -84,9 +84,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .sc-roles-head > span { flex: 1; min-width: 52px; text-align: center; }
   & .sc-sort { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
   & .sc-sort .anticon { color: var(--p-accent); }
-  & .sc-legend i.is-round { border-radius: 50%; }
-  & .sc-legend i.is-ring { border: 2px solid #D9381E; border-radius: 50%; }
-  & .sc-legend i.is-empty { border: 1px solid #5C5A55; }
+  & .sc-legend i { width: 3px; height: 12px; vertical-align: -2px; }
   & .sc-rules-screen { padding: 12px; }
   /* строки бэклога: название в одну строку, ячейки ролей без повтора подписи (она в шапке) */
   & .sc-backlog-screen .ba-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: 13px; }

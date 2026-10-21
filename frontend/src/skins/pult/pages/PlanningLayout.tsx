@@ -362,12 +362,13 @@ export default function PultPlanningLayout({ p }: { p: PlanningPageState }) {
                 </div>
               )}
             </div>
+            {/* Те же цвета, что у полосы слева в строках (состояние строки считает хук страницы). */}
             <div className="pm-legend sc-legend">
-              <span className="pc-cap">Маркер</span>
-              <span><i style={{ background: PULT_SIGNAL.blue }} />уже в работе</span>
-              <span><i className="is-round" style={{ background: PULT_SIGNAL.green }} />включено</span>
-              <span><i className="is-ring" />включено при дефиците</span>
-              <span><i className="is-empty" />нет оценок</span>
+              <span className="pc-cap">Полоса слева</span>
+              <span><i style={{ background: 'var(--p-accent)' }} />включено</span>
+              <span><i style={{ background: PULT_SIGNAL.green }} />уже в работе</span>
+              <span><i style={{ background: PULT_SIGNAL.red }} />включено при дефиците</span>
+              <span><i style={{ background: PULT_SIGNAL.amber }} />нет оценок</span>
               <span className="pm-push">подложка строки — включено</span>
             </div>
           </PModule>

@@ -89,7 +89,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --rp-lane-row-h: 22px;
   /* загрузка по дням */
   --heat-ext: #8E5BC2;
-  --heat-normed: #9A978F;
+  /* не серый: серым закрашен праздник, в легенде они должны различаться */
+  --heat-normed: #6E9E7E;
   --heat-free: #FFFFFF;
   --heat-absence: #2B2B29;
   --heat-holiday: #9A978F;
