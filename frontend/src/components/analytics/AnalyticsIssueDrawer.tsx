@@ -12,6 +12,8 @@ import JiraIssueLink from '../shared/JiraIssueLink';
 interface Props {
   issueId: string | null;
   issueKey: string | null;
+  /** Открыто из строки сотрудника — в ворклогах можно оставить только его. */
+  employee?: { id: string; name: string };
   periodStart: string;
   periodEnd: string;
   onClose: () => void;
@@ -22,13 +24,14 @@ interface Props {
 interface DrawerContentProps {
   issueId: string;
   issueKey: string;
+  employee?: { id: string; name: string };
   periodStart: string;
   periodEnd: string;
   onDrillDown: (issue: IssueRef) => void;
   onSaved: () => void;
 }
 
-function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }: DrawerContentProps) {
+function DrawerContent({ issueId, employee, periodStart, periodEnd, onDrillDown, onSaved }: DrawerContentProps) {
   const { data: context, isLoading, isError, refetch } = useIssueContext(issueId);
   const { items: categories } = useCategories();
 
@@ -99,6 +102,7 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
             issueId={issueId}
             periodStart={periodStart}
             periodEnd={periodEnd}
+            employee={employee}
           />
         </div>
       </div>
@@ -201,6 +205,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
 export default function AnalyticsIssueDrawer({
   issueId,
   issueKey,
+  employee,
   periodStart,
   periodEnd,
   onClose,
@@ -252,6 +257,7 @@ export default function AnalyticsIssueDrawer({
           key={currentEntry.id}
           issueId={currentEntry.id}
           issueKey={currentEntry.key}
+          employee={employee}
           periodStart={periodStart}
           periodEnd={periodEnd}
           onDrillDown={handleDrillDown}

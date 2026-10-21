@@ -246,6 +246,7 @@ def test_issue_worklogs_endpoint(db_session, client):
     assert len(items) == 2
     assert sum(i["hours"] for i in items) == 5.0
     assert all(i["employee_name"] == "Тест" for i in items)
+    assert all(i["employee_id"] == emp.id for i in items)
 
 
 def test_report_endpoint_filters(db_session, client):

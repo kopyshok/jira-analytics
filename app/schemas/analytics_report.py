@@ -101,5 +101,6 @@ class IssueWorklogItem(BaseModel):
     worklog_id: str
     started_at: datetime
     hours: float
+    employee_id: str
     employee_name: str
     comment: Optional[str] = None

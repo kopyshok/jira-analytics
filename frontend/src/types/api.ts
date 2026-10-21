@@ -1215,6 +1215,7 @@ export interface IssueWorklogItem {
   worklog_id: string;
   started_at: string;
   hours: number;
+  employee_id: string;
   employee_name: string;
   comment: string | null;
 }

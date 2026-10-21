@@ -2277,7 +2277,7 @@ class AnalyticsService:
         rows = (
             self.db.query(
                 Worklog.id, Worklog.started_at, Worklog.hours,
-                Employee.display_name, Worklog.comment_text,
+                Worklog.employee_id, Employee.display_name, Worklog.comment_text,
             )
             .join(Employee, Employee.id == Worklog.employee_id)
             .filter(
@@ -2291,7 +2291,8 @@ class AnalyticsService:
         return [
             IssueWorklogItem(
                 worklog_id=r.id, started_at=r.started_at, hours=r.hours or 0.0,
-                employee_name=r.display_name or "", comment=r.comment_text,
+                employee_id=r.employee_id, employee_name=r.display_name or "",
+                comment=r.comment_text,
             )
             for r in rows
         ]

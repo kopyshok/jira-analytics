@@ -31,7 +31,7 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
   // Подпись дерева — по тем же уровням, что и само дерево («Настройка отчёта» меняет порядок).
   const { resolved } = useAnalyticsLayout();
   // Карточка задачи — в панели подробностей поверх страницы (в Aurora — выезжающая справа).
-  const [issue, setIssue] = useState<{ id: string; key: string } | null>(null);
+  const [issue, setIssue] = useState<{ id: string; key: string; employee?: { id: string; name: string } } | null>(null);
   // Рабочая область ужалась под панель — выбранная строка дерева остаётся на виду.
   useEffect(() => {
     if (!issue) return;
@@ -236,6 +236,7 @@ export default function PultAnalyticsLayout({ page }: { page: AnalyticsPageState
             docked
             issueId={issue.id}
             issueKey={issue.key}
+            employee={issue.employee}
             periodStart={periodStart}
             periodEnd={periodEnd}
             onClose={() => setIssue(null)}

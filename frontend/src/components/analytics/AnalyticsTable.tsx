@@ -35,7 +35,11 @@ interface TreeNode {
   issueId?: string;
   /** Issue Jira key (e.g. PROJ-123) — set only for issue rows */
   issueKey?: string;
+  /** Сотрудник строки выше по дереву — карточка задачи может показать только его ворклоги. */
+  employee?: RowEmployee;
 }
+
+type RowEmployee = { id: string; name: string };
 
 const EMPTY_TOTALS: NodeTotals = {
   fact_hours: 0,
@@ -115,6 +119,7 @@ function buildIssueNode(
   periodStart: string,
   periodEnd: string,
   navigate: ReturnType<typeof useNavigate>,
+  employee?: RowEmployee,
 ): TreeNode {
   const rowKind = i.row_kind ?? 'issue';
   const isContext = rowKind === 'context';
@@ -125,6 +130,7 @@ function buildIssueNode(
       depth,
       issueId: i.id,
       issueKey: i.key,
+      employee,
       label: indent(
         depth,
         <span style={{ color: 'var(--text-muted, #7e94b8)', fontStyle: 'italic' }}>
@@ -133,7 +139,7 @@ function buildIssueNode(
       ),
       totals: i.totals,
       children: worklogMode === 'inline'
-        ? [worklogBlockNode(`${prefix}/i:${i.id}/own`, i.id, depth + 1, periodStart, periodEnd)]
+        ? [worklogBlockNode(`${prefix}/i:${i.id}/own`, i.id, depth + 1, periodStart, periodEnd, employee)]
         : undefined,
     };
   }
@@ -147,6 +153,7 @@ function buildIssueNode(
     depth,
     issueId: isContext ? undefined : i.id,
     issueKey: i.key,
+    employee,
     label: indent(
       depth,
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
@@ -243,14 +250,14 @@ function buildIssueNode(
 
   // Режим «Иерархия»: под задачей идут подзадачи, собранные бэкендом.
   const childNodes = (i.children ?? []).map((c) =>
-    buildIssueNode(c, node.key, depth + 1, worklogMode, periodStart, periodEnd, navigate),
+    buildIssueNode(c, node.key, depth + 1, worklogMode, periodStart, periodEnd, navigate, employee),
   );
 
   // В inline-режиме ворклоги задачи показываются как один child-row через
   // tree-expansion, чтобы не конфликтовать с tree-mode на родительских уровнях.
   // У родителя своих ворклогов нет — они уходят в строку «собственные списания».
   if (worklogMode === 'inline' && !isContext && childNodes.length === 0) {
-    childNodes.push(worklogBlockNode(node.key, i.id, depth + 1, periodStart, periodEnd));
+    childNodes.push(worklogBlockNode(node.key, i.id, depth + 1, periodStart, periodEnd, employee));
   }
   if (childNodes.length > 0) node.children = childNodes;
 
@@ -263,6 +270,7 @@ function worklogBlockNode(
   depth: number,
   periodStart: string,
   periodEnd: string,
+  employee?: RowEmployee,
 ): TreeNode {
   return {
     key: `${parentKey}/wl`,
@@ -274,6 +282,7 @@ function worklogBlockNode(
           issueId={issueId}
           periodStart={periodStart}
           periodEnd={periodEnd}
+          employee={employee}
         />
       </div>
     ),
@@ -636,6 +645,7 @@ function buildTreeFromLayout(
     depth: number,
     keyPrefix: string,
     parentFact: number | null,
+    employee?: RowEmployee,
   ): TreeNode[] {
     if (rows.length === 0) return [];
     if (levels.length === 0) return [];
@@ -665,6 +675,7 @@ function buildTreeFromLayout(
           periodStart,
           periodEnd,
           navigate,
+          employee,
         );
         nodes.push(node);
       }
@@ -685,7 +696,10 @@ function buildTreeFromLayout(
       const sample = rs[0];
       const totals = aggregateTotals(rs, parentFact, grandFact, planByEmpWt, hierarchical);
       const nodeKey = `${keyPrefix}/${head}:${k}`;
-      const children = group(rs, rest, depth + 1, nodeKey, totals.fact_hours);
+      const children = group(
+        rs, rest, depth + 1, nodeKey, totals.fact_hours,
+        head === 'employee' ? { id: sample.employee_id, name: sample.employee_name } : employee,
+      );
       nodes.push({
         key: nodeKey,
         kind: kindOfLevel(head),
@@ -710,7 +724,7 @@ interface Props {
   periodStart: string;
   periodEnd: string;
   /** Карточку задачи показывает раскладка (обложка, встроенная панель), а не своя выезжающая. */
-  onOpenIssue?: (issue: { id: string; key: string }) => void;
+  onOpenIssue?: (issue: { id: string; key: string; employee?: RowEmployee }) => void;
   /** Выбранная задача — подсветить строку. */
   selectedIssueId?: string | null;
 }
@@ -729,7 +743,7 @@ export default function AnalyticsTable({
   const navigate = useNavigate();
   const { period } = useGlobalPeriod();
   const { selectedTeams } = useGlobalTeamFilter();
-  const [drawerIssue, setDrawerIssue] = useState<{ id: string; key: string } | null>(null);
+  const [drawerIssue, setDrawerIssue] = useState<{ id: string; key: string; employee?: RowEmployee } | null>(null);
   const { resolved } = useAnalyticsLayout();
 
   // Params for thematic report deep-links (work_type_id is added per-row)
@@ -960,7 +974,7 @@ export default function AnalyticsTable({
           && !(record.children?.length)
             ? {
                 onClick: () => {
-                  const issue = { id: record.issueId!, key: record.issueKey! };
+                  const issue = { id: record.issueId!, key: record.issueKey!, employee: record.employee };
                   if (onOpenIssue) onOpenIssue(issue);
                   else setDrawerIssue(issue);
                 },
@@ -972,6 +986,7 @@ export default function AnalyticsTable({
       {!onOpenIssue && <AnalyticsIssueDrawer
         issueId={drawerIssue?.id ?? null}
         issueKey={drawerIssue?.key ?? null}
+        employee={drawerIssue?.employee}
         periodStart={periodStart}
         periodEnd={periodEnd}
         onClose={() => setDrawerIssue(null)}
