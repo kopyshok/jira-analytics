@@ -87,6 +87,15 @@ function ResourcePlanningPageInner() {
   const deleteDep = useDeleteDependency();
   const { prefs, patch: patchPrefs } = useRpPreferences();
   const layout: RpLayout = prefs.view_mode === 'people' ? 'people' : 'tasks';
+  // Вид не сохранился — хук вернул прежний, а переключатель рисуем заново:
+  // откат посреди анимации оставляет его без выбранного пункта.
+  const [layoutSwitchKey, setLayoutSwitchKey] = useState(0);
+  const changeLayout = (v: RpLayout) => patchPrefs({ view_mode: v }, {
+    onError: () => {
+      setLayoutSwitchKey(k => k + 1);
+      message.error('Не удалось сохранить вид — оставлен прежний');
+    },
+  });
   // Щелчок по человеку (фишка фазы, имя в подвале, заголовок секции)
   // добавляет его в фильтр или убирает.
   const togglePerson = (id: string | null) => {
@@ -430,10 +439,11 @@ function ResourcePlanningPageInner() {
         <Space size={6} style={{ marginLeft: 'auto' }}>
           {viewMode === 'two-level' && gantt && (
             <Segmented
+              key={layoutSwitchKey}
               data-tour="rp-layout-switch"
               size="small"
               value={layout}
-              onChange={v => patchPrefs({ view_mode: v as RpLayout })}
+              onChange={v => changeLayout(v as RpLayout)}
               options={[
                 { label: 'Задачи', value: 'tasks' },
                 { label: 'Исполнители', value: 'people' },
