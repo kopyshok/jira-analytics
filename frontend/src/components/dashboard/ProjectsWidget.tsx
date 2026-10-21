@@ -361,11 +361,12 @@ function ProjectRow({
       <div style={{
         color: isDone ? DARK_THEME.textMuted : DARK_THEME.textPrimary,
         textDecoration: isDone ? 'line-through' : 'none',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        minWidth: 0,
         fontSize: 14,
         display: 'flex', alignItems: 'center', gap: 6,
       }}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.title}</span>
+        {/* Название переносится по строкам: на узком экране многоточие съедало суть проекта. */}
+        <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{project.title}</span>
         {silence && (
           <span style={{ background: '#faad1422', color: 'var(--ink-warn, #faad14)', fontSize: 10, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
             {silence}

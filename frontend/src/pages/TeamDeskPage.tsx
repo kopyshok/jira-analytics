@@ -124,6 +124,11 @@ export default function TeamDeskPage() {
     Object.entries(dev.status_counts ?? {}).forEach(([status, count]) => {
       totalStatusCounts[status] = (totalStatusCounts[status] ?? 0) + count;
     }));
+  // Выбран человек — полоса статусов считает его задачи: отбор по статусу
+  // ложится поверх выбора, и цифра на кнопке совпадает с длиной списка.
+  const selectedStatusCounts = data?.developers.find(
+    (dev) => dev.developer_id === selectedDev,
+  )?.status_counts;
 
   // Варианты отбора собираем из самого среза: спринт и релиз приходят
   // вместе с задачами, отдельного справочника не нужно.
@@ -203,18 +208,14 @@ export default function TeamDeskPage() {
         onChange={setFlagFilter}
       />
       <StatusFilterBar
-        counts={totalStatusCounts}
-        // Полоса — фильтр на весь срез, а не разрез по людям: показываем
-        // все статусы среза, иначе выбор счётчиков отнимал бы фильтрацию
-        // по остальным статусам.
+        counts={selectedStatusCounts ?? totalStatusCounts}
+        // Показываем все статусы среза, иначе выбор счётчиков отнимал бы
+        // фильтрацию по остальным статусам.
         statuses={statusOptions}
         statusGroups={statusGroups}
         value={statusFilter}
-        // Фильтр на весь срез: выбор конкретного человека снимается.
-        onChange={(status) => {
-          setSelectedDev(null);
-          setStatusFilter(status);
-        }}
+        // Статус ложится поверх уже выбранных человека и замечания, не сбрасывая их.
+        onChange={setStatusFilter}
       />
       <ActiveFilters
         developerName={selectedName}

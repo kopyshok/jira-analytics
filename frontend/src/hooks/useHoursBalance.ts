@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useGlobalTeamFilter } from './useGlobalTeamFilter';
+import { useGlobalPeriod } from './useGlobalPeriod';
 import { useAppearanceSettings } from '../contexts/AppearanceContext';
 import type {
   HoursBalanceResponse,
@@ -9,12 +10,16 @@ import type {
 
 export function useHoursBalance() {
   const { selectedTeams, selectedSubgroups } = useGlobalTeamFilter();
+  // Баланс копится с начала года, а состав берётся на выбранный квартал.
+  const { period: { year, quarter } } = useGlobalPeriod();
   const appearance = useAppearanceSettings();
   const lagDays = appearance.hours_balance_lag_days;
   return useQuery<HoursBalanceResponse>({
-    queryKey: ['dashboard', 'hours-balance', selectedTeams, selectedSubgroups, lagDays],
+    queryKey: ['dashboard', 'hours-balance', selectedTeams, selectedSubgroups, lagDays, year, quarter],
     queryFn: ({ signal }) => {
-      const params: Record<string, string> = { lag_days: String(lagDays) };
+      const params: Record<string, string> = {
+        lag_days: String(lagDays), year: String(year), quarter: String(quarter),
+      };
       if (selectedTeams.length > 0) params.teams = selectedTeams.join(',');
       if (selectedSubgroups.length > 0) params.subgroups = selectedSubgroups.join(',');
       return api.get<HoursBalanceResponse>(

@@ -38,6 +38,7 @@ from app.services.subgroup_filter import (
 )
 from app.services.export_service import ExportService
 from app.services.hours_balance_service import HoursBalanceService
+from app.utils.period import quarter_to_dates
 from app.models.employee import Employee
 
 
@@ -197,9 +198,16 @@ def dashboard_hours_balance(
         2, ge=0, le=10,
         description="Лаг в рабочих днях для правой границы окна (если to не задан)",
     ),
+    year: Optional[int] = Query(None, ge=2000, le=2100),
+    quarter: Optional[int] = Query(None, ge=1, le=4),
     db: Session = Depends(get_db),
 ):
-    """Виджет баланс часов команды: переработки/автоотгулы по сотрудникам."""
+    """Виджет баланс часов команды: переработки/автоотгулы по сотрудникам.
+
+    Баланс копится с начала года, а состав — на выбранный в шапке квартал:
+    выбывший до его начала в виджет не попадает, хотя его часы за время в
+    команде остались в отчётах.
+    """
     today = date.today()
     resolved_from = from_ or date(today.year, 1, 1)
     svc = HoursBalanceService(db)
@@ -208,9 +216,12 @@ def dashboard_hours_balance(
     team_ids = parse_teams_csv(teams)
 
     if team_ids:
+        members_from = resolved_from
+        if year and quarter:
+            members_from = max(resolved_from, quarter_to_dates(year, quarter)[0])
         employee_ids = list(
             team_membership.members_overlapping(
-                db, team_ids, resolved_from, resolved_to
+                db, team_ids, min(members_from, resolved_to), resolved_to
             )
         )
     else:

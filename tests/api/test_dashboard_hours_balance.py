@@ -186,3 +186,30 @@ def test_drill_in_returns_kpi_monthly_days(test_client, test_db_session):
     feb_entries = [m for m in body["monthly"] if m["month"] == 2]
     assert len(feb_entries) == 1
     assert feb_entries[0]["overtime_days"] >= 1
+
+
+def test_hours_balance_hides_leaver_before_selected_quarter(test_client, test_db_session):
+    """Выбывший в Q3 не виден в балансе Q4, но виден в балансе Q3."""
+    from app.models.employee_team import EmployeeTeam
+
+    stay = Employee(jira_account_id="acc-stay", display_name="Остался", is_active=True)
+    left = Employee(jira_account_id="acc-left", display_name="Выбыл", is_active=True)
+    test_db_session.add_all([stay, left])
+    test_db_session.flush()
+    test_db_session.add_all([
+        EmployeeTeam(employee_id=stay.id, team="T", is_primary=True),
+        EmployeeTeam(employee_id=left.id, team="T", is_primary=True, left_at=date(2026, 7, 20)),
+    ])
+    test_db_session.commit()
+
+    def names(quarter: int) -> set[str]:
+        r = test_client.get(
+            "/api/v1/analytics/dashboard/hours-balance",
+            params={"teams": "T", "from": "2026-01-01", "to": "2026-10-19",
+                    "year": 2026, "quarter": quarter},
+        )
+        assert r.status_code == 200
+        return {e["full_name"] for e in r.json()["employees"]}
+
+    assert names(4) == {"Остался"}
+    assert names(3) == {"Остался", "Выбыл"}
