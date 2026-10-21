@@ -139,6 +139,15 @@ class Issue(Base, SyncedMixin):
         """Ручной override имеет приоритет над значением из Jira."""
         return self.planned_opo_hours_manual if self.planned_opo_hours_manual is not None else self.planned_opo_hours_jira
 
+    @property
+    def is_done(self) -> bool:
+        """Задача выполнена: категория статуса Jira «done».
+
+        Имя статуса не годится — у нас «ГОТОВО», «Готово», «Won't Do», и Jira
+        переименовывает их. Имя «Done» оставлено для данных без категории.
+        """
+        return self.status_category == "done" or (self.status or "").lower() == "done"
+
     # Phase durations (days) — synced from Jira.
     duration_analyst_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     duration_dev_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

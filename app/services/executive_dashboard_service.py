@@ -170,7 +170,7 @@ class ExecutiveDashboardService:
         critical_open = sum(
             1 for i in issues
             if (i.priority or "").lower() in ("critical", "highest", "blocker")
-            and (i.status or "").lower() != "done"
+            and not i.is_done
         )
         total = len(issues) or 1
         critical_share = critical_open / total
@@ -182,7 +182,7 @@ class ExecutiveDashboardService:
         ref_dt = end_dt
         ages_days = []
         for i in issues:
-            if (i.status or "").lower() != "done" and i.created_at:
+            if not i.is_done and i.created_at:
                 ages_days.append((ref_dt - i.created_at).days)
         avg_age = sum(ages_days) / len(ages_days) if ages_days else 0
         age_score = max(0.0, 1.0 - avg_age / 30.0)
@@ -229,7 +229,7 @@ class ExecutiveDashboardService:
             crit = sum(
                 1 for i in iss
                 if (i.priority or "").lower() in ("critical", "highest", "blocker")
-                and (i.status or "").lower() != "done"
+                and not i.is_done
             )
             score = round(100 * (1 - crit / total))
             out.append({"w": f"W{8 - w}", "value": score})
@@ -244,7 +244,7 @@ class ExecutiveDashboardService:
             by_team[t]["issues"] += 1
             if (
                 (i.priority or "").lower() in ("critical", "highest", "blocker")
-                and (i.status or "").lower() != "done"
+                and not i.is_done
             ):
                 by_team[t]["crit"] += 1
         for row in worklog_rows:
@@ -285,7 +285,7 @@ class ExecutiveDashboardService:
             type_keys_lower = [k.lower() for k in type_keys]
             entry = {"name": label, "critical": 0, "high": 0, "normal": 0}
             for i in issues:
-                if (i.status or "").lower() == "done":
+                if i.is_done:
                     continue
                 if (i.issue_type or "").lower() not in type_keys_lower:
                     continue
@@ -447,7 +447,7 @@ class ExecutiveDashboardService:
             per_issue[i.id] = {
                 "issue_id": i.id, "key": i.key, "summary": i.summary,
                 "hours": 0.0, "worklog_count": 0,
-                "is_done": (i.status or "").lower() == "done",
+                "is_done": i.is_done,
                 "first_log": None, "last_log": None,
                 "distinct_workers": set(),
             }
@@ -490,7 +490,7 @@ class ExecutiveDashboardService:
             for i in issues:
                 if (
                     (i.priority or "").lower() in ("critical", "blocker")
-                    and (i.status or "").lower() != "done"
+                    and not i.is_done
                 ):
                     risks.append({
                         "title": f"{i.key}: критичная задача без закрытия",

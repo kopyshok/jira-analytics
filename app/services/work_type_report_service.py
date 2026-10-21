@@ -548,7 +548,7 @@ class WorkTypeReportService:
                 "summary": issue.summary,
                 "hours": 0.0,
                 "worklog_count": 0,
-                "is_done": (issue.status or "").lower() == "done",
+                "is_done": issue.is_done,
                 "employees": defaultdict(
                     lambda: {"name": "", "role": "", "team": "", "hours": 0.0}
                 ),
