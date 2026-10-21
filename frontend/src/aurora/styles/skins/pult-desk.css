@@ -272,6 +272,10 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .td-issues-screen .ant-table colgroup > col:first-child { width: 260px; }
   & .td-issues-screen .ant-table-tbody > tr > td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   & .td-issues-screen .ant-table-tbody > tr > td > * { max-width: 100%; }
+  /* большой список (рисуются только видимые строки): ячейки — как у обычной таблицы, в одну строку */
+  & .td-issues-screen .ant-table-tbody-virtual .ant-table-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; padding-top: 6px !important; padding-bottom: 6px !important; }
+  & .td-issues-screen .ant-table-tbody-virtual .ant-table-cell > span,
+  & .td-issues-screen .ant-table-tbody-virtual .ant-table-cell > div { white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; }
   & .td-issues-screen .ant-table-tbody > tr > td:first-child > span,
   & .td-issues-screen .ant-table-tbody > tr > td:first-child > div { white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; }
   & .td-issues-screen a.ant-typography,
