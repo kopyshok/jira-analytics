@@ -3,7 +3,7 @@
 import { test } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { Director } from '../director.ts';
-import { MORE } from './chapters.ts';
+import { MORE, MORE_FIXES } from './chapters.ts';
 import { RELEASE, saveClip, releaseFrame } from './common.ts';
 import { outroHtml, plural } from './slides.ts';
 
@@ -16,7 +16,8 @@ test('09-outro', async ({ page }) => {
   const { notes } = JSON.parse(
     readFileSync(existsSync(released) ? released : new URL('drafts.json', notesDir), 'utf-8'),
   ) as { notes: { type: string }[] };
-  const fixes = notes.filter((n) => n.type === 'fix').length;
+  // Исправления, уже названные в «А также», второй раз не считаем.
+  const fixes = notes.filter((n) => n.type === 'fix').length - MORE_FIXES;
 
   const d = new Director(page);
   await d.install();

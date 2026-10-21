@@ -40,12 +40,12 @@ function items(list: string[], marker: (i: number) => string, startMs: number, s
 }
 
 /** Заставка: название релиза и оглавление глав. */
-export function introHtml(release: string, chapters: string[]): string {
+export function introHtml(release: string, chapters: string[], sub = 'Коротко о главном'): string {
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><style>${BASE_CSS}</style></head><body>
     <div class="wrap">
       <div class="brand">Jira Analytics</div>
       <h1>Что нового в версии <span class="v">${esc(release)}</span></h1>
-      <div class="sub">Коротко о главном — по ходу планирования квартала</div>
+      <div class="sub">${esc(sub)}</div>
       <ol>${items(chapters, (i) => `<span class="n">${i + 1}</span>`, 1300, 380)}</ol>
     </div>
   </body></html>`;
