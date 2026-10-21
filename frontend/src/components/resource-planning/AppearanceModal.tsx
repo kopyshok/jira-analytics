@@ -6,6 +6,7 @@ import { DEFAULT_APPEARANCE } from '../../contexts/appearanceDefaults';
 import { useUpdateAppearance } from '../../api/appearance';
 import { useOpoCutoff } from '../../hooks/useOpoCutoff';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
+import { useSkin } from '../../contexts/ThemeContext';
 import { computeFillGradientAlphas } from './appearanceGradient';
 
 const { Text } = Typography;
@@ -112,6 +113,9 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
   const { opoOffNow } = useOpoCutoff();
   const phaseLabels = opoOffNow ? PHASE_LABELS.filter((p) => p.key !== 'opo') : PHASE_LABELS;
   const [pulseEmployee, setPulseEmployee] = useState<boolean>(prefs.pulse_highlighted_employee);
+  // Стили поверх Aurora рисуют строку инициативы без полосы-скобки с заливкой и бегущей рамкой —
+  // их ползунки там ничего бы не меняли. Значения сохраняются как были.
+  const skin = useSkin();
 
   const handleSave = () => {
     updateMutation.mutate(draft, {
@@ -171,6 +175,13 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
           />,
         ),
       )}
+      {skin && (
+        <Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
+          Пока цвет фазы не меняли, диаграмма в этой теме рисует её цветом темы; выбранный здесь цвет заменяет его.
+          Полоса инициативы с заливкой и бегущей рамкой в этой теме не рисуется — её настройки действуют в темах Aurora.
+        </Text>
+      )}
+      {!skin && (<>
       {row(
         'init-bracket',
         'Полоса инициативы',
@@ -222,6 +233,7 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
           onChange={(v) => setDraft(d => ({ ...d, animation_speed_seconds: v }))}
         />
       </div>
+      </>)}
 
       <div style={{ marginBottom: 12 }}>
         <Checkbox
@@ -241,6 +253,7 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
         </Checkbox>
       </div>
 
+      {!skin && (
       <div style={{ marginBottom: 16 }}>
         <Text style={{ color: 'var(--text-muted, #8ab0d8)', display: 'block', marginBottom: 6 }}>Предпросмотр</Text>
         <InitiativeBarPreview
@@ -250,6 +263,7 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
           animSpeed={draft.animation_speed_seconds}
         />
       </div>
+      )}
 
       <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
         <Button onClick={handleReset} size="small">Сбросить к умолчанию</Button>
