@@ -697,7 +697,9 @@ export default function PlanningPage() {
       },
       onError: (e) => {
         deletingIdRef.current = null;
-        notification.error({ title: 'Ошибка', description: (e as Error).message });
+        // Сценарий не удалён — остаёмся на нём (хук уже вернул его в список).
+        setScenarioId(id);
+        notification.error({ title: 'Не удалось удалить сценарий', description: (e as Error).message });
       },
     });
   };

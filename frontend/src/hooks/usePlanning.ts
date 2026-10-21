@@ -97,12 +97,19 @@ export const useDeleteScenario = () => {
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ['planning', 'scenario', id] });
       await qc.cancelQueries({ queryKey: ['planning', 'allocations', id] });
+      const lists = qc.getQueriesData<ScenarioResponse[]>({ queryKey: ['planning', 'scenarios'] });
       qc.setQueriesData<ScenarioResponse[]>(
         { queryKey: ['planning', 'scenarios'] },
         (old) => (old ? old.filter((s) => s.id !== id) : old),
       );
       qc.removeQueries({ queryKey: ['planning', 'scenario', id] });
       qc.removeQueries({ queryKey: ['planning', 'allocations', id] });
+      return { lists };
+    },
+    // Сервер не удалил — сценарий возвращается в списки, затем сверяемся с сервером.
+    onError: (_e, _id, ctx) => {
+      ctx?.lists.forEach(([key, data]) => qc.setQueryData(key, data));
+      qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] });
     },
     // onSuccess инвалидируем только список (не wildcard-planning), чтобы
     // не ресетать удалённый сценарий обратно через observer re-fetch.
