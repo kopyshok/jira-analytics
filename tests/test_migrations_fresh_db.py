@@ -9,6 +9,7 @@
 любая миграция, опирающаяся на состояние, которого на её ревизии ещё нет,
 падает здесь, а не на сервере.
 """
+import json
 import os
 import sqlite3
 import subprocess
@@ -45,6 +46,25 @@ def test_upgrade_head_on_empty_database(tmp_path):
     finally:
         con.close()
     assert roles == {"analyst", "RP"}
+
+    # Метрики KPI после установки с нуля сразу под резолюцию новой Jira.
+    con = sqlite3.connect(db_path)
+    try:
+        specs = [
+            col for row in con.execute("SELECT numerator_json, denominator_json FROM kpi_metrics")
+            for col in row if col
+        ]
+    finally:
+        con.close()
+    resolutions = []
+    for raw in specs:
+        for cond in json.loads(raw).get("conditions") or []:
+            if cond.get("attr") == "resolution":
+                value = cond.get("value")
+                resolutions.extend(value if isinstance(value, list) else [value])
+    assert resolutions, "в метриках KPI нет условий по резолюции"
+    assert "Done" not in resolutions
+    assert "Готово" in resolutions
 
 
 def test_upgrade_head_on_empty_postgres():

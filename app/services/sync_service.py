@@ -1665,6 +1665,8 @@ class SyncService:
             max_results=100,
             fields=["summary", "issuetype", "status", "project"],
             expand="changelog",
+            # Статуса паузы может не быть в какой-то Jira — это не ошибка всего поиска.
+            lenient=True,
         ):
             await self._check_cancelled()
             seen += 1

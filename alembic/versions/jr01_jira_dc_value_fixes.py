@@ -40,6 +40,7 @@ EXCLUDED_ADDITIONS = {"Отменено": ["Won't Do"]}
 QA_SPENT_FIELD = "customfield_10845"
 QA_ESTIMATE_FIELD = "customfield_11042"
 QA_ESTIMATE_NAME = "Оценка QA (ч)"
+QA_SPENT_NAME = "QA spent (ч)"
 
 _settings = sa.table("app_settings", sa.column("key", sa.String), sa.column("value", sa.Text))
 _metrics = sa.table(
@@ -48,6 +49,11 @@ _metrics = sa.table(
     sa.column("numerator_json", sa.Text),
     sa.column("denominator_json", sa.Text),
 )
+_sync_state = sa.table(
+    "sync_state", sa.column("entity_name", sa.String), sa.column("last_success_at", sa.DateTime),
+)
+# Задачи и дни простоя читаются заново: Hold и новые значения полей в старых строках не появятся сами.
+RESYNC_ENTITIES = ("issues", "paused_days")
 
 
 def _dedupe(values: list) -> list:
@@ -102,7 +108,13 @@ def fix_desk_config(cfg: dict) -> bool:
     if isinstance(groups, dict):
         for name, values in groups.items():
             if isinstance(values, list):
-                new = fix_status_list(values)
+                # Статус, который администратор уже разложил по группам, не дублируем в другой.
+                taken = {s for v in groups.values() if isinstance(v, list) for s in v}
+                new = list(values)
+                for status in fix_status_list(values):
+                    if status not in new and status not in taken:
+                        new.append(status)
+                        taken.add(status)
                 if new != values:
                     groups[name] = new
                     changed = True
@@ -128,13 +140,30 @@ def fix_qa_setting(raw: str) -> str:
         return raw
     if not isinstance(items, list):
         return raw
+
+    def field_id(item: Any) -> str:
+        return str(item.get("field_id") or "").strip() if isinstance(item, dict) else ""
+
+    def is_old_qa(item: Any) -> bool:
+        if field_id(item) != QA_SPENT_FIELD:
+            return False
+        name = str(item.get("name") or "").strip()
+        return not name or name == QA_SPENT_NAME
+
+    has_estimate = any(field_id(i) == QA_ESTIMATE_FIELD for i in items)
+    out: list = []
     changed = False
     for item in items:
-        if isinstance(item, dict) and item.get("field_id") == QA_SPENT_FIELD:
+        if not is_old_qa(item):
+            out.append(item)
+        elif has_estimate:
+            changed = True  # «Оценка QA» уже в списке — старое поле просто убираем
+        else:
             item["field_id"] = QA_ESTIMATE_FIELD
             item["name"] = QA_ESTIMATE_NAME
+            out.append(item)
             changed = True
-    return json.dumps(items, ensure_ascii=False) if changed else raw
+    return json.dumps(out, ensure_ascii=False) if changed else raw
 
 
 def _load_json(raw: Any) -> Any:
@@ -174,6 +203,12 @@ def _upgrade(conn: Any) -> None:
         new_qa = fix_qa_setting(qa_raw)
         if new_qa != qa_raw:
             save("jira_planned_qa_hours_field_id", new_qa)
+
+    conn.execute(
+        _sync_state.update()
+        .where(_sync_state.c.entity_name.in_(RESYNC_ENTITIES))
+        .values(last_success_at=None)
+    )
 
 
 def upgrade() -> None:

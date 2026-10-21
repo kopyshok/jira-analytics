@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.models.app_setting import AppSetting
 from app.models.kpi import KpiMetric
+from app.models.sync_state import SyncState
 
 
 def _module():
@@ -119,3 +120,57 @@ def test_upgrade_on_empty_database(db_session):
     m._upgrade(db_session.connection())
     db_session.commit()
     assert db_session.query(AppSetting).count() == 0
+
+
+def test_qa_setting_stricter():
+    m = _module()
+    # пробелы в идентификаторе не мешают
+    spaced = json.dumps([{"field_id": " customfield_10845 ", "name": "QA spent (ч)"}])
+    assert json.loads(m.fix_qa_setting(spaced)) == [
+        {"field_id": "customfield_11042", "name": "Оценка QA (ч)"}]
+    # поле с другим названием администратор переименовал сам — не трогаем
+    other = json.dumps([{"field_id": "customfield_10845", "name": "Моё поле"}], ensure_ascii=False)
+    assert m.fix_qa_setting(other) == other
+    # «Оценка QA» уже есть — старое поле убираем, дубля нет
+    both = json.dumps([
+        {"field_id": "customfield_10845", "name": "QA spent (ч)"},
+        {"field_id": "customfield_11042", "name": "Оценка QA (ч)"},
+    ], ensure_ascii=False)
+    assert json.loads(m.fix_qa_setting(both)) == [{"field_id": "customfield_11042", "name": "Оценка QA (ч)"}]
+
+
+def test_desk_additions_respect_admin_grouping():
+    m = _module()
+    cfg = {"status_groups": {
+        "todo": ["К выполнению"],
+        "waiting": ["Сделать"],  # администратор сам положил «Сделать» в другую группу
+        "done": ["Отменено"],
+    }}
+    assert m.fix_desk_config(cfg) is True
+    assert cfg["status_groups"]["todo"] == ["К выполнению"]
+    assert cfg["status_groups"]["waiting"] == ["Сделать"]
+    assert cfg["status_groups"]["done"] == ["Отменено", "Won't Do"]
+
+
+def test_upgrade_resets_issue_and_pause_cursors(db_session):
+    from datetime import datetime
+
+    m = _module()
+    stamp = datetime(2026, 10, 1, 12, 0)
+    db_session.add_all([
+        SyncState(entity_name="issues", scope="", last_success_at=stamp),
+        SyncState(entity_name="issues", scope="Team X", last_success_at=stamp),
+        SyncState(entity_name="paused_days", scope="", last_success_at=stamp),
+        SyncState(entity_name="worklogs", scope="", last_success_at=stamp),
+    ])
+    db_session.commit()
+
+    m._upgrade(db_session.connection())
+    db_session.commit()
+
+    db_session.expire_all()
+    got = {(s.entity_name, s.scope): s.last_success_at for s in db_session.query(SyncState)}
+    assert got[("issues", "")] is None
+    assert got[("issues", "Team X")] is None
+    assert got[("paused_days", "")] is None
+    assert got[("worklogs", "")] == stamp

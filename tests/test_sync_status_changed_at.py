@@ -180,9 +180,11 @@ async def test_paused_days_read_from_search_changelog(db_session):
          "items": [{"field": "status", "from": "9", "to": "3", "toString": "В работе"}]},
     ]}
     expands: list = []
+    lenients: list = []
 
-    async def fake_iter_issues(jql, max_results=100, fields=None, expand=None):
+    async def fake_iter_issues(jql, max_results=100, fields=None, expand=None, lenient=False):
         expands.append(expand)
+        lenients.append(lenient)
         yield _dc_issue(changelog=changelog)
 
     jira = MagicMock()
@@ -195,6 +197,7 @@ async def test_paused_days_read_from_search_changelog(db_session):
 
     assert updated == 1
     assert expands == ["changelog"]
+    assert lenients == [True]  # нет статуса паузы в Jira — не ошибка поиска
     assert db_session.get(Issue, "i1").paused_days == 3.0
     jira.get_status_changes.assert_not_called()
     jira.get_issue_changelog.assert_not_called()
