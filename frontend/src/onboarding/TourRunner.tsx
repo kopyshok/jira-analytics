@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Tour } from 'antd';
 import { useLocation, useNavigate } from 'react-router';
 import { TOURS } from './tours';
-import { findTourTarget, prepareStep } from './tourTarget';
+import { findTourTarget, prepareStep, type TourStepView } from './tourTarget';
 import { useOnboarding } from './OnboardingContext';
 
 // Шаг 0 стартует сразу после навигации на страницу экскурсии — там ещё может идти
@@ -19,6 +19,8 @@ export default function TourRunner() {
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState(0);
   const [preparing, setPreparing] = useState(false);
+  // Вариант каждого подготовленного шага: основной или запасной (см. resolveTourStep).
+  const [views, setViews] = useState<Record<number, TourStepView>>({});
   // Номер запуска: экскурсию закрыли, пока ждали цель, — не открывать её.
   const runRef = useRef(0);
   // Экскурсию обогнали более новым переключением шага (быстро «Далее», потом «Назад») —
@@ -54,8 +56,9 @@ export default function TourRunner() {
         if (changed) navigate({ pathname: routePath, search: merged.toString() }, { replace: true });
       }
     }
-    void prepareStep(tour.steps[0], FIRST_STEP_TIMEOUT_MS, () => runRef.current === run).then(() => {
+    void prepareStep(tour.steps[0], FIRST_STEP_TIMEOUT_MS, () => runRef.current === run).then(view => {
       if (runRef.current !== run) return;
+      setViews({ 0: view });
       setCurrent(0);
       setOpen(true);
     });
@@ -70,8 +73,11 @@ export default function TourRunner() {
     const seq = ++changeSeqRef.current;
     const isCurrent = () => runRef.current === run && changeSeqRef.current === seq;
     setPreparing(true);
-    void prepareStep(tour.steps[next], STEP_TIMEOUT_MS, isCurrent).then(() => {
-      if (isCurrent()) setCurrent(next);
+    void prepareStep(tour.steps[next], STEP_TIMEOUT_MS, isCurrent).then(view => {
+      if (isCurrent()) {
+        setViews(prev => ({ ...prev, [next]: view }));
+        setCurrent(next);
+      }
       if (changeSeqRef.current === seq) setPreparing(false);
     });
   };
@@ -99,7 +105,7 @@ export default function TourRunner() {
         // возвращаем пользователя туда продолжать по списку.
         openPanel();
       }}
-      steps={tour.steps.map((s, i) => ({
+      steps={tour.steps.map((step, i) => ({ ...step, ...views[i] })).map((s, i) => ({
         title: s.title,
         description: s.description,
         // rc-tour типизирует target как «функция без null» либо `() => null` —

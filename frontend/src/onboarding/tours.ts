@@ -5,6 +5,11 @@ export interface TourStepDef {
   description: string;
   /** data-tour элемента, по которому кликнуть перед шагом (переключить вкладку). */
   clickFirst?: string;
+  /**
+   * Цели шага на странице нет, а есть эта — показать шаг о ней. Например,
+   * сценарий уже утверждён: вместо «Утвердить» на странице «В черновик».
+   */
+  otherwise?: { target: string; title: string; description: string };
 }
 
 export interface TourDef {
@@ -71,7 +76,10 @@ const list: TourDef[] = [
       { target: 'planning-tab-rules', clickFirst: 'planning-tab-rules', title: 'Правила', description: 'Вкладка «Правила»: сопровождение, встречи, техдолг — доля времени роли в процентах. Правила прошлого квартала копируются кнопкой «Из сценария»; свои проценты сотрудника — в «Вовлечённости».' },
       { target: 'planning-rules-card', title: 'Правила обязательных работ', description: 'После «Сохранить» ресурс под инициативы пересчитается.' },
       { target: 'planning-capacity-panel', title: 'Ресурс команды', description: 'Доступно, обязательные работы и остаток под инициативы по ролям.' },
-      { target: 'planning-approve', title: 'Утвердить', description: 'Когда план собран — утвердите сценарий. По утверждённому строится ресурсный план.' },
+      {
+        target: 'planning-approve', title: 'Утвердить', description: 'Когда план собран — утвердите сценарий. По утверждённому строится ресурсный план.',
+        otherwise: { target: 'planning-revert', title: 'Сценарий утверждён', description: 'По утверждённому сценарию строится ресурсный план — кнопка «Диаграмма» рядом. Чтобы поправить сценарий, верните его в черновик и утвердите заново.' },
+      },
     ],
   },
   {
