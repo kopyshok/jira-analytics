@@ -36,15 +36,16 @@ function quarterBounds({ year, quarter }: QuarterRef): [string, string] {
   return [iso(new Date(year, m, 1)), iso(new Date(year, m + 3, 0))];
 }
 
-/** Счётчик списка: щелчок открывает панель, ноль — приглушён и не нажимается. */
-function SheetCounter({ label, count, active, extra, onClick }: {
-  label: string; count: number; active: boolean; extra?: string; onClick: () => void;
+/** Счётчик списка: щелчок открывает панель, ноль — приглушён и не нажимается,
+ * кроме списка, в котором есть что смотреть и при нуле (alwaysOpen). */
+function SheetCounter({ label, count, active, extra, onClick, alwaysOpen = false }: {
+  label: string; count: number; active: boolean; extra?: string; onClick: () => void; alwaysOpen?: boolean;
 }) {
   return (
     <button
       type="button"
-      className={`dz-sheet-counter${active ? ' is-active' : ''}`}
-      disabled={count === 0}
+      className={`dz-sheet-counter${active ? ' is-active' : ''}${count === 0 ? ' is-zero' : ''}`}
+      disabled={count === 0 && !alwaysOpen}
       aria-pressed={active}
       onClick={onClick}
     >
@@ -291,6 +292,7 @@ export default function TeamDeskZonesLayout({ desk }: { desk: TeamDeskPageState 
                     count={absentCount}
                     active={openSheet === 'absence'}
                     onClick={() => toggleSheet('absence')}
+                    alwaysOpen
                   />
                 </div>
               )}

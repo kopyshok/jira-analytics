@@ -328,6 +328,8 @@ html[data-skin="zones"] .dz-sheet-counter-extra { font-weight: 600; color: #B42A
 html[data-skin="zones"] .dz-sheet-counter.is-active { background: var(--za); border-color: var(--za); color: #FFFFFF; }
 html[data-skin="zones"] .dz-sheet-counter.is-active b,
 html[data-skin="zones"] .dz-sheet-counter.is-active .dz-sheet-counter-extra { color: #FFFFFF; }
+/* Ноль, но список открывается (отсутствия: внутри выбирается другой квартал) — приглушён, как выключенный. */
+html[data-skin="zones"] .dz-sheet-counter.is-zero:not(.is-active) { color: #6B7078; font-weight: 400; }
 html[data-skin="zones"] .dz-sheet-counter:disabled { border-color: #E1E3E8; background: #F7F8FA; color: #6B7078; font-weight: 400; cursor: default; }
 
 /* --- списки в панели подробностей --- */
