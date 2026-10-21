@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { getHiddenSections } from '../../api/uiConfig';
+import { activeNavKey } from '../../utils/activeNavKey';
 
 interface NavItem {
   key: string;
@@ -46,7 +47,7 @@ export function AuroraSidebar() {
   const hiddenSet = new Set(hidden?.keys ?? []);
   const isHidden = (k: string) => hiddenSet.has(k);
 
-  const groups: NavGroup[] = [
+  const allGroups: NavGroup[] = [
     {
       label: 'Обзор',
       items: [
@@ -57,7 +58,7 @@ export function AuroraSidebar() {
         { key: '/executive', icon: Rocket, label: 'Сводка для руководителя' },
         { key: '/kpi', icon: Gauge, label: 'KPI' },
         { key: '/team-desk', icon: Code2, label: 'Стол тимлида' },
-      ].filter((it) => !isHidden(it.key)),
+      ],
     },
     {
       label: 'Планирование',
@@ -66,7 +67,7 @@ export function AuroraSidebar() {
         { key: '/backlog', icon: ListChecks, label: 'Целевые задачи' },
         { key: '/planning', icon: Presentation, label: 'Сценарии' },
         { key: '/resource-planning', icon: Network, label: 'Ресурс. планир.' },
-      ].filter((it) => !isHidden(it.key)),
+      ],
     },
     {
       label: 'Данные',
@@ -75,13 +76,19 @@ export function AuroraSidebar() {
         { key: '/categories', icon: Tags, label: 'Категории задач' },
         { key: '/feedback', icon: MessageCircle, label: 'Обратная связь' },
         ...(isAdmin ? [{ key: '/settings', icon: Settings, label: 'Настройки' }] : []),
-      ].filter((it) => !isHidden(it.key)),
+      ],
     },
-  ].filter((g) => g.items.length > 0);
+  ];
 
-  const selectedKey = location.pathname.startsWith('/projects')
-    ? '/projects'
-    : location.pathname;
+  // Раздел страницы ищется среди всех пунктов, включая скрытые: страница
+  // скрытого подраздела не должна подсвечивать соседний родительский раздел.
+  const selectedKey = activeNavKey(
+    location.pathname,
+    allGroups.flatMap((g) => g.items.map((it) => it.key)),
+  );
+  const groups = allGroups
+    .map((g) => ({ ...g, items: g.items.filter((it) => !isHidden(it.key)) }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <div className="glass side">
