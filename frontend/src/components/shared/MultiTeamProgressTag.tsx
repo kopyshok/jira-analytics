@@ -9,8 +9,9 @@ const TONE_STYLE: Record<ProgressTone, CSSProperties> = {
   neutral: {},
   alert: {
     color: '#1f1600',
-    background: 'var(--warn, #fbbf24)',
-    borderColor: 'var(--warn, #fbbf24)',
+    // --warn-fill — заливка под тёмный текст там, где --warn затемнён ради цветного текста (светлые обложки).
+    background: 'var(--warn-fill, var(--warn, #fbbf24))',
+    borderColor: 'var(--warn-fill, var(--warn, #fbbf24))',
     fontWeight: 600,
   },
   done: {
