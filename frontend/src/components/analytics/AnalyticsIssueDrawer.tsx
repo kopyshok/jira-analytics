@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { Drawer, Skeleton, Alert, Button, Tag } from 'antd';
 import { useIssueContext } from '../../hooks/useIssueContext';
 import { useCategories } from '../../hooks/useCategories';
-import { useQueryClient } from '@tanstack/react-query';
 import { statusTagColor } from '../../utils/status';
-import IssueContextBlock from './IssueContextBlock';
+import IssueContextBlock, { type IssueRef } from './IssueContextBlock';
 import IssueCategorizer from './IssueCategorizer';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
 import JiraIssueLink from '../shared/JiraIssueLink';
@@ -23,7 +22,7 @@ interface DrawerContentProps {
   issueKey: string;
   periodStart: string;
   periodEnd: string;
-  onDrillDown: (id: string) => void;
+  onDrillDown: (issue: IssueRef) => void;
   onSaved: () => void;
 }
 
@@ -199,8 +198,7 @@ export default function AnalyticsIssueDrawer({
   onClose,
 }: Props) {
   // Back-stack: stack of {id, key} entries. Current is top of stack.
-  const [stack, setStack] = useState<Array<{ id: string; key: string }>>([]);
-  const qc = useQueryClient();
+  const [stack, setStack] = useState<IssueRef[]>([]);
 
   // Смена задачи снаружи сбрасывает стек. Правим состояние прямо при отрисовке,
   // а не эффектом после неё — иначе панель рисуется дважды на каждое открытие.
@@ -213,16 +211,9 @@ export default function AnalyticsIssueDrawer({
   const currentEntry = stack.length > 0 ? stack[stack.length - 1] : null;
   const open = !!currentEntry;
 
-  const handleDrillDown = (childId: string) => {
-    // We need to know the key — fetch from context or fallback to id prefix
-    // We'll re-use the cached context data to get the key
-    const parentContext = qc.getQueryData<{ children: Array<{ id: string; key: string }> }>(
-      ['issue', 'context', currentEntry?.id],
-    );
-    const childKey =
-      parentContext?.children?.find((c) => c.id === childId)?.key ??
-      childId;
-    setStack(prev => [...prev, { id: childId, key: childKey }]);
+  // Ключ приносит тот, кто ведёт на задачу (родитель, соседняя, подзадача).
+  const handleDrillDown = ({ id, key }: IssueRef) => {
+    setStack(prev => [...prev, { id, key }]);
   };
 
   const handleBack = () => {

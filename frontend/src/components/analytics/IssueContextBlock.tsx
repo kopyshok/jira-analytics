@@ -9,6 +9,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { statusTagColor } from '../../utils/status';
 import { plural } from '../../utils/plural';
 
+/** Задача, на которую переходят из карточки: ключ нужен заголовку сразу. */
+export interface IssueRef {
+  id: string;
+  key: string;
+}
+
 const CARD_BG = 'var(--mini-tile-bg, rgba(255,255,255,0.03))';
 const CARD_BORDER = '1px solid var(--glass-border, rgba(255,255,255,0.08))';
 
@@ -19,7 +25,7 @@ interface BreadcrumbsProps {
   currentIssueType: string;
   siblingsTotal: number;
   parentId: string | undefined;
-  onDrillDown: (id: string) => void;
+  onDrillDown: (issue: IssueRef) => void;
 }
 
 function SiblingPopover({
@@ -29,7 +35,7 @@ function SiblingPopover({
 }: {
   parentId: string;
   count: number;
-  onDrillDown: (id: string) => void;
+  onDrillDown: (issue: IssueRef) => void;
 }) {
   const [open, setOpen] = useState(false);
   const { data, isLoading } = useIssueChildren(parentId, open);
@@ -48,7 +54,7 @@ function SiblingPopover({
             borderBottom: '1px solid var(--glass-border, rgba(255,255,255,0.05))',
             cursor: 'pointer',
           }}
-          onClick={() => { setOpen(false); onDrillDown(sib.id); }}
+          onClick={() => { setOpen(false); onDrillDown({ id: sib.id, key: sib.key }); }}
         >
           <span
             style={{
@@ -219,7 +225,7 @@ function Breadcrumbs({
             issueKey={anc.key}
             summary={anc.summary}
             issueType={anc.issue_type}
-            onClick={() => onDrillDown(anc.id)}
+            onClick={() => onDrillDown({ id: anc.id, key: anc.key })}
             rightSlot={
               isParent && siblingsTotal > 1 && parentId ? (
                 <SiblingPopover
@@ -247,7 +253,7 @@ function Breadcrumbs({
 interface ChildRowProps {
   child: IssueContextChild;
   categories: CategoryResponse[];
-  onDrillDown: (id: string) => void;
+  onDrillDown: (issue: IssueRef) => void;
   onSaved: () => void;
 }
 
@@ -304,7 +310,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
             whiteSpace: 'nowrap',
             cursor: 'pointer',
           }}
-          onClick={() => onDrillDown(child.id)}
+          onClick={() => onDrillDown({ id: child.id, key: child.key })}
         >
           {child.key}
         </span>
@@ -357,7 +363,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
 interface Props {
   context: IssueContextResponse;
   categories: CategoryResponse[];
-  onDrillDown: (id: string) => void;
+  onDrillDown: (issue: IssueRef) => void;
   onChildSaved: () => void;
 }
 
