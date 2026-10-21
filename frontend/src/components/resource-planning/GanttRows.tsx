@@ -18,6 +18,7 @@ import { contrastRatio } from '../../utils/readableColor';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
 import { computeFillGradientAlphas } from './appearanceGradient';
 import JiraIssueLink from '../shared/JiraIssueLink';
+import { phaseFill } from './phaseFill';
 
 export type ViewMode = 'portfolio' | 'two-level' | 'resource-track' | 'plane';
 
@@ -158,15 +159,6 @@ function buildPhaseRows(phase: string, phaseAssignments: AssignmentOut[]): Phase
     assignments: list,
     rowKey: i === 0 ? g.key : `${g.key}:${list[0].employee_id ?? 'none'}`,
   })));
-}
-
-/** Цвет фазы для полос. Цвет по умолчанию отдаётся CSS-переменной (скин
- *  подставляет свою палитру), свой цвет из окна «Цвета» — как есть. */
-function phaseFill(phase: string, color: string | undefined): string {
-  const def = DEFAULT_APPEARANCE.phase_colors[phase as keyof typeof DEFAULT_APPEARANCE.phase_colors] ?? PHASE_COLORS[phase];
-  const c = color ?? def;
-  if (def && c.toLowerCase() === def.toLowerCase()) return `var(--rp-phase-${phase}, ${def})`;
-  return c;
 }
 
 /** Цвет подписи на полосе фазы (дата в компактном виде). */

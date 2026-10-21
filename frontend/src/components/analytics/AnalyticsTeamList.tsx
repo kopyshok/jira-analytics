@@ -44,7 +44,8 @@ export default function AnalyticsTeamList({ data, selected, onSelect, compact = 
   const teams = data?.teams || [];
   const { setEl: setRowEl, more: rowMore, onScroll: onRowScroll, onWheel: onRowWheel } = useRowScroll();
   if (compact) {
-    const tab = (key: string, label: string, hours: number | null) => (
+    // undefined — часов не показываем (у «Все команды» при выбранной команде отчёт уже только по ней).
+    const tab = (key: string, label: string, hours: number | null | undefined) => (
       <button
         key={key}
         type="button"
@@ -53,7 +54,9 @@ export default function AnalyticsTeamList({ data, selected, onSelect, compact = 
         onClick={() => onSelect(key)}
       >
         <span>{label}</span>
-        <span className="anc-team-hours">{hours != null && hours > 0 ? `${formatHours(hours)} ч` : '—'}</span>
+        {hours !== undefined && (
+          <span className="anc-team-hours">{hours != null && hours > 0 ? `${formatHours(hours)} ч` : '—'}</span>
+        )}
       </button>
     );
     return (
@@ -65,7 +68,7 @@ export default function AnalyticsTeamList({ data, selected, onSelect, compact = 
         onScroll={onRowScroll}
         onWheel={onRowWheel}
       >
-        {tab('all', 'Все команды', data?.grand_totals.fact_hours ?? null)}
+        {tab('all', 'Все команды', selected === 'all' ? data?.grand_totals.fact_hours ?? null : undefined)}
         {teams.map((t) => tab(t.team || '_none_', t.team || 'Без команды', t.totals.fact_hours))}
       </div>
     );

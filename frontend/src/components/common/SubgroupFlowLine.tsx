@@ -9,11 +9,13 @@ const { Text } = Typography;
  * Это не «помощь извне» — граница «свои — чужие» остаётся на уровне команды,
  * здесь показан внутренний обмен ресурсом между группами.
  */
-export default function SubgroupFlowLine({ items, compact = false }: {
+export default function SubgroupFlowLine({ items, compact = false, emptyText = 'Группы команды часами между собой не обменивались' }: {
   items?: SubgroupFlowItem[];
   /** Вид скина: отдельная карточка, группы — пилюлями «Группа: −12 ч к соседям · +8 ч от них»;
    *  карточка есть всегда, без перетока — со спокойной подписью. */
   compact?: boolean;
+  /** Подпись пустой карточки: перетока нет, команда не выбрана или в ней нет групп — решает страница. */
+  emptyText?: string;
 }) {
   const rows = (items ?? []).filter((i) => i.out_hours > 0 || i.in_hours > 0);
   if (rows.length === 0 && !compact) return null;
@@ -26,7 +28,7 @@ export default function SubgroupFlowLine({ items, compact = false }: {
         </Tooltip>
         <div className="anc-flow-list">
           {rows.length === 0 && (
-            <span className="anc-flow-empty">Группы команды часами между собой не обменивались</span>
+            <span className="anc-flow-empty">{emptyText}</span>
           )}
           {rows.map((r) => (
             <span key={r.subgroup_id} className="anc-flow-pill">

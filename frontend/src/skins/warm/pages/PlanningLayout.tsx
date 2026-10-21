@@ -38,6 +38,11 @@ import { pluralRu } from '../../../utils/projectsView';
 // Колонки таблицы бэклога: ручка, галочка, приоритет, идея, аналитик,
 // разработчик, [группа], заказчик, часы ролей, всего, состояние.
 const GAP = 6;
+/** Ключ Aurora (ScenarioResourceSummary): 'true' — сводку свернули, 'false' — развернули. */
+const SUMMARY_LS_KEY = 'planning_resource_table_collapsed';
+function readSummaryOpen(): boolean {
+  try { return localStorage.getItem(SUMMARY_LS_KEY) === 'false'; } catch { return false; }
+}
 const ROW_PADDING = 20;
 
 function backlogGrid(hasSubgroups: boolean, opoOff: boolean) {
@@ -71,7 +76,7 @@ function PersonSortHeader({ sortKey, label, sort, onSort }: {
         onClick={() => onSort(sortKey)}
       >
         {label}
-        {dir === 'desc' ? <ArrowUpOutlined aria-hidden /> : <ArrowDownOutlined aria-hidden />}
+        {dir === 'desc' ? <ArrowUpOutlined aria-hidden /> : dir === 'asc' ? <ArrowDownOutlined aria-hidden /> : <SwapOutlined rotate={90} aria-hidden />}
         {dir && <span className="plc-sort-dir">{dir === 'desc' ? 'Я→А' : 'А→Я'}</span>}
       </button>
     </span>
@@ -101,7 +106,14 @@ export default function WarmPlanningLayout({ state }: { state: PlanningPageState
     handleRename, scenarioOptions,
   } = state;
   // Полная сводка ресурса открывается на месте строки — по умолчанию свёрнута, как в макете.
-  const [summaryOpen, setSummaryOpen] = useState(false);
+  // Выбор помнится в том же ключе, что и у Aurora: развернул однажды — так и остаётся.
+  const [summaryOpen, setSummaryOpen] = useState(readSummaryOpen);
+  const toggleSummary = () => {
+    const next = !summaryOpen;
+    setSummaryOpen(next);
+    try { localStorage.setItem(SUMMARY_LS_KEY, next ? 'false' : 'true'); } catch { /* хранилище недоступно */ }
+  };
+  const summaryDemand = Object.values(roleDemand).reduce((sum, v) => sum + v, 0);
   const grid = backlogGrid(hasSubgroups, opoOff);
   const included = useMemo(() => roleHoursTotals(allocations ?? [], opoOff, true), [allocations, opoOff]);
   const onSort = (k: PersonSortKey) => setPersonSort((s) => nextPersonSort(s, k));
@@ -263,8 +275,17 @@ export default function WarmPlanningLayout({ state }: { state: PlanningPageState
               <div className="plc-rs-row">
                 <div className="plc-rs-info">
                   <b className="plc-rs-title">Сводка ресурса</b>
+                  {/* Как строка «На бэклог» развёрнутой сводки и свёрнутая полоса Aurora: остаток после включённого, из всего на бэклог. */}
                   <span>
-                    На бэклог <b>{formatHours(Math.round(resourceSummary.available_for_backlog_total))} ч</b>
+                    На бэклог{' '}
+                    {summaryDemand > 0 ? (
+                      <>
+                        <b>{formatHours(Math.round(resourceSummary.available_for_backlog_total - summaryDemand))} ч</b>
+                        {' '}из {formatHours(Math.round(resourceSummary.available_for_backlog_total))} ч
+                      </>
+                    ) : (
+                      <b>{formatHours(Math.round(resourceSummary.available_for_backlog_total))} ч</b>
+                    )}
                   </span>
                   <span className="plc-rs-rest">
                     Остаток по ролям
@@ -292,7 +313,7 @@ export default function WarmPlanningLayout({ state }: { state: PlanningPageState
                   type="button"
                   className="plc-rs-toggle"
                   aria-expanded={summaryOpen}
-                  onClick={() => setSummaryOpen((v) => !v)}
+                  onClick={toggleSummary}
                 >
                   {summaryOpen ? <UpOutlined aria-hidden /> : <DownOutlined aria-hidden />}
                   {summaryOpen ? 'Свернуть' : 'Развернуть'}
@@ -338,7 +359,7 @@ export default function WarmPlanningLayout({ state }: { state: PlanningPageState
                 </label>
               </div>
             )}
-            {activeTab === 'distribution' && neighborsTakenIds.size === 0 && (
+            {activeTab === 'distribution' && isDraft && !allocLoading && neighborsTakenIds.size === 0 && (
               <div role="status" className="plc-strip is-calm">
                 <span className="plc-strip-text">
                   <CheckOutlined aria-hidden />

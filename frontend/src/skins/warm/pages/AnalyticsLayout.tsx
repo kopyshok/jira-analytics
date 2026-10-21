@@ -12,6 +12,8 @@ import AnalyticsKpiTiles from '../../../components/analytics/AnalyticsKpiTiles';
 import AnalyticsIssueDrawer from '../../../components/analytics/AnalyticsIssueDrawer';
 import DetailSheet from '../../../components/common/DetailSheet';
 import SubgroupFlowLine from '../../../components/common/SubgroupFlowLine';
+import { useGlobalTeamFilter } from '../../../hooks/useGlobalTeamFilter';
+import { useTeamRegistry } from '../../../hooks/useTeamRegistry';
 
 /** 2026-10-01 → 01.10.2026: подсказка в пустых полях дат — границы выбранного периода. */
 const ruDate = (iso: string) => iso.split('-').reverse().join('.');
@@ -39,6 +41,17 @@ export default function WarmAnalyticsLayout({ state }: { state: AnalyticsPageSta
     periodStart, periodEnd,
     exportXlsx,
   } = state;
+
+  // Переток сервер считает только по выбранным командам с делением на группы — пустая
+  // карточка говорит, почему она пустая, а не всегда «не обменивались».
+  const { selectedTeams } = useGlobalTeamFilter();
+  const { data: registry } = useTeamRegistry();
+  const flowTeams = selectedTeam !== 'all' ? [selectedTeam] : selectedTeams;
+  const flowEmpty = flowTeams.length === 0
+    ? 'Выберите команду — покажем обмен часами между её группами'
+    : !registry || registry.some((t) => t.has_subgroups && flowTeams.includes(t.name))
+      ? 'Группы команды часами между собой не обменивались'
+      : flowTeams.length > 1 ? 'В выбранных командах нет деления на группы' : 'В выбранной команде нет деления на группы';
 
   // Рабочая область ужалась под панель — выбранная строка таблицы остаётся на виду.
   const openedId = openedIssue?.id;
@@ -126,7 +139,7 @@ export default function WarmAnalyticsLayout({ state }: { state: AnalyticsPageSta
         <>
           <div className="anc-summary-row">
             <AnalyticsKpiTiles compact totals={data.grand_totals} />
-            <SubgroupFlowLine compact items={data.subgroup_flow} />
+            <SubgroupFlowLine compact items={data.subgroup_flow} emptyText={flowEmpty} />
           </div>
 
           <div className="anc-teams-row">

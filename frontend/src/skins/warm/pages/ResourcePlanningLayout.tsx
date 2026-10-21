@@ -16,7 +16,10 @@ import BulkResetDropdown from '../../../components/resource-planning/BulkResetDr
 import RpViewOptions from '../../../components/resource-planning/RpViewOptions';
 import RpPageModals from '../../../components/resource-planning/RpPageModals';
 import type { RpLayout } from '../../../components/resource-planning/GanttRows';
-import { invalidatePlanGantt } from '../../../hooks/useResourcePlanning';
+import { phaseFill } from '../../../components/resource-planning/phaseFill';
+import { invalidatePlanGantt, usePlanQuality } from '../../../hooks/useResourcePlanning';
+import { useOpoCutoff } from '../../../hooks/useOpoCutoff';
+import type { AppearanceSettings } from '../../../api/appearance';
 import { planStatusTag, type ResourcePlanningPageState } from '../../../hooks/useResourcePlanningPage';
 import { useAppearanceSettings } from '../../../contexts/AppearanceContext';
 import type { TimelineScale } from '../../../utils/gantt';
@@ -27,11 +30,11 @@ import { fmtHours, overuseCount, usedHours } from '../../../utils/normedReserve'
 import ConflictStrip from '../components/ConflictStrip';
 import { useWidth } from '../useWidth';
 
-/** Легенда диаграммы под шкалой: фазы и обозначения полос. */
-function GanttLegend() {
-  const phase = (key: string, label: string) => (
+/** Легенда диаграммы под шкалой: фазы (цвета — те же, что у полос, включая свои из «Цвета») и обозначения полос. */
+function GanttLegend({ colors, opoOff }: { colors: AppearanceSettings['phase_colors']; opoOff: boolean }) {
+  const phase = (key: keyof AppearanceSettings['phase_colors'], label: string) => (
     <span key={key} className="wr-legend-item">
-      <span className="wr-legend-sq" style={{ background: `var(--rp-phase-${key})` }} />
+      <span className="wr-legend-sq" style={{ background: phaseFill(key, colors[key]) }} />
       {label}
     </span>
   );
@@ -40,7 +43,7 @@ function GanttLegend() {
       {phase('analyst', 'Анализ')}
       {phase('dev', 'Разработка')}
       {phase('qa', 'Тестирование')}
-      {phase('opo', 'ОПЭ')}
+      {!opoOff && phase('opo', 'ОПЭ')}
       <span className="wr-legend-item"><span className="wr-legend-bar is-conflict" />конфликт</span>
       <span className="wr-legend-item"><span className="wr-legend-bar is-cp" />критический путь (КП)</span>
       <span className="wr-legend-item"><span className="wr-legend-bar is-pinned" />закреплено вручную</span>
@@ -108,6 +111,8 @@ export default function WarmResourcePlanningLayout({ state }: { state: ResourceP
   const navigate = useNavigate();
   const qc = useQueryClient();
   const appearanceSettings = useAppearanceSettings();
+  const { opoOffFor } = useOpoCutoff();
+  const { data: quality, isLoading: qualityLoading } = usePlanQuality(planId);
   const status = gantt ? planStatusTag(gantt.plan.status) : null;
   const twoLevel = viewMode === 'two-level';
   const refreshGantt = () => (planId ? invalidatePlanGantt(qc, planId) : Promise.resolve());
@@ -212,7 +217,7 @@ export default function WarmResourcePlanningLayout({ state }: { state: ResourceP
         </div>
         <div className="wr-row wr-row-between">
           <div className="wr-row">
-            {planId && <span className="wr-field-label">Качество плана</span>}
+            {planId && (quality || qualityLoading) && <span className="wr-field-label">Качество плана</span>}
             <PlanQualityBadge planId={planId} />
           </div>
           <div className="wr-row">
@@ -331,7 +336,9 @@ export default function WarmResourcePlanningLayout({ state }: { state: ResourceP
               />
             )}
           </div>
-          {gantt && !ganttLoading && <GanttLegend />}
+          {gantt && !ganttLoading && (
+            <GanttLegend colors={appearanceSettings.phase_colors} opoOff={opoOffFor(gantt.plan.year, gantt.plan.quarter)} />
+          )}
         </section>
       </div>
 
@@ -354,7 +361,11 @@ export default function WarmResourcePlanningLayout({ state }: { state: ResourceP
           ) : (
             <section className="wr-card wr-rp-heat" aria-label="Загрузка сотрудников по дням">
               <h2 className="rpc-card-title">Загрузка сотрудников по дням</h2>
-              <p className="wr-rp-empty-text">Загрузки пока нет — нажмите «Распределить», чтобы рассчитать план.</p>
+              <p className="wr-rp-empty-text">
+                {gantt.plan.status === 'draft'
+                  ? 'Загрузки пока нет — нажмите «Распределить», чтобы рассчитать план.'
+                  : 'В плане нет загрузки сотрудников по дням.'}
+              </p>
             </section>
           )}
           {/* Нормированные работы: на странице — итог, вся таблица — в панели подробностей. */}
@@ -376,7 +387,9 @@ export default function WarmResourcePlanningLayout({ state }: { state: ResourceP
                 </div>
               </>
             ) : (
-              <p className="wr-rp-empty-text">Нормированных работ в квартале нет</p>
+              <p className="wr-rp-empty-text">
+                {gantt.plan.team ? 'Нормированных работ в квартале нет' : 'У плана не указана команда — запас не считается'}
+              </p>
             )}
           </section>
         </div>
