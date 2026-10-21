@@ -16,6 +16,8 @@ import {
   useDeleteSubgroupShare,
 } from '../../hooks/useTeamRegistry';
 import { DARK_THEME } from '../../utils/constants';
+import { getRoleLabel } from '../../utils/roles';
+import { useRoles } from '../../hooks/useRoles';
 import TransferTeamModal from './TransferTeamModal';
 import SubgroupShareModal from './SubgroupShareModal';
 
@@ -96,6 +98,8 @@ interface Props {
 export default function EmployeeDrawer({ employeeId, onClose }: Props) {
   const { message } = App.useApp();
   const [transferFrom, setTransferFrom] = useState<string | null>(null);
+  // Роль показываем названием из справочника, а не кодом («analyst» → «Аналитик»).
+  const { data: roles = [] } = useRoles();
 
   const { data: employees } = useQuery({
     queryKey: ['employees', false, null],
@@ -189,7 +193,7 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
               </div>
               {employee.role && (
                 <div style={{ color: DARK_THEME.textMuted, fontSize: 13, marginTop: 2 }}>
-                  {employee.role}
+                  {getRoleLabel(roles, employee.role)}
                 </div>
               )}
               {primaryTeam && (
