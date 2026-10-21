@@ -101,6 +101,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   --heat-month-fg: #1C1C1A;
   --heat-cell-h: 13px;
   --heat-row-h: 20px;
+  --heat-label-w: clamp(280px, 16vw, 380px);
 
   /* ---------- раскладка экрана ---------- */
   & .rp-pult .ant-alert { flex: none; padding: 6px 10px; }
@@ -108,7 +109,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   &[data-detail-sheet] .rp-gantt-module { flex: 1 0 320px; }
   & .rp-legend-hint { margin-left: auto; }
   & .rp-bottom { flex: none; height: clamp(170px, 24vh, 236px); display: flex; gap: 10px; min-height: 0; }
-  & .rp-heat-module { flex: 1 1 auto; }
+  /* загрузка — по ширине своих клеток, остаток ширины отдан нормированным работам */
+  & .rp-heat-module { flex: 0 1 auto; }
 
   /* клавиши панели — в рост поля (30px), «Вид» — тёмная клавиша */
   & .pc-panel .ant-btn-sm { height: 30px; padding: 0 12px; font-size: 13px; border-radius: 6px; }
@@ -388,13 +390,39 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .rp-heat-legend > span > span { border-radius: 0 !important; width: 12px !important; height: 10px !important; }
 
   /* ---------- нормированные работы: строка-итог на странице, таблица — в панели ---------- */
-  & .rp-reserve-sum { flex: 0 0 270px; }
+  & .rp-reserve-sum { flex: 1 0 240px; container-type: inline-size; }
   & .rp-reserve-sum .pm-cap { white-space: normal; line-height: 14px; }
+  & .rp-rs-screen { flex: 0 1 auto; }
   & .rp-rs-figs { flex: none; margin: 0; padding: 4px 10px; display: flex; flex-direction: column; overflow: visible; }
   & .rp-rs-figs > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 3px 0; }
   & .rp-rs-figs > div + div { border-top: 1px solid var(--p-line-soft); }
   & .rp-rs-figs dt { font-size: 12px; color: var(--text-2); }
   & .rp-rs-figs dd { margin: 0; font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  /* общие колонки на все строки (subgrid) — цифры стоят столбиком */
+  & .rp-rs-types {
+    display: none;
+    grid-template-columns: minmax(0, 1fr) minmax(48px, 140px) auto auto auto;
+    column-gap: 12px;
+    list-style: none;
+    margin: 0;
+    padding: 2px 10px 4px;
+    border-top: 1px solid var(--p-line-strong);
+  }
+  & .rp-rs-types li {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    padding: 3px 0;
+    font-size: 12px;
+    color: var(--text);
+  }
+  & .rp-rs-types li + li { border-top: 1px solid var(--p-line-soft); }
+  & .rp-rs-t-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .rp-rs-t-bar { height: 6px; background: var(--p-line-soft); }
+  & .rp-rs-t-bar i { display: block; height: 100%; max-width: 100%; background: var(--heat-normed); }
+  & .rp-rs-t-num { font-family: var(--font-mono); text-align: right; white-space: nowrap; }
+  & .rp-rs-t-over { color: #B92E17; font-weight: 700; }
   & .rp-rs-foot { margin-top: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   & .rp-rs-over { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: #B92E17; }
   & .rp-rs-ok { font-size: 11px; color: var(--text-muted); }
@@ -432,6 +460,16 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
   & .rp-reserve.is-docked td[colspan="4"]:has(> div) .ant-typography { font-family: var(--font-mono); }
   & .rp-reserve-over { padding: 6px 8px 0; font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: #B92E17; letter-spacing: 0.04em; }
   & .rp-reserve-scenario { padding: 6px 8px 0; margin-bottom: 4px !important; }
+}
+
+/* Широкая плашка нормированных работ: итог в строку и разбивка по видам работ */
+@container (min-width: 520px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
+    & .rp-rs-figs { flex-direction: row; flex-wrap: wrap; column-gap: 28px; }
+    & .rp-rs-figs > div { justify-content: flex-start; }
+    & .rp-rs-figs > div + div { border-top: 0; }
+    & .rp-rs-types { display: grid; }
+  }
 }
 
 @media (max-width: 1100px) {

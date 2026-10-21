@@ -58,7 +58,11 @@ const RU_WD = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const CELL = 15; // ширина/высота клетки дня
 const CELL_GAP = 2; // зазор между днями внутри недели
 const WEEK_GAP = 7; // зазор между неделями
-const LABEL_W = 210;
+// Колонка имени: имя тянется, роль и процент — постоянной ширины, чтобы стояли столбиком.
+// Ширину колонки обложка задаёт своей переменной.
+const LABEL_W = 'var(--heat-label-w, 320px)';
+const ROLE_W = 104;
+const PCT_W = 42;
 const ROW_H = 26;
 const TIP_MAX_W = 420; // ширина подсказки дня: строки длиннее переносятся
 // Колонки справа у наблюдаемых: свободно по месяцам и остаток «Технических задач».
@@ -419,6 +423,7 @@ export default function EmployeeLoadHeatmap({
         <div
           style={{
             width: LABEL_W,
+            boxSizing: 'border-box',
             flexShrink: 0,
             position: 'sticky',
             left: 0,
@@ -431,7 +436,7 @@ export default function EmployeeLoadHeatmap({
             height: '100%',
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
               <span
                 role={click ? 'button' : undefined}
@@ -494,10 +499,21 @@ export default function EmployeeLoadHeatmap({
               </span>
             )}
           </div>
-          {row.employee_role && (
-            <span style={{ fontSize: 10, color: 'var(--heat-role-fg, #5a8ab8)', flexShrink: 0 }}>{getRoleLabel(roles, row.employee_role)}</span>
-          )}
-          {avg > 0 && (
+          <span
+            title={row.employee_role ? getRoleLabel(roles, row.employee_role) : undefined}
+            style={{
+              width: ROLE_W,
+              flexShrink: 0,
+              fontSize: 10,
+              color: 'var(--heat-role-fg, #5a8ab8)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {row.employee_role ? getRoleLabel(roles, row.employee_role) : ''}
+          </span>
+          {avg > 0 ? (
             <Tooltip
               title={row.quarter ? (
                 <div style={{ fontSize: 12 }}>
@@ -510,11 +526,13 @@ export default function EmployeeLoadHeatmap({
             <span
               data-testid={watch ? 'rp-watch-pct' : 'rp-load-pct'}
               style={{
-                marginLeft: 'auto',
+                width: PCT_W,
+                boxSizing: 'border-box',
+                textAlign: 'center',
                 flexShrink: 0,
                 fontSize: 10,
                 fontWeight: 600,
-                padding: '1px 6px',
+                padding: '1px 0',
                 borderRadius: 8,
                 color: skin === 'pult' ? textOnFill(avgColor.bg) : avg > 60 ? '#0a1422' : '#cfe',
                 background: avgColor.bg,
@@ -523,6 +541,8 @@ export default function EmployeeLoadHeatmap({
               {avg}%
             </span>
             </Tooltip>
+          ) : (
+            <span style={{ width: PCT_W, flexShrink: 0 }} />
           )}
         </div>
 

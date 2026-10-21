@@ -16,8 +16,8 @@ import type { TimelineScale } from '../../../utils/gantt';
 import { PHASE_LABELS } from '../../../utils/gantt';
 import { usePlanQuality } from '../../../hooks/useResourcePlanning';
 import type { ResourcePlanningPageState } from '../../../hooks/useResourcePlanningPage';
-import type { AssignmentOut, ReserveOut } from '../../../api/resourcePlanning';
-import { fmtHours, overuseCount, usedHours } from '../../../utils/normedReserve';
+import type { AssignmentOut, ReserveOut, ReserveTypeRow } from '../../../api/resourcePlanning';
+import { fmtHours, overuseCount, usagePct, usedHours } from '../../../utils/normedReserve';
 import { PULT_SIGNAL } from '../palette';
 import { PcField, PcLamp, PcRow, PcTitle, PModule, PultScreen } from '../ui';
 import { useWidth } from '../useWidth';
@@ -36,19 +36,32 @@ const LEFT_COL = 380;
 const PHASE_ORDER: Record<string, number> = { analyst: 0, dev: 1, qa: 2, opo: 3 };
 const ddmm = (iso: string | null) => (iso ? dayjs(iso).format('DD.MM') : '—');
 
-/** Итог запаса нормированных работ для страницы: заложено, занято, осталось, перерасход. */
+/** Итог запаса нормированных работ для страницы: заложено, занято, осталось, перерасход
+ *  и те же цифры по видам работ (сумма по ролям) — для широкой плашки. */
 function reserveTotals(reserve: ReserveOut) {
   let planned = 0;
   let used = 0;
   let remaining = 0;
+  const byType = new Map<string, ReserveTypeRow>();
   for (const role of reserve.roles) {
     for (const row of role.rows) {
       planned += row.planned_hours;
       used += usedHours(row);
       remaining += row.remaining_hours;
+      const t = byType.get(row.work_type_id);
+      if (!t) {
+        byType.set(row.work_type_id, { ...row });
+        continue;
+      }
+      t.planned_hours += row.planned_hours;
+      t.blocked_hours += row.blocked_hours;
+      t.other_teams_hours += row.other_teams_hours;
+      t.remaining_hours += row.remaining_hours;
+      t.overuse_hours += row.overuse_hours;
     }
   }
-  return { planned, used, remaining, over: overuseCount(reserve) };
+  const types = [...byType.values()].filter((t) => t.planned_hours > 0.05 || usedHours(t) > 0.05);
+  return { planned, used, remaining, over: overuseCount(reserve), types };
 }
 
 /** «в 1 виде», «в 3 видах» работ. */
@@ -386,11 +399,35 @@ export default function PultResourcePlanningLayout({ rp }: { rp: ResourcePlannin
           <PModule title="Нормированные работы — запас квартала" className="rp-reserve-sum" ariaLabel="Нормированные работы — запас квартала">
             {totals ? (
               <>
-                <dl className="pm-screen rp-rs-figs">
-                  <div><dt>заложено</dt><dd className="num">{fmtHours(totals.planned)}</dd></div>
-                  <div><dt>занято</dt><dd className="num">{fmtHours(totals.used)}</dd></div>
-                  <div><dt>осталось</dt><dd className="num">{fmtHours(totals.remaining)}</dd></div>
-                </dl>
+                <div className="pm-screen rp-rs-screen">
+                  <dl className="rp-rs-figs">
+                    <div><dt>заложено</dt><dd className="num">{fmtHours(totals.planned)}</dd></div>
+                    <div><dt>занято</dt><dd className="num">{fmtHours(totals.used)}</dd></div>
+                    <div><dt>осталось</dt><dd className="num">{fmtHours(totals.remaining)}</dd></div>
+                  </dl>
+                  {/* По видам работ — только когда плашка широкая (правило в стилях страницы) */}
+                  {totals.types.length > 0 && (
+                    <ul className="rp-rs-types" aria-label="По видам работ">
+                      {totals.types.map((t) => {
+                        const over = t.overuse_hours > 0.5;
+                        return (
+                          <li key={t.work_type_id}>
+                            <span className="rp-rs-t-label" title={t.label}>{t.label}</span>
+                            <span className="rp-rs-t-bar"><i style={{ width: `${usagePct(t)}%` }} /></span>
+                            <span className="rp-rs-t-num" title="занято из заложенного">
+                              {fmtHours(usedHours(t))} из {fmtHours(t.planned_hours)}
+                            </span>
+                            <span className="rp-rs-t-num" title="осталось">{fmtHours(t.remaining_hours)}</span>
+                            {/* Сумма по ролям: у одной роли может быть перерасход, у другой — остаток */}
+                            <span className="rp-rs-t-num rp-rs-t-over">
+                              {over ? `сверх ${fmtHours(t.overuse_hours)}` : ''}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
                 <div className="rp-rs-foot">
                   {totals.over > 0
                     ? <span className="rp-rs-over">перерасход в {totals.over} {kindsWord(totals.over)} работ</span>
