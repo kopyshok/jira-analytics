@@ -5,6 +5,9 @@ interface Props {
   /** Норма с сервера; меняется только после ответа на сохранение. */
   value: number | null;
   onCommit: (hours: number | null) => void;
+  /** Вид поля для встроенных модулей обложки (по умолчанию — обычная рамка). */
+  variant?: 'borderless';
+  ariaLabel?: string;
 }
 
 /**
@@ -15,7 +18,7 @@ interface Props {
  * один по Enter: поле сверяет набранное со значением с сервера, которое до
  * ответа остаётся старым, и сообщает об изменении повторно.
  */
-export function DailyRateInput({ value, onCommit }: Props) {
+export function DailyRateInput({ value, onCommit, variant, ariaLabel }: Props) {
   const [draft, setDraft] = useState(value);
   const [base, setBase] = useState(value);
   // Пришла норма с сервера (наше сохранение или чужая правка) — набор с неё.
@@ -45,6 +48,8 @@ export function DailyRateInput({ value, onCommit }: Props) {
     <span onBlur={commit} onClick={(e) => e.stopPropagation()}>
       <InputNumber
         size="small"
+        variant={variant}
+        aria-label={ariaLabel}
         min={0}
         max={24}
         step={0.5}

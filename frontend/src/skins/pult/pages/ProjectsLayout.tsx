@@ -12,6 +12,7 @@ import {
 import { usePortfolio, useProjectsList } from '../../../hooks/useProjects';
 import type { ProjectListItem, ProjectListFiltersState } from '../../../types/projects';
 import type { ProjectsPageState } from '../../../pages/ProjectsPage';
+import { plural } from '../../../utils/plural';
 import { PULT_PHASE_COLORS, PULT_SIGNAL } from '../palette';
 import { PcField, PcRow, PcTitle, PModule, PultScreen } from '../ui';
 
@@ -52,7 +53,7 @@ function PultProjectCard({ item, selected, onClick }: { item: ProjectListItem; s
       <span className="num pp-period">{formatProjectMonth(item.period_start)} – {formatProjectMonth(item.period_end)}</span>
       <span className="pp-meta">
         <span><b className="num">{nf(item.total_hours)}</b> ч</span>
-        <span><b className="num">{item.child_count}</b> задач</span>
+        <span><b className="num">{item.child_count}</b> {plural(item.child_count, 'задача', 'задачи', 'задач')}</span>
         <span><b className="num">{item.employee_count}</b> участн.</span>
         <span className="pc-cap pp-cat">{CATEGORY_LABEL[item.category] ?? item.category}</span>
       </span>

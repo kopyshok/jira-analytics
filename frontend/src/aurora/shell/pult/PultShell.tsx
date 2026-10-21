@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { Outlet } from 'react-router';
 import { useAuth } from '../../../hooks/useAuth';
 import WhatsNewGate from '../../../components/release-notes/WhatsNewGate';
+import TokenRenewalAlert from '../../../components/Layout/TokenRenewalAlert';
 import { HelpProvider } from '../../../contexts/HelpContext';
 import { usePageView } from '../../../lib/usage/usePageView';
 import { useHeartbeat } from '../../../lib/usage/useHeartbeat';
@@ -29,6 +30,10 @@ export default function PultShell() {
   return (
     <HelpProvider>
       <div className="pult-app">
+        {/* Плашки администратору (ключ Jira/Confluence не продлился) — над рабочей областью. */}
+        <div className="pult-alerts">
+          <TokenRenewalAlert />
+        </div>
         <div className="pult-main">
           <PultRail />
           <main className="pult-content scroll-y">

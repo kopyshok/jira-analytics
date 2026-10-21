@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Empty, InputNumber, Spin } from 'antd';
+import { Empty, Spin } from 'antd';
 import dayjs from 'dayjs';
 import {
   FLAG_LABELS, FLAG_ORDER, roundHours, type DeskIssue,
@@ -13,6 +13,7 @@ import { AbsenceStrip } from '../../../components/teamdesk/AbsenceStrip';
 import { ActiveFilters } from '../../../components/teamdesk/ActiveFilters';
 import { StatusCounters } from '../../../components/teamdesk/StatusCounters';
 import { IssueKey, StatusTag } from '../../../components/teamdesk/IssueCells';
+import { DailyRateInput } from '../../../components/teamdesk/DailyRateInput';
 import { rubberLeft, rubberToQueue } from '../../../components/teamdesk/deskSignals';
 import DetailSheet from '../../../components/common/DetailSheet';
 import { useAbsences } from '../../../hooks/useAbsences';
@@ -47,15 +48,11 @@ function PultRubber({ rows, jiraBaseUrl, onDailyRate, rubberDays }: {
               <div className="td-screens">
                 <label className="td-screen">
                   <span className="pc-cap">ч/день</span>
-                  <InputNumber
-                    size="small"
+                  <DailyRateInput
                     variant="borderless"
-                    min={0}
-                    max={24}
-                    step={0.5}
                     value={row.daily_rate ?? null}
-                    onChange={(v) => onDailyRate(row.id, v == null ? null : Number(v))}
-                    aria-label={`Часов в день: ${row.key}`}
+                    onCommit={(hours) => onDailyRate(row.id, hours)}
+                    ariaLabel={`Часов в день: ${row.key}`}
                   />
                 </label>
                 <div className="td-screen"><span className="pc-cap">оценка</span><b className="num">{row.est_hours == null ? '—' : roundHours(row.est_hours)}</b></div>

@@ -21,6 +21,7 @@ import { downloadScenarioXlsx } from '../../../api/exports';
 import { trackAction } from '../../../lib/usage/track';
 import { effectiveEstimate } from '../../../utils/allocationEstimates';
 import { nextPersonSort, type PersonSortKey } from '../../../utils/allocationSort';
+import { plural } from '../../../utils/plural';
 import type { PlanningPageState } from '../../../pages/PlanningPage';
 import { PULT_SIGNAL } from '../palette';
 import { PcField, PcRow, PcTitle, PModule, PultScreen } from '../ui';
@@ -327,7 +328,7 @@ export default function PultPlanningLayout({ p }: { p: PlanningPageState }) {
             extra={
               <>
                 {allocations && (
-                  <span className="pc-count sc-ideas">{allocations.length} идей · включено {includedIds.length}</span>
+                  <span className="pc-count sc-ideas">{allocations.length} {plural(allocations.length, 'идея', 'идеи', 'идей')} · включено {includedIds.length}</span>
                 )}
                 <span className="num sc-roles-sum">
                   АН <b>{nf(totals.an)}</b> · ПР <b>{nf(totals.dev)}</b> · ТС <b>{nf(totals.qa)}</b>

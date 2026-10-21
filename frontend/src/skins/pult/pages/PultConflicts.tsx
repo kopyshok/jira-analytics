@@ -7,6 +7,7 @@ import {
   CONFLICT_STATUS_LABEL, CONFLICT_TYPE_LABELS, isLiveConflict, useConflictBoard, type ConflictGroupBy,
 } from '../../../components/resource-planning/useConflictBoard';
 import { PModule } from '../ui';
+import { plural } from '../../../utils/plural';
 
 const SEV_LABEL: Record<ConflictOut['severity'], string> = {
   critical: 'КРИТИЧ.',
@@ -39,8 +40,8 @@ export default function PultConflicts({ conflicts, planId, onSelectAssignment }:
             <span className="rp-conf-none">конфликтов нет</span>
           ) : (
             <span className="rp-conf-counts">
-              <b className="p-count is-red">{criticals.length}</b> критических ·{' '}
-              <b className="p-count is-amber">{warnings.length}</b> предупреждений
+              <b className="p-count is-red">{criticals.length}</b> {plural(criticals.length, 'критический', 'критических', 'критических')} ·{' '}
+              <b className="p-count is-amber">{warnings.length}</b> {plural(warnings.length, 'предупреждение', 'предупреждения', 'предупреждений')}
             </span>
           )}
           {(active.length > 0 || hidden.length > 0) && (
@@ -58,7 +59,7 @@ export default function PultConflicts({ conflicts, planId, onSelectAssignment }:
           <span className="pm-push" style={{ display: 'inline-flex', gap: 14 }}>
             {hidden.length > 0 && (
               <button type="button" className="pm-link" onClick={() => setShowHidden(!showHidden)}>
-                {showHidden ? 'Скрыть погашенные' : `Показать ${hidden.length} погашенных`}
+                {showHidden ? 'Скрыть погашенные' : `Показать ${hidden.length} ${plural(hidden.length, 'погашенный', 'погашенных', 'погашенных')}`}
               </button>
             )}
             {cards.length > 0 && (

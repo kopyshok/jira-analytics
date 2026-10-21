@@ -7,6 +7,7 @@ import { StatusCounters } from '../../../components/teamdesk/StatusCounters';
 import { accuracyLevel, developerSeverity } from '../../../components/teamdesk/deskSignals';
 import type { QueueScope } from '../../../components/teamdesk/queueFilter';
 import { PULT_SIGNAL } from '../palette';
+import { plural } from '../../../utils/plural';
 
 function initials(name: string | null): string {
   if (!name) return '?';
@@ -97,11 +98,11 @@ export default function PultDeveloperCard({
 
       <div className="td-card-count">
         <span className="td-big num">{dev.total_issues}</span>
-        <span className="pc-cap td-big-cap">задач всего</span>
+        <span className="pc-cap td-big-cap">{plural(dev.total_issues, 'задача', 'задачи', 'задач')} всего</span>
         <span className="td-split">
           <span><i className="p-dot" style={{ background: PULT_SIGNAL.blue }} /><b className="num">{dev.in_dev}</b> у него</span>
-          <span><i className="p-dot" style={{ background: PULT_SIGNAL.amber }} /><b className="num">{dev.waiting}</b> ждут не его</span>
-          <span><i className="p-dot" style={{ background: PULT_SIGNAL.grey }} /><b className="num">{dev.todo}</b> не начаты</span>
+          <span><i className="p-dot" style={{ background: PULT_SIGNAL.amber }} /><b className="num">{dev.waiting}</b> {plural(dev.waiting, 'ждёт', 'ждут', 'ждут')} не его</span>
+          <span><i className="p-dot" style={{ background: PULT_SIGNAL.grey }} /><b className="num">{dev.todo}</b> {plural(dev.todo, 'не начата', 'не начаты', 'не начаты')}</span>
         </span>
       </div>
 

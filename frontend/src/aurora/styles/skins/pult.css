@@ -986,6 +986,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     min-height: 0;
     display: flex;
   }
+  & .pult-alerts { display: flex; flex-direction: column; gap: 6px; padding: 8px 18px; border-bottom: 1px solid var(--p-line); }
+  & .pult-alerts:empty { display: none; }
   & .pult-content {
     flex: 1;
     min-width: 0;
