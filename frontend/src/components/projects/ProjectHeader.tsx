@@ -71,8 +71,11 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
         message.error('Контейнер для экспорта не найден');
         return;
       }
+      // Фон снимка — фон страницы: в тёмной теме прежний тёмно-синий, в светлых —
+      // светлый, иначе тёмный текст светлой темы на снимке не виден.
+      const pageBg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
       const canvas = await html2canvas(target, {
-        backgroundColor: '#0d1c33',
+        backgroundColor: document.documentElement.dataset.mode === 'light' ? (pageBg || '#FFFFFF') : '#0d1c33',
         scale: 2,
         useCORS: true,
         height: target.scrollHeight,
