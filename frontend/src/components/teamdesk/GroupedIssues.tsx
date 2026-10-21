@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import {
-  Button, Card, Checkbox, Dropdown, InputNumber, Space, Switch, Table, Tag, Tooltip, Typography,
+  Button, Card, Checkbox, Dropdown, Space, Switch, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -12,6 +12,7 @@ import { FlagList } from './FlagChip';
 import { SYNC_BLOCKED_TEXT } from '../../utils/syncBlocked';
 import { HoursScale } from './HoursScale';
 import { IssueKey, StatusTag } from './IssueCells';
+import { DailyRateInput } from './DailyRateInput';
 import { StatusCounters } from './StatusCounters';
 import { inQueueScope, type QueueScope } from './queueFilter';
 import { useStickyViewportHeight } from '../../hooks/useStickyViewportHeight';
@@ -485,16 +486,9 @@ export function GroupedIssues({
           align: 'right' as const,
           render: (_: unknown, row: Row) =>
             row.isGroup ? null : (
-              <InputNumber
-                size="small"
-                min={0}
-                max={24}
-                step={0.5}
-                placeholder="—"
+              <DailyRateInput
                 value={row.daily_rate ?? null}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(v) => onDailyRate(row.id!, v == null ? null : Number(v))}
-                style={{ width: 84 }}
+                onCommit={(hours) => onDailyRate(row.id!, hours)}
               />
             ),
         }]

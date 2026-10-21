@@ -1,7 +1,8 @@
-import { Card, InputNumber, Table, Typography } from 'antd';
+import { Card, Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { roundHours, type DeskIssue } from '../../api/teamDesk';
 import { IssueKey } from './IssueCells';
+import { DailyRateInput } from './DailyRateInput';
 
 interface Props {
   issues: DeskIssue[];
@@ -40,14 +41,9 @@ export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate }: Pr
       width: 110,
       align: 'right',
       render: (_, row) => (
-        <InputNumber
-          size="small"
-          min={0}
-          max={24}
-          step={0.5}
+        <DailyRateInput
           value={row.daily_rate ?? null}
-          onChange={(v) => onDailyRate(row.id, v == null ? null : Number(v))}
-          style={{ width: 84 }}
+          onCommit={(hours) => onDailyRate(row.id, hours)}
         />
       ),
     },

@@ -200,3 +200,19 @@ describe.each([
     expect(screen.queryByText(HINT)).toBeNull();
   });
 });
+
+describe('стол тимлида: DevForDay в «Все задачи»', () => {
+  it('Enter и уход из поля — одно сохранение, строка не сворачивается', () => {
+    const onDailyRate = vi.fn();
+    const { container } = renderDesk(SMALL, { onDailyRate });
+    const input = within(row(container, 'i-0')).getByRole('spinbutton');
+    fireEvent.click(input);
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: '4' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.blur(input);
+    expect(onDailyRate).toHaveBeenCalledTimes(1);
+    expect(onDailyRate).toHaveBeenCalledWith('i-0', 4);
+    expect(row(container, 'i-0')).not.toBeNull();
+  });
+});
