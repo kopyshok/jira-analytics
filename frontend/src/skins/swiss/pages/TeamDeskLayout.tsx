@@ -42,8 +42,11 @@ const LISTS: Record<DeskList, { num: string; title: string }> = {
   absence: { num: '1.7', title: 'Отсутствия' },
 };
 
-/** Счётчик над таблицей: открывает список в панели подробностей; ноль — приглушён и не нажимается. */
-function ListKey({ num, label, count, note, active, onClick, title }: {
+/**
+ * Счётчик над таблицей: открывает список в панели подробностей; ноль — приглушён и не нажимается.
+ * openAtZero — ноль приглушён, но список открывается (отсутствия: в панели можно выбрать другой квартал).
+ */
+function ListKey({ num, label, count, note, active, onClick, title, openAtZero = false }: {
   num: string;
   label: string;
   count: number;
@@ -51,13 +54,14 @@ function ListKey({ num, label, count, note, active, onClick, title }: {
   active: boolean;
   onClick: () => void;
   title?: string;
+  openAtZero?: boolean;
 }) {
   return (
     <button
       type="button"
-      className={`sw-desk-list${active ? ' is-active' : ''}`}
+      className={`sw-desk-list${active ? ' is-active' : ''}${count === 0 && openAtZero ? ' is-zero' : ''}`}
       aria-pressed={active}
-      disabled={count === 0}
+      disabled={count === 0 && !openAtZero}
       onClick={onClick}
       title={title}
     >
@@ -147,9 +151,12 @@ export default function SwissTeamDeskLayout({ vm }: { vm: TeamDeskPageModel }) {
     return (absences.data ?? []).filter((a) => ids.has(a.employee_id) && a.start_date <= to && a.end_date >= from).length;
   }, [absences.data, data]);
   const counts: Record<DeskList, number> = { rubber: rubberCount, wip: showWip ? wipTotal : 0, absence: absenceCount };
+  // Отсутствия открываются и при нуле в текущем квартале (в панели — выбор квартала), если на столе есть люди.
+  const hasPeople = Object.keys(data?.employee_ids ?? {}).length > 0;
+  const canOpen = (l: DeskList) => counts[l] > 0 || (l === 'absence' && hasPeople);
   // Список опустел (сменили отбор или разрез) — панель закрывается и сама не вернётся.
-  if (list && data && counts[list] === 0) setList(null);
-  const shownList = list && data && counts[list] > 0 ? list : null;
+  if (list && data && !canOpen(list)) setList(null);
+  const shownList = list && data && canOpen(list) ? list : null;
   // Рабочая область ужалась под панель — нажатый счётчик остаётся на виду.
   useKeepInView(shownList, '.sw-desk-list.is-active');
 
@@ -190,7 +197,8 @@ export default function SwissTeamDeskLayout({ vm }: { vm: TeamDeskPageModel }) {
           <Figure value={people ?? '—'} caption={people == null ? 'разработчиков' : developersWord(people)} />
           <Figure
             value={data ? over : '—'}
-            caption={`Перерасход · ${over}`}
+            caption={`Перерасход > ${overrunPct}%`}
+            title="Задач среза, где факт превысил оценку больше порога из настроек стола"
             tone={over > 0 ? 'accent' : undefined}
             strong
           />
@@ -339,7 +347,8 @@ export default function SwissTeamDeskLayout({ vm }: { vm: TeamDeskPageModel }) {
                   count={counts.absence}
                   active={shownList === 'absence'}
                   onClick={() => toggleList('absence')}
-                  title="Отсутствия людей стола в текущем квартале"
+                  title="Отсутствия людей стола в текущем квартале; в панели — любой квартал"
+                  openAtZero={hasPeople}
                 />
               </div>
               <ActiveFilters

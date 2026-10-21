@@ -674,6 +674,14 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ginput:focus-wi
   box-shadow: 0 0 0 1px #111111 !important;
 }
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-affix-wrapper > .ant-input:focus { box-shadow: none !important; }
+/* Поля линией снизу (underlined) в фокусе — красная линия вдвое толще: видно, где курсор */
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-select-underlined.ant-select-focused,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-picker-underlined.ant-picker-focused,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-underlined:focus,
+html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-affix-wrapper.ant-input-underlined.ant-input-affix-wrapper-focused {
+  border-bottom-color: var(--sw-accent) !important;
+  box-shadow: inset 0 -1px 0 var(--sw-accent) !important;
+}
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-status-error:not(.ant-input-borderless),
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-input-number-status-error,
 html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] .ant-picker-status-error,

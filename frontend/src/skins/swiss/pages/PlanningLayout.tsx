@@ -18,6 +18,18 @@ import './planning.css';
 
 const num = (v: number) => Math.round(v).toLocaleString('ru-RU');
 
+/** Счёт идей: «1 идея», «3 идеи», «31 идея», «12 идей». */
+function ideasWord(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'идея';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'идеи';
+  return 'идей';
+}
+
+/** После «из N»: «из 31 идеи», «из 5 идей». */
+const ideasOf = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'идеи' : 'идей');
+
 const ROLE_SHORT: Record<string, string> = {
   analyst: 'АН', dev: 'ПР', qa: 'ТС', RP: 'РП', project_manager: 'РП', consultant: 'КС',
 };
@@ -60,7 +72,7 @@ export default function SwissPlanningLayout({ vm }: { vm: PlanningPageModel }) {
               <Figure value={backlog == null ? '—' : `${num(backlog)} ч`} caption="на бэклог" />
               <Figure
                 value={allocations ? `${includedIds.length} из ${allocations.length}` : '—'}
-                caption="идей включено в сценарий"
+                caption={`${allocations ? ideasOf(allocations.length) : 'идей'} включено в сценарий`}
               />
               {worstRole ? (
                 <Figure
@@ -69,8 +81,11 @@ export default function SwissPlanningLayout({ vm }: { vm: PlanningPageModel }) {
                   value={`−${num(worstHours as number)} ч ${short(worstRole)}`}
                   caption={`Дефицит по роли «${getRoleLabel(roles, worstRole)}»${restDeficits ? `; ещё ${restDeficits}` : ''}`}
                 />
+              ) : ready ? (
+                <Figure tone="good" value="0 ч" caption="дефицита нет" />
               ) : (
-                <Figure tone="good" value="0 ч" caption={ready ? 'дефицита нет' : 'дефицит'} />
+                // Сценарий не выбран или без команды — дефицит не считается, цифры нет.
+                <Figure value="—" caption="дефицит" />
               )}
             </Figures>
           </StripCell>
@@ -261,7 +276,7 @@ export default function SwissPlanningLayout({ vm }: { vm: PlanningPageModel }) {
                     >
                       {allocations && (
                         <span className="sw-pl-totals">
-                          {allocations.length} идей · включено {includedIds.length} · АН {num(hours.analyst)} · ПР {num(hours.dev)}
+                          {allocations.length} {ideasWord(allocations.length)} · включено {includedIds.length} · АН {num(hours.analyst)} · ПР {num(hours.dev)}
                           {' '}· ТС {num(hours.qa)}{opoOff ? '' : ` · ОПЭ ${num(hours.opo)}`} · <b>{num(hours.total)} ч</b>
                         </span>
                       )}

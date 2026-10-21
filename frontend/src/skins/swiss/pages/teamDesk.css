@@ -204,6 +204,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   & .sw-desk-list:not(:disabled):hover { color: var(--sw-accent-ink); border-bottom-color: var(--sw-accent-ink); }
   & .sw-desk-list.is-active { font-weight: 700; border-bottom-width: 2px; padding-bottom: 0; }
   & .sw-desk-list:disabled { border-bottom-color: transparent; color: #5E5E5E; cursor: default; }
+  & .sw-desk-list.is-zero { color: #5E5E5E; }
   & .sw-desk-bars { flex: none; gap: 4px !important; }
   & .desk-bar.ant-card { border-top: 0 !important; }
   & .desk-bar.ant-card > .ant-card-body { padding: 0 !important; }

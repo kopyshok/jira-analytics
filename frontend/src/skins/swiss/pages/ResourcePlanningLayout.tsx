@@ -59,6 +59,15 @@ function reserveTotals(reserve: ReserveOut) {
   return { planned, used, remaining, over: overuseCount(reserve) };
 }
 
+/** «1 инициатива», «3 инициативы», «21 инициатива», «17 инициатив». */
+function initiativesWord(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'инициатива';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'инициативы';
+  return 'инициатив';
+}
+
 /** «в 1 виде», «в 3 видах» работ. */
 const kindsWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'виде' : 'видах');
 
@@ -250,7 +259,7 @@ export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanni
               num="2.3"
               title="Диаграмма Ганта"
               size="lg"
-              meta={gantt ? `${quarterLabel} · ${initiatives} ${initiatives === 1 ? 'инициатива' : initiatives < 5 && initiatives > 1 ? 'инициативы' : 'инициатив'}` : undefined}
+              meta={gantt ? `${quarterLabel} · ${initiatives} ${initiativesWord(initiatives)}` : undefined}
             >
               {gantt && (
                 <Segmented
@@ -356,7 +365,8 @@ export default function SwissResourcePlanningLayout({ vm }: { vm: ResourcePlanni
                 <span><i className="lg-cp" />критический путь (КП)</span>
                 <span><i className="lg-pinned" />закреплено вручную</span>
                 <span><i className="lg-ooq" />за пределами квартала</span>
-                <span><i className="lg-absence" />отпуск</span>
+                {/* Штриховка на фазе — дни, когда исполнитель недоступен: отсутствие или заблокированный период */}
+                <span><i className="lg-absence" />отсутствие или блокировка</span>
                 <span><i className="lg-holiday" />праздник</span>
                 <span className="sw-rp-legend-hint">щелчок по фазе — её назначение откроется в панели</span>
               </div>
