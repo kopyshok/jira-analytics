@@ -172,14 +172,29 @@ def test_upgrade_is_idempotent(db_session):
 
 
 def test_upgrade_is_a_noop_on_already_fixed_data(db_session):
-    """Свежая база: ``seed_defaults()`` уже содержит оба исправления — миграция
-    не имеет права испортить корректные данные, приняв их за легаси."""
+    """Данные, уже исправленные в понимании миграции (резолюция Done, сроки — только
+    эпики), она не трогает. После переезда на Jira DC сид снова пишет «Готово», а
+    миграция jr01 в конце цепочки возвращает «Готово» — поэтому «исправленное» здесь
+    собирается из сида с заменой резолюции на Done."""
+    import json
+
     from app.services.kpi.seed import seed_defaults
 
     seed_defaults(db_session)
     db_session.commit()
 
     from app.models.kpi import KpiMetric
+
+    for m in db_session.query(KpiMetric).all():
+        for col in ("numerator_json", "denominator_json"):
+            raw = getattr(m, col)
+            if raw:
+                spec = json.loads(raw)
+                for cond in spec.get("conditions") or []:
+                    if cond.get("attr") == "resolution":
+                        cond["value"] = ["Done" if v == "Готово" else v for v in cond["value"]]
+                setattr(m, col, json.dumps(spec, ensure_ascii=False))
+    db_session.commit()
 
     before = {
         m.id: (m.numerator_json, m.denominator_json)
