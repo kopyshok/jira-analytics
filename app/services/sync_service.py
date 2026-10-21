@@ -37,7 +37,7 @@ from app.connectors.schemas import (
     JiraUserSchema,
 )
 from app.models import (
-    Employee, Project, Issue, IssueLink, Worklog, Comment,
+    Employee, EmployeeAccountAlias, Project, Issue, IssueLink, Worklog, Comment,
     SyncState, ScopeProject,
 )
 from app.models.app_setting import AppSetting
@@ -788,6 +788,22 @@ class SyncService:
         self.comment_repo = BaseRepository(Comment, db)
         self.sync_state_repo = BaseRepository(SyncState, db)
         self.scope_project_repo = BaseRepository(ScopeProject, db)
+        self._aliases: Optional[dict[str, Employee]] = None
+
+    def _alias_target(self, jira_account_id: Optional[str]) -> Optional[Employee]:
+        """Сотрудник, в которого влита карточка этой учётки (объединение двойников)."""
+        if self._aliases is None:
+            self._aliases = {
+                alias: employee
+                for alias, employee in self.db.query(EmployeeAccountAlias.jira_account_id, Employee)
+                .join(Employee, Employee.id == EmployeeAccountAlias.employee_id)
+            }
+        return self._aliases.get(jira_account_id) if jira_account_id else None
+
+    def _canonical_account(self, jira_account_id: Optional[str]) -> Optional[str]:
+        """Учётка слитой карточки → учётка сотрудника, в которого её влили."""
+        target = self._alias_target(jira_account_id)
+        return target.jira_account_id if target is not None else jira_account_id
 
     async def _check_cancelled(self) -> None:
         """Опрос отмены. Если клиент отвалился — поднимает CancelledError.
@@ -987,6 +1003,10 @@ class SyncService:
     
     def _upsert_employee(self, jira_user: JiraUserSchema) -> Tuple[Employee, bool]:
         """Upsert employee from Jira user (identity — DC ``key``, login refreshed)."""
+        target = self._alias_target(jira_user.jira_account_id)
+        if target is not None:
+            # Учётка слитой карточки: имя и логин старой учётки правильному не пишем.
+            return target, False
         if jira_user.deleted:
             # Удалённый в Jira: ни имени, ни почты — у известного сотрудника ничего не затираем.
             existing = self.employee_repo.get_by_field("jira_account_id", jira_user.jira_account_id)
@@ -1034,7 +1054,11 @@ class SyncService:
         cached = cache.get(eid)
         if cached is not None:
             # Логин дешевле сверить, чем потерять: по нему ведро B ищет списания.
-            if jira_user.name and cached.jira_username != jira_user.name:
+            # Карточка под чужой (слитой) учёткой свой логин сохраняет.
+            if (
+                jira_user.name and cached.jira_account_id == eid
+                and cached.jira_username != jira_user.name
+            ):
                 cached.jira_username = jira_user.name
             return cached
         employee = self._ensure_employee(jira_user)
@@ -1214,7 +1238,7 @@ class SyncService:
             jira_issue.fields.assignee.display_name
             if jira_issue.fields.assignee else None
         )
-        data["assignee_account_id"] = (
+        data["assignee_account_id"] = self._canonical_account(
             jira_issue.fields.assignee.jira_account_id
             if jira_issue.fields.assignee else None
         )
@@ -1222,7 +1246,9 @@ class SyncService:
         # creator оставлен запасным вариантом: у задач, заведённых
         # автоматикой, creator — робот, а reporter — живой сотрудник.
         _author = jira_issue.fields.reporter or jira_issue.fields.creator
-        data["reporter_account_id"] = _author.jira_account_id if _author else None
+        data["reporter_account_id"] = self._canonical_account(
+            _author.jira_account_id if _author else None
+        )
         data["reporter_display_name"] = _author.display_name if _author else None
 
         data["duration_analyst_days"] = _fld_float("jira_duration_analyst_field_id")
@@ -1241,7 +1267,7 @@ class SyncService:
         _dev_account_id, _dev_display_name = _extract_user_field(
             extra, planned_ids.get("jira_developer_field_id")
         )
-        data["developer_account_id"] = _dev_account_id
+        data["developer_account_id"] = self._canonical_account(_dev_account_id)
         data["developer_display_name"] = _dev_display_name
         data["dev_est_hours"] = _fld_float("jira_dev_est_field_id")
         # Спринт и релиз — колонки и отборы на рабочем столе тимлида

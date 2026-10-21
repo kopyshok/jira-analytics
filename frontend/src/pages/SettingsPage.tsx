@@ -47,6 +47,7 @@ import FeedbackAdminTab from '../components/feedback/FeedbackAdminTab';
 import UsageTab from '../components/admin/usage/UsageTab';
 import ReleaseNotesAdminTab from '../components/settings/ReleaseNotesAdminTab';
 import DbExportTab from '../components/settings/DbExportTab';
+import EmployeeMergeTab from '../components/settings/EmployeeMergeTab';
 import ServerErrorsTab from '../components/settings/ServerErrorsTab';
 import JiraConsoleTab from '../components/settings/JiraConsoleTab';
 import PerformanceTab from '../components/settings/PerformanceTab';
@@ -102,6 +103,7 @@ const GROUPS: SectionGroup[] = [
       { key: 'usage', label: 'Использование', adminOnly: true, render: () => <UsageTab /> },
       { key: 'whats-new', label: 'Что нового', adminOnly: true, render: () => <ReleaseNotesAdminTab /> },
       { key: 'db-export', label: 'Выгрузка базы', adminOnly: true, render: () => <DbExportTab /> },
+      { key: 'employee-merge', label: 'Двойники сотрудников', adminOnly: true, render: () => <EmployeeMergeTab /> },
       { key: 'errors', label: 'Ошибки сервиса', adminOnly: true, render: () => <ServerErrorsTab /> },
       { key: 'console', label: 'Консоль Jira и Confluence', adminOnly: true, render: () => <JiraConsoleTab /> },
       { key: 'perf', label: 'Быстродействие', adminOnly: true, render: () => <PerformanceTab /> },

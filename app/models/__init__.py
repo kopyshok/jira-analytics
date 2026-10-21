@@ -2,6 +2,7 @@
 
 from app.models.base import TimestampMixin, SyncedMixin, generate_uuid
 from app.models.employee import Employee
+from app.models.employee_alias import EmployeeAccountAlias
 from app.models.employee_team import EmployeeTeam
 from app.models.employee_subgroup_share import EmployeeSubgroupShare
 from app.models.project import Project
@@ -85,6 +86,7 @@ __all__ = [
     "SyncedMixin",
     "generate_uuid",
     "Employee",
+    "EmployeeAccountAlias",
     "EmployeeTeam",
     "EmployeeSubgroupShare",
     "Project",

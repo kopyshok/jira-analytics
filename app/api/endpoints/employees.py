@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, noload, selectinload
 
 from app.database import get_db
-from app.models import Employee, EmployeeTeam, Role, TeamSubgroup
+from app.models import Employee, EmployeeAccountAlias, EmployeeTeam, Role, TeamSubgroup
 from app.services import subgroup_shares as ss
 from app.services.employee_team_service import EmployeeTeamService
 from app.services.subgroup_share_service import SubgroupShareService
@@ -154,6 +154,17 @@ def employee_from_jira(
     db: Session = Depends(get_db),
 ):
     """Явное добавление сотрудника из Jira (автокомплит на фронте)."""
+    alias = (
+        db.query(EmployeeAccountAlias)
+        .filter(EmployeeAccountAlias.jira_account_id == req.jira_account_id)
+        .one_or_none()
+    )
+    if alias is not None:
+        # Учётка слитой карточки: отдаём сотрудника, в которого её влили.
+        merged = db.get(Employee, alias.employee_id)
+        response = EmployeeResponse.model_validate(merged)
+        response.teams = None
+        return response
     existing = (
         db.query(Employee)
         .filter(Employee.jira_account_id == req.jira_account_id)
