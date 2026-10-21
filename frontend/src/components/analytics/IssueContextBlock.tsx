@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Popover, Skeleton, Select, Checkbox, Tooltip, Tag } from 'antd';
+import { Popover, Skeleton, Select, Checkbox, Tooltip, Tag, App } from 'antd';
 import type { IssueContextAncestor, IssueContextChild, IssueContextResponse } from '../../types/api';
 import type { CategoryResponse } from '../../types/api';
 import { useIssueChildren } from '../../hooks/useIssueChildren';
 import { setIssueCategory, setIssueInclude } from '../../api/issues';
+import { failureReason, saveFailureNotice } from './categorizerSave';
 import { useQueryClient } from '@tanstack/react-query';
 import { statusTagColor } from '../../utils/status';
 
@@ -253,22 +254,38 @@ const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
 
 function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
   const qc = useQueryClient();
+  const { notification } = App.useApp();
   const isArchive = ARCHIVE_CODES.has(child.assigned_category ?? '');
 
-  const handleCategoryChange = async (code: string | null) => {
-    await setIssueCategory(child.id, code);
+  const afterSave = () => {
     qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
     qc.invalidateQueries({ queryKey: ['analytics-report'] });
     qc.invalidateQueries({ queryKey: ['issue', 'context', child.id] });
     onSaved();
   };
 
+  // Поля строки показывают сохранённое значение: на сбое оно и остаётся.
+  const handleCategoryChange = async (code: string | null) => {
+    try {
+      await setIssueCategory(child.id, code);
+    } catch (e) {
+      notification.error(saveFailureNotice({ categorySaved: false, reason: failureReason(e) }));
+      return;
+    }
+    afterSave();
+  };
+
   const handleIncludeChange = async (checked: boolean) => {
-    await setIssueInclude(child.id, checked);
-    qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
-    qc.invalidateQueries({ queryKey: ['analytics-report'] });
-    qc.invalidateQueries({ queryKey: ['issue', 'context', child.id] });
-    onSaved();
+    try {
+      await setIssueInclude(child.id, checked);
+    } catch (e) {
+      notification.error({
+        title: 'Не удалось сохранить «Учитывать в анализе»',
+        description: `Причина: ${failureReason(e)}. Галочка — как была.`,
+      });
+      return;
+    }
+    afterSave();
   };
 
   return (

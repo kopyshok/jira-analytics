@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Select, Checkbox, Switch, Button, Alert, Tooltip } from 'antd';
+import { Select, Checkbox, Switch, Button, Alert, Tooltip, App } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import type { CategoryResponse } from '../../types/api';
 import type { IssueContextResponse } from '../../types/api';
 import { setIssueCategory, setIssueInclude, batchSetCategory } from '../../api/issues';
 import { trackAction } from '../../lib/usage/track';
+import { saveCategorization, saveFailureNotice } from './categorizerSave';
 
 const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
 
@@ -19,6 +20,7 @@ interface Props {
 
 export default function IssueCategorizer({ context, categories, onSaved }: Props) {
   const qc = useQueryClient();
+  const { notification } = App.useApp();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     context.assigned_category ?? null,
   );
@@ -41,24 +43,34 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
 
   const handleSave = async () => {
     setSaving(true);
-    try {
-      if (applyToSubtree && context.subtree_count > 1) {
-        // Батч: текущая + все потомки через batch-category
-        // Собираем ID поддерева из children (до 50 прямых) + рекурсивно
-        // Простой подход: ставим категорию через batch по всем children + root
-        const allIds = collectSubtreeIds(context);
-        await batchSetCategory(allIds, selectedCategory);
-        // include — применяем к root рекурсивно
-        await setIssueInclude(context.id, includeInAnalysis, true);
-      } else {
-        await setIssueCategory(context.id, selectedCategory);
-        await setIssueInclude(context.id, includeInAnalysis);
-      }
+    const subtree = applyToSubtree && context.subtree_count > 1;
+    const outcome = subtree
+      // Батч: текущая + все потомки через batch-category
+      // Собираем ID поддерева из children (до 50 прямых) + рекурсивно
+      // Простой подход: ставим категорию через batch по всем children + root;
+      // include — применяем к root рекурсивно
+      ? await saveCategorization(
+        () => batchSetCategory(collectSubtreeIds(context), selectedCategory),
+        () => setIssueInclude(context.id, includeInAnalysis, true),
+      )
+      : await saveCategorization(
+        () => setIssueCategory(context.id, selectedCategory),
+        () => setIssueInclude(context.id, includeInAnalysis),
+      );
+    setSaving(false);
+    if (outcome.ok) {
       trackAction('category_changed', context.id);
       invalidate(context.id);
       onSaved();
-    } finally {
-      setSaving(false);
+      return;
+    }
+    notification.error(saveFailureNotice(outcome));
+    if (outcome.categorySaved) {
+      // Категория уже на сервере — карточка подтянет её; галочку можно сохранить повторно.
+      invalidate(context.id);
+    } else {
+      setSelectedCategory(context.assigned_category ?? null);
+      setIncludeInAnalysis(context.include_in_analysis);
     }
   };
 
