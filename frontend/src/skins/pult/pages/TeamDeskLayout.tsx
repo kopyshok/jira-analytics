@@ -73,21 +73,23 @@ function PultRubber({ rows, jiraBaseUrl, onDailyRate, rubberDays }: {
 
 type DeskList = 'rubber' | 'wip' | 'absence';
 
-/** Клавиша-счётчик над таблицей: открывает список в панели подробностей; ноль — приглушена. */
-function ListKey({ label, count, note, active, onClick, title }: {
+/** Клавиша-счётчик над таблицей: открывает список в панели подробностей; ноль — приглушена
+ * и не нажимается, кроме списка, в котором есть что смотреть и при нуле (alwaysOpen). */
+function ListKey({ label, count, note, active, onClick, title, alwaysOpen = false }: {
   label: string;
   count: number;
   note?: string | null;
   active: boolean;
   onClick: () => void;
   title?: string;
+  alwaysOpen?: boolean;
 }) {
   return (
     <button
       type="button"
       className={`td-flag-key td-list-key${active ? ' is-on' : ''}`}
       aria-pressed={active}
-      disabled={count === 0}
+      disabled={count === 0 && !alwaysOpen}
       onClick={onClick}
       title={title}
     >
@@ -296,7 +298,8 @@ export default function PultTeamDeskLayout({ desk }: { desk: TeamDeskPageState }
         count={counts.absence}
         active={shownList === 'absence'}
         onClick={() => toggleList('absence')}
-        title="Отсутствия людей стола в текущем квартале"
+        title="Отсутствия людей стола в текущем квартале; в списке можно выбрать другой квартал"
+        alwaysOpen
       />
     </div>
   );
