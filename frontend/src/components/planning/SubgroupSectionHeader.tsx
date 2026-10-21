@@ -1,10 +1,9 @@
 import { useMemo } from 'react';
 import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import { effectiveEstimate } from '../../utils/allocationEstimates';
-import { getRoleInk } from '../../utils/roles';
-import { readableInk } from '../../utils/readableColor';
+import { getRoleColor } from '../../utils/roles';
 import { OPO_COLOR, foldOpo } from '../../utils/opo';
-import { DARK_THEME, FONTS, currentSkin } from '../../utils/constants';
+import { DARK_THEME, FONTS } from '../../utils/constants';
 import type { AllocationResponse, Role } from '../../types/api';
 
 type Props = {
@@ -38,12 +37,11 @@ export default function SubgroupSectionHeader({ name, items, collapsed, roles, o
   }, [items, opoOff]);
 
   const cells: Array<[string, number, string]> = [
-    ['АН', totals.analyst, getRoleInk(roles, 'analyst')],
-    ['ПР', totals.dev, getRoleInk(roles, 'dev')],
-    ['ТС', totals.qa, getRoleInk(roles, 'qa')],
+    ['АН', totals.analyst, getRoleColor(roles, 'analyst')],
+    ['ПР', totals.dev, getRoleColor(roles, 'dev')],
+    ['ТС', totals.qa, getRoleColor(roles, 'qa')],
   ];
-  // Цвет справочника как цвет текста: в обложке — затемнённый до читаемого на светлом.
-  if (!opoOff) cells.push(['ОПЭ', totals.opo, currentSkin() ? readableInk(OPO_COLOR) : OPO_COLOR]);
+  if (!opoOff) cells.push(['ОПЭ', totals.opo, OPO_COLOR]);
 
   return (
     <div

@@ -51,6 +51,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="swiss"] {
   --track-bg: #E2E2E2;
   --good: #1E7A3E;
   --warn: #9A6400;
+  --warn-fill: #F2C14E; /* заливка плашек с тёмным текстом: --warn затемнён под цветной текст */
   --bad: #BE3119;
   --modal-tile-bg: #F4F4F4;
   --mini-tile-bg: #F4F4F4;
