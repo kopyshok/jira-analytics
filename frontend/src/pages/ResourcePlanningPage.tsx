@@ -46,6 +46,8 @@ import { decideAutoPlan, groupScenarioOptions, isOutsideHeader, resolvePageTeam 
 import { AppearanceProvider, useAppearanceSettings } from '../contexts/AppearanceContext';
 import { DARK_THEME } from '../utils/constants';
 
+type NewPlan = { scenario_id: string; team: string; quarter: string; year: number };
+
 function ResourcePlanningPageInner() {
   const { message } = App.useApp();
   const [searchParams] = useSearchParams();
@@ -174,6 +176,20 @@ function ResourcePlanningPageInner() {
   );
   const compute = useComputeResourcePlan();
   const createPlan = useCreateResourcePlan();
+  // Сценарий из адреса, для которого план уже пробовали создать сами: больше
+  // одной автоматической попытки не делаем (см. decideAutoPlan).
+  const autoTriedScenarioRef = useRef<string | null>(null);
+  // План создать не удалось — что создавали и ответ сервера; плашка с «Повторить».
+  const [createFailure, setCreateFailure] = useState<{ plan: NewPlan; reason: string } | null>(null);
+
+  const createPlanFor = (plan: NewPlan) => {
+    createPlan.mutateAsync(plan).then(created => {
+      setCreateFailure(null);
+      setPlanId(created.id);
+    }).catch((e: unknown) => {
+      setCreateFailure({ plan, reason: e instanceof Error ? e.message : '' });
+    });
+  };
 
   useEffect(() => {
     if (planOutside) setPlanId(null);
@@ -189,20 +205,15 @@ function ResourcePlanningPageInner() {
       plans,
       scenarios: approvedScenarios,
       currentPlanId: planId,
+      autoTriedScenarioId: autoTriedScenarioRef.current,
     });
     if (d.action === 'select') {
       setPlanId(d.planId);
       return;
     }
     if (d.action !== 'create') return;
-    createPlan.mutateAsync({
-      scenario_id: scenarioId!,
-      team: d.team,
-      quarter: d.quarter,
-      year: d.year,
-    }).then(plan => {
-      setPlanId(plan.id);
-    }).catch(() => message.error('Ошибка создания плана'));
+    autoTriedScenarioRef.current = scenarioId;
+    createPlanFor({ scenario_id: scenarioId!, team: d.team, quarter: d.quarter, year: d.year });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scenarioId, planId, plansLoading, scenariosLoaded, plans.length, createPlan.isPending]);
 
@@ -216,7 +227,8 @@ function ResourcePlanningPageInner() {
     }
   };
 
-  const handlePickScenario = async (sid: string | null) => {
+  const handlePickScenario = (sid: string | null) => {
+    setCreateFailure(null);
     if (!sid) {
       setPlanId(null);
       return;
@@ -231,17 +243,7 @@ function ResourcePlanningPageInner() {
       message.error('У сценария не задан квартал/год');
       return;
     }
-    try {
-      const plan = await createPlan.mutateAsync({
-        scenario_id: sid,
-        team: sc.team ?? team,
-        quarter: sc.quarter,
-        year: sc.year,
-      });
-      setPlanId(plan.id);
-    } catch {
-      message.error('Ошибка создания плана');
-    }
+    createPlanFor({ scenario_id: sid, team: sc.team ?? team, quarter: sc.quarter, year: sc.year });
   };
 
   const sortedAssignments = useMemo(
@@ -533,6 +535,22 @@ function ResourcePlanningPageInner() {
         </div>
       </div>
 
+      {createFailure && createFailure.plan.scenario_id !== currentScenarioId && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 8 }}
+          title={`Не удалось создать план по сценарию «${
+            approvedScenarios.find(s => s.id === createFailure.plan.scenario_id)?.name ?? '—'
+          }»`}
+          description={createFailure.reason || undefined}
+          action={
+            <Button size="small" loading={createPlan.isPending} onClick={() => createPlanFor(createFailure.plan)}>
+              Повторить
+            </Button>
+          }
+        />
+      )}
       {gantt?.stale_due_to_other_teams && (
         <Alert
           type="warning"

@@ -39,6 +39,7 @@ describe('decideAutoPlan', () => {
     plans: [] as { id: string; scenario_id: string | null }[],
     scenarios: [sc('S', 'B')],
     currentPlanId: null as string | null,
+    autoTriedScenarioId: null as string | null,
   };
   it('сценарии не загружены — ничего не создаём', () => {
     expect(decideAutoPlan({ ...base, scenariosLoaded: false })).toEqual({ action: 'none' });
@@ -54,6 +55,16 @@ describe('decideAutoPlan', () => {
   });
   it('текущий план уже этого сценария — ничего', () => {
     expect(decideAutoPlan({ ...base, plans: [{ id: 'P', scenario_id: 'S' }], currentPlanId: 'P' })).toEqual({ action: 'none' });
+  });
+  it('для этого сценария уже пробовали создать план — второй раз сами не создаём', () => {
+    expect(decideAutoPlan({ ...base, autoTriedScenarioId: 'S' })).toEqual({ action: 'none' });
+  });
+  it('пробовали для другого сценария — для нового создаём', () => {
+    expect(decideAutoPlan({ ...base, autoTriedScenarioId: 'X' })).toEqual({ action: 'create', team: 'B', quarter: 'Q4', year: 2026 });
+  });
+  it('пробовали, но план сценария появился — выбираем его', () => {
+    expect(decideAutoPlan({ ...base, autoTriedScenarioId: 'S', plans: [{ id: 'P', scenario_id: 'S' }] }))
+      .toEqual({ action: 'select', planId: 'P' });
   });
 });
 

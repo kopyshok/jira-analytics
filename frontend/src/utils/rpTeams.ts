@@ -51,6 +51,10 @@ type AutoPlanDecision =
  * Что делать со сценарием из адреса: ничего (списки не загружены, сценария нет
  * среди утверждённых сценариев команд шапки), выбрать готовый план или создать
  * план в команде самого сценария.
+ *
+ * Создаём сами не больше одного раза на сценарий (`autoTriedScenarioId` —
+ * сценарий, для которого уже пробовали): если сервер отказал, страница не
+ * повторяет запрос по кругу — повтор только по кнопке пользователя.
  */
 export function decideAutoPlan(args: {
   scenarioId: string | null;
@@ -59,13 +63,15 @@ export function decideAutoPlan(args: {
   plans: PlanLike[];
   scenarios: ScenarioLike[];
   currentPlanId: string | null;
+  autoTriedScenarioId: string | null;
 }): AutoPlanDecision {
-  const { scenarioId, plansLoaded, scenariosLoaded, plans, scenarios, currentPlanId } = args;
+  const { scenarioId, plansLoaded, scenariosLoaded, plans, scenarios, currentPlanId, autoTriedScenarioId } = args;
   if (!scenarioId || !plansLoaded || !scenariosLoaded) return { action: 'none' };
   const current = currentPlanId ? plans.find(p => p.id === currentPlanId) : null;
   if (current && current.scenario_id === scenarioId) return { action: 'none' };
   const existing = plans.find(p => p.scenario_id === scenarioId);
   if (existing) return { action: 'select', planId: existing.id };
+  if (autoTriedScenarioId === scenarioId) return { action: 'none' };
   const sc = scenarios.find(s => s.id === scenarioId);
   if (!sc || !sc.team || !sc.quarter || !sc.year) return { action: 'none' };
   return { action: 'create', team: sc.team, quarter: sc.quarter, year: sc.year };
