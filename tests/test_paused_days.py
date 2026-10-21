@@ -36,3 +36,12 @@ def test_two_pauses_sum_up():
 def test_open_pause_counts_until_now():
     changes = [("2026-05-01T10:00:00.000+0300", "Приостановлено")]
     assert paused_days_from_changes(changes, now=datetime(2026, 5, 11, 7, 0)) == 10.0
+
+
+def test_hold_is_a_pause_too():
+    """После переезда на Jira DC появился статус Hold — та же пауза, что «Приостановлено»."""
+    changes = [
+        ("2026-01-01T10:00:00.000+0300", "Hold"),
+        ("2026-01-11T10:00:00.000+0300", "В РАБОТЕ"),
+    ]
+    assert paused_days_from_changes(changes) == 10.0

@@ -42,7 +42,7 @@ from app.models import (
 )
 from app.models.app_setting import AppSetting
 from app.services.jira_migration.state import CLOUD_PREFIX, ensure_sync_allowed
-from app.services.backlog_service import switch_off_if_became_service_epic
+from app.services.backlog_service import is_cancel_like, switch_off_if_became_service_epic
 from app.services.plan_sources import (
     PLAN_HOURS_SETTING_KEYS,
     ROLE_SETTING_KEYS,
@@ -314,10 +314,20 @@ def _parse_jira_datetime(raw: Optional[str]) -> Optional[datetime]:
 
 
 # Статусы «задача на паузе»: время в них не считается сроком выполнения и
-# вычитается из факта Cycle Time.
-# ponytail: список зашит в код — в тенанте пауза одна («Приостановлено»);
-# понадобится вторая — сюда же, справочник заводить незачем.
-PAUSED_STATUSES = ("Приостановлено",)
+# вычитается из факта Cycle Time. «Hold» появился после переезда на Jira DC.
+# ponytail: список зашит в код — справочник заводить незачем, пока пауз две.
+PAUSED_STATUSES = ("Приостановлено", "Hold")
+
+
+def _auto_archive_cancelled(issue: Issue) -> None:
+    """Отменённая задача без явной категории сразу уходит в архив — PM не
+    разбирает её вручную. Категорию, назначенную PM, не трогаем. Статусы
+    отмены — общий список бэклога (там и «Won't Do» новой Jira)."""
+    if is_cancel_like(issue) and issue.assigned_category is None:
+        issue.assigned_category = "archive"
+        issue.category = "archive"
+        issue.include_in_analysis = False
+        issue.category_verified = True
 
 
 def paused_days_from_changes(
@@ -1337,14 +1347,7 @@ class SyncService:
             # require_child_verification на родителе — только UI-подсказка при
             # верификации; не влияет на попадание в стек при синке.
             issue.category_verified = False
-        # Авто-архив: задачи в статусе «Отменено» без явной категории сразу
-        # уходят в архив. PM не разбирает их вручную. Если PM уже назначил
-        # категорию (например archive_target) — не трогаем.
-        if issue.status == "Отменено" and issue.assigned_category is None:
-            issue.assigned_category = "archive"
-            issue.category = "archive"
-            issue.include_in_analysis = False
-            issue.category_verified = True
+        _auto_archive_cancelled(issue)
         return issue, created
     
     async def sync_issues(
