@@ -1,0 +1,42 @@
+/* Карта отсутствий: клеток — сотрудники × дни квартала (на 700 людях это
+   64 тысячи), поэтому вид клетки задан классами, а не стилем на каждой.
+   Цвета палитры приходят переменными с контейнера сетки. */
+.absence-heatmap__grid {
+  position: relative;
+}
+
+.absence-heatmap__row {
+  display: contents;
+}
+
+.absence-heatmap__name {
+  font-size: 12px;
+  padding-right: 8px;
+  color: var(--ahm-name);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.absence-heatmap__cell {
+  height: 18px;
+  background: var(--ahm-empty-bg);
+  border-radius: 2px;
+  border: 1px solid var(--ahm-cell-border);
+}
+
+.absence-heatmap__cell--weekend {
+  background: var(--ahm-weekend-bg);
+}
+
+.absence-heatmap__cell--month-start {
+  border-left-color: var(--ahm-month-sep);
+}
+
+/* Невидимая точка привязки единственной подсказки — над клеткой под курсором. */
+.absence-heatmap__anchor {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+}

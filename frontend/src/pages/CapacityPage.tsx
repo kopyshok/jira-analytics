@@ -574,10 +574,13 @@ function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
     return m;
   }, [empsWithTeams.data]);
 
-  // Quarter bounds.
-  const months = QUARTER_MONTHS[Number(quarter)] ?? [];
-  const periodStart = dayjs(`${year}-${String(months[0] ?? 1).padStart(2, '0')}-01`);
-  const periodEnd = periodStart.add(3, 'month').subtract(1, 'day');
+  // Quarter bounds. Под memo: от них зависят списки, которые получает карта
+  // отсутствий, — иначе каждая перерисовка вкладки перестраивает всю карту.
+  const [periodStart, periodEnd] = useMemo(() => {
+    const months = QUARTER_MONTHS[Number(quarter)] ?? [];
+    const start = dayjs(`${year}-${String(months[0] ?? 1).padStart(2, '0')}-01`);
+    return [start, start.add(3, 'month').subtract(1, 'day')];
+  }, [year, quarter]);
 
   const matchesTeam = useCallback((employeeId: string): boolean => {
     if (selectedTeams.length === 0) return true;
@@ -591,7 +594,18 @@ function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
     });
   }, [selectedTeams, employeeTeamMap, periodStart, periodEnd]);
 
-  const activeEmployees = (employees ?? []).filter(e => e.is_active && matchesTeam(e.id));
+  const activeEmployees = useMemo(
+    () => (employees ?? []).filter(e => e.is_active && matchesTeam(e.id)),
+    [employees, matchesTeam],
+  );
+  const heatmapEmployees = useMemo(
+    () => activeEmployees.map(e => ({ id: e.id, display_name: e.display_name })),
+    [activeEmployees],
+  );
+  const heatmapAbsences = useMemo(
+    () => (absences ?? []).filter(r => matchesTeam(r.employee_id)),
+    [absences, matchesTeam],
+  );
   const activeReasons = (reasons ?? []).filter(r => r.is_active);
 
   const absencesByEmp = useMemo(() => {
@@ -630,8 +644,8 @@ function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
         <AbsenceHeatmap
           year={Number(year)}
           quarter={Number(quarter)}
-          employees={activeEmployees.map(e => ({ id: e.id, display_name: e.display_name }))}
-          absences={(absences ?? []).filter(r => matchesTeam(r.employee_id))}
+          employees={heatmapEmployees}
+          absences={heatmapAbsences}
         />
       </div>
       <Space wrap>

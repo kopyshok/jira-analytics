@@ -1,57 +1,105 @@
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, MouseEvent } from 'react';
 import { Tooltip } from 'antd';
-import dayjs from 'dayjs';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { DARK_THEME } from '../../utils/constants';
+import { absenceCellTip, absenceCellsByEmployee, quarterDays } from '../../utils/absenceHeatmap';
+import type { HeatmapDay } from '../../utils/absenceHeatmap';
 import type { AbsenceResponse } from '../../types/api';
+import './AbsenceHeatmap.css';
 
 const DEFAULT_REASON_COLOR = '#8c8c8c';
-
-const QUARTER_MONTHS: Record<number, number[]> = {
-  1: [1, 2, 3], 2: [4, 5, 6], 3: [7, 8, 9], 4: [10, 11, 12],
-};
 
 const MONTH_NAMES = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ];
 
+const CELL = 18;
+const NAME_COL_WIDTH = 180;
+/** Задержка подсказки, как у прежней подсказки на клетке. */
+const TIP_DELAY_MS = 300;
+
+type Employee = { id: string; display_name: string };
+type Cells = Map<string, (AbsenceResponse | undefined)[]>;
+
 interface Props {
   year: number;
   quarter: number;
-  employees: Array<{ id: string; display_name: string }>;
+  employees: Employee[];
   absences: AbsenceResponse[];
 }
 
-export default function AbsenceHeatmap({ year, quarter, employees, absences }: Props) {
+const cellClass = (d: HeatmapDay) =>
+  'absence-heatmap__cell'
+  + (d.weekend ? ' absence-heatmap__cell--weekend' : '')
+  + (d.monthStart ? ' absence-heatmap__cell--month-start' : '');
+
+/**
+ * Строки сотрудников. Отдельно и под memo: наведение и перерисовки страницы
+ * не трогают тысячи клеток, пока не поменялись сами данные.
+ */
+const HeatmapRows = memo(function HeatmapRows({ employees, days, cells }: {
+  employees: Employee[];
+  days: HeatmapDay[];
+  cells: Cells;
+}) {
+  const classes = days.map(cellClass);
+  return employees.map((e, row) => {
+    const list = cells.get(e.id);
+    return (
+      <div key={e.id} data-row={row} className="absence-heatmap__row">
+        <div className="absence-heatmap__name">{e.display_name}</div>
+        {days.map((d, i) => {
+          const a = list?.[i];
+          return (
+            <div
+              key={d.iso}
+              data-day={i}
+              className={classes[i]}
+              style={a ? { background: a.reason_color ?? DEFAULT_REASON_COLOR } : undefined}
+            />
+          );
+        })}
+      </div>
+    );
+  });
+});
+
+type Hover = { row: number; day: number; left: number; top: number };
+
+function AbsenceHeatmap({ year, quarter, employees, absences }: Props) {
   const { mode } = useAppTheme();
   const isLight = mode === 'light';
 
-  const months = QUARTER_MONTHS[quarter] ?? [];
-  if (months.length === 0) return null;
+  const days = useMemo(() => quarterDays(year, quarter), [year, quarter]);
+  const cells = useMemo(() => absenceCellsByEmployee(absences, days), [absences, days]);
 
-  const start = dayjs(`${year}-${String(months[0]).padStart(2, '0')}-01`);
-  const end = dayjs(`${year}-${String(months[months.length - 1]).padStart(2, '0')}-01`).endOf('month');
-  const days: dayjs.Dayjs[] = [];
-  for (let d = start; d.isBefore(end) || d.isSame(end, 'day'); d = d.add(1, 'day')) {
-    days.push(d);
-  }
+  // Одна подсказка на всю карту: клетка под курсором ищется по всплывшему
+  // событию, а не своя подсказка у каждой клетки.
+  const [hover, setHover] = useState<Hover | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  const byEmployee = new Map<string, AbsenceResponse[]>();
-  for (const a of absences) {
-    const arr = byEmployee.get(a.employee_id) ?? [];
-    arr.push(a);
-    byEmployee.set(a.employee_id, arr);
-  }
+  if (days.length === 0) return null;
 
-  const reasonForDay = (list: AbsenceResponse[] | undefined, d: dayjs.Dayjs): AbsenceResponse | null => {
-    if (!list) return null;
-    for (const a of list) {
-      if (d.isBefore(dayjs(a.start_date))) continue;
-      if (d.isAfter(dayjs(a.end_date))) continue;
-      return a;
-    }
-    return null;
+  const onMouseOver = (ev: MouseEvent<HTMLDivElement>) => {
+    window.clearTimeout(timer.current);
+    setHover(null);
+    const cell = ev.target as HTMLElement;
+    const day = cell.dataset.day;
+    const row = cell.parentElement?.dataset.row;
+    if (day === undefined || row === undefined) return;
+    const next = { row: Number(row), day: Number(day), left: cell.offsetLeft, top: cell.offsetTop };
+    timer.current = window.setTimeout(() => setHover(next), TIP_DELAY_MS);
   };
+  const onMouseLeave = () => {
+    window.clearTimeout(timer.current);
+    setHover(null);
+  };
+
+  const hoverEmployee = hover ? employees[hover.row] : undefined;
+  const hoverDay = hover ? days[hover.day] : undefined;
 
   // Палитра ячеек: тёмная и светлая.
   const palette = isLight
@@ -77,13 +125,10 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences }: P
       };
 
   // Группируем дни по месяцам — чтобы рендерить per-месяц блоки с заголовком + сепаратором.
-  const monthGroups = months.map((m) => {
-    const monthDays = days.filter((d) => d.month() + 1 === m);
-    return { month: m, days: monthDays };
-  });
-
-  const cell = 18;
-  const nameColWidth = 180;
+  const monthGroups = [...new Set(days.map((d) => d.month))].map((m) => ({
+    month: m,
+    count: days.filter((d) => d.month === m).length,
+  }));
 
   // Уникальные причины для легенды
   const uniqueReasons = new Map<string, string>();
@@ -96,12 +141,12 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences }: P
   return (
     <div style={{ overflowX: 'auto', marginBottom: 12 }}>
       {/* Заголовки месяцев */}
-      <div style={{ display: 'flex', marginLeft: nameColWidth, marginBottom: 4 }}>
+      <div style={{ display: 'flex', marginLeft: NAME_COL_WIDTH, marginBottom: 4 }}>
         {monthGroups.map((g, idx) => (
           <div
             key={`mh-${g.month}`}
             style={{
-              width: g.days.length * (cell + 1),
+              width: g.count * (CELL + 1),
               flexShrink: 0,
               fontSize: 11,
               fontWeight: 600,
@@ -118,62 +163,46 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences }: P
       </div>
 
       {/* Сетка дней */}
-      <div style={{ display: 'inline-grid', gridTemplateColumns: `${nameColWidth}px repeat(${days.length}, ${cell}px)`, gap: 1 }}>
+      <div
+        data-grid
+        className="absence-heatmap__grid"
+        onMouseOver={onMouseOver}
+        onMouseLeave={onMouseLeave}
+        style={{
+          display: 'inline-grid',
+          gridTemplateColumns: `${NAME_COL_WIDTH}px repeat(${days.length}, ${CELL}px)`,
+          gap: 1,
+          '--ahm-empty-bg': palette.emptyBg,
+          '--ahm-weekend-bg': palette.weekendBg,
+          '--ahm-cell-border': palette.cellBorder,
+          '--ahm-month-sep': palette.monthSep,
+          '--ahm-name': palette.nameColor,
+        } as CSSProperties}
+      >
         <div />
-        {days.map((d) => {
-          const isMonthStart = d.date() === 1;
-          const weekend = d.day() === 0 || d.day() === 6;
-          return (
-            <div
-              key={`h-${d.format('YYYY-MM-DD')}`}
-              style={{
-                fontSize: 9,
-                textAlign: 'center',
-                color: weekend ? palette.weekendHeader : palette.dayHeader,
-                borderLeft: isMonthStart && d.month() + 1 !== months[0] ? `1px solid ${palette.monthSep}` : 'none',
-              }}
-            >
-              {d.date() === 1 || d.date() % 5 === 0 ? d.date() : ''}
-            </div>
-          );
-        })}
-        {employees.map((e) => {
-          const list = byEmployee.get(e.id);
-          return (
-            <div key={`row-${e.id}`} style={{ display: 'contents' }}>
-              <div style={{
-                fontSize: 12, paddingRight: 8, color: palette.nameColor,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {e.display_name}
-              </div>
-              {days.map((d) => {
-                const a = reasonForDay(list, d);
-                const weekend = d.day() === 0 || d.day() === 6;
-                const isMonthStart = d.date() === 1;
-                const bg = a
-                  ? (a.reason_color ?? DEFAULT_REASON_COLOR)
-                  : (weekend ? palette.weekendBg : palette.emptyBg);
-                const tip = a
-                  ? `${e.display_name}: ${a.reason_label}, ${dayjs(a.start_date).format('DD.MM')}–${dayjs(a.end_date).format('DD.MM')}`
-                  : `${e.display_name} · ${d.format('DD.MM')}`;
-                return (
-                  <Tooltip key={`${e.id}-${d.format('YYYY-MM-DD')}`} title={tip} mouseEnterDelay={0.3}>
-                    <div style={{
-                      height: 18,
-                      background: bg,
-                      borderRadius: 2,
-                      border: `1px solid ${palette.cellBorder}`,
-                      borderLeft: isMonthStart && d.month() + 1 !== months[0]
-                        ? `1px solid ${palette.monthSep}`
-                        : `1px solid ${palette.cellBorder}`,
-                    }} />
-                  </Tooltip>
-                );
-              })}
-            </div>
-          );
-        })}
+        {days.map((d) => (
+          <div
+            key={`h-${d.iso}`}
+            style={{
+              fontSize: 9,
+              textAlign: 'center',
+              color: d.weekend ? palette.weekendHeader : palette.dayHeader,
+              borderLeft: d.monthStart ? `1px solid ${palette.monthSep}` : 'none',
+            }}
+          >
+            {d.label}
+          </div>
+        ))}
+        <HeatmapRows employees={employees} days={days} cells={cells} />
+        {hover && hoverEmployee && hoverDay && (
+          <Tooltip
+            key={`${hover.row}-${hover.day}`}
+            open
+            title={absenceCellTip(hoverEmployee.display_name, hoverDay, cells.get(hoverEmployee.id)?.[hover.day])}
+          >
+            <div className="absence-heatmap__anchor" style={{ left: hover.left, top: hover.top }} />
+          </Tooltip>
+        )}
       </div>
 
       {/* Легенда */}
@@ -196,3 +225,5 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences }: P
     </div>
   );
 }
+
+export default memo(AbsenceHeatmap);
