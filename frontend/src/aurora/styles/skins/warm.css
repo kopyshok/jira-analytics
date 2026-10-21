@@ -90,6 +90,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] {
   --ui-check: #2F6B5A;
   --fg-bad: #8F3A18;
   --fg-warn: #7A4E0C;
+  /* Читаемое предупреждение для текста на светлой плашке (в main его задаёт светлая Aurora). */
+  --ink-warn: #7A4E0C;
   --fg-neutral: #4A443A;
   --fg-good: #2D6140;
   --fg-info: #2A4F82;
@@ -151,7 +153,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .glass {
   border: 1px solid #E3DDD3;
   border-radius: 14px;
   box-shadow: none;
-  backdrop-filter: none; -webkit-backdrop-filter: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
 }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .glass::before { display: none; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .glass .glass {
@@ -404,7 +406,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-card {
   border: 1px solid #E3DDD3 !important;
   border-radius: 14px !important;
   box-shadow: none !important;
-  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-card:hover {
   border: 1px solid #E3DDD3 !important;
@@ -463,7 +465,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-modal-mask,
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-drawer-mask,
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .ant-image-preview-mask {
   background: rgba(42, 38, 32, 0.30) !important;
-  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
 
 /* Всплывающие слои: белые, рамка 1px, очень мягкая тень только для отрыва от фона */

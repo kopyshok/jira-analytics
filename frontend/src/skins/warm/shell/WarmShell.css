@@ -159,6 +159,8 @@ html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-s
 }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-select:hover,
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-select-focused { border-color: #2F6B5A !important; }
+/* Фокус с клавиатуры на списках шапки виден не только сменой цвета рамки */
+html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-select:has(:focus-visible) { outline: 2px solid #2F6B5A; outline-offset: 2px; }
 html[data-theme="aurora"][data-mode="light"][data-skin="warm"] .wm-topbar .ant-select-suffix { color: #6B6358; }
 
 /* Тема — круглая кнопка-значок с меню */
