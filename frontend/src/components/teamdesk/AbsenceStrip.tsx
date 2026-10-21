@@ -11,13 +11,20 @@ interface Props {
   employeeIds: Record<string, string>;
   /** Узкая колонка (скин «Цветовые зоны»): период одним списком, клетка — неделя. */
   compact?: boolean;
+  /** Период задаёт владелец (подпись над списком считает тот же квартал); без него — свой. */
+  period?: { year: number; quarter: number };
+  onPeriodChange?: (period: { year: number; quarter: number }) => void;
 }
 
 /** Отсутствия людей стола: переиспользуем теплокарту с экрана ёмкости. */
-export function AbsenceStrip({ employeeIds, compact = false }: Props) {
+export function AbsenceStrip({ employeeIds, compact = false, period, onPeriodChange }: Props) {
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [quarter, setQuarter] = useState(Math.floor(now.getMonth() / 3) + 1);
+  const [ownYear, setOwnYear] = useState(now.getFullYear());
+  const [ownQuarter, setOwnQuarter] = useState(Math.floor(now.getMonth() / 3) + 1);
+  const year = period?.year ?? ownYear;
+  const quarter = period?.quarter ?? ownQuarter;
+  const setYear = (y: number) => (onPeriodChange ? onPeriodChange({ year: y, quarter }) : setOwnYear(y));
+  const setQuarter = (q: number) => (onPeriodChange ? onPeriodChange({ year, quarter: q }) : setOwnQuarter(q));
 
   const absences = useAbsences();
   const employees = useEmployees();
@@ -42,8 +49,8 @@ export function AbsenceStrip({ employeeIds, compact = false }: Props) {
             value={`${year}-${quarter}`}
             onChange={(v: string) => {
               const [y, q] = v.split('-').map(Number);
-              setYear(y);
-              setQuarter(q);
+              if (onPeriodChange) onPeriodChange({ year: y, quarter: q });
+              else { setOwnYear(y); setOwnQuarter(q); }
             }}
             options={years.flatMap((y) => QUARTERS.map((q) => ({ value: `${y}-${q}`, label: `${y} · Q${q}` })))}
             style={{ width: 110 }}

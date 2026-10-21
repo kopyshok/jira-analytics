@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AlertTriangle, Info } from 'lucide-react';
 import type { Portfolio } from '../../../../types/projects';
 import { PhaseTimeline } from '../../../../components/projects/plan/PhaseTimeline';
@@ -5,6 +6,22 @@ import { PortfolioProjectsTable } from '../../../../components/projects/plan/Por
 import ZonesBand from '../../ZonesBand';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
+
+/** Подпись сортировки таблицы проектов — по колонке, которую выбрал пользователь. */
+const SORT_BY: Record<string, string> = {
+  title: 'по названию',
+  hours: 'по факту часов',
+  pct: 'по загрузке',
+  analyst: 'по анализу',
+  dev: 'по разработке',
+  qa: 'по тестированию',
+  external: 'по внешним часам',
+};
+function sortCaption(sort: { key: string; order: 'ascend' | 'descend' } | null): string {
+  if (!sort) return 'без сортировки';
+  const by = SORT_BY[sort.key] ?? 'по выбранной колонке';
+  return `сортировка ${by}, ${sort.order === 'descend' ? 'по убыванию' : 'по возрастанию'}`;
+}
 
 interface Props {
   data: Portfolio;
@@ -19,6 +36,8 @@ interface Props {
  */
 export function PortfolioZones({ data, countLabel, onOpen }: Props) {
   const pct = data.total_pct;
+  // Таблица открывается отсортированной по загрузке (по убыванию) — дальше как выберет пользователь.
+  const [sort, setSort] = useState<{ key: string; order: 'ascend' | 'descend' } | null>({ key: 'pct', order: 'descend' });
   const pctState = pct == null ? '' : pct > 110 ? ' · перегруз' : pct >= 70 ? ' · в норме (от 70%)' : ' · ниже нормы (от 70%)';
   return (
     <>
@@ -69,7 +88,7 @@ export function PortfolioZones({ data, countLabel, onOpen }: Props) {
       <section className="zn-card pz-table" aria-label="Проекты портфеля">
         <div className="zn-card-head pz-card-head">
           <h2>Проекты портфеля</h2>
-          <span className="zn-card-sub">сортировка по загрузке</span>
+          <span className="zn-card-sub">{sortCaption(sort)}</span>
         </div>
         <PortfolioProjectsTable
           projects={data.projects}
@@ -84,6 +103,7 @@ export function PortfolioZones({ data, countLabel, onOpen }: Props) {
           onRowClick={onOpen}
           maxHeight="var(--pz-table-h)"
           titleWidth={340}
+          onSortChange={(key, order) => setSort(key && order ? { key, order } : null)}
         />
       </section>
 

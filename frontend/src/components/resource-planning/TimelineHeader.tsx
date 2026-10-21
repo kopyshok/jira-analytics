@@ -30,6 +30,8 @@ interface Props {
   calendar?: ProductionCalendarDayResponse[];
   /** Плотный режим: шапка ниже, месяцы — подписью слева без года, недели — датами понедельников. */
   compact?: boolean;
+  /** Подпись левой колонки в плотном режиме — по раскладке строк диаграммы. */
+  caption?: string;
 }
 
 const MONTH_NAMES = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
@@ -64,6 +66,7 @@ export default function TimelineHeader({
   trackWidthPx,
   calendar,
   compact = false,
+  caption = 'Инициатива · фаза · исполнитель',
 }: Props) {
   const calMap = useMemo(() => {
     const m = new Map<string, ProductionCalendarDayResponse>();
@@ -160,7 +163,7 @@ export default function TimelineHeader({
       </div>
       <div style={{ display: 'flex', height: 24, background: 'var(--rp-th-bg-2, #0a1e35)' }}>
         <div className="rp-th-corner" style={{ width: leftColWidth, boxSizing: 'border-box', flexShrink: 0, borderRight: '1px solid var(--rp-border, #1e3a5f)', position: 'sticky', left: 0, zIndex: 31, background: 'var(--rp-th-bg-2, #0a1e35)' }}>
-          {compact && <span className="rp-th-caption">Инициатива · фаза · исполнитель</span>}
+          {compact && <span className="rp-th-caption">{caption}</span>}
         </div>
         <div style={{ width: trackWidthPx ?? undefined, flex: trackWidthPx ? '0 0 auto' : 1, position: 'relative' }}>
           {lower.map((w, i) => {

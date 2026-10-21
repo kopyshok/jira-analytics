@@ -274,6 +274,8 @@ export default function GanttChart({
           trackWidthPx={trackWidthPx}
           calendar={calendar}
           compact={compact}
+          // «Исполнители»: строки — человек, под ним его задачи по фазам.
+          caption={layout === 'people' ? 'Исполнитель · задача · фаза' : 'Инициатива · фаза · исполнитель'}
         />
         {compact && todayLeft >= 0 && todayLeft <= 100 && (
           <span

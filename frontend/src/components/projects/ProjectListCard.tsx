@@ -56,7 +56,8 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick, vari
   };
 
   if (variant === 'zones') {
-    const status = item.status_category ?? 'new';
+    // Статуса нет — точка серая и подписи нет: не выдумываем «Новый».
+    const status = item.status_category ?? undefined;
     return (
       <div
         data-testid="project-card"
@@ -72,7 +73,7 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick, vari
         <div className="pz-card-body">
           <div className="pz-card-top">
             <span className="pz-card-key">{item.key}</span>
-            <span className="pz-card-status">{STATUS_CATEGORY_LABEL[status] ?? status}</span>
+            {status && <span className="pz-card-status">{STATUS_CATEGORY_LABEL[status] ?? status}</span>}
           </div>
           <div className="pz-card-title" title={item.summary}>{item.summary}</div>
           <div className="pz-card-meta">

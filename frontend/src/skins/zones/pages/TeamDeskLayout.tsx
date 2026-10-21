@@ -21,12 +21,19 @@ const SUBTITLE = 'Контроль задач в разрезе разработ
 
 type DeskSheet = 'rubber' | 'wip' | 'absence';
 
-/** Первый и последний день текущего квартала, ГГГГ-ММ-ДД. */
-function currentQuarter(): [string, string] {
+type QuarterRef = { year: number; quarter: number };
+
+/** Текущий квартал. */
+function currentQuarter(): QuarterRef {
   const now = new Date();
-  const m = Math.floor(now.getMonth() / 3) * 3;
+  return { year: now.getFullYear(), quarter: Math.floor(now.getMonth() / 3) + 1 };
+}
+
+/** Первый и последний день квартала, ГГГГ-ММ-ДД. */
+function quarterBounds({ year, quarter }: QuarterRef): [string, string] {
+  const m = (quarter - 1) * 3;
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  return [iso(new Date(now.getFullYear(), m, 1)), iso(new Date(now.getFullYear(), m + 3, 0))];
+  return [iso(new Date(year, m, 1)), iso(new Date(year, m + 3, 0))];
 }
 
 /** Счётчик списка: щелчок открывает панель, ноль — приглушён и не нажимается. */
@@ -48,13 +55,15 @@ function SheetCounter({ label, count, active, extra, onClick }: {
 }
 
 /** Список в панели: широкая — таблица и теплокарта по дням, узкая — карточки и недели. */
-function DeskSheetBody({ kind, data, rubberDays, wipLimit, jiraBaseUrl, onDailyRate }: {
+function DeskSheetBody({ kind, data, rubberDays, wipLimit, jiraBaseUrl, onDailyRate, absencePeriod, onAbsencePeriod }: {
   kind: DeskSheet;
   data: DeskOverview;
   rubberDays: number;
   wipLimit: number;
   jiraBaseUrl?: string;
   onDailyRate: (issueId: string, hours: number | null) => void;
+  absencePeriod: QuarterRef;
+  onAbsencePeriod: (period: QuarterRef) => void;
 }) {
   const width = useDetailSheetWidth();
   if (kind === 'rubber') {
@@ -80,7 +89,12 @@ function DeskSheetBody({ kind, data, rubberDays, wipLimit, jiraBaseUrl, onDailyR
   }
   return (
     <div className="dz-sheet-body">
-      <AbsenceStrip compact={width < 900} employeeIds={data.employee_ids ?? {}} />
+      <AbsenceStrip
+        compact={width < 900}
+        employeeIds={data.employee_ids ?? {}}
+        period={absencePeriod}
+        onPeriodChange={onAbsencePeriod}
+      />
     </div>
   );
 }
@@ -118,13 +132,21 @@ export default function TeamDeskZonesLayout({ desk }: { desk: TeamDeskPageState 
   const rubberCount = data ? data.issues.filter((i) => i.daily_rate).length : 0;
   const busyCount = data ? data.developers.filter((d) => d.in_progress > 0).length : 0;
   const overLimit = data ? data.developers.filter((d) => d.in_progress > wipLimit).length : 0;
-  const [qStart, qEnd] = currentQuarter();
   const deskPeople = new Set(Object.values(data?.employee_ids ?? {}));
-  const absentCount = new Set(
-    (absences.data ?? [])
-      .filter((a) => deskPeople.has(a.employee_id) && a.start_date <= qEnd && a.end_date >= qStart)
-      .map((a) => a.employee_id),
-  ).size;
+  const absentIn = (q: QuarterRef) => {
+    const [qStart, qEnd] = quarterBounds(q);
+    return new Set(
+      (absences.data ?? [])
+        .filter((a) => deskPeople.has(a.employee_id) && a.start_date <= qEnd && a.end_date >= qStart)
+        .map((a) => a.employee_id),
+    ).size;
+  };
+  // Счётчик — текущий квартал; подпись панели — тот квартал, что выбран в панели.
+  const nowQuarter = currentQuarter();
+  const absentCount = absentIn(nowQuarter);
+  const [absencePeriod, setAbsencePeriod] = useState<QuarterRef>(nowQuarter);
+  const shownIsNow = absencePeriod.year === nowQuarter.year && absencePeriod.quarter === nowQuarter.quarter;
+  const absenceWhen = `${shownIsNow ? 'в текущем квартале' : 'в квартале'} Q${absencePeriod.quarter} ${absencePeriod.year}`;
   const sheetTitle: Record<DeskSheet, string> = {
     rubber: `Резиновые задачи · ${rubberCount}`,
     wip: `Задач в работе одновременно · лимит ${wipLimit}`,
@@ -133,7 +155,7 @@ export default function TeamDeskZonesLayout({ desk }: { desk: TeamDeskPageState 
   const sheetSubtitle: Record<DeskSheet, string> = {
     rubber: `в очередь идёт норма за ${rubberDays} дн, но не больше остатка`,
     wip: overLimit > 0 ? `сверх лимита: ${overLimit} чел.` : 'все в пределах лимита',
-    absence: `в текущем квартале отсутствуют: ${absentCount} чел.`,
+    absence: `${absenceWhen} отсутствуют: ${absentIn(absencePeriod)} чел.`,
   };
 
   return (
@@ -312,6 +334,8 @@ export default function TeamDeskZonesLayout({ desk }: { desk: TeamDeskPageState 
             wipLimit={wipLimit}
             jiraBaseUrl={jiraBaseUrl}
             onDailyRate={setDailyRate}
+            absencePeriod={absencePeriod}
+            onAbsencePeriod={setAbsencePeriod}
           />
         </DetailSheet>
       )}

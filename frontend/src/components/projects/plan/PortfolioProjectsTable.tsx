@@ -128,9 +128,11 @@ interface Props {
   maxHeight?: number | string;
   /** Ширина колонки «Проект»: задана — остальные колонки помещаются без прокрутки вбок. */
   titleWidth?: number;
+  /** Сортировку сменили щелчком по заголовку: ключ колонки и направление (null — без сортировки). */
+  onSortChange?: (columnKey: string | null, order: 'ascend' | 'descend' | null) => void;
 }
 
-export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, totals, onRowClick, maxHeight, titleWidth }) => {
+export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, totals, onRowClick, maxHeight, titleWidth, onSortChange }) => {
   const dates = React.useMemo(() => datesByKey(timeline), [timeline]);
   // Скин рисует у загрузки короткую полосу, как в макете; Aurora — только число.
   const skin = useSkin();
@@ -242,6 +244,11 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
       rowKey="key"
       size="small"
       columns={columns}
+      onChange={(_pagination, _filters, sorter, extra) => {
+        if (extra.action !== 'sort' || !onSortChange) return;
+        const s = Array.isArray(sorter) ? sorter[0] : sorter;
+        onSortChange(s?.order ? String(s.columnKey ?? '') : null, s?.order ?? null);
+      }}
       dataSource={projects}
       pagination={false}
       // Своя вертикальная прокрутка: шапка и итоги остаются на месте, а список
