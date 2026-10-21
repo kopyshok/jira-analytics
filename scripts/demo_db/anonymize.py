@@ -128,6 +128,7 @@ COLUMN_POLICY = _parse_policy({
     "category_mappings": "keep: id entity_type entity_id category subcategory source_rule",
     "category_overrides": "keep: id category_code; rule: jira_issue_key; clear: comment",
     "comments": "keep: id jira_comment_id issue_id author_id; clear: body",
+    "employee_account_aliases": "keep: id employee_id; rule: jira_account_id",
     "employee_capacity_overrides": "keep: id employee_id work_type_id",
     "employee_personal_normed": "keep: id setting_id work_type_id",
     "employee_personal_settings": "keep: id employee_id",
@@ -498,6 +499,9 @@ class _Anonymizer:
             p = self._person(acc, name)
             self.emp_acc[emp_id] = _str(acc)
             self._email(email, p)
+        # Учётки слитых карточек: сотрудника под ними больше нет, но учётка — настоящая.
+        for (acc,) in self._rows("employee_account_aliases", "jira_account_id"):
+            self._person(acc, None)
         for role in ISSUE_PEOPLE:
             for acc, name in self._rows("issues", f"{role}_account_id {role}_display_name"):
                 self._person(acc, name)
@@ -890,6 +894,7 @@ class _Anonymizer:
 
         rules: dict[str, dict[str, Rule]] = {
             "employees": {"jira_account_id": acc, "display_name": person("jira_account_id"), "email": email},
+            "employee_account_aliases": {"jira_account_id": acc},
             "users": {
                 "email": email, "display_name": user_name, "password_hash": const(self.password_hash),
                 "selected_teams": team_json, "team_desk_filter": team_json,

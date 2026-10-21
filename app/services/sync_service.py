@@ -788,7 +788,9 @@ class SyncService:
         self.comment_repo = BaseRepository(Comment, db)
         self.sync_state_repo = BaseRepository(SyncState, db)
         self.scope_project_repo = BaseRepository(ScopeProject, db)
-        self._aliases: Optional[dict[str, Employee]] = None
+
+    #: Учётки слитых карточек → сотрудник; читаются один раз за запуск.
+    _aliases: Optional[dict[str, Employee]] = None
 
     def _alias_target(self, jira_account_id: Optional[str]) -> Optional[Employee]:
         """Сотрудник, в которого влита карточка этой учётки (объединение двойников)."""
