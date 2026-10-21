@@ -404,6 +404,14 @@ html[data-theme="aurora"][data-mode="light"] .ant-btn-primary {
   color: #fff !important;
   box-shadow: 3px 3px 7px #c3cbd9, -3px -3px 7px #ffffff, inset 0 1px 0 rgba(255,255,255,0.4) !important;
 }
+/* Выключенная кнопка: правила выше с !important красят и её, и она выглядит
+ * рабочей. Здесь — плоская, без выпуклой тени и акцента, с приглушённой подписью. */
+html[data-theme="aurora"][data-mode="light"] .ant-btn:is(.ant-btn-primary, .ant-btn-default):is(:disabled, .ant-btn-disabled) {
+  background: transparent !important;
+  border: 1px solid var(--glass-border) !important;
+  color: color-mix(in srgb, var(--text-muted) 60%, var(--bg)) !important;
+  box-shadow: none !important;
+}
 
 /* Plain default tag — neu-pill. Colored tags (success/warning/error/processing)
  * keep their AntD background; we only neutralise the default case. */
