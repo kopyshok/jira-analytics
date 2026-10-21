@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import source from './antdGlass.css?raw';
 
 // Светлая Aurora перекрашивает основную и обычную кнопку правилами с !important —
 // и раньше заодно перекрашивала выключенные: «Построить» в сводке руководителя
 // без ИИ выглядела рабочей синей кнопкой. Нужна своя запись для выключенного вида.
-const css = readFileSync(path.resolve(__dirname, 'antdGlass.css'), 'utf-8')
-  .replace(/\/\*[\s\S]*?\*\//g, '');
+const css = source.replace(/\/\*[\s\S]*?\*\//g, '');
 
 // В файле нет вложенных блоков (@media и т.п.) — правило = «селектор { объявления }».
 const rules = Array.from(css.matchAll(/([^{}]+)\{([^{}]*)\}/g), (m) => ({

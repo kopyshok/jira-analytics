@@ -21,5 +21,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // Остальной CSS в тестах подменяется пустой строкой; этот файл тест
+    // читает как текст, чтобы проверить правила тем оформления.
+    css: { include: [/aurora\/styles\/antdGlass\.css/] },
   },
 })
