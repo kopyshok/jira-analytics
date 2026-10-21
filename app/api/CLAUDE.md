@@ -26,7 +26,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/employees` | `employees.py` | список + create-from-Jira + recalc-active + auto-detect-teams + M:N teams CRUD |
 | `/projects` | `projects.py` | GET-only список локально известных проектов |
 | `/teams` | `teams.py` | GET local teams (для global team filter) |
-| `/sync` | `sync.py` | sync triggers (full/projects/issues/teams/worklogs) + browse Jira live (`/jira-projects`, `/jira-epics`, `/jira-fields`, `/jira-issuetypes`, `/jira-teams`) + targeted refresh + SSE-стримы worklog reload/update + sync schedule + history; пишущие эндпоинты (и `/team-desk/refresh-issues`, `/backlog/refresh-from-jira*`) первой строкой вызывают `ensure_sync_allowed` → 409 до завершения переезда на Jira DC |
+| `/sync` | `sync.py` | sync triggers (full/projects/issues/teams/worklogs) + browse Jira live (`/jira-projects`, `/jira-epics`, `/jira-fields`, `/jira-issuetypes`, `/jira-teams`) + targeted refresh + SSE-стримы worklog reload/update + `/reload-dates` (даты последних ручных прогонов вкладки «Дополнительно» — для всех, пишут сами стримы) + sync schedule + history; пишущие эндпоинты (и `/team-desk/refresh-issues`, `/backlog/refresh-from-jira*`) первой строкой вызывают `ensure_sync_allowed` → 409 до завершения переезда на Jira DC |
 | `/jira` | `sync.jira_router` | алиас для browse Jira (см. выше) |
 | `/scope` | `scope.py` | scope projects + roots + category overrides |
 | `/analytics` | `analytics.py` | dashboard widgets + hours by-{employee\|project\|category\|period} + hierarchical report + context-switching |

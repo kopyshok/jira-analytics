@@ -296,6 +296,13 @@ export const syncTeams = (teams: string[], signal?: AbortSignal) =>
   api.post<SyncResponse>('/sync/teams', { teams }, signal);
 export const getSyncStatus = () => api.get<SyncStatusResponse[]>('/sync/status');
 
+/** Даты последних ручных прогонов вкладки «Дополнительно» (ISO, null — ещё не запускали). */
+export interface ReloadDates {
+  worklogs_since: string | null;
+  issues_since: string | null;
+}
+export const getReloadDates = () => api.get<ReloadDates>('/sync/reload-dates');
+
 // Browse Jira
 export const getJiraProjects = (search?: string, team?: string) =>
   api.get<JiraProjectItem[]>('/sync/jira-projects', { search, team });

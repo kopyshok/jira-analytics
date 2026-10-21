@@ -120,11 +120,9 @@ def _is_allowed_generic_key(key: str) -> bool:
         return True
     if key in ("ai_enabled", "planning_multi_team_by_epics", "planning_opo_cutoff"):
         return True
-    return (
-        key.startswith("ui_")
-        or key == "worklog_reload_since_date"
-        or (key.startswith("jira_") and key.endswith("_field_id"))
-    )
+    # Даты вкладки «Синхронизация → Дополнительно» отдаёт GET /sync/reload-dates:
+    # вкладка открыта всем, а этот роутер — только администратору.
+    return key.startswith("ui_") or (key.startswith("jira_") and key.endswith("_field_id"))
 
 
 # --- Endpoints ---

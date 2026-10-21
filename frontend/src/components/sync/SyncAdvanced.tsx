@@ -7,9 +7,9 @@ import {
 } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
-  useReloadWorklogs, useUpdateWorklogs, useReloadIssues,
+  useReloadWorklogs, useUpdateWorklogs, useReloadIssues, useReloadDates,
 } from '../../hooks/useSync';
-import { useGenericSetting, useSaveGenericSetting, useSyncBlocked } from '../../hooks/useSettings';
+import { useGenericSetting, useSyncBlocked } from '../../hooks/useSettings';
 import { SYNC_BLOCKED_TEXT } from '../../utils/syncBlocked';
 import type { WorklogReloadProgress, WorklogUpdateProgress, IssuesReloadProgress } from '../../api/sync';
 import { DARK_THEME } from '../../utils/constants';
@@ -23,12 +23,13 @@ export default function SyncAdvanced() {
   const { notification } = App.useApp();
   const syncBlocked = useSyncBlocked();
 
+  // Даты последних прогонов запоминает сервер после успеха операции.
+  const reloadDates = useReloadDates();
+
   // ─── Worklogs date ───────────────────────────────────────
-  const reloadSince = useGenericSetting('worklog_reload_since_date');
-  const saveReloadSince = useSaveGenericSetting();
   const storedSinceDate = useMemo(
-    () => dayjs(reloadSince.data?.value || '2026-01-01'),
-    [reloadSince.data?.value],
+    () => dayjs(reloadDates.data?.worklogs_since || '2026-01-01'),
+    [reloadDates.data?.worklogs_since],
   );
   const [selectedSinceDate, setSelectedSinceDate] = useState<Dayjs | null>(null);
   const sinceDate = selectedSinceDate ?? storedSinceDate;
@@ -59,7 +60,6 @@ export default function SyncAdvanced() {
             title: "Worklog'и перезагружены",
             description: `Удалено: ${stats.deleted}, issues: ${stats.issues_scanned}, вставлено: ${stats.worklogs_inserted}`,
           });
-          saveReloadSince.mutate({ key: 'worklog_reload_since_date', value: iso });
         },
         onError: (e) => {
           if (e.name === 'AbortError') return;
@@ -102,7 +102,6 @@ export default function SyncAdvanced() {
               `B: issues ${stats.bucket_b_issues_scanned}, worklog ${stats.bucket_b_worklogs_upserted}, ` +
               `новых вне scope ${stats.bucket_b_out_of_scope_created}`,
           });
-          saveReloadSince.mutate({ key: 'worklog_reload_since_date', value: iso });
         },
         onError: (e) => {
           if (e.name === 'AbortError') return;
@@ -120,11 +119,9 @@ export default function SyncAdvanced() {
   const worklogsInProgress = reload.isPending || update.isPending;
 
   // ─── Reload issues ───────────────────────────────────────
-  const issuesReloadSince = useGenericSetting('issues_reload_since_date');
-  const saveIssuesReloadSince = useSaveGenericSetting();
   const storedIssuesSinceDate = useMemo(
-    () => dayjs(issuesReloadSince.data?.value || '2026-01-01'),
-    [issuesReloadSince.data?.value],
+    () => dayjs(reloadDates.data?.issues_since || '2026-01-01'),
+    [reloadDates.data?.issues_since],
   );
   const [selectedIssuesSinceDate, setSelectedIssuesSinceDate] = useState<Dayjs | null>(null);
   const issuesSinceDate = selectedIssuesSinceDate ?? storedIssuesSinceDate;
@@ -146,7 +143,6 @@ export default function SyncAdvanced() {
             title: 'Задачи перечитаны',
             description: `Обновлено: ${stats.issues_synced}, создано: ${stats.issues_created}, пересчитано категорий: ${stats.mapping_affected}`,
           });
-          saveIssuesReloadSince.mutate({ key: 'issues_reload_since_date', value: iso });
         },
         onError: (e) => {
           if (e.name === 'AbortError') return;

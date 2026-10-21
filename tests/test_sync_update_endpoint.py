@@ -83,3 +83,10 @@ def test_update_stream_emits_progress_and_done(client, db_session):
         "bucket_b_worklogs_upserted": 3,
         "bucket_b_out_of_scope_created": 1,
     }
+    # Дату запоминает сервер: сохранять её из браузера могли не все.
+    setting = (
+        db_session.query(AppSetting)
+        .filter(AppSetting.key == "worklog_reload_since_date")
+        .one()
+    )
+    assert setting.value == "2026-02-01"

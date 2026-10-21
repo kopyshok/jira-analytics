@@ -692,9 +692,11 @@ async def update_worklogs_stream(
        ``out_of_scope=True``.
 
     События: ``progress`` после каждого issue, ``done`` — финальные stats,
-    ``error`` — ошибка, ``cancelled`` — клиент отключился.
+    ``error`` — ошибка, ``cancelled`` — клиент отключился. После успеха дата
+    сохраняется в AppSetting ``worklog_reload_since_date``.
     """
     ensure_sync_allowed(db)
+    from app.api.endpoints.settings import _set_setting
 
     async def event_gen():
         queue: asyncio.Queue = asyncio.Queue()
@@ -720,6 +722,8 @@ async def update_worklogs_stream(
                     stats = await service.update_worklogs_since(
                         req.since, teams=req.teams, on_progress=on_progress,
                     )
+                _set_setting(db, "worklog_reload_since_date", req.since.isoformat())
+                db.commit()
                 await queue.put({
                     "type": "done",
                     "bucket_a_issues_scanned": stats.bucket_a_issues_scanned,
@@ -1026,6 +1030,34 @@ async def get_sync_status(db: Session = Depends(get_db)):
         )
         for state in states
     ]
+
+
+class ReloadDatesResponse(BaseModel):
+    """Даты последних ручных прогонов вкладки «Дополнительно»."""
+
+    worklogs_since: Optional[str] = None
+    issues_since: Optional[str] = None
+
+
+@router.get("/reload-dates", response_model=ReloadDatesResponse)
+async def get_reload_dates(db: Session = Depends(get_db)):
+    """С какой даты последний раз обновляли ворклоги и перечитывали задачи.
+
+    Вкладку «Дополнительно» открывает любой пользователь, а ``/settings`` —
+    только администратор, поэтому даты отдаёт раздел синхронизации. Пишут
+    их сами операции после успешного прогона.
+    """
+    from app.models import AppSetting
+
+    rows = dict(
+        db.query(AppSetting.key, AppSetting.value)
+        .filter(AppSetting.key.in_(("worklog_reload_since_date", "issues_reload_since_date")))
+        .all()
+    )
+    return ReloadDatesResponse(
+        worklogs_since=rows.get("worklog_reload_since_date"),
+        issues_since=rows.get("issues_reload_since_date"),
+    )
 
 
 # === /jira/users/search (jira_router) ===

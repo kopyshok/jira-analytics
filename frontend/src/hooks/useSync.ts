@@ -6,7 +6,7 @@ import {
   updateWorklogsStream, type WorklogUpdateProgress, type WorklogUpdateDone,
   reloadIssuesStream, type IssuesReloadProgress, type IssuesReloadDone,
   getSyncStatus, getJiraProjects, getJiraEpics, getJiraFields, getJiraTeams,
-  getTeams, getJiraIssueTypes,
+  getTeams, getJiraIssueTypes, getReloadDates,
 } from '../api/sync';
 import { batchScopeProjects } from '../api/scope';
 import { recalculateAll } from '../api/mapping';
@@ -17,6 +17,11 @@ export const useConnectionTest = () =>
 
 export const useSyncStatus = () =>
   useQuery({ queryKey: ['sync', 'status'], queryFn: getSyncStatus });
+
+// Даты запоминает сервер после успешного прогона — после него перечитываем.
+const RELOAD_DATES_KEY = ['sync', 'reload-dates'];
+export const useReloadDates = () =>
+  useQuery({ queryKey: RELOAD_DATES_KEY, queryFn: getReloadDates });
 
 type SyncBody = { project_keys?: string[]; incremental?: boolean } | undefined;
 
@@ -80,6 +85,7 @@ export const useReloadWorklogs = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
+      qc.invalidateQueries({ queryKey: RELOAD_DATES_KEY });
     },
   });
 };
@@ -98,6 +104,7 @@ export const useUpdateWorklogs = () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
       qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+      qc.invalidateQueries({ queryKey: RELOAD_DATES_KEY });
     },
   });
 };
@@ -116,6 +123,7 @@ export const useReloadIssues = () => {
       qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
       qc.invalidateQueries({ queryKey: ['sync', 'status'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
+      qc.invalidateQueries({ queryKey: RELOAD_DATES_KEY });
     },
   });
 };
