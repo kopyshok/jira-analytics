@@ -2,14 +2,7 @@ import React from 'react';
 import { Tooltip, Empty } from 'antd';
 import type { PlanTimeline } from '../../../types/projects';
 import { DARK_THEME, MONTH_NAMES } from '../../../utils/constants';
-
-const PHASE_COLOR: Record<string, string> = {
-  analyst: '#00c9c8',
-  cons: '#00c9c8',
-  dev: '#378ADD',
-  qa: '#EF9F27',
-  opo: '#7F77DD',
-};
+import { PHASE_COLOR, legendPhases } from './phaseLegend';
 
 const LANE_H = 20;
 
@@ -189,16 +182,12 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
         display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8,
         fontSize: 11, color: DARK_THEME.textMuted,
       }}>
-        {[['analyst', 'Анализ'], ['dev', 'Разработка'], ['qa', 'Тестирование'], ['opo', 'ОПЭ']].map(
-          ([code, label]) => (
-            <span key={code} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{
-                width: 10, height: 10, borderRadius: 2, background: PHASE_COLOR[code],
-              }} />
-              {label}
-            </span>
-          ),
-        )}
+        {legendPhases(timeline.rows, DARK_THEME.cyanPrimary).map(({ code, label, color }) => (
+          <span key={code} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
+            {label}
+          </span>
+        ))}
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ width: 2, height: 11, background: DARK_THEME.cyanPrimary }} />
           сегодня
