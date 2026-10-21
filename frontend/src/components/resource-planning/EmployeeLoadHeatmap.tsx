@@ -7,6 +7,8 @@ import type {
 import { dayTooltipLines } from '../../utils/rpBusy';
 import { EXT_LOAD_COLOR, NORMED_WORK_COLOR, splitLoadFill } from '../../utils/heatmapFill';
 import { dayReserveTypes, fmtHours, reserveUseLines, type ReserveLine } from '../../utils/normedReserve';
+import { useRoles } from '../../hooks/useRoles';
+import { getRoleLabel } from '../../utils/roles';
 import { freeByMonthLabel, techReserveText } from '../../utils/rpWatch';
 
 export interface EmployeeLoadHeatmapProps {
@@ -250,6 +252,8 @@ export default function EmployeeLoadHeatmap({
   onPickPeople,
 }: EmployeeLoadHeatmapProps) {
   const [tip, setTip] = useState<{ left?: number; right?: number; top: number; lines: TipLine[] } | null>(null);
+  // Роль у имени — названием из справочника, а не кодом (dev → «Разработчик»).
+  const { data: roles = [] } = useRoles();
 
   const data = useMemo(() => {
     if (rows.length === 0) return null;
@@ -486,7 +490,7 @@ export default function EmployeeLoadHeatmap({
             )}
           </div>
           {row.employee_role && (
-            <span className="rp-hm-role" style={{ fontSize: 10, color: 'var(--rp-role-fg, #5a8ab8)', flexShrink: 0 }}>{row.employee_role}</span>
+            <span className="rp-hm-role" style={{ fontSize: 10, color: 'var(--rp-role-fg, #5a8ab8)', flexShrink: 0 }}>{getRoleLabel(roles, row.employee_role)}</span>
           )}
           {avg > 0 && (
             <Tooltip
