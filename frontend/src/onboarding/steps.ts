@@ -104,7 +104,7 @@ export const SETUP_STEPS: SetupStep[] = [
 export const INTRO_STEPS: IntroStep[] = [
   { tourId: 'header', title: 'Шапка: команда, период, справка', hint: 'Что настраивается один раз и действует во всех разделах.', videoId: 'start-header' },
   { tourId: 'dashboard', title: 'Дашборд', hint: 'Сводка команды за период.', videoId: 'dashboard-overview' },
-  { tourId: 'analytics', title: 'Аналитика', hint: 'Отчёт по часам: команда → роль → сотрудник → категория → задача.', videoId: 'analytics-employee-hours' },
+  { tourId: 'analytics', title: 'Аналитика', hint: 'Отчёт по часам деревом: кто, сколько и над чем работал.', videoId: 'analytics-employee-hours' },
   { tourId: 'team-desk', title: 'Стол тимлида', hint: 'Задачи разработчиков: что зависло, что перерасходовано.', videoId: 'team-desk-overview' },
 ];
 

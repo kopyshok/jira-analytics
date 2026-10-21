@@ -120,7 +120,7 @@ const list: TourDef[] = [
       { target: 'analytics-hierarchy', title: 'Иерархия', description: 'Задачи деревом до самого верхнего родителя.' },
       { target: 'analytics-settings', title: 'Настройка отчёта', description: 'Какие уровни группировки и колонки показывать.' },
       { target: 'analytics-filters', title: 'Фильтры', description: 'Сотрудник, вид работ, категория, поиск задачи.' },
-      { target: 'analytics-table', title: 'Отчёт', description: 'Команда → роль → сотрудник → вид работ → категория → задача.' },
+      { target: 'analytics-table', title: 'Отчёт', description: 'Часы деревом. Уровни и их порядок задаются в «Настройке отчёта» — у каждого свои; внизу — задачи. Если слева выбрана одна команда, уровня «Команда» нет.' },
     ],
   },
   {
