@@ -206,6 +206,15 @@
   --an-team-orange: #b23c0a;
   --an-team-amber: #96460a;
   --an-team-red: #b91c1c;
+
+  /* Дашборд, «Последние списания»: карточка отсутствующего — без бледности, метка тёмно-фиолетовым */
+  --dash-absent-opacity: 1;
+  --dash-absent-tag-bg: #ede9fe;
+  --dash-absent-tag-fg: #5b21b6;
+
+  /* История ревизий сценария: «+184 / −184» в таблице доступности команды */
+  --delta-up-ink: #15803d;
+  --delta-down-ink: #b91c1c;
 }
 
 /* ---------- Фарфор neu overrides ----------

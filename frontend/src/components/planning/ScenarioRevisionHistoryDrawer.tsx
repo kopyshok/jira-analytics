@@ -249,7 +249,8 @@ function CapacityTable({ rows }: { rows: RevisionDiffEmployee[] }) {
       fontFamily: FONTS.mono,
       fontSize: 12,
       fontWeight: 600,
-      color: d > 0 ? '#22c55e' : d < 0 ? '#f87171' : DARK_THEME.textMuted,
+      // В светлых темах — тёмные зелёный/красный из glass.css; в тёмной переменные не заданы.
+      color: d > 0 ? 'var(--delta-up-ink, #22c55e)' : d < 0 ? 'var(--delta-down-ink, #f87171)' : DARK_THEME.textMuted,
     }}>
       {d === 0 ? '—' : `${d > 0 ? '+' : ''}${Math.round(d)}`}
     </span>
