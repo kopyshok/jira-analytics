@@ -8,25 +8,11 @@ import { PhaseTimeline } from './plan/PhaseTimeline';
 import { PortfolioProjectsTable } from './plan/PortfolioProjectsTable';
 import { PortfolioSignals } from './plan/PortfolioSignals';
 import { DARK_THEME } from '../../utils/constants';
-
-/** Склонение слова «проект» под число: 1 проект, 3 проекта, 5 проектов. */
-function pluralProjects(n: number): string {
-  if (n % 100 >= 11 && n % 100 <= 14) return 'проектов';
-  const last = n % 10;
-  if (last === 1) return 'проект';
-  if (last >= 2 && last <= 4) return 'проекта';
-  return 'проектов';
-}
+import { pluralProjects, projectQueryParams } from './projectsShared';
 
 export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ filters }) => {
   const navigate = useNavigate();
-  const { data, isLoading } = usePortfolio({
-    search: filters.search || undefined,
-    status_category: filters.statusCategory || undefined,
-    category: filters.category || undefined,
-    year: filters.year,
-    quarter: filters.quarter,
-  });
+  const { data, isLoading } = usePortfolio(projectQueryParams(filters));
 
   if (isLoading || !data) {
     return (

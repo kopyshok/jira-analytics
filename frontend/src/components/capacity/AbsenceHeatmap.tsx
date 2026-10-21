@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MouseEvent } from 'react';
 import { Tooltip } from 'antd';
-import { useAppTheme } from '../../contexts/ThemeContext';
+import { useAppTheme, useSkin } from '../../contexts/ThemeContext';
 import { DARK_THEME } from '../../utils/constants';
 import { absenceCellTip, absenceCellsByEmployee, quarterDays } from '../../utils/absenceHeatmap';
 import type { HeatmapDay } from '../../utils/absenceHeatmap';
@@ -71,6 +71,7 @@ type Hover = { row: number; day: number; left: number; top: number };
 function AbsenceHeatmap({ year, quarter, employees, absences }: Props) {
   const { mode } = useAppTheme();
   const isLight = mode === 'light';
+  const skin = useSkin();
 
   const days = useMemo(() => quarterDays(year, quarter), [year, quarter]);
   const cells = useMemo(() => absenceCellsByEmployee(absences, days), [absences, days]);
@@ -101,8 +102,19 @@ function AbsenceHeatmap({ year, quarter, employees, absences }: Props) {
   const hoverEmployee = hover ? employees[hover.row] : undefined;
   const hoverDay = hover ? days[hover.day] : undefined;
 
-  // Палитра ячеек: тёмная и светлая.
-  const palette = isLight
+  // Палитра ячеек: обложка, светлая и тёмная.
+  const palette = skin
+    ? {
+        weekendBg: '#E1DED7',
+        emptyBg: '#FFFFFF',
+        cellBorder: '#CFCCC4',
+        monthSep: '#9A978F',
+        monthLabel: '#1C1C1A',
+        dayHeader: '#5C5A55',
+        weekendHeader: '#5C5A55',
+        nameColor: '#1C1C1A',
+      }
+    : isLight
     ? {
         weekendBg: '#dde3ec',
         emptyBg: '#eef2f7',

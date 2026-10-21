@@ -1,109 +1,48 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useTeamRegistry } from '../hooks/useTeamRegistry';
-import { useSearchParams, useNavigate } from 'react-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { useLayoutEffect, useRef } from 'react';
 import '../utils/gantt.css';
-import { Alert, App, Badge, Button, Empty, Input, Modal, Popover, Select, Segmented, Space, Spin, Switch, Tag, Tooltip } from 'antd';
+import { Alert, Badge, Button, Empty, Popover, Select, Segmented, Space, Spin, Tag, Tooltip } from 'antd';
 // Скрытые режимы Портфель/Ресурсы/Plane остаются в коде (PlaneGantt, GanttRows viewMode union)
 // PM хочет вернуться к ним после доработки; см. project_resource_planning_modes_hidden.md.
 import {
-  BgColorsOutlined,
   CalculatorOutlined,
   ControlOutlined,
   CopyOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
-import resourcePlanningHelp from '../../../docs/help/resource-planning.md?raw';
-import { useRegisterHelp } from '../contexts/HelpContext';
 import PlanQualityBadge from '../components/resource-planning/PlanQualityBadge';
 import GanttChart from '../components/resource-planning/GanttChart';
 import PlaneGantt from '../components/resource-planning/PlaneGantt';
 import ConflictPanel from '../components/resource-planning/ConflictPanel';
-import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlocksModal';
 import AssignmentSidebar from '../components/resource-planning/AssignmentSidebar';
 import PlanLoadHeatmap from '../components/resource-planning/PlanLoadHeatmap';
 import NormedReserveSummary from '../components/resource-planning/NormedReserveSummary';
-import AppearanceModal from '../components/resource-planning/AppearanceModal';
 import BulkResetDropdown from '../components/resource-planning/BulkResetDropdown';
-import type { RpLayout, ViewMode } from '../components/resource-planning/GanttRows';
-import {
-  useGanttProjection, useResourcePlans, useComputeResourcePlan,
-  useScheduledBlocks, useCreateResourcePlan, useForkPlan,
-  useCreateDependency, useDeleteDependency, invalidatePlanGantt,
-} from '../hooks/useResourcePlanning';
-import { useRpPreferences } from '../hooks/useRpPreferences';
-import { useScenarios } from '../hooks/usePlanning';
-import type { AssignmentKey, TimelineScale } from '../utils/gantt';
-import { findAssignmentByKey } from '../utils/gantt';
-import { useEmployees } from '../hooks/useCapacity';
-import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
-import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
-import { buildSectionByItem, sortBySection } from '../utils/rpSections';
-import { sortAssignmentsByScenarioAssignee } from '../utils/sortAssignments';
-import { filterByPeople } from '../utils/rpPeople';
-import { decideAutoPlan, groupScenarioOptions, isOutsideHeader, resolvePageTeam } from '../utils/rpTeams';
-import { AppearanceProvider, useAppearanceSettings } from '../contexts/AppearanceContext';
+import type { RpLayout } from '../components/resource-planning/GanttRows';
+import type { TimelineScale } from '../utils/gantt';
+import { AppearanceProvider } from '../contexts/AppearanceContext';
+import { useSkin } from '../contexts/ThemeContext';
 import { DARK_THEME } from '../utils/constants';
+import { useResourcePlanningPage, type ResourcePlanningPageState } from '../hooks/useResourcePlanningPage';
+import PultResourcePlanningLayout from '../skins/pult/pages/ResourcePlanningLayout';
+import ResourcePlanningDialogs from '../components/resource-planning/ResourcePlanningDialogs';
+import RpViewOptions from '../components/resource-planning/RpViewOptions';
 
-type NewPlan = { scenario_id: string; team: string; quarter: string; year: number };
-
-function ResourcePlanningPageInner() {
-  const { message } = App.useApp();
-  const [searchParams] = useSearchParams();
-  const { selectedTeams } = useGlobalTeamFilter();
-  const headerTeams = selectedTeams.join(',') || undefined;
-
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-  const [planId, setPlanId] = usePersistedSearchParam('plan_id', 'resource_planning_plan_id');
-  // Режимы Портфель / Ресурсы / Plane временно скрыты (см. комментарий в шапке файла).
-  // Код PlaneGantt и ViewMode union сохранены — переключение вернётся после доработки.
-  // Тип расширен до ViewMode чтобы TS не сузил literal — иначе сломаются ветки
-  // `viewMode === 'plane'` etc., которые активируются обратно когда переключатель вернётся.
-  const viewMode = 'two-level' as ViewMode;
-  const [scale, setScale] = useState<TimelineScale>('week');
-  const [depDrawMode, setDepDrawMode] = useState(false);
-  const [blocksOpen, setBlocksOpen] = useState(false);
-  const [showRelayArrows, setShowRelayArrows] = useState(true);
-  const [groupBySubgroup, setGroupBySubgroup] = useState(false);
-  const [collapsedSections, setCollapsedSections] = useState<string[]>([]);
-  const [forkModalOpen, setForkModalOpen] = useState(false);
-  const [forkLabel, setForkLabel] = useState('');
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
-  // Фильтр «Исполнители» — на план: при смене плана сбрасывается, в том числе
-  // при возврате к прежнему плану.
-  const [peopleFilter, setPeopleFilter] = useState<string[]>([]);
-  const [peopleFilterPlanId, setPeopleFilterPlanId] = useState(planId);
-  if (peopleFilterPlanId !== planId) {
-    setPeopleFilterPlanId(planId);
-    setPeopleFilter([]);
-  }
-  const [appearanceOpen, setAppearanceOpen] = useState(false);
-  useRegisterHelp('Планирование ресурсов', resourcePlanningHelp);
-  const appearanceSettings = useAppearanceSettings();
-  const forkMutation = useForkPlan();
-  const createDep = useCreateDependency();
-  const deleteDep = useDeleteDependency();
-  const { prefs, patch: patchPrefs } = useRpPreferences();
-  const layout: RpLayout = prefs.view_mode === 'people' ? 'people' : 'tasks';
-  // Вид не сохранился — хук вернул прежний, а переключатель рисуем заново:
-  // откат посреди анимации оставляет его без выбранного пункта.
-  const [layoutSwitchKey, setLayoutSwitchKey] = useState(0);
-  const changeLayout = (v: RpLayout) => patchPrefs({ view_mode: v }, {
-    onError: () => {
-      setLayoutSwitchKey(k => k + 1);
-      message.error('Не удалось сохранить вид — оставлен прежний');
-    },
-  });
-  // Щелчок по человеку (фишка фазы, имя в подвале, заголовок секции)
-  // добавляет его в фильтр или убирает.
-  const togglePerson = (id: string | null) => {
-    if (!id) return;
-    setPeopleFilter(peopleFilter.includes(id) ? peopleFilter.filter(x => x !== id) : [...peopleFilter, id]);
-  };
-  // Подсветка и пульсация — когда в фильтре ровно один человек.
-  const highlightedEmployeeId = peopleFilter.length === 1 ? peopleFilter[0] : null;
+function AuroraResourcePlanningLayout({ rp }: { rp: ResourcePlanningPageState }) {
+  const {
+    planId, setPlanId, viewMode, scale, setScale, depDrawMode, setBlocksOpen,
+    showRelayArrows, groupBySubgroup,
+    collapsedSections, toggleSection, setForkModalOpen,
+    selectedAssignment, setSelectedAssignmentId,
+    peopleFilter, setPeopleFilter, peopleOptions, togglePerson, highlightedEmployeeId,
+    appearanceSettings, prefs, layout, layoutSwitchKey, changeLayout,
+    plansLoading, gantt, ganttLoading, blocks, employees, candidateEmployees,
+    subgroupOrder, subgroupByEmployee, compute, createPlan, createFailure, createPlanFor,
+    handleCompute, handlePickScenario, approvedScenarios,
+    sortedAssignments, sectionByItem, shownAssignments, shownBookings, conflictAssignmentIds,
+    handleToggleCollapse, createDependency, deleteDependency,
+    refreshGantt, openCompare, currentScenarioId, scenarioOptions,
+  } = rp;
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
 
@@ -119,235 +58,6 @@ function ResourcePlanningPageInner() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-
-  const scenarioId = searchParams.get('scenario_id');
-  const { data: plans = [], isLoading: plansLoading } = useResourcePlans(undefined, headerTeams);
-  const { data: approvedScenarios = [], isSuccess: scenariosLoaded } = useScenarios(undefined, undefined, 'approved', headerTeams);
-  const { data: gantt, isLoading: ganttLoading } = useGanttProjection(planId);
-  // Команда страницы — команда выбранного плана (или сценария из адреса);
-  // ничего не выбрано — первая команда шапки.
-  const team = resolvePageTeam(
-    selectedTeams,
-    gantt?.plan.team ?? plans.find(p => p.id === planId)?.team,
-    approvedScenarios.find(s => s.id === scenarioId)?.team,
-  );
-  // Команду убрали из шапки — выбранный план ей больше не принадлежит.
-  const planOutside = isOutsideHeader(selectedTeams, gantt?.plan.team);
-  const { data: blocks = [] } = useScheduledBlocks(team || undefined);
-  const { data: allEmployees = [] } = useEmployees({ isActive: true, withTeams: true });
-  const employees = team ? allEmployees.filter(e => e.team === team) : allEmployees;
-
-  // Группы внутри команды. План остаётся общекомандным — группы дают только
-  // секции строк; занятость человека по-прежнему считается сквозь все группы.
-  const { data: teamRegistry = [] } = useTeamRegistry();
-  const registryRow = teamRegistry.find(t => t.name === team);
-  const subgroupOrder = useMemo(
-    () => (registryRow?.has_subgroups ? registryRow.subgroups.map(g => g.name) : []),
-    [registryRow],
-  );
-  // Группы сотрудника — из ответа диаграммы (employee_subgroups): список id,
-  // по убыванию «доля × дни», первый — главная группа. Не «сегодняшняя»
-  // группа из членства — у общих и переведённых людей групп несколько.
-  const subgroupByEmployee = useMemo(() => {
-    if (!registryRow?.has_subgroups || !gantt?.employee_subgroups) return {};
-    const names = new Map(registryRow.subgroups.map(g => [g.id, g.name]));
-    const out: Record<string, string[]> = {};
-    for (const [empId, groupIds] of Object.entries(gantt.employee_subgroups)) {
-      out[empId] = groupIds.map(id => names.get(id)).filter((n): n is string => !!n);
-    }
-    return out;
-  }, [registryRow, gantt]);
-  // Группа инициативы: своя группа работы, иначе группа её главного
-  // исполнителя из сценария (та же логика, что в Сценариях).
-  const subgroupNameById = useMemo(
-    () => new Map((registryRow?.subgroups ?? []).map(g => [g.id, g.name])),
-    [registryRow],
-  );
-
-  // Кандидаты в исполнители — состав команды за квартал плана (те же люди,
-  // по которым считается загрузка), а не текущий состав на сегодня: выбывший
-  // в середине квартала должен оставаться выбираемым на свои дни.
-  const candidateEmployees = gantt?.employee_load?.length
-    ? gantt.employee_load.map(r => ({
-        id: r.employee_id,
-        display_name: r.employee_name ?? '—',
-        member_from: r.member_from,
-        member_to: r.member_to,
-      }))
-    : employees;
-  // Состав команды для выбора сотрудников заблокированного периода — без привлечённых.
-  const blockMembers = useMemo(
-    () => (gantt?.employee_load ?? [])
-      .filter(r => !r.is_borrowed)
-      .map(r => ({ id: r.employee_id, name: r.employee_name ?? '' }))
-      .sort((a, b) => a.name.localeCompare(b.name)),
-    [gantt],
-  );
-  const compute = useComputeResourcePlan();
-  const createPlan = useCreateResourcePlan();
-  // Сценарий из адреса, для которого план уже пробовали создать сами: больше
-  // одной автоматической попытки не делаем (см. decideAutoPlan).
-  const autoTriedScenarioRef = useRef<string | null>(null);
-  // План создать не удалось — что создавали и ответ сервера; плашка с «Повторить».
-  const [createFailure, setCreateFailure] = useState<{ plan: NewPlan; reason: string } | null>(null);
-
-  const createPlanFor = (plan: NewPlan) => {
-    createPlan.mutateAsync(plan).then(created => {
-      setCreateFailure(null);
-      setPlanId(created.id);
-    }).catch((e: unknown) => {
-      setCreateFailure({ plan, reason: e instanceof Error ? e.message : '' });
-    });
-  };
-
-  useEffect(() => {
-    if (planOutside) setPlanId(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planOutside]);
-
-  useEffect(() => {
-    if (createPlan.isPending) return;
-    const d = decideAutoPlan({
-      scenarioId,
-      plansLoaded: !plansLoading,
-      scenariosLoaded,
-      plans,
-      scenarios: approvedScenarios,
-      currentPlanId: planId,
-      autoTriedScenarioId: autoTriedScenarioRef.current,
-    });
-    if (d.action === 'select') {
-      setPlanId(d.planId);
-      return;
-    }
-    if (d.action !== 'create') return;
-    autoTriedScenarioRef.current = scenarioId;
-    createPlanFor({ scenario_id: scenarioId!, team: d.team, quarter: d.quarter, year: d.year });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenarioId, planId, plansLoading, scenariosLoaded, plans.length, createPlan.isPending]);
-
-  const handleCompute = async () => {
-    if (!planId) return;
-    try {
-      await compute.mutateAsync(planId);
-      message.success('Расписание рассчитано');
-    } catch {
-      message.error('Ошибка расчёта');
-    }
-  };
-
-  const handlePickScenario = (sid: string | null) => {
-    setCreateFailure(null);
-    if (!sid) {
-      setPlanId(null);
-      return;
-    }
-    const existing = plans.find(p => p.scenario_id === sid);
-    if (existing) {
-      setPlanId(existing.id);
-      return;
-    }
-    const sc = approvedScenarios.find(s => s.id === sid);
-    if (!sc || !sc.quarter || !sc.year) {
-      message.error('У сценария не задан квартал/год');
-      return;
-    }
-    createPlanFor({ scenario_id: sid, team: sc.team ?? team, quarter: sc.quarter, year: sc.year });
-  };
-
-  const sortedAssignments = useMemo(
-    () => (gantt ? sortAssignmentsByScenarioAssignee(gantt.assignments) : []),
-    [gantt],
-  );
-
-  // Название группы для каждой инициативы плана.
-  const sectionByItem = useMemo(
-    () =>
-      groupBySubgroup && subgroupOrder.length > 0
-        ? buildSectionByItem(sortedAssignments, subgroupNameById)
-        : undefined,
-    [groupBySubgroup, subgroupOrder, sortedAssignments, subgroupNameById],
-  );
-
-  const displayedAssignments = useMemo(
-    () =>
-      sectionByItem
-        ? sortBySection(sortedAssignments, sectionByItem, subgroupOrder)
-        : sortedAssignments,
-    [sortedAssignments, sectionByItem, subgroupOrder],
-  );
-
-  // Фильтр по людям: только их фазы и их брони в других командах.
-  const shownAssignments = useMemo(
-    () => filterByPeople(displayedAssignments, peopleFilter),
-    [displayedAssignments, peopleFilter],
-  );
-  const shownBookings = useMemo(
-    () => filterByPeople(gantt?.external_bookings ?? [], peopleFilter),
-    [gantt, peopleFilter],
-  );
-  const peopleOptions = useMemo(
-    () => (gantt?.employee_load ?? []).map(r => ({
-      value: r.employee_id,
-      label: r.is_borrowed
-        ? `${r.employee_name ?? '—'} · из ${r.borrowed_from ?? 'другой команды'}`
-        : (r.employee_name ?? '—'),
-    })),
-    [gantt],
-  );
-
-  const conflictAssignmentIds = useMemo(
-    () => (gantt ? gantt.conflicts.flatMap(c => (c.assignment_id ? [c.assignment_id] : [])) : []),
-    [gantt],
-  );
-
-  // Пересчёт плана пересоздаёт незакреплённые строки с новыми id. Держим
-  // логический ключ выбранной фазы и переезжаем на её новую строку, иначе
-  // панель остаётся с мёртвым id (404 на расчёте) и молча закрывается.
-  const selectedKeyRef = useRef<AssignmentKey | null>(null);
-
-  // Переезд по ключу — прямо в memo, а не в эффекте: иначе между «id устарел»
-  // и «id починен» проходит рендер с пустым выбором, и панель успевает
-  // закрыться и открыться заново (мигание после смены исполнителя).
-  const selectedAssignment = useMemo(() => {
-    if (!selectedAssignmentId) return null;
-    return (
-      sortedAssignments.find(a => a.id === selectedAssignmentId)
-      ?? findAssignmentByKey(sortedAssignments, selectedKeyRef.current)
-      ?? null
-    );
-  }, [sortedAssignments, selectedAssignmentId]);
-
-  useEffect(() => {
-    if (selectedAssignment) {
-      selectedKeyRef.current = {
-        backlog_item_id: selectedAssignment.backlog_item_id,
-        phase: selectedAssignment.phase,
-        part_number: selectedAssignment.part_number,
-      };
-      if (selectedAssignment.id !== selectedAssignmentId) setSelectedAssignmentId(selectedAssignment.id);
-      return;
-    }
-    if (!selectedAssignmentId) {
-      selectedKeyRef.current = null;
-      return;
-    }
-    setSelectedAssignmentId(null);  // фазы больше нет в плане — закрыть панель
-  }, [selectedAssignment, selectedAssignmentId]);
-
-  const handleToggleCollapse = (itemId: string, willCollapse: boolean) => {
-    const cur = prefs.collapsed_initiative_ids ?? [];
-    const next = willCollapse
-      ? Array.from(new Set([...cur, itemId]))
-      : cur.filter(x => x !== itemId);
-    patchPrefs({ collapsed_initiative_ids: next });
-  };
-
-  const currentScenarioId = planId
-    ? plans.find(p => p.id === planId)?.scenario_id ?? null
-    : null;
-
-  const scenarioOptions = groupScenarioOptions(approvedScenarios, selectedTeams);
 
   return (
     <div ref={pageRef} style={{ padding: '16px 24px', '--rp-anim-speed': `${appearanceSettings.animation_speed_seconds}s` } as React.CSSProperties}>
@@ -429,7 +139,7 @@ function ResourcePlanningPageInner() {
         {gantt?.plan.parent_plan_id && (
           <Button
             size="small"
-            onClick={() => navigate(`/resource-planning/compare?base=${gantt.plan.parent_plan_id}&scen=${planId}`)}
+            onClick={openCompare}
           >
             Сравнить с базовым
           </Button>
@@ -483,57 +193,7 @@ function ResourcePlanningPageInner() {
           <Popover
             trigger="click"
             placement="bottomRight"
-            content={
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 220 }}>
-                {viewMode === 'two-level' && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <Switch
-                      checked={prefs.hide_weekends}
-                      onChange={(v) => patchPrefs({ hide_weekends: v })}
-                      size="small"
-                    />
-                    Только рабочие дни
-                  </label>
-                )}
-                {viewMode !== 'resource-track' && layout === 'tasks' && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <Switch checked={showRelayArrows} onChange={setShowRelayArrows} size="small" />
-                    Стрелки эстафеты
-                  </label>
-                )}
-                {viewMode === 'two-level' && layout === 'tasks' && subgroupOrder.length > 0 && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <Switch checked={groupBySubgroup} onChange={setGroupBySubgroup} size="small" />
-                    Разбить по группам
-                  </label>
-                )}
-                {viewMode === 'two-level' && layout === 'tasks' && (
-                  <Button
-                    size="small"
-                    type={depDrawMode ? 'primary' : 'default'}
-                    danger={depDrawMode}
-                    onClick={() => setDepDrawMode(v => !v)}
-                  >
-                    {depDrawMode ? 'Выключить рисование связей' : 'Рисовать связи'}
-                  </Button>
-                )}
-                {viewMode === 'two-level' && layout === 'tasks' && gantt && (
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      const allIds = Array.from(new Set(gantt.assignments.map(a => a.backlog_item_id)));
-                      const allCollapsed = (prefs.collapsed_initiative_ids ?? []).length === allIds.length;
-                      patchPrefs({ collapsed_initiative_ids: allCollapsed ? [] : allIds });
-                    }}
-                  >
-                    {(prefs.collapsed_initiative_ids ?? []).length > 0 ? '↥ Развернуть все' : '↧ Свернуть все'}
-                  </Button>
-                )}
-                <Button size="small" icon={<BgColorsOutlined />} onClick={() => setAppearanceOpen(true)}>
-                  Цвета
-                </Button>
-              </div>
-            }
+            content={<RpViewOptions rp={rp} />}
           >
             <Badge dot={prefs.hide_weekends || depDrawMode || groupBySubgroup} offset={[-2, 2]}>
               <Button size="small" icon={<ControlOutlined />} data-tour="rp-view">
@@ -631,30 +291,10 @@ function ResourcePlanningPageInner() {
           sectionByItem={sectionByItem}
           subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
           collapsedSections={collapsedSections}
-          onToggleSection={(name, collapsed) =>
-            setCollapsedSections(prev =>
-              collapsed ? [...prev, name] : prev.filter(n => n !== name),
-            )
-          }
+          onToggleSection={toggleSection}
           onEmployeeRowClick={togglePerson}
-          onCreateDependency={(from, to) => {
-            createDep.mutate(
-              { planId, fromItemId: from, toItemId: to, depType: 'FS', lagDays: 0 },
-              {
-                onSuccess: () => message.success('Связь создана'),
-                onError: e => message.error((e as Error).message),
-              },
-            );
-          }}
-          onDeleteDependency={depId => {
-            deleteDep.mutate(
-              { planId, depId },
-              {
-                onSuccess: () => message.success('Связь удалена'),
-                onError: e => message.error((e as Error).message),
-              },
-            );
-          }}
+          onCreateDependency={createDependency}
+          onDeleteDependency={deleteDependency}
         />
       )}
 
@@ -685,53 +325,19 @@ function ResourcePlanningPageInner() {
         assignment={selectedAssignment}
         allAssignments={sortedAssignments}
         employees={candidateEmployees}
-        onChanged={() =>
-          planId ? invalidatePlanGantt(qc, planId) : Promise.resolve()
-        }
+        onChanged={refreshGantt}
       />
 
-      <ScheduledBlocksModal
-        open={blocksOpen}
-        onClose={() => setBlocksOpen(false)}
-        team={team || undefined}
-        members={blockMembers}
-      />
-
-      <Modal
-        open={forkModalOpen}
-        title="Сделать копию плана"
-        okText="Создать"
-        cancelText="Отмена"
-        onOk={async () => {
-          if (!planId) return;
-          try {
-            const newPlan = await forkMutation.mutateAsync({ planId, label: forkLabel || undefined });
-            setForkModalOpen(false);
-            setForkLabel('');
-            setPlanId(newPlan.id);
-            message.success('План скопирован');
-          } catch {
-            message.error('Ошибка создания копии');
-          }
-        }}
-        onCancel={() => { setForkModalOpen(false); setForkLabel(''); }}
-        confirmLoading={forkMutation.isPending}
-      >
-        <Input
-          placeholder="Метка сценария (например: «+1 разработчик»)"
-          value={forkLabel}
-          onChange={e => setForkLabel(e.target.value)}
-          autoFocus
-        />
-      </Modal>
-
-      <AppearanceModal
-        open={appearanceOpen}
-        current={appearanceSettings}
-        onClose={() => setAppearanceOpen(false)}
-      />
+      <ResourcePlanningDialogs rp={rp} />
     </div>
   );
+}
+
+function ResourcePlanningPageInner() {
+  const rp = useResourcePlanningPage();
+  const skin = useSkin();
+  if (skin === 'pult') return <PultResourcePlanningLayout rp={rp} />;
+  return <AuroraResourcePlanningLayout rp={rp} />;
 }
 
 export default function ResourcePlanningPage() {

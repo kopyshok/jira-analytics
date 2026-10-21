@@ -31,6 +31,7 @@ export function StatusCounters({
         return (
           <Tooltip key={status} title={`${status} · ${STATUS_GROUP_LABELS[group]}`}>
             <Tag
+              className={active ? 'td-status is-active' : 'td-status'}
               onClick={
                 onSelect
                   ? (e) => {
@@ -44,10 +45,10 @@ export function StatusCounters({
               style={{
                 marginInlineEnd: 0,
                 cursor: onSelect ? 'pointer' : undefined,
-                borderColor: active ? '#4ba3ff' : undefined,
-                outline: active ? '2px solid #4ba3ff' : undefined,
+                borderColor: active ? 'var(--td-sel-line, #4ba3ff)' : undefined,
+                outline: active ? '2px solid var(--td-sel-line, #4ba3ff)' : undefined,
                 fontWeight: active ? 700 : undefined,
-                background: active ? 'rgba(75,163,255,0.22)' : undefined,
+                background: active ? 'var(--td-sel-bg, rgba(75,163,255,0.22))' : undefined,
               }}
             >
               <span

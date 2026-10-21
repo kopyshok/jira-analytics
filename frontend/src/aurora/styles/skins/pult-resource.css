@@ -1,0 +1,443 @@
+/* ============================================================
+   «Пульт» · Ресурсное планирование (D-resource).
+   Цвета диаграммы/загрузки — через переменные --rp-* / --heat-*,
+   у которых в разметке стоят прежние значения Aurora (Aurora не меняется).
+   ============================================================ */
+html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
+  /* ---------- палитра диаграммы ---------- */
+  --text-primary: #1C1C1A;
+  --text-hint: #5C5A55;
+  --rp-bg: #FFFFFF;
+  --rp-panel-bg: #FFFFFF;
+  --rp-border: #CFCCC4;
+  --rp-line: #EEECE6;
+  --rp-line-soft: #E2E0DA;
+  --rp-divider: #CFCCC4;
+  --rp-divider-w: 1px;
+  --rp-init-bg: #EFEDE7;
+  --rp-init-bg-opaque: #EFEDE7;
+  --rp-pending-bg: #F9DFCB;
+  --rp-pending-bg-opaque: #F9DFCB;
+  --rp-section-bg: #E7E5E0;
+  --rp-text: #1C1C1A;
+  --rp-text-2: #3D3B37;
+  --rp-text-2b: #3D3B37;
+  --rp-muted: #5C5A55;
+  --rp-dim: #64615A;
+  --rp-dim2: #64615A;
+  --rp-prio-bg: #2B2B29;
+  --rp-prio-fg: #FFFFFF;
+  --rp-accent: #E8590C;
+  --rp-phase-dates: inline-block;
+  --rp-accent-text: #A93F0A;
+  --rp-cp-border: 2px solid #1C1C1A;
+  --rp-other-sub: #8E5BC2;
+  --rp-conflict-shadow: 0 0 0 2px #D9381E;
+  --rp-me-glow: none;
+  --rp-cp-glow: none;
+  --rp-pinned-outline: 2px dashed #1C1C1A;
+  --rp-bad: #D9381E;
+  --rp-bad-fill: #D9381E;
+  --rp-bad-text: #B92E17;
+  --rp-bad-text2: #B92E17;
+  --rp-ghost: #1C1C1A;
+  --rp-ooq: #6F6D67;
+  --rp-ooq-hatch: repeating-linear-gradient(45deg, rgba(111, 109, 103, 0.9) 0 1.4px, transparent 1.4px 6px);
+  --rp-busy-hatch: repeating-linear-gradient(45deg, #9A978F 0 2px, #FFFFFF 2px 5px);
+  --rp-absence-hatch: repeating-linear-gradient(45deg, rgba(28, 28, 26, 0.75) 0 1.6px, transparent 1.6px 5px);
+  --rp-holiday-hatch: repeating-linear-gradient(45deg, rgba(154, 151, 143, 0.85) 0 1.6px, transparent 1.6px 5px);
+  --rp-weekend-hatch: repeating-linear-gradient(45deg, rgba(28, 28, 26, 0.22) 0 1.4px, transparent 1.4px 5px);
+  --rp-hl-bg: #F9DFCB;
+  --rp-foreign-fg: #8F4A08;
+  --rp-foreign-line: #E6B98C;
+  --rp-borrowed-fg: #6B3FA0;
+  --rp-borrowed-bg: #EFE6F7;
+  --rp-borrowed-line: #C9B3E3;
+  --rp-booking-line: #9A978F;
+  --rp-booking-hatch: repeating-linear-gradient(45deg, #BDB9AF 0 2px, #F4F3EF 2px 5px);
+  --rp-warn-fg: #7E5800;
+  --rp-today: #E8590C;
+  --rp-draw-bg: #FBEDE3;
+  --rp-draw-line: #EFB48F;
+  --rp-draw-fg: #A93F0A;
+  --rp-head-bg: #E7E5E0;
+  --rp-head-bg2: #E7E5E0;
+  --rp-head-fg: #1C1C1A;
+  --rp-head-fg2: #1C1C1A;
+  --rp-head-line: #D6D3CB;
+  --rp-head-weekend-bg: #DEDBD4;
+  --rp-head-weekend-fg: #3D3B37;
+  --rp-head-holiday-bg: #F9DFCB;
+  --rp-head-holiday-fg: #A93F0A;
+  --rp-head-off-bg: #DEDBD4;
+  --rp-zone-holiday: #F7EFE7;
+  --rp-zone-weekend: #F6F5F2;
+  --rp-grid: #EEECE6;
+  --rp-grid-strong: #E2E0DA;
+  --rp-grid-faint: #F4F3EF;
+  --rp-block-hatch: repeating-linear-gradient(45deg, rgba(154, 151, 143, 0.28) 0 2px, transparent 2px 8px);
+  --rp-block-line: #BDB9AF;
+  --rp-block-fg: #5C5A55;
+  --rp-sticky-shadow: none;
+  --rp-track: #E7E5E0;
+  --rp-tip-bg: #2B2B29;
+  --rp-tip-line: #2B2B29;
+  --rp-tip-fg: #F4F3EF;
+  --rp-tip-shadow: none;
+  --rp-init-row-h: 24px;
+  --rp-phase-row-h: 24px;
+  --rp-lane-row-h: 22px;
+  /* загрузка по дням */
+  --heat-ext: #8E5BC2;
+  /* не серый: серым закрашен праздник, в легенде они должны различаться */
+  --heat-normed: #6E9E7E;
+  --heat-free: #FFFFFF;
+  --heat-absence: #2B2B29;
+  --heat-holiday: #9A978F;
+  --heat-out-of-team: repeating-linear-gradient(45deg, #E3A92A 0 2px, #FFFFFF 2px 5px);
+  --heat-row-alt: transparent;
+  --heat-label-alt: #FFFFFF;
+  --heat-role-fg: #5C5A55;
+  --heat-month-fg: #1C1C1A;
+  --heat-cell-h: 13px;
+  --heat-row-h: 20px;
+
+  /* ---------- раскладка экрана ---------- */
+  & .rp-pult .ant-alert { flex: none; padding: 6px 10px; }
+  & .rp-gantt-module { flex: 1 1 auto; }
+  &[data-detail-sheet] .rp-gantt-module { flex: 1 0 320px; }
+  & .rp-legend-hint { margin-left: auto; }
+  & .rp-bottom { flex: none; height: clamp(170px, 24vh, 236px); display: flex; gap: 10px; min-height: 0; }
+  & .rp-heat-module { flex: 1 1 auto; }
+
+  /* клавиши панели — в рост поля (30px), «Вид» — тёмная клавиша */
+  & .pc-panel .ant-btn-sm { height: 30px; padding: 0 12px; font-size: 13px; border-radius: 6px; }
+  & .pc-panel .ant-btn.is-key,
+  & .rp-heat-head .ant-btn {
+    background: var(--p-key) !important;
+    border-color: var(--p-key) !important;
+    color: #FFFFFF !important;
+  }
+  & .pc-panel .ant-btn.is-key:hover,
+  & .rp-heat-head .ant-btn:hover { background: var(--p-key-hover) !important; }
+  & .pc-accent-seg .ant-segmented-item { position: relative; }
+  & .pc-accent-seg .ant-segmented-item-selected::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 3px;
+    height: 2px;
+    background: var(--p-accent);
+  }
+
+  /* ---------- конфликты ---------- */
+  & .rp-conflicts { flex: none; }
+  & .rp-conf-counts { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+  & .rp-conf-none { font-size: 12px; color: var(--text-muted); }
+  & .rp-conf-strip { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: thin; }
+  & .rp-conf-card {
+    flex: 1 0 380px;
+    min-width: 0;
+    height: 36px;
+    box-sizing: border-box;
+    padding: 0 4px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--p-screen);
+    border: 1px solid var(--p-line-strong);
+    border-radius: 6px;
+    font-size: 12px;
+  }
+  & .rp-conf-card.is-link { cursor: pointer; }
+  & .rp-conf-card.is-link:hover { border-color: var(--p-key); }
+  & .rp-conf-type { font-weight: 600; white-space: nowrap; }
+  & .rp-conf-msg { flex: 1; min-width: 0; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  & .rp-conf-status { flex: none; }
+  & .rp-conf-more {
+    flex: none;
+    width: 22px;
+    height: 24px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  & .rp-conf-more:hover { border-color: var(--p-line-strong); }
+  & .rp-conf-details { max-height: 260px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+  & .rp-conf-group { display: flex; flex-direction: column; gap: 6px; }
+
+  /* ---------- диаграмма Ганта ---------- */
+  & .rp-gantt-screen { position: relative; }
+  & .rp-gantt-screen .rp-sticky-header-track,
+  & .rp-gantt-screen [data-tour="rp-gantt"] { border: 0 !important; border-radius: 0 !important; }
+  & .rp-gantt-screen .rp-timeline-head { font-family: var(--font-mono); border-bottom-color: var(--p-line-strong) !important; }
+  & .rp-gantt-screen .rp-timeline-head > div:first-child > div:last-child > div {
+    justify-content: flex-start !important;
+    padding-left: 4px;
+    font-size: 10px !important;
+    letter-spacing: 0.12em !important;
+    border-right-color: var(--p-line) !important;
+  }
+  & .rp-gantt-screen .rp-timeline-head > div:last-child > div:last-child > div {
+    justify-content: flex-start !important;
+    padding-left: 4px;
+    border-right-color: var(--rp-head-line) !important;
+  }
+  & .rp-head-corner {
+    display: flex;
+    align-items: flex-end;
+    padding: 0 8px 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  /* строки: инициатива — серая плашка, фаза — белая, одна строка текста */
+  & .rp-cell {
+    padding: 0 8px !important;
+    font-size: 12px !important;
+    grid-template-columns: minmax(0, 1fr) 140px !important;
+    box-shadow: 0 1px 0 0 var(--rp-line) !important;
+    border-right-color: var(--p-line) !important;
+  }
+  & .rp-cell-phase { padding-left: 30px !important; font-size: 11px !important; font-weight: 400 !important; }
+  & .rp-cell-title {
+    display: block !important;
+    -webkit-line-clamp: unset !important;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    font-size: inherit !important;
+    line-height: 22px !important;
+  }
+  & .rp-cell-title > span { color: var(--text-muted) !important; font-size: 11px !important; font-family: var(--font-mono); }
+  & .rp-cell-main { gap: 0 !important; }
+  & .rp-cell-main > div { align-items: center !important; }
+  & .rp-cell-main > div > span[style*="margin-top"] { margin-top: 0 !important; }
+  & .rp-cell-init .rp-cell-main { flex-direction: row !important; align-items: center; gap: 6px !important; }
+  & .rp-cell-init .rp-cell-main > div:last-child { flex: 1; min-width: 0; }
+  & .rp-cell-init .rp-cell-main a {
+    font-family: var(--font-mono);
+    font-size: 11px !important;
+    font-weight: 600;
+    color: var(--text) !important;
+    letter-spacing: 0 !important;
+    white-space: nowrap;
+  }
+  & .rp-cell-init [title^="Приоритет"] {
+    font-family: var(--font-mono);
+    font-size: 9px !important;
+    padding: 1px 4px !important;
+    line-height: 12px !important;
+    min-width: 0 !important;
+  }
+  & .rp-cell-assignee { font-size: 11px !important; color: var(--text-2) !important; }
+  & .rp-cell-assignee > span { padding: 0 4px !important; }
+  /* сроки фазы справа в строке, как на макете: «01.10–16.10» */
+  & .rp-cell-assignee:has(.rp-phase-dates) { display: flex; align-items: center; gap: 6px; }
+  & .rp-cell-assignee:has(.rp-phase-dates) > span:first-child { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+  & .rp-cell-assignee .rp-phase-dates { margin-left: auto; padding: 0 !important; font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); flex: none; }
+  & .rp-gantt-screen button[aria-label^="Развернуть"],
+  & .rp-gantt-screen button[aria-label^="Свернуть"] { color: var(--text) !important; font-size: 9px !important; }
+  /* полосы фаз: подпись моноширинным, слева */
+  & .rp-bar { justify-content: flex-start !important; }
+  & .rp-bar-label {
+    position: relative;
+    z-index: 6;
+    max-width: 100%;
+    padding: 0 5px;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 18px;
+    pointer-events: none;
+  }
+  /* фаза, открытая в панели подробностей */
+  & .rp-bar.rp-bar-selected { z-index: 7 !important; outline: 2px solid var(--p-accent) !important; outline-offset: 1px; }
+  /* сводная полоса инициативы — тонкая серая шкала вместо скобки */
+  & .rp-init-span {
+    top: 14px !important;
+    height: 5px !important;
+    transform: none !important;
+    background: #9A978F !important;
+    opacity: 1 !important;
+  }
+  & .rp-init-span > * { display: none !important; }
+  /* сегодня: оранжевая черта с биркой */
+  & .rp-today::before {
+    content: attr(data-label);
+    position: absolute;
+    top: 0;
+    left: 2px;
+    padding: 1px 4px;
+    background: var(--p-accent);
+    color: #1C1C1A;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 10px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  & .rp-gantt-module .pm-legend .lg-conflict { background: #2F6FDE; border: 2px solid #D9381E; }
+  & .rp-gantt-module .pm-legend .lg-cp { background: #2F6FDE; border: 2px solid #1C1C1A; }
+  & .rp-gantt-module .pm-legend .lg-pinned { border: 2px dashed #1C1C1A; }
+  & .rp-gantt-module .pm-legend .lg-ooq { background: repeating-linear-gradient(45deg, #6F6D67 0 1.4px, transparent 1.4px 4px); }
+  & .rp-gantt-module .pm-legend .lg-absence { background: repeating-linear-gradient(45deg, #1C1C1A 0 1.4px, transparent 1.4px 4px); }
+
+  /* ---------- назначение (встроенная панель) ---------- */
+  & .rp-assign-docked { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+  & .rp-assign-head { font-size: 13px; font-weight: 600; }
+  & .rp-assign-head .ant-space { flex-wrap: wrap; }
+  & .rp-assign-docked h5.ant-typography { font-size: 13px !important; margin: 0 !important; line-height: 1.25; }
+  & .rp-assign-docked .ant-divider { margin: 6px 0 !important; }
+  & .rp-assign-docked .ant-divider-with-text { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+  & .rp-assign-docked .ant-descriptions-item-label {
+    font-family: var(--font-mono);
+    font-size: 10px !important;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted) !important;
+    padding-bottom: 3px !important;
+  }
+  & .rp-assign-docked .ant-descriptions-item-label::after { display: none; }
+  & .rp-assign-docked .ant-descriptions-row > td { padding-bottom: 8px !important; padding-inline-end: 8px !important; vertical-align: top; }
+  & .rp-assign-docked .ant-descriptions-item-content { display: block !important; font-family: var(--font-mono); font-size: 12px; }
+  & .rp-assign-docked .ant-descriptions-item-content .ant-typography-secondary { font-family: var(--font-body); font-size: 11px !important; }
+  & .rp-assign-docked .ant-descriptions-item-content .ant-select,
+  & .rp-assign-docked .ant-descriptions-item-content .ant-picker { width: 100% !important; font-family: var(--font-body); }
+  & .rp-assign-docked .ant-btn-block { justify-content: flex-start; }
+
+  /* ---------- назначение в панели подробностей: колонки-модули ---------- */
+  & .rp-assign-cols { display: grid; gap: 10px; align-items: start; }
+  & .rp-assign-cols.is-c1 { grid-template-columns: minmax(0, 1fr); }
+  & .rp-assign-cols.is-c2 { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr); }
+  & .rp-assign-cols.is-c3 { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.3fr) minmax(0, 1fr); }
+  & .rp-assign-cols.is-c4 { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
+  & .rp-assign-col {
+    min-width: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px 10px;
+    background: var(--p-module);
+    border: 1px solid var(--p-line);
+    border-radius: 8px;
+  }
+  & .rp-assign-col > .ant-divider:first-child { margin-top: 0 !important; }
+  /* секции: подпись — как подпись модуля, содержимое — без отступа слева */
+  & .rp-assign-cols .ant-collapse-header {
+    padding: 6px 0 !important;
+    align-items: center !important;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted) !important;
+  }
+  & .rp-assign-cols .ant-collapse-content-box { padding: 2px 0 8px !important; }
+  & .rp-assign-cols .ant-collapse-item + .ant-collapse-item,
+  & .rp-assign-cols .ant-collapse + .ant-collapse { border-top: 1px solid var(--p-line-soft); }
+  /* все секции развёрнуты: подпись не сворачивает */
+  & .rp-assign-cols:is(.is-c3, .is-c4) .ant-collapse-header { pointer-events: none; cursor: default; }
+  & .rp-assign-cols:is(.is-c3, .is-c4) .ant-collapse-expand-icon { display: none !important; }
+  & .rp-assign-cols .ant-table-wrapper { max-width: 100%; overflow-x: auto; }
+  & .rp-assign-cols .ant-table-wrapper .ant-table { background: var(--p-screen); }
+  & .rp-assign-cols .ant-statistic-content { font-size: 18px !important; font-family: var(--font-mono); }
+  & .rp-assign-cols .ant-statistic-title { font-size: 10px !important; }
+
+  /* ---------- загрузка по дням ---------- */
+  & .rp-heatmap.is-docked { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 5px; }
+  & .rp-heatmap.is-docked .rp-heat-head { margin-bottom: 0 !important; gap: 12px; min-height: 18px; }
+  & .rp-heatmap.is-docked .rp-heat-head .ant-btn { height: 24px; font-size: 12px; }
+  & .rp-heatmap.is-docked .rp-heat-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto !important;
+    background: var(--p-screen);
+    border: 1px solid var(--p-line-strong);
+    border-radius: 6px;
+    padding: 4px 8px;
+  }
+  & .rp-heatmap.is-docked .rp-heat-scroll span[role="button"],
+  & .rp-heatmap.is-docked .rp-heat-scroll span[aria-pressed] { font-size: 12px; }
+  & .rp-heatmap.is-docked [data-testid="rp-load-pct"],
+  & .rp-heatmap.is-docked [data-testid="rp-watch-pct"] {
+    font-family: var(--font-mono);
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    border-radius: 3px !important;
+  }
+  & .rp-heat-legend { margin-top: 0 !important; gap: 12px !important; }
+  & .rp-heat-legend > span { color: var(--text-muted) !important; }
+  & .rp-heat-legend > span:first-child { font-family: var(--font-mono); font-weight: 400 !important; letter-spacing: 0.12em !important; font-size: 9px !important; }
+  & .rp-heat-legend > span > span { border-radius: 0 !important; width: 12px !important; height: 10px !important; }
+
+  /* ---------- нормированные работы: строка-итог на странице, таблица — в панели ---------- */
+  & .rp-reserve-sum { flex: 0 0 270px; }
+  & .rp-reserve-sum .pm-cap { white-space: normal; line-height: 14px; }
+  & .rp-rs-figs { flex: none; margin: 0; padding: 4px 10px; display: flex; flex-direction: column; overflow: visible; }
+  & .rp-rs-figs > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 3px 0; }
+  & .rp-rs-figs > div + div { border-top: 1px solid var(--p-line-soft); }
+  & .rp-rs-figs dt { font-size: 12px; color: var(--text-2); }
+  & .rp-rs-figs dd { margin: 0; font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  & .rp-rs-foot { margin-top: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  & .rp-rs-over { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: #B92E17; }
+  & .rp-rs-ok { font-size: 11px; color: var(--text-muted); }
+  & .rp-rs-more { margin-left: auto; height: 26px; }
+  & .rp-reserve-sheet .rp-reserve-module { padding: 8px 10px 10px; }
+  & .rp-reserve-sheet .rp-reserve-screen { flex: none; overflow: visible; }
+  & .rp-reserve-screen { padding: 0; }
+  & .rp-reserve.is-docked { font-size: 12px; }
+  & .rp-reserve.is-docked table { font-size: 12px; }
+  & .rp-reserve.is-docked col:nth-child(2) { width: 140px !important; }
+  & .rp-reserve.is-docked col:nth-child(3) { width: min(420px, 40%) !important; }
+  & .rp-reserve.is-docked col:nth-child(4) { width: 160px !important; }
+  & .rp-reserve.is-docked th {
+    height: 28px;
+    padding: 0 12px !important;
+    background: var(--p-body);
+    font-family: var(--font-mono);
+    font-size: 10px !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted) !important;
+    border-bottom: 1px solid var(--p-line-strong) !important;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  & .rp-reserve.is-docked td { padding: 7px 12px !important; color: var(--text) !important; }
+  & .rp-reserve.is-docked td:nth-child(2),
+  & .rp-reserve.is-docked td:nth-child(3),
+  & .rp-reserve.is-docked td:nth-child(4) { font-family: var(--font-mono); }
+  & .rp-reserve.is-docked td[colspan="4"] { font-family: var(--font-mono); letter-spacing: 0.12em !important; font-weight: 400 !important; color: var(--text-muted) !important; }
+  /* раскрытая строка вида работ (задачи других команд) — обычный текст, не подпись роли */
+  & .rp-reserve.is-docked td[colspan="4"]:has(> div) { font-family: var(--font-body); letter-spacing: 0 !important; color: var(--text) !important; }
+  & .rp-reserve.is-docked td[colspan="4"]:has(> div) .ant-typography { font-family: var(--font-mono); }
+  & .rp-reserve-over { padding: 6px 8px 0; font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: #B92E17; letter-spacing: 0.04em; }
+  & .rp-reserve-scenario { padding: 6px 8px 0; margin-bottom: 4px !important; }
+}
+
+@media (max-width: 1100px) {
+  html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
+    & .rp-bottom { flex-direction: column; height: auto; }
+    & .rp-gantt-module { min-height: 480px; }
+    & .rp-heat-module { min-height: 240px; }
+    & .rp-reserve-sum { flex-basis: auto; }
+  }
+}

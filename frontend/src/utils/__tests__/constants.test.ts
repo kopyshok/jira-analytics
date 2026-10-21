@@ -17,9 +17,17 @@ describe('APP_THEMES Aurora', () => {
     expect(APP_THEMES['aurora-light'].tokens.primary).toBe('#3b6ef5');
   });
 
-  it('AppTheme union — только две темы Aurora', () => {
-    const themes: AppTheme[] = ['aurora-dark', 'aurora-light'];
-    expect(themes).toHaveLength(2);
-    expect(Object.keys(APP_THEMES)).toEqual(['aurora-dark', 'aurora-light']);
+  it('pult-light — обложка «Пульт» поверх Aurora light', () => {
+    expect(APP_THEMES['pult-light'].label).toBe('Пульт');
+    expect(APP_THEMES['pult-light'].skin).toBe('pult');
+    expect(APP_THEMES['pult-light'].tokens.primary).toBe('#E8590C');
+    expect(APP_THEMES['aurora-dark'].skin).toBeUndefined();
+    expect(APP_THEMES['aurora-light'].skin).toBeUndefined();
+  });
+
+  it('AppTheme union — две темы Aurora и обложка «Пульт»', () => {
+    const themes: AppTheme[] = ['aurora-dark', 'aurora-light', 'pult-light'];
+    expect(themes).toHaveLength(3);
+    expect(Object.keys(APP_THEMES)).toEqual(['aurora-dark', 'aurora-light', 'pult-light']);
   });
 });

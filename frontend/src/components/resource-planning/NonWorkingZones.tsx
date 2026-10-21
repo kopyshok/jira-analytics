@@ -60,8 +60,8 @@ export default function NonWorkingZones({ timeline, calendar, scale, hideInWeekM
             bottom: 0,
             background:
               s.kind === 'holiday'
-                ? 'rgba(232, 134, 74, 0.10)'
-                : 'rgba(120, 145, 180, 0.075)',
+                ? 'var(--rp-zone-holiday, rgba(232, 134, 74, 0.10))'
+                : 'var(--rp-zone-weekend, rgba(120, 145, 180, 0.075))',
             zIndex: 0,
             pointerEvents: 'none',
           }}

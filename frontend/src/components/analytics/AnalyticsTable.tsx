@@ -14,11 +14,13 @@ import type {
   AnalyticsIssueNode,
 } from '../../types/api';
 import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
-import { useAnalyticsLayout } from '../../hooks/useAnalyticsLayout';
+import { treeLevels, useAnalyticsLayout } from '../../hooks/useAnalyticsLayout';
 import type { AnalyticsLevel } from '../../hooks/useAnalyticsLayout';
 import { statusTagColor } from '../../utils/status';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
 import AnalyticsIssueDrawer from './AnalyticsIssueDrawer';
+import { currentSkin } from '../../utils/constants';
+import { readableInk, readablePair } from '../../utils/readableColor';
 
 type RowKind = 'team' | 'role' | 'emp' | 'wt' | 'cat' | 'issue' | 'worklog-block';
 
@@ -65,9 +67,20 @@ function indent(depth: number, content: React.ReactNode): React.ReactNode {
 
 function pctColor(pct: number | null | undefined): string | undefined {
   if (pct == null) return undefined;
+  // Обложка на светлом фоне: те же сигналы, но читаемые (контраст ≥ 4.5:1).
+  if (currentSkin()) {
+    if (pct > 110) return '#B92E17';
+    if (pct >= 70) return '#7E5800';
+    return '#237A45';
+  }
   if (pct > 110) return '#ff4d4f';
   if (pct >= 70) return '#faad14';
   return '#67d68d';
+}
+
+/** Цвет справочника (роль, команда) для текста: в обложке — затемнённый до читаемого. */
+function inkOf(color: string): string {
+  return currentSkin() && color.startsWith('#') ? readableInk(color) : color;
 }
 
 function stripKeyPrefix(summary: string, key: string): string {
@@ -149,7 +162,7 @@ function buildIssueNode(
             issueKey={i.key}
             onClick={(e) => e.stopPropagation()}
             style={{
-              color: 'var(--accent-1, #22d3ee)',
+              color: 'var(--an-key, var(--accent-1, #22d3ee))',
               textDecoration: 'underline',
               fontWeight: 600,
               flexShrink: 0,
@@ -220,7 +233,7 @@ function buildIssueNode(
                 flexShrink: 0,
               }}
             />
-            <span>Команда: <span style={{ color: teamColor(i.team) }}>{i.team}</span></span>
+            <span>Команда: <span style={{ color: inkOf(teamColor(i.team)) }}>{i.team}</span></span>
           </div>
         )}
       </div>,
@@ -282,9 +295,9 @@ function ForeignChip({ totals }: { totals: NodeTotals }) {
           borderRadius: 999,
           fontSize: 11,
           fontWeight: 600,
-          background: 'rgba(255, 156, 74, 0.12)',
-          color: '#ff9c4a',
-          border: '1px solid rgba(255, 156, 74, 0.35)',
+          background: 'var(--an-foreign-bg, rgba(255, 156, 74, 0.12))',
+          color: 'var(--an-foreign-fg, #ff9c4a)',
+          border: '1px solid var(--an-foreign-line, rgba(255, 156, 74, 0.35))',
         }}
       >
         ⚠ {totals.foreign_issue_count} · {totals.foreign_hours.toFixed(0)}ч · {totals.foreign_pct.toFixed(0)}%
@@ -523,13 +536,15 @@ function buildTreeFromLayout(
                 flexShrink: 0,
               }}
             />
-            <span style={{ color: row.role_color, fontWeight: 600 }}>
+            <span style={{ color: inkOf(row.role_color), fontWeight: 600 }}>
               {row.role_label}
             </span>
           </span>,
         );
       case 'employee': {
         const initials = row.employee_initials || initialsOf(row.employee_name);
+        // В обложке — светлая подложка и тёмные инициалы того же оттенка.
+        const avatar = currentSkin() ? readablePair(row.role_color) : null;
         return indent(
           depth,
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -541,8 +556,9 @@ function buildTreeFromLayout(
                 width: 22,
                 height: 22,
                 borderRadius: '50%',
-                background: row.role_color,
-                color: '#fff',
+                background: avatar ? avatar.bg : row.role_color,
+                color: avatar ? avatar.fg : '#fff',
+                boxShadow: avatar ? `inset 0 0 0 1px ${avatar.border}` : undefined,
                 fontSize: 10,
                 fontWeight: 700,
                 flexShrink: 0,
@@ -581,7 +597,7 @@ function buildTreeFromLayout(
                   type="link"
                   size="small"
                   icon={<ArrowRightOutlined />}
-                  style={{ padding: '0 2px', height: 'auto', color: 'var(--accent-1, #00c9c8)', marginLeft: 2 }}
+                  style={{ padding: '0 2px', height: 'auto', color: 'var(--an-link, var(--accent-1, #00c9c8))', marginLeft: 2 }}
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate(thematicUrl);
@@ -693,6 +709,10 @@ interface Props {
   worklogMode: 'inline' | 'drawer';
   periodStart: string;
   periodEnd: string;
+  /** Карточку задачи показывает раскладка (обложка, встроенная панель), а не своя выезжающая. */
+  onOpenIssue?: (issue: { id: string; key: string }) => void;
+  /** Выбранная задача — подсветить строку. */
+  selectedIssueId?: string | null;
 }
 
 export default function AnalyticsTable({
@@ -701,6 +721,8 @@ export default function AnalyticsTable({
   worklogMode,
   periodStart,
   periodEnd,
+  onOpenIssue,
+  selectedIssueId,
 }: Props) {
   const { visible } = useAnalyticsColumns();
   const visibleSet = new Set(visible);
@@ -756,15 +778,7 @@ export default function AnalyticsTable({
     };
   }, [data, selectedTeam]);
 
-  const layout = useMemo(() => {
-    let levels = resolved.visibleLevels;
-    if (selectedTeam !== 'all') {
-      // when a single team is selected, drop 'team' from grouping (single value anyway)
-      levels = levels.filter((l) => l !== 'team');
-    }
-    if (!levels.includes('issue')) levels = [...levels, 'issue'];
-    return levels;
-  }, [resolved.visibleLevels, selectedTeam]);
+  const layout = useMemo(() => treeLevels(resolved.visibleLevels, selectedTeam), [resolved.visibleLevels, selectedTeam]);
 
   const tableData: TreeNode[] = useMemo(
     () =>
@@ -930,6 +944,7 @@ export default function AnalyticsTable({
           const cls = [`tree-row-depth-${record.depth}`];
           if (record.children && record.children.length > 0)
             cls.push('tree-row-has-children');
+          if (selectedIssueId && record.issueId === selectedIssueId) cls.push('tree-row-selected');
           return cls.join(' ');
         }}
         expandable={{
@@ -944,20 +959,23 @@ export default function AnalyticsTable({
           && record.issueId
           && !(record.children?.length)
             ? {
-                onClick: () =>
-                  setDrawerIssue({ id: record.issueId!, key: record.issueKey! }),
+                onClick: () => {
+                  const issue = { id: record.issueId!, key: record.issueKey! };
+                  if (onOpenIssue) onOpenIssue(issue);
+                  else setDrawerIssue(issue);
+                },
                 style: { cursor: 'pointer' },
               }
             : {}
         }
       />
-      <AnalyticsIssueDrawer
+      {!onOpenIssue && <AnalyticsIssueDrawer
         issueId={drawerIssue?.id ?? null}
         issueKey={drawerIssue?.key ?? null}
         periodStart={periodStart}
         periodEnd={periodEnd}
         onClose={() => setDrawerIssue(null)}
-      />
+      />}
     </>
   );
 }

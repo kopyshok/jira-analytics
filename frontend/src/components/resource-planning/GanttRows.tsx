@@ -18,6 +18,8 @@ import { useRpPreferences } from '../../hooks/useRpPreferences';
 import { computeFillGradientAlphas } from './appearanceGradient';
 import JiraIssueLink from '../shared/JiraIssueLink';
 import { plural } from '../../utils/plural';
+import { useSkin } from '../../contexts/ThemeContext';
+import { textOnFill } from '../../utils/readableColor';
 
 export type ViewMode = 'portfolio' | 'two-level' | 'resource-track' | 'plane';
 
@@ -40,6 +42,8 @@ interface Props {
   onToggleCollapse?: (itemId: string, collapsed: boolean) => void;
   conflictAssignmentIds?: string[];
   onAssignmentClick?: (assignmentId: string) => void;
+  /** Фаза, открытая в панели подробностей, — полоса выделена. */
+  selectedAssignmentId?: string | null;
   highlightedEmployeeId?: string | null;
   /** Приглушать полосы остальных людей при подсветке (не при фильтре по людям). */
   fadeOthers?: boolean;
@@ -84,15 +88,15 @@ const trackStyle = (trackWidthPx?: number): React.CSSProperties =>
 
 const ROW_HEIGHT = 36;
 const ROW_BG = 'transparent';
-const INIT_HEADER_BG = 'rgba(0,201,200,0.20)';
-const INIT_PENDING_BG = 'rgba(255,122,69,0.22)';
-const INIT_DIVIDER = '2px solid #066770';
-const SECTION_BG = 'rgba(6, 103, 112, 0.22)';
+const INIT_HEADER_BG = 'var(--rp-init-bg, rgba(0,201,200,0.20))';
+const INIT_PENDING_BG = 'var(--rp-pending-bg, rgba(255,122,69,0.22))';
+const INIT_DIVIDER = 'var(--rp-divider-w, 2px) solid var(--rp-divider, #066770)';
+const SECTION_BG = 'var(--rp-section-bg, rgba(6, 103, 112, 0.22))';
 // Opaque blends of INIT_HEADER_BG / INIT_PENDING_BG over pageBg #0d1c33 — used on
 // sticky left-column wrappers so absolute bars/markers don't bleed through during horizontal scroll.
 // Must visually match the translucent tints above when rendered over #0d1c33.
-const INIT_HEADER_BG_OPAQUE = '#0a3f51';
-const PENDING_FROM_BG_OPAQUE = '#423137';
+const INIT_HEADER_BG_OPAQUE = 'var(--rp-init-bg-opaque, #0a3f51)';
+const PENDING_FROM_BG_OPAQUE = 'var(--rp-pending-bg-opaque, #423137)';
 // Sticky left-column z-index must exceed overlay layers (today marker z=20, OoQ divider z=19).
 const STICKY_CELL_Z = 25;
 const STICKY_INIT_Z = 26;
@@ -108,7 +112,7 @@ const DEV_ROLE_CODES = new Set(['разработчик', 'developer', 'dev', '�
 
 function ItemTitleCell({
   title, jiraKey, priority, leftColWidth, fontWeight = 600,
-  dotColor, assignee, hours, bg = '#0a1628',
+  dotColor, assignee, hours, bg = 'var(--rp-bg, #0a1628)',
 }: {
   title: string; jiraKey: string | null; priority?: number | null;
   leftColWidth: number; fontWeight?: number;
@@ -118,6 +122,7 @@ function ItemTitleCell({
 }) {
   const titleNode = (
     <span
+      className="rp-cell-title"
       style={{
         fontSize: 13,
         lineHeight: 1.3,
@@ -137,11 +142,11 @@ function ItemTitleCell({
     </span>
   );
   return (
-    <div style={{
+    <div className={jiraKey ? 'rp-cell rp-cell-init' : 'rp-cell rp-cell-phase'} style={{
       width: leftColWidth,
       boxSizing: 'border-box',
       flexShrink: 0,
-      borderRight: '1px solid #1e3a5f',
+      borderRight: '1px solid var(--rp-border, #1e3a5f)',
       display: 'grid',
       gridTemplateColumns: 'minmax(0, 1fr) 160px',
       columnGap: 8,
@@ -149,7 +154,7 @@ function ItemTitleCell({
       padding: '6px 12px',
       fontSize: 13,
       fontWeight,
-      color: '#fff',
+      color: 'var(--rp-text, #fff)',
       overflow: 'hidden',
       position: 'sticky',
       left: 0,
@@ -158,9 +163,9 @@ function ItemTitleCell({
       // Extend opaque coverage below cell to cover SVG arrows (z=10) in row gaps.
       // 1px = subrow borderBottom (#0e2540); +2px = init divider (#066770) for last subrow before next initiative.
       // Middle subrows: next subrow's sticky cell (z=25, after in DOM) overlays the extra 2px → no visual bleed.
-      boxShadow: '0 1px 0 0 #0e2540, 0 3px 0 0 #066770',
+      boxShadow: '0 1px 0 0 var(--rp-line, #0e2540), 0 3px 0 0 var(--rp-divider, #066770)',
     }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
+      <div className="rp-cell-main" style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
         {jiraKey && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {priority != null && (
@@ -169,8 +174,8 @@ function ItemTitleCell({
                 style={{
                   fontSize: 10,
                   fontWeight: 700,
-                  color: '#0d1c33',
-                  background: '#00c9c8',
+                  color: 'var(--rp-prio-fg, #0d1c33)',
+                  background: 'var(--rp-prio-bg, #00c9c8)',
                   borderRadius: 3,
                   padding: '0 5px',
                   minWidth: 16,
@@ -206,7 +211,7 @@ function ItemTitleCell({
           {titleNode}
         </div>
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted, #8ab0d8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div className="rp-cell-assignee" style={{ fontSize: 11, color: 'var(--text-muted, #8ab0d8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {assignee ?? ''}
       </div>
     </div>
@@ -232,20 +237,20 @@ function PersonPhaseCell({
         width: leftColWidth,
         boxSizing: 'border-box',
         flexShrink: 0,
-        borderRight: '1px solid #1e3a5f',
+        borderRight: '1px solid var(--rp-border, #1e3a5f)',
         display: 'flex',
         alignItems: 'center',
         gap: 6,
         padding: '0 12px 0 24px',
         fontSize: 12,
-        color: '#fff',
+        color: 'var(--rp-text, #fff)',
         overflow: 'hidden',
         whiteSpace: 'nowrap',
         position: 'sticky',
         left: 0,
         zIndex: STICKY_CELL_Z,
-        background: '#0a1628',
-        boxShadow: '0 1px 0 0 #0e2540',
+        background: 'var(--rp-bg, #0a1628)',
+        boxShadow: '0 1px 0 0 var(--rp-line, #0e2540)',
       }}
     >
       <span style={{ width: 8, height: 8, borderRadius: 2, background: dotColor, flexShrink: 0 }} />
@@ -296,7 +301,7 @@ function PortfolioRows({ assignments, timeline, leftColWidth, trackWidthPx, rowR
           style={{
             display: 'flex',
             minHeight: ROW_HEIGHT,
-            borderBottom: '1px solid #0e2540',
+            borderBottom: '1px solid var(--rp-line, #0e2540)',
             background: ROW_BG,
           }}
         >
@@ -335,7 +340,7 @@ function PortfolioRows({ assignments, timeline, leftColWidth, trackWidthPx, rowR
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
                     cursor: a.phase === 'qa' ? 'default' : 'pointer',
-                    outline: a.is_pinned ? '1px solid #00c9c8' : 'none',
+                    outline: a.is_pinned ? 'var(--rp-pinned-outline, 1px solid #00c9c8)' : 'none',
                     gap: 4,
                   }}
                 >
@@ -365,6 +370,8 @@ interface PhaseBarProps {
   hasConflict?: boolean;
   dimmed?: boolean;
   onClick?: () => void;
+  /** Фаза открыта в панели подробностей. */
+  selected?: boolean;
   unavailableDays?: Array<{ date: string; type: 'weekend' | 'holiday' | 'absence' | 'block' }>;
   highlightedEmployeeId?: string | null;
   /** Приглушать полосу, если она не подсвеченного человека. */
@@ -379,8 +386,9 @@ interface PhaseBarProps {
   dragLocked?: boolean;
 }
 
-function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, fadeOthers, pulseEmp, pulseCp, quarterEndDate, busyDays, dragLocked }: PhaseBarProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, hasConflict, dimmed, onClick, selected, unavailableDays, highlightedEmployeeId, fadeOthers, pulseEmp, pulseCp, quarterEndDate, busyDays, dragLocked }: PhaseBarProps) {
   const { message } = App.useApp();
+  const skin = useSkin();
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
     startClientX: number;
@@ -490,6 +498,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
   const barClassName = [
     isMe && pulseEmp ? 'rp-bar-emp-highlighted' : '',
     assignment.is_on_critical_path && pulseCp ? 'rp-bar-critical' : '',
+    selected ? 'rp-bar-selected' : '',
   ].filter(Boolean).join(' ');
 
   const bar = (
@@ -513,7 +522,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         }
       }}
       title={`${PHASE_LABELS[assignment.phase]} — ${assignment.hours_allocated?.toFixed(0)}ч${otherSubgroupHint(assignment)}`}
-      className={barClassName || undefined}
+      className={['rp-bar', barClassName].filter(Boolean).join(' ')}
       style={{
         position: 'absolute',
         left: `${left}%`,
@@ -525,18 +534,18 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         opacity: effectiveDimmed ? 0.12 : 1,
         borderRadius: 3,
         border: assignment.is_on_critical_path
-          ? '1px solid #e85d4a'
+          ? 'var(--rp-cp-border, 1px solid #e85d4a)'
           : assignment.other_subgroup
-            ? '1px dashed #a78bfa'
+            ? '1px dashed var(--rp-other-sub, #a78bfa)'
             : 'none',
         boxShadow: hasConflict
-          ? 'inset 0 0 0 2px #ef4444'
+          ? 'var(--rp-conflict-shadow, inset 0 0 0 2px #ef4444)'
           : isMe
-            ? '0 0 8px rgba(0,201,200,0.7)'
+            ? 'var(--rp-me-glow, 0 0 8px rgba(0,201,200,0.7))'
             : (assignment.is_on_critical_path && !pulseCp)
-              ? '0 0 6px rgba(232,93,74,0.5)'
+              ? 'var(--rp-cp-glow, 0 0 6px rgba(232,93,74,0.5))'
               : 'none',
-        outline: isMe ? '2px solid #00c9c8' : (assignment.is_pinned ? '1px solid #00c9c8' : 'none'),
+        outline: isMe ? '2px solid var(--rp-accent, #00c9c8)' : (assignment.is_pinned ? 'var(--rp-pinned-outline, 1px solid #00c9c8)' : 'none'),
         zIndex: 2,
         cursor: assignment.phase === 'qa' ? 'default' : dragLocked ? 'progress' : 'grab',
         display: 'flex',
@@ -553,7 +562,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
             top: 0,
             bottom: 0,
             width: `${factPct * 100}%`,
-            background: 'rgba(255,255,255,0.30)',
+            background: 'var(--rp-fact, rgba(255,255,255,0.30))',
             borderRadius: '3px 0 0 3px',
             pointerEvents: 'none',
             zIndex: 1,
@@ -565,7 +574,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
           style={{
             position: 'absolute',
             inset: 0,
-            border: '1.5px solid #ef4444',
+            border: '1.5px solid var(--rp-bad, #ef4444)',
             borderRadius: 3,
             pointerEvents: 'none',
             zIndex: 2,
@@ -608,6 +617,12 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
           timeline={timeline}
         />
       )}
+      {/* Обложка подписывает полосу: исполнитель и часы (как на шкале прибора). */}
+      {skin && (
+        <span className="rp-bar-label" style={{ color: textOnFill(color) }}>
+          {barLabel(assignment)}
+        </span>
+      )}
     </div>
   );
 
@@ -626,7 +641,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
             background: color,
             opacity: 0.4,
             borderRadius: 3,
-            outline: '1px dashed #fff',
+            outline: '1px dashed var(--rp-ghost, #fff)',
             zIndex: 5,
             pointerEvents: 'none',
           }}
@@ -668,8 +683,8 @@ function OutOfQuarterOverlay({ barStart, barEnd, ooqStart, ooqEnd, timeline }: O
         width: `${Math.min(100 - Math.max(0, leftPct), widthPct)}%`,
         top: 0,
         bottom: 0,
-        background: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.45) 0 6px, rgba(255,255,255,0.06) 6px 12px)',
-        borderLeft: '1px dashed #ffb432',
+        background: 'var(--rp-ooq-hatch, repeating-linear-gradient(45deg, rgba(0,0,0,0.45) 0 6px, rgba(255,255,255,0.06) 6px 12px))',
+        borderLeft: '1px dashed var(--rp-ooq, #ffb432)',
         pointerEvents: 'none',
         zIndex: 3,
       }}
@@ -679,7 +694,7 @@ function OutOfQuarterOverlay({ barStart, barEnd, ooqStart, ooqEnd, timeline }: O
 
 // Вырез в полосе: рабочий день без часов фазы, когда человек занят в другой команде.
 const BUSY_CUTOUT =
-  'repeating-linear-gradient(45deg, rgba(160,170,190,0.55) 0 4px, rgba(10,22,40,0.92) 4px 8px)';
+  'var(--rp-busy-hatch, repeating-linear-gradient(45deg, rgba(160,170,190,0.55) 0 4px, rgba(10,22,40,0.92) 4px 8px))';
 
 function BusyOverlay({ barStart, barEnd, days, timeline }: {
   barStart: string;
@@ -713,6 +728,19 @@ function BusyOverlay({ barStart, barEnd, days, timeline }: {
 }
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+
+/** «Иванов Сергей» → «Иванов С.» — подпись на полосе в обложке. */
+function shortName(name: string | null | undefined): string {
+  if (!name) return '';
+  const [last, first] = name.trim().split(/\s+/);
+  return first ? `${last} ${first[0]}.` : last;
+}
+
+function barLabel(a: AssignmentOut): string {
+  const hours = a.hours_allocated ? `${Math.round(a.hours_allocated)} ч` : '';
+  const who = a.phase === 'qa' ? '' : shortName(a.employee_name);
+  return [who, hours].filter(Boolean).join(' · ');
+}
 
 // Подсказка полосы: работа на соседнюю группу целиком или только в часть дат
 // (перевод сотрудника посреди назначения — «с ДД.ММ»).
@@ -749,7 +777,7 @@ function OtherSubgroupOverlay({ barStart, barEnd, ranges, timeline }: {
             width: `${(datesToWidth(r.start, r.end, timeline) / barWidth) * 100}%`,
             top: 0,
             bottom: 0,
-            border: '1px dashed #a78bfa',
+            border: '1px dashed var(--rp-other-sub, #a78bfa)',
             borderRadius: 3,
             pointerEvents: 'none',
             zIndex: 4,
@@ -780,11 +808,11 @@ function UnavailabilityOverlay({ start, end, days }: UnavailabilityOverlayProps)
         const width = (1 / totalDays) * 100;
         let bg: string;
         if (d.type === 'absence' || d.type === 'block') {
-          bg = 'repeating-linear-gradient(45deg, rgba(239,68,68,0.60) 0 4px, rgba(239,68,68,0.30) 4px 8px)';
+          bg = 'var(--rp-absence-hatch, repeating-linear-gradient(45deg, rgba(239,68,68,0.60) 0 4px, rgba(239,68,68,0.30) 4px 8px))';
         } else if (d.type === 'holiday') {
-          bg = 'repeating-linear-gradient(45deg, rgba(245,158,11,0.55) 0 4px, rgba(245,158,11,0.22) 4px 8px)';
+          bg = 'var(--rp-holiday-hatch, repeating-linear-gradient(45deg, rgba(245,158,11,0.55) 0 4px, rgba(245,158,11,0.22) 4px 8px))';
         } else {
-          bg = 'repeating-linear-gradient(45deg, rgba(0,0,0,0.35) 0 4px, rgba(255,255,255,0.05) 4px 8px)';
+          bg = 'var(--rp-weekend-hatch, repeating-linear-gradient(45deg, rgba(0,0,0,0.35) 0 4px, rgba(255,255,255,0.05) 4px 8px))';
         }
         return (
           <div
@@ -839,7 +867,7 @@ function hexToRgb(hex: string): [number, number, number] {
 function TwoLevelRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   depDrawMode, pendingFromItem, onItemClick,
-  collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
+  collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick, selectedAssignmentId,
   highlightedEmployeeId, fadeOthers, onEmployeeRowClick, quarterEndDate, sectionByItem,
   collapsedSections, onToggleSection, subgroupByEmployee, busyByAssignment, dragLocked,
 }: SubProps) {
@@ -910,7 +938,7 @@ function TwoLevelRows({
                   boxSizing: 'border-box',
                   background: SECTION_BG,
                   borderTop: itemIdx > 0 ? INIT_DIVIDER : 'none',
-                  borderBottom: '1px solid #1e3a5f',
+                  borderBottom: '1px solid var(--rp-border, #1e3a5f)',
                 }}
               >
                 <span style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>
@@ -933,8 +961,8 @@ function TwoLevelRows({
               onClick={() => onItemClick?.(itemId)}
               style={{
                 display: 'flex',
-                minHeight: ROW_HEIGHT,
-                borderBottom: '1px solid #1e3a5f',
+                minHeight: 'var(--rp-init-row-h, 36px)',
+                borderBottom: '1px solid var(--rp-border, #1e3a5f)',
                 background: isPendingFrom ? INIT_PENDING_BG : INIT_HEADER_BG,
                 cursor: depDrawMode ? 'crosshair' : 'default',
                 outline: isPendingFrom ? '2px solid #ff7a45' : 'none',
@@ -948,7 +976,7 @@ function TwoLevelRows({
                   left: 0,
                   zIndex: STICKY_INIT_Z,
                   background: isPendingFrom ? PENDING_FROM_BG_OPAQUE : INIT_HEADER_BG_OPAQUE,
-                  boxShadow: '0 1px 0 0 #1e3a5f',
+                  boxShadow: '0 1px 0 0 var(--rp-border, #1e3a5f)',
                 }}
               >
                 <button
@@ -999,7 +1027,7 @@ function TwoLevelRows({
                   const animSpeed = appearance.animation_speed_seconds;
                   const BAR_H = 22;
                   return (
-                    <div style={{
+                    <div className="rp-init-span" style={{
                       position: 'absolute',
                       left: `${left}%`,
                       width: `${width}%`,
@@ -1092,6 +1120,14 @@ function TwoLevelRows({
                 const empRole = sg.assignments[0].employee_role;
                 const empId = sg.assignments[0].employee_id;
                 const sgHours = sg.assignments.reduce((s, a) => s + (a.hours_allocated ?? 0), 0);
+                // Сроки фазы строкой «01.10–16.10»: показываются там, где тема включает
+                // переменную --rp-phase-dates (обложка); в Aurora строка как прежде.
+                const sgStarts = sg.assignments.map(a => a.start_date).filter(Boolean).sort() as string[];
+                const sgEnds = sg.assignments.map(a => a.end_date).filter(Boolean).sort() as string[];
+                const ddmm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+                const sgDates = sgStarts.length && sgEnds.length
+                  ? `${ddmm(sgStarts[0])}–${ddmm(sgEnds[sgEnds.length - 1])}`
+                  : '';
                 const title = sg.roleLabel
                   ? `${PHASE_LABELS[phase]} · ${sg.roleLabel}`
                   : PHASE_LABELS[phase];
@@ -1106,7 +1142,7 @@ function TwoLevelRows({
                     ? empGroups[0]
                     : null;
                 const assigneeNode = phase === 'qa' ? (
-                  <span style={{ color: '#4a6a90' }}>—</span>
+                  <span style={{ color: 'var(--rp-dim, #4a6a90)' }}>—</span>
                 ) : (
                   <span
                     onClick={(e) => {
@@ -1121,7 +1157,7 @@ function TwoLevelRows({
                       cursor: empId ? 'pointer' : 'default',
                       padding: '2px 4px',
                       borderRadius: 3,
-                      background: isHighlighted ? 'rgba(0,201,200,0.18)' : 'transparent',
+                      background: isHighlighted ? 'var(--rp-hl-bg, rgba(0,201,200,0.18))' : 'transparent',
                     }}
                   >
                     <EmployeeAvatar name={empName} role={empRole} size={16} />
@@ -1135,8 +1171,8 @@ function TwoLevelRows({
                           lineHeight: '14px',
                           padding: '0 4px',
                           borderRadius: 3,
-                          color: '#f0a868',
-                          border: '1px solid rgba(240,168,104,0.45)',
+                          color: 'var(--rp-foreign-fg, #f0a868)',
+                          border: '1px solid var(--rp-foreign-line, rgba(240,168,104,0.45))',
                         }}
                       >
                         {foreignGroup}
@@ -1150,8 +1186,8 @@ function TwoLevelRows({
                     data-gantt-row="true"
                     style={{
                       display: 'flex',
-                      height: ROW_HEIGHT - 4,
-                      borderBottom: '1px solid #0e2540',
+                      height: 'var(--rp-phase-row-h, 32px)',
+                      borderBottom: '1px solid var(--rp-line, #0e2540)',
                       background: 'transparent',
                     }}
                   >
@@ -1160,7 +1196,12 @@ function TwoLevelRows({
                       jiraKey={null}
                       leftColWidth={leftColWidth}
                       dotColor={color}
-                      assignee={assigneeNode}
+                      assignee={sgDates ? (
+                        <>
+                          {assigneeNode}
+                          <span className="rp-phase-dates" style={{ display: 'var(--rp-phase-dates, none)' }}>{sgDates}</span>
+                        </>
+                      ) : assigneeNode}
                       hours={sgHours > 0 ? `${Math.round(sgHours)} ч` : ''}
                     />
                     <div data-gantt-track="true" style={{ ...trackStyle(trackWidthPx) }}>
@@ -1188,6 +1229,7 @@ function TwoLevelRows({
                             hasConflict={conflictSet.has(a.id)}
                             dimmed={isDimmed}
                             onClick={onAssignmentClick ? () => onAssignmentClick(a.id) : undefined}
+                            selected={a.id === selectedAssignmentId}
                             unavailableDays={
                               (a as AssignmentOut & {
                                 unavailable_days?: Array<{
@@ -1254,7 +1296,7 @@ function PeopleRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   conflictAssignmentIds, onAssignmentClick, highlightedEmployeeId, fadeOthers, onEmployeeRowClick,
   quarterEndDate, externalBookings, employeeLoad, planTeam, busyByAssignment, isWorkday, dragLocked,
-  selectedEmployeeIds,
+  selectedEmployeeIds, selectedAssignmentId,
 }: SubProps) {
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
@@ -1303,7 +1345,7 @@ function PeopleRows({
         return (
           <div key={s.employeeId ?? '__none__'} style={{ borderTop: si > 0 ? INIT_DIVIDER : 'none' }}>
             {/* Заголовок секции: имя, команда, загрузка; щелчок — фильтр по человеку. */}
-            <div style={{ display: 'flex', minHeight: ROW_HEIGHT, background: INIT_HEADER_BG, borderBottom: '1px solid #1e3a5f' }}>
+            <div style={{ display: 'flex', minHeight: 'var(--rp-init-row-h, 36px)', background: INIT_HEADER_BG, borderBottom: '1px solid var(--rp-border, #1e3a5f)' }}>
               <div
                 role={toggle ? 'button' : undefined}
                 tabIndex={toggle ? 0 : undefined}
@@ -1324,7 +1366,7 @@ function PeopleRows({
                   left: 0,
                   zIndex: STICKY_INIT_Z,
                   background: INIT_HEADER_BG_OPAQUE,
-                  borderRight: '1px solid #1e3a5f',
+                  borderRight: '1px solid var(--rp-border, #1e3a5f)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
@@ -1333,11 +1375,11 @@ function PeopleRows({
                 }}
               >
                 {s.employeeId && <EmployeeAvatar name={s.name} role={s.role} size={20} />}
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text, #fff)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {s.name}
                 </span>
                 {s.teamNote && (
-                  <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: s.isBorrowed ? '#b39ddb' : 'var(--text-muted, #8ab0d8)' }}>
+                  <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: s.isBorrowed ? 'var(--rp-borrowed-fg, #b39ddb)' : 'var(--text-muted, #8ab0d8)' }}>
                     {s.teamNote}
                   </span>
                 )}
@@ -1354,7 +1396,7 @@ function PeopleRows({
             </div>
             {/* Полоса «все работы»: фазы этого плана цветом фазы, чужие брони — штриховкой. */}
             {s.employeeId && (
-              <div style={{ display: 'flex', height: ROW_HEIGHT - 8, borderBottom: '1px solid #0e2540' }}>
+              <div style={{ display: 'flex', height: 'var(--rp-lane-row-h, 28px)', borderBottom: '1px solid var(--rp-line, #0e2540)' }}>
                 <ItemTitleCell title="Все работы" jiraKey={null} leftColWidth={leftColWidth} fontWeight={400} />
                 <div style={trackStyle(trackWidthPx)}>
                   {s.lane.map((r, ri) => (
@@ -1373,7 +1415,7 @@ function PeopleRows({
                         background: r.kind === 'booking'
                           ? OTHER_TEAM_HATCH
                           : (appearance.phase_colors[r.phase] ?? PHASE_COLORS[r.phase]),
-                        border: r.kind === 'booking' ? '1px solid rgba(160,170,190,0.5)' : 'none',
+                        border: r.kind === 'booking' ? '1px solid var(--rp-booking-line, rgba(160,170,190,0.5))' : 'none',
                         zIndex: r.kind === 'booking' ? 3 : 2,
                       }}
                     />
@@ -1388,7 +1430,7 @@ function PeopleRows({
                 <div
                   key={row.key}
                   data-gantt-row="true"
-                  style={{ display: 'flex', height: ROW_HEIGHT - 4, borderBottom: '1px solid #0e2540' }}
+                  style={{ display: 'flex', height: 'var(--rp-phase-row-h, 32px)', borderBottom: '1px solid var(--rp-line, #0e2540)' }}
                 >
                   <PersonPhaseCell
                     title={row.itemTitle}
@@ -1411,6 +1453,7 @@ function PeopleRows({
                         employees={employees}
                         hasConflict={conflictSet.has(a.id)}
                         onClick={onAssignmentClick ? () => onAssignmentClick(a.id) : undefined}
+                        selected={a.id === selectedAssignmentId}
                         unavailableDays={a.unavailable_days}
                         highlightedEmployeeId={highlightedEmployeeId}
                         fadeOthers={fadeOthers}
@@ -1458,7 +1501,7 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
           style={{
             display: 'flex',
             height: ROW_HEIGHT + 4,
-            borderBottom: '1px solid #1e3a5f',
+            borderBottom: '1px solid var(--rp-border, #1e3a5f)',
             background: ROW_BG,
           }}
         >
@@ -1466,13 +1509,13 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
             width: leftColWidth,
             boxSizing: 'border-box',
             flexShrink: 0,
-            borderRight: '1px solid #1e3a5f',
+            borderRight: '1px solid var(--rp-border, #1e3a5f)',
             padding: '0 12px',
             display: 'flex',
             alignItems: 'center',
             fontSize: 13,
             fontWeight: 600,
-            color: '#fff',
+            color: 'var(--rp-text, #fff)',
             overflow: 'hidden',
             whiteSpace: 'nowrap',
             textOverflow: 'ellipsis',
@@ -1480,8 +1523,8 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
             position: 'sticky',
             left: 0,
             zIndex: STICKY_CELL_Z,
-            background: '#0a1628',
-            boxShadow: '0 1px 0 0 #1e3a5f',
+            background: 'var(--rp-bg, #0a1628)',
+            boxShadow: '0 1px 0 0 var(--rp-border, #1e3a5f)',
           }}>
             <EmployeeAvatar name={empAssignments[0]?.employee_name ?? null} role={empAssignments[0]?.employee_role} size={20} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
@@ -1526,7 +1569,7 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
                     cursor: a.phase === 'qa' ? 'default' : 'pointer',
-                    outline: a.is_pinned ? '1px solid #00c9c8' : 'none',
+                    outline: a.is_pinned ? 'var(--rp-pinned-outline, 1px solid #00c9c8)' : 'none',
                   }}
                 >
                   {a.backlog_item_title}

@@ -172,11 +172,11 @@ export const STATUS_GROUP_LABELS: Record<StatusGroup, string> = {
 };
 
 export const STATUS_GROUP_COLOR: Record<StatusGroup, string> = {
-  dev: '#4ba3ff',
-  waiting: '#eeb13c',
-  todo: '#788799',
-  done: '#3ebd85',
-  unassigned: '#a78bfa',
+  dev: 'var(--st-dev, #4ba3ff)',
+  waiting: 'var(--st-waiting, #eeb13c)',
+  todo: 'var(--st-todo, #788799)',
+  done: 'var(--st-done, #3ebd85)',
+  unassigned: 'var(--st-unassigned, #a78bfa)',
 };
 
 /** Порядок групп: сначала мяч у разработчика, в конце нераспределённые статусы. */

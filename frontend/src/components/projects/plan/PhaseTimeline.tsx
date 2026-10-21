@@ -41,9 +41,12 @@ interface Props {
   /** Высота области строк; всё, что выше — прокручивается внутри блока.
    *  Нужна портфелю: строк там столько же, сколько проектов у выбранных команд. */
   maxHeight?: number | string;
+  /** Заполнить высоту родителя: строки прокручиваются, легенда всегда видна,
+   *  у «сегодня» в легенде — дата. Для встроенного модуля обложки. */
+  fill?: boolean;
 }
 
-export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight }) => {
+export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight, fill = false }) => {
   if (!timeline.start || !timeline.end || timeline.rows.length === 0) {
     return (
       <Empty
@@ -85,7 +88,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
       }));
 
   return (
-    <div>
+    <div style={fill ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } : undefined}>
       <div style={{
         display: 'grid', gridTemplateColumns: `${labelW}px 1fr`, gap: 8, marginBottom: 4,
       }}>
@@ -100,7 +103,9 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
         </div>
       </div>
 
-      <div style={maxHeight ? { maxHeight, overflowY: 'auto', paddingRight: 4 } : undefined}>
+      <div style={fill
+        ? { flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 4 }
+        : maxHeight ? { maxHeight, overflowY: 'auto', paddingRight: 4 } : undefined}>
       {rows.map((row, ri) => (
         <div
           key={`${row.key ?? ''}-${ri}`}
@@ -130,20 +135,20 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
           </div>
           <div style={{
             position: 'relative', height: LANE_H + 6,
-            background: 'rgba(255,255,255,0.02)', borderRadius: 4,
+            background: 'var(--pt-lane, rgba(255,255,255,0.02))', borderRadius: 4,
             overflow: 'hidden',
           }}>
             <div style={{
               position: 'absolute', top: 0, bottom: 0,
               left: `${qLeft}%`, width: `${Math.max(0, qRight - qLeft)}%`,
-              background: 'rgba(255,255,255,0.035)',
-              borderLeft: '1px dashed rgba(255,255,255,0.14)',
-              borderRight: '1px dashed rgba(255,255,255,0.14)',
+              background: 'var(--pt-quarter, rgba(255,255,255,0.035))',
+              borderLeft: '1px dashed var(--pt-quarter-line, rgba(255,255,255,0.14))',
+              borderRight: '1px dashed var(--pt-quarter-line, rgba(255,255,255,0.14))',
             }} />
             {gridlines.map((g, i) => (
               <div key={i} style={{
                 position: 'absolute', top: 0, bottom: 0, left: `${g}%`,
-                width: 1, background: 'rgba(255,255,255,0.05)',
+                width: 1, background: 'var(--pt-grid, rgba(255,255,255,0.05))',
               }} />
             ))}
             {row.bars.map((b, bi) => {
@@ -159,7 +164,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
                     position: 'absolute', top: 3, height: LANE_H,
                     left: `${left}%`, width: `${width}%`,
                     background: PHASE_COLOR[b.phase] ?? DARK_THEME.cyanPrimary,
-                    borderRadius: 4, color: '#0d1c33', fontSize: 10, lineHeight: `${LANE_H}px`,
+                    borderRadius: 4, color: `var(--pt-fg-${b.phase}, #0d1c33)`, fontSize: 10, lineHeight: `${LANE_H}px`,
                     padding: '0 5px', overflow: 'hidden', whiteSpace: 'nowrap',
                   }}>
                     {width > 8 ? b.label : ''}
@@ -190,7 +195,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, max
         ))}
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ width: 2, height: 11, background: DARK_THEME.cyanPrimary }} />
-          сегодня
+          {fill ? `сегодня ${new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}` : 'сегодня'}
         </span>
         <span>Затенено — границы квартала</span>
       </div>

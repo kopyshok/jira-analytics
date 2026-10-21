@@ -10,6 +10,8 @@ interface Props {
   onStatusCategoryChange: (v: string) => void;
   category: string;
   onCategoryChange: (v: string) => void;
+  /** «panel» — поле поиска и две группы клавиш с подписями над ними (обложка). */
+  variant?: 'stack' | 'panel';
 }
 
 export const ProjectListFilters: React.FC<Props> = ({
@@ -19,6 +21,7 @@ export const ProjectListFilters: React.FC<Props> = ({
   onStatusCategoryChange,
   category,
   onCategoryChange,
+  variant = 'stack',
 }) => {
   const [localSearch, setLocalSearch] = useState(search);
 
@@ -33,8 +36,7 @@ export const ProjectListFilters: React.FC<Props> = ({
     return () => clearTimeout(timer);
   }, [localSearch, onSearchChange]);
 
-  return (
-    <div style={{ padding: '12px 12px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+  const searchInput = (
       <Input
         prefix={<SearchOutlined style={{ color: DARK_THEME.textMuted }} />}
         placeholder="Поиск по названию или ключу"
@@ -44,7 +46,8 @@ export const ProjectListFilters: React.FC<Props> = ({
         size="small"
         style={{ background: DARK_THEME.pageBg, borderColor: DARK_THEME.border }}
       />
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+  );
+  const statusGroup = (
         <Radio.Group
           size="small"
           value={statusCategory}
@@ -56,6 +59,8 @@ export const ProjectListFilters: React.FC<Props> = ({
           <Radio.Button value="indeterminate">В работе</Radio.Button>
           <Radio.Button value="done">Готов</Radio.Button>
         </Radio.Group>
+  );
+  const categoryGroup = (
         <Radio.Group
           size="small"
           value={category}
@@ -67,6 +72,24 @@ export const ProjectListFilters: React.FC<Props> = ({
           <Radio.Button value="quarterly_tasks">Квартальные</Radio.Button>
           <Radio.Button value="archive_target">Архив</Radio.Button>
         </Radio.Group>
+  );
+
+  if (variant === 'panel') {
+    return (
+      <>
+        <label className="pc-field pp-f-search"><span className="pc-cap">Поиск</span>{searchInput}</label>
+        <div className="pc-field"><span className="pc-cap">Статус</span>{statusGroup}</div>
+        <div className="pc-field"><span className="pc-cap">Тип</span>{categoryGroup}</div>
+      </>
+    );
+  }
+
+  return (
+    <div style={{ padding: '12px 12px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {searchInput}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {statusGroup}
+        {categoryGroup}
       </div>
     </div>
   );

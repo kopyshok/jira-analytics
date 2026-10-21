@@ -45,7 +45,12 @@ function buildQuickMarkdown(ctx: FeedbackContext): string {
   return lines.join('\n');
 }
 
-export default function FeedbackButton() {
+interface Props {
+  /** `float` — плавающие кнопки в углу (Aurora); `bar` — две кнопки в строку (строка состояния «Пульта»). */
+  variant?: 'float' | 'bar';
+}
+
+export default function FeedbackButton({ variant = 'float' }: Props) {
   const { notification } = App.useApp();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -78,6 +83,28 @@ export default function FeedbackButton() {
       setBusy(false);
     }
   };
+
+  if (variant === 'bar') {
+    return (
+      <>
+        <button type="button" className="feedback-bar-btn" onClick={() => setOpen(true)} title="Открыть форму обратной связи">
+          Открыть форму
+        </button>
+        <button
+          type="button"
+          className="feedback-bar-btn is-accent"
+          onClick={handleQuickBug}
+          disabled={busy}
+          title="Быстрый баг → в буфер"
+          aria-label={count > 0 ? `Быстрый баг, ошибок на странице: ${count}` : 'Быстрый баг'}
+        >
+          Быстрый баг
+          {count > 0 && <span className="feedback-bar-count">{count > 99 ? '99+' : count}</span>}
+        </button>
+        <FeedbackDrawer open={open} onClose={() => setOpen(false)} />
+      </>
+    );
+  }
 
   return (
     <>

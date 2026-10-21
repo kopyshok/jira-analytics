@@ -44,6 +44,8 @@ interface Props {
   onToggleCollapse?: (itemId: string, collapsed: boolean) => void;
   conflictAssignmentIds?: string[];
   onAssignmentClick?: (assignmentId: string) => void;
+  /** Фаза, открытая в панели подробностей, — полоса выделена. */
+  selectedAssignmentId?: string | null;
   hideWeekends?: boolean;
   highlightedEmployeeId?: string | null;
   /** Люди в фильтре «Исполнители»; пусто — фильтра нет. */
@@ -63,6 +65,8 @@ interface Props {
   employeeLoad?: EmployeeLoadOut[];
   /** Команда плана — подпись своих в виде «Исполнители». */
   planTeam?: string | null;
+  /** Ширина левой колонки (по умолчанию — по виду диаграммы). */
+  leftColWidth?: number;
 }
 
 export default function GanttChart({
@@ -83,6 +87,7 @@ export default function GanttChart({
   onToggleCollapse,
   conflictAssignmentIds,
   onAssignmentClick,
+  selectedAssignmentId,
   hideWeekends = false,
   sectionByItem,
   subgroupByEmployee,
@@ -95,8 +100,9 @@ export default function GanttChart({
   layout = 'tasks',
   employeeLoad,
   planTeam,
+  leftColWidth,
 }: Props) {
-  const LEFT_COL = viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
+  const LEFT_COL = leftColWidth ?? (viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT);
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
   // Свёрнутость блоков «Привлечённые» / «Наши люди в других командах» — здесь,
   // а не в блоке: строки ниже сдвигаются, и стрелки связей перерисовываются.
@@ -199,6 +205,7 @@ export default function GanttChart({
   const pxPerDay = PX_PER_DAY[effectiveScale];
   const trackWidthPx = Math.round(timeline.totalDays * pxPerDay);
 
+  const todayLabel = new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
   const todayLeft = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     return dateToLeft(today, timeline);
@@ -230,8 +237,8 @@ export default function GanttChart({
         position: 'sticky',
         top: 'var(--rp-page-sticky-h, 0px)',
         zIndex: 40,
-        background: '#0a1628',
-        border: '1px solid #1e3a5f',
+        background: 'var(--rp-bg, #0a1628)',
+        border: '1px solid var(--rp-border, #1e3a5f)',
         borderBottom: 'none',
         borderTopLeftRadius: 8,
         borderTopRightRadius: 8,
@@ -252,8 +259,8 @@ export default function GanttChart({
     <div
       data-tour="rp-gantt"
       style={{
-        background: '#0a1628',
-        border: '1px solid #1e3a5f',
+        background: 'var(--rp-bg, #0a1628)',
+        border: '1px solid var(--rp-border, #1e3a5f)',
         borderTop: 'none',
         borderBottomLeftRadius: 8,
         borderBottomRightRadius: 8,
@@ -264,9 +271,9 @@ export default function GanttChart({
       {depDrawMode && (
         <div style={{
           padding: '6px 12px',
-          background: 'rgba(255,122,69,0.12)',
-          borderBottom: '1px solid rgba(255,122,69,0.4)',
-          color: '#ff7a45',
+          background: 'var(--rp-draw-bg, rgba(255,122,69,0.12))',
+          borderBottom: '1px solid var(--rp-draw-line, rgba(255,122,69,0.4))',
+          color: 'var(--rp-draw-fg, #ff7a45)',
           fontSize: 12,
         }}>
           {pendingFromItem
@@ -322,12 +329,12 @@ export default function GanttChart({
           </div>
 
           {/* Today marker */}
-          <div style={{
+          <div className="rp-today" data-label={`Сегодня ${todayLabel}`} style={{
             position: 'absolute',
             left: LEFT_COL + (todayLeft / 100) * trackWidthPx,
             top: 0, bottom: 0,
             width: 2,
-            background: 'rgba(0,201,200,0.6)',
+            background: 'var(--rp-today, rgba(0,201,200,0.6))',
             zIndex: 20,
             pointerEvents: 'none',
           }} />
@@ -340,7 +347,7 @@ export default function GanttChart({
               top: 0,
               bottom: 0,
               width: 0,
-              borderRight: '2px dashed #ffb432',
+              borderRight: '2px dashed var(--rp-ooq, #ffb432)',
               zIndex: 19,
               pointerEvents: 'none',
             }} />
@@ -416,6 +423,7 @@ export default function GanttChart({
             onToggleCollapse={onToggleCollapse}
             conflictAssignmentIds={conflictAssignmentIds}
             onAssignmentClick={onAssignmentClick}
+            selectedAssignmentId={selectedAssignmentId}
             highlightedEmployeeId={highlightedEmployeeId}
             fadeOthers={fadeOthers}
             selectedEmployeeIds={selectedEmployeeIds}

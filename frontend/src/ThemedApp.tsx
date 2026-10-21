@@ -12,6 +12,7 @@ import { router } from './routes';
 import { APP_THEMES, FONTS } from './utils/constants';
 import { useAppTheme } from './contexts/ThemeContext';
 import { buildAuroraAntdConfig } from './aurora/theme/auroraAntdTokens';
+import { buildPultAntdConfig } from './aurora/theme/pultAntdTokens';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,7 +21,7 @@ const queryClient = new QueryClient({
 });
 
 export default function ThemedApp() {
-  const { theme: themeName, isAurora, mode } = useAppTheme();
+  const { theme: themeName, isAurora, mode, skin } = useAppTheme();
   const t = APP_THEMES[themeName].tokens;
 
   const classicConfig = {
@@ -69,7 +70,9 @@ export default function ThemedApp() {
     },
   };
 
-  const antdConfig = isAurora && mode ? buildAuroraAntdConfig(mode) : classicConfig;
+  const antdConfig = skin === 'pult'
+    ? buildPultAntdConfig()
+    : isAurora && mode ? buildAuroraAntdConfig(mode) : classicConfig;
 
   return (
     <ConfigProvider locale={ruRU} theme={antdConfig}>

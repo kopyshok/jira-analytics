@@ -1,12 +1,12 @@
 import type { TimelineRow } from '../../../types/projects';
 
-/** Цвет полосы фазы на таймлайне проекта. */
+/** Цвет полосы фазы на таймлайне проекта (обложка задаёт свои через переменные). */
 export const PHASE_COLOR: Record<string, string> = {
-  analyst: '#00c9c8',
-  cons: '#00c9c8',
-  dev: '#378ADD',
-  qa: '#EF9F27',
-  opo: '#7F77DD',
+  analyst: 'var(--wt-analyst, #00c9c8)',
+  cons: 'var(--wt-analyst, #00c9c8)',
+  dev: 'var(--wt-dev, #378ADD)',
+  qa: 'var(--wt-qa, #EF9F27)',
+  opo: 'var(--wt-opo, #7F77DD)',
 };
 
 /** Порядок фаз в легенде — по ходу работ. */

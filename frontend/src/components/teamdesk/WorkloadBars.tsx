@@ -31,12 +31,12 @@ export function WorkloadBars({ developers, workload, limit }: Props) {
                   : undefined
               }
             >
-              <div style={{ position: 'relative', height: 14, background: 'rgba(125,145,170,0.22)', borderRadius: 3 }}>
+              <div className="td-wip-track" style={{ position: 'relative', height: 14, background: 'var(--td-track, rgba(125,145,170,0.22))', borderRadius: 3 }}>
                 <div
                   style={{
                     position: 'absolute', left: 0, top: 0, bottom: 0,
                     width: `${(dev.in_progress / max) * 100}%`,
-                    background: over ? '#ff6b6b' : '#4ba3ff',
+                    background: over ? 'var(--td-bad, #ff6b6b)' : 'var(--td-blue, #4ba3ff)',
                     borderRadius: 3, opacity: 0.85,
                   }}
                 />
@@ -44,12 +44,12 @@ export function WorkloadBars({ developers, workload, limit }: Props) {
                   style={{
                     position: 'absolute', top: -2, bottom: -2,
                     left: `${(limit / max) * 100}%`,
-                    borderLeft: '1px dashed rgba(160,175,195,0.8)',
+                    borderLeft: 'var(--td-limit-w, 1px) dashed var(--td-limit, rgba(160,175,195,0.8))',
                   }}
                 />
               </div>
             </Tooltip>
-            <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{dev.in_progress}</span>
+            <span className={over ? 'td-wip-n is-over' : 'td-wip-n'} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{dev.in_progress}</span>
           </div>
         );
       })}

@@ -3,6 +3,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { roundHours, type DeskIssue } from '../../api/teamDesk';
 import { IssueKey } from './IssueCells';
 import { DailyRateInput } from './DailyRateInput';
+import { rubberLeft, rubberToQueue } from './deskSignals';
 
 interface Props {
   issues: DeskIssue[];
@@ -20,8 +21,7 @@ export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate }: Pr
   const rows = issues.filter((issue) => issue.daily_rate);
   if (!rows.length) return null;
 
-  const left = (row: DeskIssue) =>
-    row.est_hours == null ? null : Math.max(0, row.est_hours - row.fact_hours);
+  const left = rubberLeft;
 
   const columns: ColumnsType<DeskIssue> = [
     { title: 'Разработчик', width: 220, ellipsis: true,
@@ -60,12 +60,7 @@ export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate }: Pr
       title: 'В очередь',
       width: 116,
       align: 'right',
-      render: (_, row) => {
-        // Оценка — только потолок: нет её — вклад задаёт дневная норма.
-        const byRate = (row.daily_rate ?? 0) * rubberDays;
-        const value = left(row);
-        return roundHours(value == null ? byRate : Math.min(byRate, value));
-      },
+      render: (_, row) => roundHours(rubberToQueue(row, rubberDays)),
     },
   ];
 

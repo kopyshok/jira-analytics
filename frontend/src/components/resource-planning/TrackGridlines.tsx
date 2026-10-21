@@ -64,11 +64,11 @@ export default function TrackGridlines({ timeline, scale }: Props) {
           zIndex: 1,
         };
         if (l.kind === 'month') {
-          style.borderLeft = '1px solid rgba(160, 200, 240, 0.12)';
+          style.borderLeft = '1px solid var(--rp-grid, rgba(160, 200, 240, 0.12))';
         } else if (l.kind === 'week') {
-          style.borderLeft = '1px solid rgba(160, 200, 240, 0.20)';
+          style.borderLeft = '1px solid var(--rp-grid-strong, rgba(160, 200, 240, 0.20))';
         } else {
-          style.borderLeft = '1px dotted rgba(160, 200, 240, 0.05)';
+          style.borderLeft = '1px dotted var(--rp-grid-faint, rgba(160, 200, 240, 0.05))';
         }
         return <div key={l.key} style={style} />;
       })}

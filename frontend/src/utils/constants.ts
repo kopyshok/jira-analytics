@@ -67,6 +67,26 @@ const CHART_COLORS_AURORA_LIGHT_OVERRIDES: ChartColorsShape = {
   neutral: '#8089a0',
 };
 
+/* «Пульт» — цвета индикаторов из стиля: синий/янтарь/зелёный/фиолет/красный + сигнальный оранжевый. */
+const CHART_COLORS_PULT: ChartColorsShape = {
+  blue: '#2F6FDE',
+  green: '#2E9E5B',
+  orange: '#E8590C',
+  red: '#D9381E',
+  purple: '#8E5BC2',
+  cyan: '#3E8A9E',
+  cyanSecondary: '#6FA7B8',
+  yellow: '#D99A00',
+  neutral: '#9A978F',
+};
+
+/** Обложка поверх Aurora light: `<html data-skin="…">`; у самих Aurora атрибута нет.
+ *  Для вспомогательных функций вне компонентов (в компонентах — useSkin()). */
+export function currentSkin(): string | null {
+  if (typeof document === 'undefined') return null;
+  return document.documentElement.getAttribute('data-skin');
+}
+
 /** Runtime-aware chart colors. Mirrors DARK_THEME Proxy strategy. */
 export const CHART_COLORS: ChartColorsShape = new Proxy(CHART_COLORS_CLASSIC, {
   get(target, prop: string) {
@@ -75,6 +95,7 @@ export const CHART_COLORS: ChartColorsShape = new Proxy(CHART_COLORS_CLASSIC, {
     if (root.getAttribute('data-theme') !== 'aurora') {
       return target[prop as keyof ChartColorsShape];
     }
+    if (currentSkin() === 'pult') return CHART_COLORS_PULT[prop as keyof ChartColorsShape] ?? target[prop as keyof ChartColorsShape];
     const mode = root.getAttribute('data-mode');
     const pool = mode === 'light' ? CHART_COLORS_AURORA_LIGHT_OVERRIDES : CHART_COLORS_AURORA_DARK_OVERRIDES;
     return pool[prop as keyof ChartColorsShape] ?? target[prop as keyof ChartColorsShape];
@@ -170,11 +191,35 @@ const AURORA_LIGHT_TOKENS: DarkThemeShape = {
   textDim: '#7a8298',
 };
 
+/* «Пульт» (обложка поверх Aurora light) — корпус #E7E5E0, модули #F4F3EF, плоско.
+ * Только сплошные цвета. Цвета текста — с контрастом ≥ 4.5:1 на корпусе и модуле. */
+const PULT_TOKENS: DarkThemeShape = {
+  pageBg: '#E7E5E0',
+  sidebarBg: '#F4F3EF',
+  cardBg: '#F4F3EF',
+  darkAccent: '#EFEDE7',
+  border: '#CFCCC4',
+  darkRows: '#EFEDE7',
+  cyanPrimary: '#A93F0A',
+  cyanSecondary: '#2A62C9',
+  yellow: '#7E5800',
+  amber: '#7E5800',
+  amberDim: '#6E4D00',
+  danger: '#B92E17',
+  success: '#237A45',
+  textPrimary: '#1C1C1A',
+  textSecondary: '#3D3B37',
+  textMuted: '#5C5A55',
+  textHint: '#64615A',
+  textDim: '#64615A',
+};
+
 /** Runtime-aware Dark theme tokens.
  *  Reads `<html data-theme="aurora" data-mode="dark|light">` on every access:
  *  - classic: returns DARK_THEME_CLASSIC value
  *  - aurora-dark: returns AURORA_DARK_TOKENS value
  *  - aurora-light: returns AURORA_LIGHT_TOKENS value
+ *  - pult-light (data-skin="pult"): returns PULT_TOKENS value
  *
  *  This drops in for every existing `DARK_THEME.cardBg` / `DARK_THEME.cyanPrimary`
  *  call without touching consumer code. AppLayout dispatcher remounts the entire
@@ -187,13 +232,14 @@ export const DARK_THEME: DarkThemeShape = new Proxy(DARK_THEME_CLASSIC, {
     if (root.getAttribute('data-theme') !== 'aurora') {
       return target[prop as keyof DarkThemeShape];
     }
+    if (currentSkin() === 'pult') return PULT_TOKENS[prop as keyof DarkThemeShape] ?? target[prop as keyof DarkThemeShape];
     const mode = root.getAttribute('data-mode');
     const pool = mode === 'light' ? AURORA_LIGHT_TOKENS : AURORA_DARK_TOKENS;
     return pool[prop as keyof DarkThemeShape] ?? target[prop as keyof DarkThemeShape];
   },
 });
 
-export type AppTheme = 'aurora-dark' | 'aurora-light';
+export type AppTheme = 'aurora-dark' | 'aurora-light' | 'pult-light';
 
 export interface ThemeTokens {
   pageBg: string;
@@ -210,7 +256,10 @@ export interface ThemeTokens {
   textHint: string;
 }
 
-export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }> = {
+/** Обложка (skin) — набор стилей поверх Aurora light; у тем Aurora её нет. */
+export type AppSkin = 'pult';
+
+export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens; skin?: AppSkin }> = {
   'aurora-dark': {
     label: 'Aurora тёмная',
     tokens: {
@@ -245,14 +294,46 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
       textHint: '#7a8298',
     },
   },
+  'pult-light': {
+    label: 'Пульт',
+    skin: 'pult',
+    tokens: {
+      pageBg: '#E7E5E0',
+      sidebarBg: '#F4F3EF',
+      cardBg: '#F4F3EF',
+      darkAccent: '#EFEDE7',
+      border: '#CFCCC4',
+      darkRows: '#EFEDE7',
+      primary: '#E8590C',
+      primarySecondary: '#2A62C9',
+      textPrimary: '#1C1C1A',
+      textSecondary: '#3D3B37',
+      textMuted: '#5C5A55',
+      textHint: '#64615A',
+    },
+  },
 };
 
-/** Typography stack — distinctive, not system-font slop */
-export const FONTS = {
+const FONTS_BASE = {
   display: "'Fraunces', 'Georgia', serif",
   body: "'Manrope', -apple-system, 'Segoe UI', sans-serif",
   mono: "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace",
 } as const;
+
+const FONTS_PULT: Record<keyof typeof FONTS_BASE, string> = {
+  display: "'Commissioner', 'Segoe UI', sans-serif",
+  body: "'Commissioner', 'Segoe UI', sans-serif",
+  mono: FONTS_BASE.mono,
+};
+
+/** Typography stack — distinctive, not system-font slop. Proxy: в обложке «Пульт» — Commissioner. */
+export const FONTS: typeof FONTS_BASE = new Proxy(FONTS_BASE, {
+  get(target, prop: string) {
+    const key = prop as keyof typeof FONTS_BASE;
+    if (currentSkin() === 'pult') return FONTS_PULT[key] ?? target[key];
+    return target[key];
+  },
+});
 
 export const QUARTER_MONTHS: Record<number, number[]> = {
   1: [1, 2, 3],

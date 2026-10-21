@@ -31,9 +31,17 @@ interface Props {
   onSprintsChange: (v: string[]) => void;
   releases: string[];
   onReleasesChange: (v: string[]) => void;
+  /** «panel» — органы в ряд с подписями над ними (обложка), без карточки. */
+  variant?: 'card' | 'panel';
 }
 
 /** Шапка раздела: команды, добранные точечно люди, период, пороги. */
+/** «Команда 1С (ERP - УУ)» → «ERP - УУ»; без скобок — как есть. */
+function shortTeamName(team: string): string {
+  const m = team.match(/\(([^)]+)\)\s*$/);
+  return m ? m[1] : team;
+}
+
 export function DeskFilters({
   teams, onTeamsChange,
   developers, onDevelopersChange, developerRoles,
@@ -44,21 +52,12 @@ export function DeskFilters({
   onToggleThresholds,
   sprintOptions, releaseOptions,
   sprints, onSprintsChange, releases, onReleasesChange,
+  variant = 'card',
 }: Props) {
   const teamsQuery = useTeams();
   const employeesQuery = useEmployees({ isActive: true });
 
-  return (
-    <Card size="small" styles={{ body: { padding: '10px 12px' } }}>
-      {/* Отборы жмутся под ширину окна и держатся в одну строку: выпадающие
-          списки ужимаются, а не переносят шапку на второй ряд. */}
-      <div
-        style={{
-          display: 'flex', flexWrap: 'wrap', alignItems: 'center',
-          columnGap: 10, rowGap: 8, width: '100%',
-        }}
-      >
-        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>КОМАНДЫ</Typography.Text>
+  const teamsSelect = (
         <Select
           mode="multiple"
           allowClear
@@ -67,11 +66,18 @@ export function DeskFilters({
           value={teams}
           onChange={onTeamsChange}
           loading={teamsQuery.isLoading}
-          options={(teamsQuery.data ?? []).map((t) => ({ value: t, label: t }))}
+          options={(teamsQuery.data ?? []).map((t) => ({
+            value: t,
+            // В панели обложки поле узкое: метка — короткое имя из скобок
+            // («ERP - УУ»), полное — в подсказке и в выпадающем списке.
+            label: variant === 'panel' ? shortTeamName(t) : t,
+            title: t,
+          }))}
+          optionRender={variant === 'panel' ? (o) => String(o.value) : undefined}
           maxTagCount="responsive"
         />
-
-        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>ОТДЕЛЬНЫЕ ЛЮДИ</Typography.Text>
+  );
+  const peopleSelect = (
         <Select
           mode="multiple"
           allowClear
@@ -90,8 +96,8 @@ export function DeskFilters({
             }))}
           maxTagCount="responsive"
         />
-
-        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>СПРИНТ</Typography.Text>
+  );
+  const sprintSelect = (
         <Select
           mode="multiple"
           allowClear
@@ -104,8 +110,8 @@ export function DeskFilters({
           options={sprintOptions.map((v) => ({ value: v, label: v }))}
           maxTagCount="responsive"
         />
-
-        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>РЕЛИЗ</Typography.Text>
+  );
+  const releaseSelect = (
         <Select
           mode="multiple"
           allowClear
@@ -118,7 +124,8 @@ export function DeskFilters({
           options={releaseOptions.map((v) => ({ value: v, label: v }))}
           maxTagCount="responsive"
         />
-
+  );
+  const modeSwitch = (
         <Segmented
           style={{ flexShrink: 0 }}
           value={mode}
@@ -129,8 +136,8 @@ export function DeskFilters({
             { value: 'all', label: 'Все задачи' },
           ]}
         />
-
-        {mode === 'period' && (
+  );
+  const periodPicker = mode === 'period' && (
           <DatePicker.RangePicker
             style={{ flexShrink: 0 }}
             value={[dayjs(periodStart), dayjs(periodEnd)]}
@@ -142,15 +149,16 @@ export function DeskFilters({
             allowClear={false}
             format="DD.MM.YYYY"
           />
-        )}
-
+  );
+  const reviewedSwitch = (
         <Space size={6} style={{ flexShrink: 0 }}>
           <Switch size="small" checked={showReviewed} onChange={onShowReviewedChange} />
           <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
             показывать просмотренные
           </Typography.Text>
         </Space>
-
+  );
+  const subtasksSwitch = (
         <Space size={6} style={{ flexShrink: 0 }}>
           <Switch
             size="small"
@@ -167,8 +175,58 @@ export function DeskFilters({
             выполненные подзадачи
           </Typography.Text>
         </Space>
-
+  );
+  const settingsButton = (
         <Button icon={<SettingOutlined />} onClick={onToggleThresholds} title="Настройки вида" />
+  );
+
+  if (variant === 'panel') {
+    return (
+      <div className="pc-row td-filters">
+        <label className="pc-field td-f-teams"><span className="pc-cap">Команды</span>{teamsSelect}</label>
+        <label className="pc-field td-f-people"><span className="pc-cap">Отдельные люди</span>{peopleSelect}</label>
+        <label className="pc-field td-f-sprint"><span className="pc-cap">Спринт</span>{sprintSelect}</label>
+        <label className="pc-field td-f-release"><span className="pc-cap">Релиз</span>{releaseSelect}</label>
+        <div className="pc-field"><span className="pc-cap">Режим</span>{modeSwitch}</div>
+        {periodPicker && <div className="pc-field"><span className="pc-cap">Период</span>{periodPicker}</div>}
+        <div className="pc-field td-f-switch"><span className="pc-cap">Просмотренные</span>{reviewedSwitch}</div>
+        <div className="pc-field td-f-switch"><span className="pc-cap">Подзадачи</span>{subtasksSwitch}</div>
+        <span className="pc-push td-f-settings">{settingsButton}</span>
+      </div>
+    );
+  }
+
+  return (
+    <Card size="small" styles={{ body: { padding: '10px 12px' } }}>
+      {/* Отборы жмутся под ширину окна и держатся в одну строку: выпадающие
+          списки ужимаются, а не переносят шапку на второй ряд. */}
+      <div
+        style={{
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+          columnGap: 10, rowGap: 8, width: '100%',
+        }}
+      >
+        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>КОМАНДЫ</Typography.Text>
+        {teamsSelect}
+
+        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>ОТДЕЛЬНЫЕ ЛЮДИ</Typography.Text>
+        {peopleSelect}
+
+        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>СПРИНТ</Typography.Text>
+        {sprintSelect}
+
+        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>РЕЛИЗ</Typography.Text>
+        {releaseSelect}
+
+        {modeSwitch}
+
+        {periodPicker}
+
+        {reviewedSwitch}
+
+        {subtasksSwitch}
+
+        {settingsButton}
       </div>
     </Card>
   );

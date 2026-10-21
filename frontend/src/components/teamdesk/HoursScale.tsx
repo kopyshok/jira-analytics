@@ -10,11 +10,11 @@ interface Props {
   width?: number;
 }
 
-const COLOR_OK = '#3ebd85';
-const COLOR_OVER = '#ff6b6b';
-const COLOR_IDLE = '#788799';
-const COLOR_UNDER = '#eeb13c';
-const TRACK = 'rgba(125,145,170,0.22)';
+const COLOR_OK = 'var(--hs-ok, #3ebd85)';
+const COLOR_OVER = 'var(--hs-over, #ff6b6b)';
+const COLOR_IDLE = 'var(--hs-idle, #788799)';
+const COLOR_UNDER = 'var(--hs-under, #eeb13c)';
+const TRACK = 'var(--hs-track, rgba(125,145,170,0.22))';
 
 /** Шкала «факт / оценка». Перерасход рисуется штриховым хвостом поверх полосы. */
 export function HoursScale({ fact, est, variant = 'bar', overrunPct, width }: Props) {

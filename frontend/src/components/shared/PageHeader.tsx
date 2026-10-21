@@ -20,8 +20,10 @@ export default function PageHeader({ eyebrow, title, subtitle, actions }: Props)
   const { isAurora } = useAppTheme();
 
   if (isAurora) {
+    // Классы page-header* — точки для обложек (data-skin); у Aurora своих правил нет.
     return (
       <div
+        className="page-header"
         style={{
           display: 'flex',
           alignItems: 'flex-end',
@@ -32,21 +34,21 @@ export default function PageHeader({ eyebrow, title, subtitle, actions }: Props)
       >
         <div style={{ minWidth: 0, flex: 1 }}>
           {eyebrow && (
-            <div className="eyebrow" style={{ marginBottom: 5 }}>{eyebrow}</div>
+            <div className="eyebrow page-header-eyebrow" style={{ marginBottom: 5 }}>{eyebrow}</div>
           )}
           <div
-            className="serif"
+            className="serif page-header-title"
             style={{ fontSize: 30, fontWeight: 600, letterSpacing: '-0.02em' }}
           >
             {title}
           </div>
           {subtitle && (
-            <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 13 }}>
+            <div className="page-header-sub" style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 13 }}>
               {subtitle}
             </div>
           )}
         </div>
-        {actions && <div style={{ flexShrink: 0 }}>{actions}</div>}
+        {actions && <div className="page-header-actions" style={{ flexShrink: 0 }}>{actions}</div>}
       </div>
     );
   }

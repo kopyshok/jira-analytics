@@ -1,0 +1,152 @@
+/* Панель подробностей (DetailSheet).
+   Оболочка темы может задать на <html>:
+     --detail-sheet-inset-top / -left / -bottom — не закрывать меню и строку состояния;
+     --detail-sheet-inset-right — отступ от правого края окна (по умолчанию 0);
+     --detail-sheet-bg, --detail-sheet-head-bg — фон панели и шапки.
+   И обязана ужать рабочую область, пока панель открыта:
+     html[data-detail-sheet="bottom"] .<рабочая-область> { padding-bottom: var(--detail-sheet-size); }
+     html[data-detail-sheet="right"]  .<рабочая-область> { padding-right:  var(--detail-sheet-size); } */
+
+.detail-sheet {
+  position: fixed;
+  z-index: 950; /* ниже окон AntD (1000), выпадающие списки из панели — поверх */
+  display: flex;
+  flex-direction: column;
+  background: var(--detail-sheet-bg, #fff);
+  color: var(--text, #1c1c1a);
+  border: 1px solid var(--hairline, #d9d9d9);
+  font-family: var(--font-body, inherit);
+}
+
+.detail-sheet--bottom {
+  left: var(--detail-sheet-inset-left, 0);
+  right: var(--detail-sheet-inset-right, 0);
+  bottom: var(--detail-sheet-inset-bottom, 0);
+  border-width: 1px 0 0;
+  box-shadow: 0 -8px 32px rgba(20, 22, 26, 0.1);
+}
+
+.detail-sheet--right {
+  top: var(--detail-sheet-inset-top, 0);
+  right: var(--detail-sheet-inset-right, 0);
+  bottom: var(--detail-sheet-inset-bottom, 0);
+  border-width: 0 0 0 1px;
+  box-shadow: -8px 0 32px rgba(20, 22, 26, 0.1);
+}
+
+.detail-sheet.is-expanded {
+  top: var(--detail-sheet-inset-top, 0);
+  left: var(--detail-sheet-inset-left, 0);
+  right: var(--detail-sheet-inset-right, 0);
+  bottom: var(--detail-sheet-inset-bottom, 0);
+}
+
+.detail-sheet__handle {
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+}
+.detail-sheet--bottom .detail-sheet__handle {
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+}
+.detail-sheet--right .detail-sheet__handle {
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 10px;
+  cursor: ew-resize;
+}
+/* Видимая «ручка»: полоска по центру края. */
+.detail-sheet__handle::after {
+  content: '';
+  position: absolute;
+  border-radius: 2px;
+  background: var(--hairline, #d9d9d9);
+}
+.detail-sheet--bottom .detail-sheet__handle::after {
+  left: 50%;
+  top: 7px;
+  width: 48px;
+  height: 4px;
+  transform: translateX(-50%);
+}
+.detail-sheet--right .detail-sheet__handle::after {
+  top: 50%;
+  left: 7px;
+  width: 4px;
+  height: 48px;
+  transform: translateY(-50%);
+}
+.detail-sheet__handle:hover::after,
+.detail-sheet__handle:focus-visible::after {
+  background: var(--accent-1, #3b6ef5);
+}
+.detail-sheet__handle:focus-visible {
+  outline: none;
+}
+
+.detail-sheet__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 12px 20px;
+  border-bottom: 1px solid var(--hairline, #d9d9d9);
+  background: var(--detail-sheet-head-bg, transparent);
+  flex: none;
+}
+.detail-sheet__title {
+  min-width: 0;
+  flex: 1;
+}
+.detail-sheet__name {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-sheet__sub {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-2, #3d3b37);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-sheet__extra,
+.detail-sheet__tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.detail-sheet__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--hairline, #d9d9d9);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-2, #3d3b37);
+  cursor: pointer;
+}
+.detail-sheet__tool:hover,
+.detail-sheet__tool:focus-visible {
+  color: var(--text, #1c1c1a);
+  border-color: var(--text-2, #3d3b37);
+}
+
+/* Содержимое знает свою ширину: @container detail-sheet (min-width: 900px) { … } — раскладка колонками. */
+.detail-sheet__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  container: detail-sheet / inline-size;
+}

@@ -5,13 +5,16 @@ import { ProjectDetailPanel } from '../components/projects/ProjectDetailPanel';
 import { PortfolioView } from '../components/projects/PortfolioView';
 import type { ProjectListFiltersState } from '../types/projects';
 import { useRegisterHelp } from '../contexts/HelpContext';
+import { useSkin } from '../contexts/ThemeContext';
 import projectsHelp from '../../../docs/help/projects.md?raw';
 import { DARK_THEME } from '../utils/constants';
+import PultProjectsLayout from '../skins/pult/pages/ProjectsLayout';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_QUARTER = (Math.floor(new Date().getMonth() / 3) + 1) as 1 | 2 | 3 | 4;
 
-export default function ProjectsPage() {
+/** Отборы и выбор проекта страницы «Проекты» — общие для раскладки Aurora и обложек. */
+function useProjectsPage() {
   const navigate = useNavigate();
   const { key } = useParams<{ key?: string }>();
   useRegisterHelp('Проекты', projectsHelp);
@@ -32,6 +35,20 @@ export default function ProjectsPage() {
     navigate(`/projects/${encodeURIComponent(selectedKey)}`);
   };
 
+  const showPortfolio = () => navigate('/projects');
+  const openProject = (projectKey: string) => navigate(`/projects/${encodeURIComponent(projectKey)}`);
+
+  return { selectedKey: key ?? null, filters, setFilters, handleSelect, showPortfolio, openProject };
+}
+
+export type ProjectsPageState = ReturnType<typeof useProjectsPage>;
+
+export default function ProjectsPage() {
+  const page = useProjectsPage();
+  const skin = useSkin();
+  if (skin === 'pult') return <PultProjectsLayout page={page} />;
+  const { selectedKey: key, filters, setFilters, handleSelect, showPortfolio } = page;
+
   return (
     <div
       className="projects-master-detail"
@@ -43,11 +60,11 @@ export default function ProjectsPage() {
       }}
     >
       <ProjectsList
-        selectedKey={key ?? null}
+        selectedKey={key}
         onSelect={handleSelect}
         filters={filters}
         onFiltersChange={setFilters}
-        onShowPortfolio={() => navigate('/projects')}
+        onShowPortfolio={showPortfolio}
       />
 
       {key ? (

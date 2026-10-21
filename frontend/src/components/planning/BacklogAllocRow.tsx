@@ -327,7 +327,7 @@ function BacklogAllocRowBase({
       ? 'var(--row-included-bg, rgba(0,201,200,0.06))'
       : 'transparent',
     borderLeft: rowLeftBorder(a.included, rowStateClass),
-    opacity: a.included ? 1 : 0.85,
+    opacity: a.included ? 1 : 'var(--alloc-excluded-opacity, 0.85)',
     transform: CSS.Translate.toString(transform),
     transition,
     ...(isDragging ? { opacity: 0.5 } : null),
@@ -382,7 +382,7 @@ function BacklogAllocRowBase({
             marginBottom: 3,
           }}
         >
-          <span style={{ flex: '1 1 auto', minWidth: 0 }}>{a.title}</span>
+          <span className="ba-title" style={{ flex: '1 1 auto', minWidth: 0 }}>{a.title}</span>
           {a.multi_team_progress && <MultiTeamProgressTag progress={a.multi_team_progress} compact />}
           {hasOverride && (
             <Tag color="gold" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>

@@ -60,7 +60,7 @@ function SiblingPopover({
             style={{
               fontFamily: 'monospace',
               fontSize: 11,
-              color: 'var(--accent-1, #00c9c8)',
+              color: 'var(--ic-key, var(--accent-1, #00c9c8))',
               background: 'var(--key-chip-bg, rgba(0,201,200,0.08))',
               border: '1px solid var(--key-chip-border, rgba(0,201,200,0.18))',
               borderRadius: 4,
@@ -162,7 +162,7 @@ function TreeRow({
         style={{
           fontFamily: 'monospace',
           fontSize: 11,
-          color: 'var(--accent-1, #00c9c8)',
+          color: 'var(--ic-key, var(--accent-1, #00c9c8))',
           background: 'var(--key-chip-bg, rgba(0,201,200,0.08))',
           border: '1px solid var(--key-chip-border, rgba(0,201,200,0.18))',
           borderRadius: 4,
@@ -188,7 +188,7 @@ function TreeRow({
       <span
         style={{
           fontSize: 12,
-          color: isCurrent ? 'var(--text, #e6edf7)' : '#cbd5e1',
+          color: isCurrent ? 'var(--text, #e6edf7)' : 'var(--ic-text-2, #cbd5e1)',
           fontWeight: isCurrent ? 600 : 400,
           flex: '1 1 auto',
           minWidth: 0,

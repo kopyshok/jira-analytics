@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useCallback, useLayoutEffect, type ReactNode } from 'react';
-import type { AppTheme } from '../utils/constants';
+import { APP_THEMES, type AppSkin, type AppTheme } from '../utils/constants';
 
 interface ThemeContextValue {
   theme: AppTheme;
   setTheme: (t: AppTheme) => void;
   isAurora: boolean;
   mode: 'dark' | 'light' | null;
+  /** Обложка поверх Aurora light (`data-skin`); null — чистая Aurora. */
+  skin: AppSkin | null;
 }
 
 export const ThemeContext = createContext<ThemeContextValue>({
@@ -13,14 +15,28 @@ export const ThemeContext = createContext<ThemeContextValue>({
   setTheme: () => {},
   isAurora: true,
   mode: 'dark',
+  skin: null,
 });
+
+function isKnownTheme(v: string | null): v is AppTheme {
+  return v !== null && Object.prototype.hasOwnProperty.call(APP_THEMES, v);
+}
+
+/** Обложка рисуется поверх Aurora light, поэтому её режим всегда светлый. */
+function themeMode(t: AppTheme): 'dark' | 'light' {
+  return t === 'aurora-dark' ? 'dark' : 'light';
+}
+
+function themeSkin(t: AppTheme): AppSkin | null {
+  return APP_THEMES[t].skin ?? null;
+}
 
 function readStoredTheme(): AppTheme {
   try {
     const v = localStorage.getItem('app_theme');
-    if (v === 'aurora-dark' || v === 'aurora-light') return v;
+    if (isKnownTheme(v)) return v;
     // Все прежние темы (dark-blue, dark, dark-slate, dark-charcoal) сведены
-    // к Aurora — в продукте остались только две.
+    // к Aurora; допустимые значения — ключи APP_THEMES.
   } catch {
     // localStorage unavailable
   }
@@ -30,7 +46,10 @@ function readStoredTheme(): AppTheme {
 function applyDomAttrs(t: AppTheme): void {
   const root = document.documentElement;
   root.setAttribute('data-theme', 'aurora');
-  root.setAttribute('data-mode', t === 'aurora-light' ? 'light' : 'dark');
+  root.setAttribute('data-mode', themeMode(t));
+  const skin = themeSkin(t);
+  if (skin) root.setAttribute('data-skin', skin);
+  else root.removeAttribute('data-skin');
 }
 
 // Apply DOM attrs eagerly on module load — before any React render reads the Proxy.
@@ -57,10 +76,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // isAurora остался в контракте контекста ради потребителей (графики, токены),
   // но других тем в продукте больше нет — всегда true.
   const isAurora = true;
-  const mode: 'dark' | 'light' = theme === 'aurora-light' ? 'light' : 'dark';
+  const mode = themeMode(theme);
+  const skin = themeSkin(theme);
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, isAurora, mode }}>
+    <ThemeContext.Provider value={{ theme, setTheme, isAurora, mode, skin }}>
       {children}
     </ThemeContext.Provider>
   );
@@ -68,4 +88,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 export function useAppTheme(): ThemeContextValue {
   return useContext(ThemeContext);
+}
+
+/** Активная обложка (`data-skin`) или null — чистая Aurora. Страницы выбирают по ней раскладку. */
+export function useSkin(): AppSkin | null {
+  return useContext(ThemeContext).skin;
 }

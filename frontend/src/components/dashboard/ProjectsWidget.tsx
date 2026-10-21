@@ -7,6 +7,7 @@ import { statusTagColor } from '../../utils/status';
 import { DARK_THEME, CHART_COLORS } from '../../utils/constants';
 import { silenceLabel } from '../../utils/projectSilence';
 import { plural } from '../../utils/plural';
+import { roleChipPair } from '../../utils/roles';
 
 const STATUS_COLORS = {
   done: 'var(--good, #67d68d)',
@@ -171,8 +172,9 @@ function AssigneeStack({ project }: { project: ProjectItem }) {
           title={a.initials}
           style={{
             width: 24, height: 24, borderRadius: '50%',
-            border: `2px solid ${DARK_THEME.cardBg}`, background: a.color,
-            color: DARK_THEME.textPrimary, fontSize: 10, fontWeight: 700,
+            border: `2px solid ${DARK_THEME.cardBg}`,
+            background: roleChipPair(a.color)?.bg ?? a.color,
+            color: roleChipPair(a.color)?.fg ?? DARK_THEME.textPrimary, fontSize: 10, fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             marginLeft: i === 0 ? 0 : -8,
           }}

@@ -25,6 +25,6 @@ describe('легенда таймлайна проекта', () => {
 
   it('у каждой фазы свой цвет полосы', () => {
     const [opo] = legendPhases([row(bar('opo', 'ОПЭ'))]);
-    expect(opo.color).toBe('#7F77DD');
+    expect(opo.color).toBe('var(--wt-opo, #7F77DD)');
   });
 });
