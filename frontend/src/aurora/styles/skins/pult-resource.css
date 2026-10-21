@@ -170,6 +170,7 @@ html[data-theme="aurora"][data-mode="light"][data-skin="pult"] {
     cursor: pointer;
   }
   & .rp-conf-more:hover { border-color: var(--p-line-strong); }
+  & .rp-conf-more-wrap { flex: none; display: inline-flex; }
   & .rp-conf-details { max-height: 260px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
   & .rp-conf-group { display: flex; flex-direction: column; gap: 6px; }
 

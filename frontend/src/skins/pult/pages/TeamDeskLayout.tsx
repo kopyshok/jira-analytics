@@ -166,8 +166,9 @@ export default function PultTeamDeskLayout({ desk }: { desk: TeamDeskPageState }
   }, [absences.data, data]);
   const counts: Record<DeskList, number> = { rubber: rubberRows.length, wip: wipTotal, absence: absenceCount };
   // Список опустел (сменили отбор) — панель закрывается и сама не вернётся.
-  if (list && data && counts[list] === 0) setList(null);
-  const shownList = list && data && counts[list] > 0 ? list : null;
+  // Отсутствия открываются и при нуле: в списке выбирается другой квартал.
+  if (list && list !== 'absence' && data && counts[list] === 0) setList(null);
+  const shownList = list && data && (list === 'absence' || counts[list] > 0) ? list : null;
   // Рабочая область ужалась под панель — нажатый счётчик остаётся на виду.
   useEffect(() => {
     if (!shownList) return;

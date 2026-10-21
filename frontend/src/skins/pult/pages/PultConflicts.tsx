@@ -93,6 +93,9 @@ export default function PultConflicts({ conflicts, planId, onSelectAssignment }:
               <span className="rp-conf-msg">{c.message}</span>
               <span className="pc-cap rp-conf-status">{CONFLICT_STATUS_LABEL[c.status]}</span>
               {!isLiveConflict(c) && (
+                // Меню статуса внутри кликабельной карточки: щелчки и клавиши меню не открывают назначение
+                // (события React всплывают к карточке и сквозь портал меню).
+                <span className="rp-conf-more-wrap" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                 <Dropdown
                   trigger={['click']}
                   menu={{
@@ -105,11 +108,11 @@ export default function PultConflicts({ conflicts, planId, onSelectAssignment }:
                     type="button"
                     className="rp-conf-more"
                     aria-label="Сменить статус"
-                    onClick={(e) => e.stopPropagation()}
                   >
                     <MoreOutlined />
                   </button>
                 </Dropdown>
+                </span>
               )}
             </div>
           ))}

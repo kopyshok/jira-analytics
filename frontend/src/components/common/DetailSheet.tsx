@@ -19,7 +19,7 @@ import './DetailSheet.css';
 const OVERLAY_OPEN =
   '.ant-modal-wrap:not([style*="display: none"]), .ant-select-dropdown:not(.ant-select-dropdown-hidden), ' +
   '.ant-picker-dropdown:not(.ant-picker-dropdown-hidden), .ant-dropdown:not(.ant-dropdown-hidden), ' +
-  '.ant-popover:not(.ant-popover-hidden)';
+  '.ant-popover:not(.ant-popover-hidden), .ant-drawer-open, .ant-tour:not(.ant-tour-hidden)';
 
 interface Props {
   open: boolean;
@@ -93,7 +93,7 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
   useEffect(() => {
     if (!open) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
       const t = e.target as HTMLElement | null;
       // Набор текста Esc не прерывает; фокус в закрытом выпадающем списке или календаре — не набор
       // (первый Esc закрыл список, второй закрывает панель, как у выезжающего окна).
@@ -123,6 +123,7 @@ export default function DetailSheet({ open, onClose, title, subtitle, extra, ari
   };
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
     dragging.current = true;
     e.currentTarget.setPointerCapture(e.pointerId);
   };
