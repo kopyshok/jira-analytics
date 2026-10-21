@@ -11,6 +11,7 @@ import BacklogRoleCell from './BacklogRoleCell';
 import { useScenarioAssigneeCandidates } from '../../hooks/usePlanning';
 import { candidateOptions } from '../../utils/rpCandidates';
 import { effectiveEstimate } from '../../utils/allocationEstimates';
+import { rowLeftBorder } from '../../utils/backlogRowStripe';
 import { statusTagColor } from '../../utils/status';
 import { getRoleColor } from '../../utils/roles';
 import { OPO_COLOR, foldOpo } from '../../utils/opo';
@@ -325,9 +326,7 @@ function BacklogAllocRowBase({
     background: a.included
       ? 'var(--row-included-bg, rgba(0,201,200,0.06))'
       : 'transparent',
-    borderLeft: a.included
-      ? '3px solid var(--accent-1, #00c9c8)'
-      : '3px solid transparent',
+    borderLeft: rowLeftBorder(a.included, rowStateClass),
     opacity: a.included ? 1 : 0.85,
     transform: CSS.Translate.toString(transform),
     transition,
