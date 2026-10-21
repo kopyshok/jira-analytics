@@ -34,6 +34,14 @@ import { GRID_GAP, gridMinWidth, type PlanningPageState } from '../../../hooks/u
 import ZonesBand, { BandField, BandTabs } from '../ZonesBand';
 
 const SUBTITLE = 'Отметьте галочками задачи из бэклога — сформируется план квартала';
+
+/** «1 идея», «3 идеи», «35 идей». */
+function ideasLabel(n: number): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return `${n} идея`;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return `${n} идеи`;
+  return `${n} идей`;
+}
 // Плотная сетка таблицы скина: часы ролей — числами, «Идея» забирает остаток.
 const GRID_Z = '20px 44px 64px minmax(200px, 1fr) 118px 118px 130px 192px 76px';
 const GRID_Z_SUB = '20px 44px 64px minmax(200px, 1fr) 118px 118px 104px 130px 192px 76px';
@@ -274,7 +282,7 @@ export default function PlanningZonesLayout({ pl }: { pl: PlanningPageState }) {
                   <span style={{ flex: 1 }} />
                   {allocations && (
                     <span className="plz-totals">
-                      <b>{allocations.length} идей</b> · включено {includedIds.length}
+                      <b>{ideasLabel(allocations.length)}</b> · включено {includedIds.length}
                     </span>
                   )}
                 </div>
