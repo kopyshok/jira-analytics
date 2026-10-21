@@ -5,6 +5,7 @@ import { getRoleColor } from '../../utils/roles';
 import { OPO_COLOR, foldOpo } from '../../utils/opo';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import type { AllocationResponse, Role } from '../../types/api';
+import { plural } from '../../utils/plural';
 
 type Props = {
   name: string;
@@ -66,7 +67,7 @@ export default function SubgroupSectionHeader({ name, items, collapsed, roles, o
       )}
       <span style={{ fontSize: 13, fontWeight: 600, color: DARK_THEME.textPrimary }}>{name}</span>
       <span style={{ fontSize: 11, color: DARK_THEME.textHint }}>
-        {items.length} идей · включено {totals.included}
+        {items.length} {plural(items.length, 'идея', 'идеи', 'идей')} · включено {totals.included}
       </span>
       <span style={{ flex: 1 }} />
       {cells.map(([label, hours, color]) => (

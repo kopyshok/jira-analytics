@@ -3,6 +3,7 @@ import { App, Button, DatePicker, Radio, Select, Space, Statistic, Typography, L
 import dayjs, { type Dayjs } from 'dayjs';
 import { useBulkPreview, useBulkArchive } from '../../../hooks/useBulkTriage';
 import type { BulkFilter, BulkPreviewItem } from '../../../types/api';
+import { plural } from '../../../utils/plural';
 
 const { Text } = Typography;
 
@@ -38,7 +39,7 @@ export default function BulkArchiveSection({ selectedTeams, scopeProjectKeys, on
   const runArchive = () => {
     if (!preview || preview.total === 0) return;
     modal.confirm({
-      title: `Архивировать ${preview.total} задач?`,
+      title: `Архивировать ${preview.total} ${plural(preview.total, 'задачу', 'задачи', 'задач')}?`,
       content: 'Им проставится архивная категория, флаг «В анализ» снимется. Откатить можно только вручную.',
       okText: 'Архивировать',
       okType: 'danger',

@@ -11,6 +11,7 @@ import {
   explainIssue, previewMetric,
   type KpiExplainResult, type KpiMetricPayload, type KpiPreviewResult, type KpiPreviewRow,
 } from '../../../api/kpi';
+import { plural } from '../../../utils/plural';
 
 const { Text } = Typography;
 
@@ -107,7 +108,7 @@ export default function MetricPreview({ form }: { form: KpiMetricPayload }) {
               </Text><br />
               <span className="num" style={{ fontSize: 24, fontWeight: 600 }}>{pct(result.team_value)}</span>
               <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-                посчитано {result.people_with_data} из {result.people_total} человек
+                посчитано {result.people_with_data} из {result.people_total} {plural(result.people_total, 'человека', 'человек', 'человек')}
               </Text>
             </div>
             {result.items.numerator_count > 0 && (
@@ -159,7 +160,7 @@ export default function MetricPreview({ form }: { form: KpiMetricPayload }) {
           {result.items.numerator.length > 0 && (
             <div style={{ marginTop: 14 }}>
               <Text type="secondary" style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 700 }}>
-                Что считаем · {result.items.numerator_count} задач
+                Что считаем · {result.items.numerator_count} {plural(result.items.numerator_count, 'задача', 'задачи', 'задач')}
               </Text>
               <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.9 }}>
                 {result.items.numerator.slice(0, 40).map((i) => (

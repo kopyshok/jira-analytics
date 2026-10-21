@@ -2,6 +2,7 @@ import { Button, Card, Tag, Typography } from 'antd';
 import { StarOutlined } from '@ant-design/icons';
 import { DARK_THEME } from '../../utils/constants';
 import type { Candidate } from '../../types/workTypeReport';
+import { plural } from '../../utils/plural';
 
 interface Props {
   candidates: Candidate[];
@@ -35,7 +36,7 @@ export default function CandidatesPanel({ candidates, onOpenDrawer }: Props) {
             color: DARK_THEME.textPrimary,
           }}
         >
-          {candidates.length} кандидатов
+          {candidates.length} {plural(candidates.length, 'кандидат', 'кандидата', 'кандидатов')}
         </Typography.Text>
       </div>
 
@@ -59,7 +60,7 @@ export default function CandidatesPanel({ candidates, onOpenDrawer }: Props) {
             <Typography.Text
               style={{ fontSize: 12, color: DARK_THEME.textMuted, display: 'block', marginTop: 2 }}
             >
-              {c.hours.toFixed(1)} ч · {c.issues_count} задач
+              {c.hours.toFixed(1)} ч · {c.issues_count} {plural(c.issues_count, 'задача', 'задачи', 'задач')}
             </Typography.Text>
             {c.sample_keys.length > 0 && (
               <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>

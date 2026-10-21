@@ -4,6 +4,7 @@ import type { EmployeeResponse } from '../../types/api';
 import { quarterBounds } from '../../utils/gantt';
 import PlaneSidebar, { type PlaneFilters } from './PlaneSidebar';
 import css from './PlaneGantt.module.css';
+import { plural } from '../../utils/plural';
 
 interface Props {
   assignments: AssignmentOut[];
@@ -469,7 +470,7 @@ export default function PlaneGantt({
                           {proj.key}
                         </span>
                         <span className={css.projectMeta}>
-                          {proj.initiatives.length} инициатив
+                          {proj.initiatives.length} {plural(proj.initiatives.length, 'инициатива', 'инициативы', 'инициатив')}
                         </span>
                         <span className={css.projectHours}>{proj.totalHours.toFixed(0)} ч</span>
                       </div>

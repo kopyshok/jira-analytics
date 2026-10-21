@@ -2,6 +2,7 @@ import React from 'react';
 import type { ProjectListItem } from '../../types/projects';
 import { StarRating } from './shared/StarRating';
 import { DARK_THEME } from '../../utils/constants';
+import { plural } from '../../utils/plural';
 
 const STATUS_CATEGORY_COLOR: Record<string, string> = {
   done: '#67d68d',
@@ -99,7 +100,7 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <MetaTag icon="📅">{`${formatDate(item.period_start)} – ${formatDate(item.period_end)}`}</MetaTag>
           <MetaTag icon="⏱">{`${Math.round(item.total_hours)} ч`}</MetaTag>
-          <MetaTag icon="📋">{`${item.child_count} задач`}</MetaTag>
+          <MetaTag icon="📋">{`${item.child_count} ${plural(item.child_count, 'задача', 'задачи', 'задач')}`}</MetaTag>
           <MetaTag icon="👥">{`${item.employee_count} участн.`}</MetaTag>
         </div>
 

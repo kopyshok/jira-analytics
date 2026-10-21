@@ -12,6 +12,7 @@ import {
   type KpiBreakdownTable, type KpiReportRow, type KpiTableDropped, type KpiTableRow,
 } from '../../api/kpi';
 import { KPI_MONTH_ABBR_RU } from '../../utils/kpiShared';
+import { plural } from '../../utils/plural';
 
 const { Text } = Typography;
 
@@ -369,7 +370,7 @@ export default function KpiBreakdownDock({
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
               {table.counted_count} {okLabel}
-              {table.problem_count > 0 ? ` · ${table.problem_count} требуют внимания` : ''}
+              {table.problem_count > 0 ? ` · ${table.problem_count} ${plural(table.problem_count, 'требует', 'требуют', 'требуют')} внимания` : ''}
               {table.truncated ? ` · показаны первые ${table.rows.length}` : ''}
             </Text>
           </div>

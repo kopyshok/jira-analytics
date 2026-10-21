@@ -17,6 +17,7 @@ import { useAppearanceSettings } from '../../contexts/AppearanceContext';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
 import { computeFillGradientAlphas } from './appearanceGradient';
 import JiraIssueLink from '../shared/JiraIssueLink';
+import { plural } from '../../utils/plural';
 
 export type ViewMode = 'portfolio' | 'two-level' | 'resource-track' | 'plane';
 
@@ -919,7 +920,7 @@ function TwoLevelRows({
                   {section || 'Без группы'}
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--text-hint, #7a9ab8)' }}>
-                  {sectionItems} задач · {Math.round(sectionHours).toLocaleString('ru')} ч
+                  {sectionItems} {plural(sectionItems, 'задача', 'задачи', 'задач')} · {Math.round(sectionHours).toLocaleString('ru')} ч
                 </span>
               </div>
             )}

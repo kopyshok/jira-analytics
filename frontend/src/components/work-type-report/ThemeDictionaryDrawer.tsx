@@ -33,6 +33,7 @@ import {
 } from '../../hooks/useWorkTypeReport';
 import type { ThemeOut, Candidate } from '../../types/workTypeReport';
 import ThemeAliasesEditor from './ThemeAliasesEditor';
+import { plural } from '../../utils/plural';
 
 interface Props {
   open: boolean;
@@ -504,7 +505,7 @@ function CandidatesTab({ candidates, snapshotId, activeThemes }: CandidatesTabPr
                   {c.proposed_name}
                 </Typography.Text>
                 <Typography.Text style={{ fontSize: 12, color: DARK_THEME.textMuted }}>
-                  {c.hours.toFixed(1)} ч · {c.issues_count} задач
+                  {c.hours.toFixed(1)} ч · {c.issues_count} {plural(c.issues_count, 'задача', 'задачи', 'задач')}
                 </Typography.Text>
                 {c.sample_keys.length > 0 && (
                   <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>

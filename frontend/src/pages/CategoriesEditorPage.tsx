@@ -40,6 +40,7 @@ import {
   type RootSort,
   type TriageTab,
 } from '../utils/categoryTriage';
+import { plural } from '../utils/plural';
 
 const { Text } = Typography;
 
@@ -1104,7 +1105,7 @@ export default function CategoriesEditorPage() {
           </Text>
         </Space>
         <Tag color={counts.stack > 0 ? 'gold' : 'cyan'} className="category-triage-attention" data-tour="categories-waiting">
-          {counts.stack} ждут разбора
+          {counts.stack} {plural(counts.stack, 'ждёт', 'ждут', 'ждут')} разбора
         </Tag>
       </section>
 
@@ -1217,7 +1218,7 @@ export default function CategoriesEditorPage() {
         }}
       />
       <Modal
-        title={`Установить категорию для ${applicableSelectedIds.length} задач`}
+        title={`Установить категорию для ${applicableSelectedIds.length} ${plural(applicableSelectedIds.length, 'задачи', 'задач', 'задач')}`}
         open={bulkModalOpen}
         onCancel={() => { setBulkModalOpen(false); setBulkCategory(undefined); }}
         width={620}
@@ -1228,7 +1229,7 @@ export default function CategoriesEditorPage() {
           <Popconfirm
             key="reset"
             title="Сбросить категорию?"
-            description={`Категория снимется у ${applicableSelectedIds.length} отмеченных задач и всех их подзадач — они вернутся в «К разбору».`}
+            description={`Категория снимется у ${applicableSelectedIds.length} ${plural(applicableSelectedIds.length, 'отмеченной задачи', 'отмеченных задач', 'отмеченных задач')} и всех их подзадач — они вернутся в «К разбору».`}
             okText="Сбросить"
             cancelText="Отмена"
             onConfirm={applyBulkReset}

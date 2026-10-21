@@ -1,5 +1,6 @@
 import { Alert, Collapse, Typography } from 'antd';
 import type { AssignmentOut } from '../../../api/resourcePlanning';
+import { plural } from '../../../utils/plural';
 
 interface Props {
   assignment: AssignmentOut;
@@ -24,12 +25,12 @@ export default function CriticalPathSection({ assignment, collapsed, onToggleCol
               type="error"
               showIcon
               title="Фаза на критическом пути."
-              description={`Резерв: ${slack} дней. Сдвиг сорвёт срок проекта.`}
+              description={`Резерв: ${slack} ${plural(slack, 'день', 'дня', 'дней')}. Сдвиг сорвёт срок проекта.`}
             />
           )
           : (
             <Typography.Text type="success">
-              Не на критическом пути. Резерв: {slack} дней.
+              Не на критическом пути. Резерв: {slack} {plural(slack, 'день', 'дня', 'дней')}.
             </Typography.Text>
           ),
       }]}

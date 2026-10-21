@@ -14,6 +14,7 @@ import {
 import { api } from '../../api/client';
 import { aiStatusApi } from '../../api/aiStatus';
 import { useAiEnabled } from '../../hooks/useAiEnabled';
+import { plural } from '../../utils/plural';
 
 const FALLBACK_GEMINI_MODELS: GeminiModelInfo[] = [
   { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite Preview (рекомендуется на free)', version: 3.1 },
@@ -158,7 +159,7 @@ export const AITab: React.FC = () => {
     try {
       const list = await llmApi.listGeminiModels();
       if (list && list.length) setGeminiModels(list);
-      if (!silent) message.success(`Загружено ${list.length} моделей Gemini`);
+      if (!silent) message.success(`${plural(list.length, 'Загружена', 'Загружено', 'Загружено')} ${list.length} ${plural(list.length, 'модель', 'модели', 'моделей')} Gemini`);
     } catch (e: unknown) {
       if (!silent) message.error(e instanceof Error ? e.message : 'Не удалось загрузить список');
     } finally {
@@ -172,7 +173,7 @@ export const AITab: React.FC = () => {
     try {
       const list = await llmApi.listOpenRouterModels();
       if (list && list.length) setOpenRouterModels(list);
-      if (!silent) message.success(`Загружено ${list.length} бесплатных моделей OpenRouter`);
+      if (!silent) message.success(`${plural(list.length, 'Загружена', 'Загружено', 'Загружено')} ${list.length} ${plural(list.length, 'бесплатная модель', 'бесплатные модели', 'бесплатных моделей')} OpenRouter`);
     } catch (e: unknown) {
       if (!silent) message.error(e instanceof Error ? e.message : 'Не удалось загрузить список');
     } finally {
@@ -186,7 +187,7 @@ export const AITab: React.FC = () => {
     try {
       const list = await llmApi.listDeepSeekModels();
       if (list && list.length) setDeepSeekModels(list);
-      if (!silent) message.success(`Загружено ${list.length} моделей DeepSeek`);
+      if (!silent) message.success(`${plural(list.length, 'Загружена', 'Загружено', 'Загружено')} ${list.length} ${plural(list.length, 'модель', 'модели', 'моделей')} DeepSeek`);
     } catch (e: unknown) {
       if (!silent) message.error(e instanceof Error ? e.message : 'Не удалось загрузить список');
     } finally {
@@ -200,7 +201,7 @@ export const AITab: React.FC = () => {
     try {
       const list = await llmApi.listOmniRouteModels();
       if (list && list.length) setOmniRouteModels(list);
-      if (!silent) message.success(`Загружено ${list.length} моделей OmniRoute`);
+      if (!silent) message.success(`${plural(list.length, 'Загружена', 'Загружено', 'Загружено')} ${list.length} ${plural(list.length, 'модель', 'модели', 'моделей')} OmniRoute`);
     } catch (e: unknown) {
       if (!silent) message.error(e instanceof Error ? e.message : 'Не удалось загрузить список');
     } finally {

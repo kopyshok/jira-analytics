@@ -13,6 +13,7 @@ import {
 } from '../../api/kpi';
 import { formatDateOnly } from '../../utils/format';
 import { kpiStatusOf, onKpiCellActivate, KPI_MONTH_ABBR_RU, type KpiStatus } from '../../utils/kpiShared';
+import { plural } from '../../utils/plural';
 
 const { Text } = Typography;
 
@@ -267,7 +268,7 @@ export default function KpiEmployeeTab({
           </div>
           {noDataCount > 0 && (
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 10 }}>
-              {noDataCount} метрик без данных, их вес распределён между остальными.
+              {noDataCount} {plural(noDataCount, 'метрика', 'метрики', 'метрик')} без данных, их вес распределён между остальными.
             </Text>
           )}
         </Card>

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import NoteCard from './NoteCard';
 import type { VersionFeed, ReleaseNote } from '../../types/releaseNotes';
 import { DARK_THEME } from '../../utils/constants';
+import { plural } from '../../utils/plural';
 
 /** Заголовок группы заметок: текст основным цветом темы, смысловой цвет — только у метки. */
 function GroupTitle({ color, children }: { color: string; children: ReactNode }) {
@@ -71,7 +72,7 @@ export default function WhatsNewModal({
       title={
         feeds.length === 1
           ? `Что нового в ${feeds[0].version}`
-          : `Что нового (${feeds.length} версий)`
+          : `Что нового (${feeds.length} ${plural(feeds.length, 'версия', 'версии', 'версий')})`
       }
       footer={footer}
     >

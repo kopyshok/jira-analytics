@@ -6,6 +6,7 @@ import {
 import type { QueueScope } from './queueFilter';
 import { HoursScale } from './HoursScale';
 import { StatusCounters } from './StatusCounters';
+import { plural } from '../../utils/plural';
 
 function initials(name: string | null): string {
   if (!name) return '?';
@@ -120,8 +121,8 @@ export function DeveloperCards({
                   {dev.total_issues}
                 </span>
                 <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>
-                  задач всего<br />
-                  <b>{dev.in_dev}</b> у него · <b>{dev.waiting}</b> ждут не его · <b>{dev.todo}</b> не начаты
+                  {plural(dev.total_issues, 'задача', 'задачи', 'задач')} всего<br />
+                  <b>{dev.in_dev}</b> у него · <b>{dev.waiting}</b> {plural(dev.waiting, 'ждёт', 'ждут', 'ждут')} не его · <b>{dev.todo}</b> {plural(dev.todo, 'не начата', 'не начаты', 'не начаты')}
                 </Typography.Text>
               </div>
 

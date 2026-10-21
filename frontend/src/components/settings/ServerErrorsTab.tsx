@@ -3,6 +3,7 @@ import { Alert, App, Button, Empty, Popconfirm, Space, Table, Tag, Typography } 
 import { ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import { serverErrorsApi } from '../../api/serverErrors';
 import type { ServerErrorItem, ServerErrorList } from '../../api/serverErrors';
+import { plural } from '../../utils/plural';
 
 const { Text, Paragraph } = Typography;
 
@@ -104,7 +105,7 @@ export default function ServerErrorsTab() {
               и приложить к обращению.
             </Paragraph>
             <Paragraph style={{ marginBottom: 0 }}>
-              Список живёт в памяти сервиса: хранится последние {list.data?.capacity ?? 200} записей
+              Список живёт в памяти сервиса: хранится последние {list.data?.capacity ?? 200} {plural(list.data?.capacity ?? 200, 'запись', 'записи', 'записей')}
               и очищается при перезапуске. Если список пуст, а сбои были — значит сервис
               перезапускался; время запуска показано ниже.
             </Paragraph>

@@ -4,6 +4,7 @@ import type { TransferProps } from 'antd/es/transfer';
 import { useBulkCascadeInherit } from '../../../hooks/useBulkTriage';
 import { useEpicCandidates } from '../../../hooks/useIssueLazyTree';
 import { useCategories } from '../../../hooks/useCategories';
+import { plural } from '../../../utils/plural';
 
 const { Text } = Typography;
 
@@ -47,13 +48,13 @@ export default function BulkCascadeInheritSection({
   const runCascade = () => {
     if (targetKeys.length === 0) return;
     modal.confirm({
-      title: `Протянуть категорию ${targetKeys.length} эпиков на потомков?`,
+      title: `Протянуть категорию ${targetKeys.length} ${plural(targetKeys.length, 'эпика', 'эпиков', 'эпиков')} на потомков?`,
       content: 'Категория эпика проставится всем его потомкам без своей категории. Ручные решения не трогаются.',
       okText: 'Применить',
       cancelText: 'Отмена',
       onOk: async () => {
         const res = await cascadeMut.mutateAsync({ ancestorIds: targetKeys });
-        message.success(`Применено к ${res.applied} задачам, пропущено эпиков без категории: ${res.skipped_ancestors}`);
+        message.success(`Применено к ${res.applied} ${plural(res.applied, 'задаче', 'задачам', 'задачам')}, пропущено эпиков без категории: ${res.skipped_ancestors}`);
         setTargetKeys([]);
         onApplied();
       },

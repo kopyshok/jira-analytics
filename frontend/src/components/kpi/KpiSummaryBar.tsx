@@ -5,6 +5,7 @@ import { useThemeTokens } from '../../aurora/theme/useThemeTokens';
 import type {
   KpiReportRow, KpiReportSummary, KpiSkippedEmployee, KpiTeamSummaryRow,
 } from '../../api/kpi';
+import { plural } from '../../utils/plural';
 
 const { Text } = Typography;
 
@@ -131,7 +132,7 @@ export default function KpiSummaryBar({
           <b className="num" style={{ fontSize: 14, color: summary?.no_data_metrics_count ? t.amber : undefined }}>
             {summary ? summary.no_data_metrics_count : '—'}
           </b>
-          <Text type="secondary"> из {cellsTotal} клеток</Text>
+          <Text type="secondary"> из {cellsTotal} {plural(cellsTotal, 'клетки', 'клеток', 'клеток')}</Text>
           {gaps.length > 0 && (
             <button type="button" style={{ ...linkStyle, marginLeft: 8 }} onClick={() => setDrawer('gaps')}>
               разобрать

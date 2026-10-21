@@ -4,6 +4,7 @@ import { SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { DARK_THEME } from '../../utils/constants';
 import type { DashboardCategoriesResponse, CategoryMetaItem, EmployeeWorklogActivity } from '../../types/api';
+import { plural } from '../../utils/plural';
 
 const STORAGE_KEY = 'dashboard.categories.activityThresholds';
 
@@ -330,7 +331,7 @@ function SummaryStrip({ items }: { items: CategoryMetaItem[] }) {
       <span>Σ часов: <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(totalHours)}</b></span>
       <span>Σ ворклогов: <b style={{ color: DARK_THEME.textPrimary }}>{totalWl}</b></span>
       <span>Σ задач: <b style={{ color: DARK_THEME.textPrimary }}>{totalIssues}</b></span>
-      <span>{items.length} категорий</span>
+      <span>{items.length} {plural(items.length, 'категория', 'категории', 'категорий')}</span>
       <span>средн. <b style={{ color: DARK_THEME.textPrimary }}>{avgMin.toFixed(0)}</b> мин/wl</span>
     </div>
   );

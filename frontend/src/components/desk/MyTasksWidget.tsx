@@ -4,6 +4,7 @@ import { useDeskWidget } from './useDeskWidget';
 import { fmtShortRange } from './format';
 import { deskStatusKind, isInProgress, STATUS_BADGE_LABEL } from './deskStatus';
 import type { DeskProject, DeskWorkType, MyTasksData, ProjectChild } from '../../types/desk';
+import { plural } from '../../utils/plural';
 
 // Цвет вида работ по коду (analyst→cyan, dev→blue, qa→amber, opo→violet).
 const WT_COLOR: Record<string, string> = {
@@ -174,7 +175,7 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
           {activeNow && <span className="desk-now-pill">сейчас</span>}
         </div>
         {p.tree_truncated && (
-          <div className="desk-tree-truncated">показаны первые {p.tree_limit ?? 500} задач</div>
+          <div className="desk-tree-truncated">показаны первые {p.tree_limit ?? 500} {plural(p.tree_limit ?? 500, 'задача', 'задачи', 'задач')}</div>
         )}
         {open && hasChildren && (
           <div className="desk-child-list">
@@ -253,7 +254,7 @@ export default function MyTasksWidget({ token, title }: { token: string; title: 
         <div className="desk-tasks-summary-kpis">
           <div className="desk-tasks-summary-item">
             <span className="desk-tasks-summary-val">{projects.length}</span>
-            <span className="desk-tasks-summary-unit">проектов</span>
+            <span className="desk-tasks-summary-unit">{plural(projects.length, 'проект', 'проекта', 'проектов')}</span>
           </div>
           <div className="desk-tasks-summary-item">
             <span className={`desk-tasks-summary-val${overallOver ? ' over' : ''}`}>

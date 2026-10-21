@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useScenarioRevisions, useRevisionDiff } from '../../hooks/usePlanning';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import type { RevisionDiffEmployee, RevisionDiffMonth } from '../../types/api';
+import { plural } from '../../utils/plural';
 
 interface Props {
   open: boolean;
@@ -101,7 +102,7 @@ function DiffBody({ diff }: { diff: NonNullable<ReturnType<typeof useRevisionDif
       <Section title="Состав инициатив">
         {compositionEmpty ? (
           <div style={{ color: DARK_THEME.textMuted, fontSize: 12 }}>
-            Состав не изменился ({diff.kept.length} инициатив).
+            Состав не изменился ({diff.kept.length} {plural(diff.kept.length, 'инициатива', 'инициативы', 'инициатив')}).
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 16 }}>
@@ -150,7 +151,7 @@ function RevisionCard({ label, side }: { label: string; side: { revision_number:
         <span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>{formatDate(side.approved_at)}</span>
       </div>
       <div style={{ fontSize: 12, color: DARK_THEME.textPrimary, marginTop: 4 }}>
-        {side.included_count} включённых инициатив
+        {side.included_count} {plural(side.included_count, 'включённая инициатива', 'включённые инициативы', 'включённых инициатив')}
       </div>
       {side.note && (
         <div style={{ fontSize: 11, color: DARK_THEME.textMuted, marginTop: 2, fontStyle: 'italic' }}>

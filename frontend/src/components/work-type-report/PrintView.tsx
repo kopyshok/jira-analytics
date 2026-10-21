@@ -8,6 +8,7 @@ import { FONTS, MONTH_NAMES } from '../../utils/constants';
 import type { Theme } from '../../types/workTypeReport';
 import { buildSlices } from './utils';
 import dayjs from 'dayjs';
+import { plural } from '../../utils/plural';
 import 'dayjs/locale/ru';
 
 dayjs.locale('ru');
@@ -195,7 +196,7 @@ export default function PrintView() {
           )}
           {!is_fallback_narrative && <span style={{ color: '#065f46', fontWeight: 600 }}>AI-сводка</span>}
           <span>
-            {totals.tasks.toLocaleString('ru')} задач · {Math.round(totals.hours).toLocaleString('ru')} ч
+            {totals.tasks.toLocaleString('ru')} {plural(totals.tasks, 'задача', 'задачи', 'задач')} · {Math.round(totals.hours).toLocaleString('ru')} ч
           </span>
         </div>
       </div>

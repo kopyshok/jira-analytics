@@ -15,6 +15,7 @@ import { IssueKey, StatusTag } from './IssueCells';
 import { StatusCounters } from './StatusCounters';
 import { inQueueScope, type QueueScope } from './queueFilter';
 import { useStickyViewportHeight } from '../../hooks/useStickyViewportHeight';
+import { plural } from '../../utils/plural';
 
 interface Row extends Partial<DeskIssue> {
   rowKey: string;
@@ -366,7 +367,7 @@ export function GroupedIssues({
             <Typography.Text strong>
               {row.groupName}{' '}
               <Typography.Text type="secondary" style={{ fontWeight: 400 }}>
-                · {row.groupCount} задач · {row.groupInDev} у него
+                · {row.groupCount} {plural(row.groupCount ?? 0, 'задача', 'задачи', 'задач')} · {row.groupInDev} у него
               </Typography.Text>
             </Typography.Text>
             {statuses.length > 0 && (
@@ -662,7 +663,7 @@ export function GroupedIssues({
       extra={
         <Space size="small">
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {hint ? `${hint} · ` : ''}{shown} задач
+            {hint ? `${hint} · ` : ''}{shown} {plural(shown, 'задача', 'задачи', 'задач')}
           </Typography.Text>
           {onGroupByDeveloperChange && (
             <Tooltip title="Группировать задачи по разработчикам">

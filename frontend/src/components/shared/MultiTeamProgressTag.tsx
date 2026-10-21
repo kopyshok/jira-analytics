@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { Tag, Tooltip } from 'antd';
 import type { MultiTeamProgress } from '../../types/api';
 import { progressTone, teamTakeLine, type ProgressTone } from '../../utils/multiTeamProgress';
+import { plural } from '../../utils/plural';
 
 // Цвета — токены темы: в светлой и тёмной теме свои значения.
 const TONE_STYLE: Record<ProgressTone, CSSProperties> = {
@@ -37,7 +38,7 @@ export default function MultiTeamProgressTag({
       title={
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
-            В работе у {progress.taken} из {progress.total} команд
+            В работе у {progress.taken} из {progress.total} {plural(progress.total, 'команды', 'команд', 'команд')}
           </div>
           {progress.teams.map((t) => (
             <div key={t.team}>{teamTakeLine(t)}</div>

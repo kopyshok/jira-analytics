@@ -9,6 +9,7 @@ import type { AllocationResponse, ResourceBase, ResourceEmployee, ResourceSummar
 import RoleCapacityBar from './RoleCapacityBar';
 import { patchEmployee } from '../../api/employees';
 import { demandByAssigneeRole, demandByEmployee as demandByEmployeeOf } from '../../utils/planning';
+import { plural } from '../../utils/plural';
 
 const CORE_ROLE_KEYS = ['analyst', 'dev', 'qa'] as const;
 type CoreRoleKey = (typeof CORE_ROLE_KEYS)[number];
@@ -384,7 +385,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
           {overallOver
             ? 'Перегруз по одной или нескольким ролям — см. ниже'
             : totalCapacity > 0
-              ? `Запас ${freeHours} ч · ${freePct}% свободно · включено ${includedCount} идей`
+              ? `Запас ${freeHours} ч · ${freePct}% свободно · включено ${includedCount} ${plural(includedCount, 'идея', 'идеи', 'идей')}`
               : 'Нет данных о ёмкости'}
         </div>
         <div style={{ position: 'relative', height: 14, background: DARK_THEME.darkAccent, borderRadius: 7, overflow: 'hidden' }}>

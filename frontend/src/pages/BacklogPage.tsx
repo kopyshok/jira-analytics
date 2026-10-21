@@ -46,6 +46,7 @@ import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import type {
   BacklogItemResponse, BacklogView, PlanRole,
 } from '../types/api';
+import { plural } from '../utils/plural';
 
 type EstimateField = 'estimate_analyst_hours' | 'estimate_dev_hours' | 'estimate_qa_hours' | 'estimate_opo_hours';
 
@@ -819,7 +820,7 @@ export default function BacklogPage() {
               notification.success({
                 title: 'Удалено',
                 description:
-                  `Убрано из ${res.affected_scenarios.length} сценариев: ` +
+                  `Убрано из ${res.affected_scenarios.length} ${plural(res.affected_scenarios.length, 'сценария', 'сценариев', 'сценариев')}: ` +
                   res.affected_scenarios.map((s) => s.name).join(', '),
               });
             }

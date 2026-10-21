@@ -6,6 +6,7 @@ import type { DashboardProjectsResponse, ProjectItem } from '../../types/api';
 import { statusTagColor } from '../../utils/status';
 import { DARK_THEME, CHART_COLORS } from '../../utils/constants';
 import { silenceLabel } from '../../utils/projectSilence';
+import { plural } from '../../utils/plural';
 
 const STATUS_COLORS = {
   done: 'var(--good, #67d68d)',
@@ -144,7 +145,7 @@ function Donut({ data }: { data: DashboardProjectsResponse }) {
           transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none',
         }}>
           <div style={{ fontSize: 32, fontWeight: 700, color: DARK_THEME.textPrimary, lineHeight: 1 }}>{total}</div>
-          <div style={{ fontSize: 12, color: DARK_THEME.textMuted }}>проектов</div>
+          <div style={{ fontSize: 12, color: DARK_THEME.textMuted }}>{plural(total, 'проект', 'проекта', 'проектов')}</div>
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
@@ -403,7 +404,7 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
       label: 'ПОМОЩЬ ИЗВНЕ',
       value: data.total_alien_fact_hours > 0 ? `+${Math.round(data.total_alien_fact_hours)} ч` : '—',
       sub: data.total_alien_fact_hours > 0
-        ? `${data.alien_helper_count} чел · ${data.alien_projects_count} проектов`
+        ? `${data.alien_helper_count} чел · ${data.alien_projects_count} ${plural(data.alien_projects_count, 'проект', 'проекта', 'проектов')}`
         : 'нет внешней помощи',
       color: data.total_alien_fact_hours > 0 ? '#84cc16' : DARK_THEME.textMuted,
     },

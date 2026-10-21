@@ -3,6 +3,7 @@ import { Alert, App, Button, Collapse, Dropdown, Segmented, Space, Spin, Tag } f
 import { MoreOutlined } from '@ant-design/icons';
 import type { ConflictOut } from '../../api/resourcePlanning';
 import { usePatchConflict, useExplainConflict } from '../../hooks/useResourcePlanning';
+import { plural } from '../../utils/plural';
 
 interface Props {
   conflicts: ConflictOut[];
@@ -262,12 +263,12 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
             Конфликты{' '}
             {criticals.length > 0 && (
               <span style={{ color: '#e85d4a', fontWeight: 700 }}>
-                {criticals.length} критических
+                {criticals.length} {plural(criticals.length, 'критический', 'критических', 'критических')}
               </span>
             )}
             {warnings.length > 0 && (
               <span style={{ color: '#ffb432', marginLeft: 8 }}>
-                {warnings.length} предупреждений
+                {warnings.length} {plural(warnings.length, 'предупреждение', 'предупреждения', 'предупреждений')}
               </span>
             )}
           </span>
@@ -292,7 +293,7 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
                   style={{ padding: 0, fontSize: 12 }}
                   onClick={() => setShowHidden(!showHidden)}
                 >
-                  {showHidden ? 'Скрыть погашенные' : `Показать ${hidden.length} погашенных`}
+                  {showHidden ? 'Скрыть погашенные' : `Показать ${hidden.length} ${plural(hidden.length, 'погашенный', 'погашенных', 'погашенных')}`}
                 </Button>
               )}
             </Space>

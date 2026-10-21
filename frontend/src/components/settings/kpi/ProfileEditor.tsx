@@ -10,6 +10,7 @@ import {
   createProfile, deleteProfile, fetchCoverage, fetchMetrics, fetchProfiles, updateProfile,
   type KpiCoverageRow, type KpiProfileDef, type KpiProfileMetricPayload, type KpiProfilePayload,
 } from '../../../api/kpi';
+import { plural } from '../../../utils/plural';
 
 const { Text } = Typography;
 
@@ -318,7 +319,7 @@ export default function ProfileEditor() {
         />
         {coverageQuery.data && (
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 9 }}>
-            Оценивается {coverageQuery.data.evaluated_count} человек
+            Оценивается {coverageQuery.data.evaluated_count} {plural(coverageQuery.data.evaluated_count, 'человек', 'человека', 'человек')}
             из {coverageQuery.data.total_count}. Остальные в ведомость не попадают.
           </Text>
         )}

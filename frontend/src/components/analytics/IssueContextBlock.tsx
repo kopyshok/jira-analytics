@@ -7,6 +7,7 @@ import { setIssueCategory, setIssueInclude } from '../../api/issues';
 import { failureReason, saveFailureNotice } from './categorizerSave';
 import { useQueryClient } from '@tanstack/react-query';
 import { statusTagColor } from '../../utils/status';
+import { plural } from '../../utils/plural';
 
 const CARD_BG = 'var(--mini-tile-bg, rgba(255,255,255,0.03))';
 const CARD_BORDER = '1px solid var(--glass-border, rgba(255,255,255,0.08))';
@@ -94,7 +95,7 @@ function SiblingPopover({
           marginLeft: 4,
         }}
       >
-        +{count - 1} соседей ▾
+        +{count - 1} {plural(count - 1, 'сосед', 'соседа', 'соседей')} ▾
       </span>
     </Popover>
   );

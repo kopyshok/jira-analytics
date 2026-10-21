@@ -1,5 +1,6 @@
 import { Tooltip, Typography } from 'antd';
 import { roundHours, type DeskDeveloper, type DeskWorkload } from '../../api/teamDesk';
+import { plural } from '../../utils/plural';
 
 interface Props {
   developers: DeskDeveloper[];
@@ -53,7 +54,7 @@ export function WorkloadBars({ developers, workload, limit }: Props) {
         );
       })}
       <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>
-        пунктир — лимит {limit} задач
+        пунктир — лимит {limit} {plural(limit, 'задача', 'задачи', 'задач')}
       </Typography.Text>
     </div>
   );

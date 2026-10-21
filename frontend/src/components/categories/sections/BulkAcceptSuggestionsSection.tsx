@@ -3,6 +3,7 @@ import { App, Button, Checkbox, List, Space, Statistic, Tag, Typography } from '
 import { useBulkPreview, useBulkAcceptSuggestions } from '../../../hooks/useBulkTriage';
 import { useCategories } from '../../../hooks/useCategories';
 import type { BulkFilter, BulkPreviewItem } from '../../../types/api';
+import { plural } from '../../../utils/plural';
 
 const { Text } = Typography;
 
@@ -39,7 +40,7 @@ export default function BulkAcceptSuggestionsSection({
   const runAccept = () => {
     if (!preview) return;
     modal.confirm({
-      title: `Принять ${withSuggestion.length} подсказок?`,
+      title: `Принять ${withSuggestion.length} ${plural(withSuggestion.length, 'подсказку', 'подсказки', 'подсказок')}?`,
       content: 'Системная подсказка станет назначенной категорией и пометится подтверждённой. Задачи без подсказки пропустятся.',
       okText: 'Принять',
       cancelText: 'Отмена',

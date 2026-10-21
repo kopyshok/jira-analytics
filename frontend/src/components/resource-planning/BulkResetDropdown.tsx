@@ -3,6 +3,7 @@ import type { MenuProps } from 'antd';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useBulkClear } from '../../hooks/useResourcePlanning';
 import type { BulkClearMode, ResetCounts } from '../../api/resourcePlanning';
+import { plural } from '../../utils/plural';
 
 interface Props {
   planId: string | null;
@@ -17,9 +18,9 @@ const MODE_LABELS: Record<BulkClearMode, string> = {
 };
 
 const MODE_DESCRIPTIONS: Record<BulkClearMode, (n: number) => string> = {
-  dates: (n) => `Снять ручную фиксацию даты у ${n} фаз. Планировщик пересчитает окна.`,
-  employees: (n) => `Снять закрепление исполнителя у ${n} фаз. Планировщик подберёт заново.`,
-  predecessors: (n) => `Удалить ручные связи у ${n} фаз. Восстановится стандартная цепочка.`,
+  dates: (n) => `Снять ручную фиксацию даты у ${n} ${plural(n, 'фазы', 'фаз', 'фаз')}. Планировщик пересчитает окна.`,
+  employees: (n) => `Снять закрепление исполнителя у ${n} ${plural(n, 'фазы', 'фаз', 'фаз')}. Планировщик подберёт заново.`,
+  predecessors: (n) => `Удалить ручные связи у ${n} ${plural(n, 'фазы', 'фаз', 'фаз')}. Восстановится стандартная цепочка.`,
   all: () => 'Снять все ручные правки: даты, исполнителей, связи. План пересчитается полностью.',
 };
 

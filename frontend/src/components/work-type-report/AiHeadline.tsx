@@ -1,6 +1,7 @@
 import { Card, Tag } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
 import type { WorkTypeReportResponse } from '../../types/workTypeReport';
+import { plural } from '../../utils/plural';
 
 interface Props {
   report: WorkTypeReportResponse;
@@ -53,7 +54,7 @@ export default function AiHeadline({ report }: Props) {
       >
         {model_id && <span>Модель: {model_id}</span>}
         <span>
-          {totals.tasks.toLocaleString('ru')} задач, {Math.round(totals.hours).toLocaleString('ru')} ч
+          {totals.tasks.toLocaleString('ru')} {plural(totals.tasks, 'задача', 'задачи', 'задач')}, {Math.round(totals.hours).toLocaleString('ru')} ч
         </span>
         {prompt_version && <span>Промпт v{prompt_version}</span>}
         <Tag
