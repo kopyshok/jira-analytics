@@ -147,7 +147,7 @@ function WarmTopbar() {
             <OnboardingButton labeled />
             <span data-tour="header-help" className="wm-slot"><GlobalHelpButton /></span>
             <ThemeSelect variant="icon" />
-            <span className="wm-user">
+            <span className="wm-user" title={user.display_name}>
               <span className="wm-user-avatar" aria-hidden>{initials(user.display_name)}</span>
               <span className="wm-user-name">{user.display_name}</span>
               <button type="button" className="wm-user-logout" aria-label="Выйти" title="Выйти" onClick={handleLogout}>

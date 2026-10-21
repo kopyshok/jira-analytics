@@ -77,17 +77,20 @@ const CompactTimeline: React.FC<Omit<Props, 'compact' | 'maxHeight'>> = ({ timel
   const rows = mode === 'by-phase'
     ? timeline.rows.flatMap((r) => r.bars.map((b) => ({ key: r.key, title: b.label, bars: [b], phaseRow: true })))
     : timeline.rows.map((r) => ({ key: r.key, title: r.title ?? '', bars: r.bars, phaseRow: false }));
+  // В легенде — только фазы, которые есть на шкале (консультация красится как анализ).
+  const present = new Set(rows.flatMap((r) => r.bars.map((b) => (b.phase === 'cons' ? 'analyst' : b.phase))));
+  const legend = LEGEND.filter(([code]) => present.has(code));
 
   return (
     <div className="pjc-tl">
       <div className="pjc-tl-head">
         {title && <h2 className="rpc-card-title">{title}</h2>}
         <div className="pjc-tl-legend">
-          {LEGEND.map(([code, label]) => (
+          {legend.map(([code, label]) => (
             <span key={code}><span className={`pjc-tl-sw is-${code}`} aria-hidden />{label}</span>
           ))}
-          <span><span className="pjc-tl-sw is-shade" aria-hidden />Затенено — границы квартала</span>
-          <span><span className="pjc-tl-sw is-today" aria-hidden />сегодня {todayText}</span>
+          <span><span className="pjc-tl-sw is-shade" aria-hidden />Затенено — вне квартала</span>
+          {scale?.todayLeft != null && <span><span className="pjc-tl-sw is-today" aria-hidden />сегодня {todayText}</span>}
         </div>
       </div>
       {!scale || rows.length === 0 ? (
@@ -138,7 +141,13 @@ const CompactTimeline: React.FC<Omit<Props, 'compact' | 'maxHeight'>> = ({ timel
                             {row.key}
                           </button>
                         ) : <span className="pjc-tl-key">{row.key}</span>)}
-                        <span className="pjc-tl-title">{row.title}</span>
+                        {/* Как в Aurora, щелчок по названию тоже открывает проект; с клавиатуры — кнопка ключа. */}
+                        <span
+                          className={`pjc-tl-title${onRowClick && row.key ? ' is-link' : ''}`}
+                          onClick={onRowClick && row.key ? () => onRowClick(row.key!) : undefined}
+                        >
+                          {row.title}
+                        </span>
                       </>
                     )}
                   </div>

@@ -513,6 +513,8 @@ html[data-skin="warm"] .pjc-tl-key:hover { color: #2F6B5A; }
 html[data-skin="warm"] .pjc-tl-title,
 html[data-skin="warm"] .pjc-tl-phase { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #6B6358; }
 html[data-skin="warm"] .pjc-tl-phase { color: #2A2620; }
+html[data-skin="warm"] .pjc-tl-title.is-link { cursor: pointer; }
+html[data-skin="warm"] .pjc-tl-title.is-link:hover { color: #2F6B5A; text-decoration: underline; }
 html[data-skin="warm"] .pjc-tl-lane { position: relative; flex: 1 1 auto; min-width: 0; }
 html[data-skin="warm"] .pjc-tl-bar {
   position: absolute;

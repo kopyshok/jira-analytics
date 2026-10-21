@@ -319,6 +319,8 @@ html[data-skin="warm"] .tdc-chip.is-violet { border-color: #E2CCDD; background: 
 html[data-skin="warm"] .tdc-chip.is-active { outline: 2px solid #2F6B5A; outline-offset: 1px; font-weight: 700; }
 /* Счётчики списков: ноль — приглушён и не нажимается */
 html[data-skin="warm"] .tdc-list-chip:disabled { background: transparent; border-color: #E3DDD3; color: #6B6358; cursor: default; filter: none; }
+/* Ноль, но список открывается (отсутствия: в панели свой выбор квартала) — приглушён, как и недоступный. */
+html[data-skin="warm"] .tdc-list-chip.is-zero:not(:disabled):not(.is-active) { background: transparent; border-color: #E3DDD3; color: #6B6358; }
 html[data-skin="warm"] .tdc-list-note { font-size: 12px; font-weight: 600; color: #8F3A18; }
 
 /* ---------- Таблица задач ---------- */

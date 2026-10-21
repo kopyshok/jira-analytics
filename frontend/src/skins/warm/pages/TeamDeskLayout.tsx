@@ -28,21 +28,23 @@ function currentQuarter(): [string, string] {
   return [start.format('YYYY-MM-DD'), start.add(2, 'month').endOf('month').format('YYYY-MM-DD')];
 }
 
-/** Счётчик списка над таблицей: открывает список в панели подробностей; ноль — приглушён и не нажимается. */
-function ListChip({ label, count, note, active, onClick, title }: {
+/** Счётчик списка над таблицей: открывает список в панели подробностей; ноль — приглушён и не нажимается
+ *  (кроме `openAtZero`: у списка внутри свой выбор периода, и пустой текущий не значит пустой всегда). */
+function ListChip({ label, count, note, active, onClick, title, openAtZero = false }: {
   label: string;
   count: number;
   note?: string | null;
   active: boolean;
   onClick: () => void;
   title: string;
+  openAtZero?: boolean;
 }) {
   return (
     <button
       type="button"
-      className={`tdc-chip tdc-list-chip${active ? ' is-active' : ''}`}
+      className={`tdc-chip tdc-list-chip${active ? ' is-active' : ''}${count === 0 ? ' is-zero' : ''}`}
       aria-pressed={active}
-      disabled={count === 0}
+      disabled={count === 0 && !openAtZero}
       onClick={onClick}
       title={title}
     >
@@ -90,8 +92,9 @@ export default function WarmTeamDeskLayout({ state }: { state: TeamDeskPageState
   // Как у Aurora: в «Проблемах вперёд» полос загрузки нет.
   const counts: Record<DeskList, number> = { rubber: rubberCount, wip: grouped ? 0 : wipTotal, absence: absenceCount };
   // Список опустел (сменили отбор или раскладку) — панель закрывается и сама не вернётся.
-  if (list && data && counts[list] === 0) setList(null);
-  const shownList = list && data && counts[list] > 0 ? list : null;
+  // Отсутствия — нет: в панели свой выбор квартала, ноль в текущем её не закрывает.
+  if (list && list !== 'absence' && data && counts[list] === 0) setList(null);
+  const shownList = list && data && (list === 'absence' || counts[list] > 0) ? list : null;
   // Рабочая область ужалась под панель — нажатый счётчик остаётся на виду.
   useEffect(() => {
     if (!shownList) return;
@@ -168,7 +171,8 @@ export default function WarmTeamDeskLayout({ state }: { state: TeamDeskPageState
           count={counts.absence}
           active={shownList === 'absence'}
           onClick={() => toggleList('absence')}
-          title="Отсутствия людей стола в текущем квартале"
+          title="Число — отсутствия людей стола в текущем квартале; в панели можно выбрать другой квартал"
+          openAtZero
         />
       </div>
       <ActiveFilters
