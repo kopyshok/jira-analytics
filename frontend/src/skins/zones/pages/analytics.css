@@ -121,7 +121,7 @@ html[data-skin="zones"][data-detail-sheet="right"] .anz-kpi,
 html[data-skin="zones"][data-detail-sheet="right"] .anz-flow { flex: 1 1 100%; }
 html[data-skin="zones"][data-detail-sheet="right"] .anz-flow { max-height: none; overflow: visible; }
 /* узкая таблица рядом с панелью: колонка «Группа / Задача» не сжимается в ноль — таблица листается вбок */
-html[data-theme="aurora"][data-mode="light"][data-skin="zones"][data-detail-sheet="right"] .an-table-card .ant-table table { min-width: 900px; }
+html[data-theme="aurora"][data-mode="light"][data-skin="zones"][data-detail-sheet="right"] .an-table-card .ant-table table { min-width: 1000px; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .an-table-card .ant-table-thead > tr > th {
   position: sticky;
   top: 0;

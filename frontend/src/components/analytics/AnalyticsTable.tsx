@@ -287,6 +287,7 @@ function ForeignChip({ totals }: { totals: NodeTotals }) {
           borderRadius: 999,
           fontSize: 11,
           fontWeight: 600,
+          whiteSpace: 'nowrap',
           background: 'var(--an-foreign-bg, rgba(255, 156, 74, 0.12))',
           color: 'var(--an-foreign, #ff9c4a)',
           border: '1px solid var(--an-foreign-border, rgba(255, 156, 74, 0.35))',
@@ -709,7 +710,8 @@ interface Props {
 
 /** Плотные ширины колонок блока скина: «Группа / Задача» забирает остаток. */
 const DOCKED_WIDTHS: Record<string, number> = {
-  fact_hours: 96, plan_hours: 76, pct_plan: 62, pct_in_group: 78, pct_total: 74,
+  // Часы факт — с меткой чужих часов «⚠ 5 · 35ч · 11%»: уже — метка ломается столбиком.
+  fact_hours: 184, plan_hours: 76, pct_plan: 62, pct_in_group: 78, pct_total: 74,
   worklog_count: 80, issue_count: 56, employee_count: 54, avg_min: 62,
 };
 

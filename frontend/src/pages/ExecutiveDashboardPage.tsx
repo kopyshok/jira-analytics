@@ -45,6 +45,8 @@ import { useAiEnabled } from '../hooks/useAiEnabled';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { CHART_COLORS, DARK_THEME, FONTS } from '../utils/constants';
+import { useZonesBand } from '../skins/zones/bandContext';
+import ZonesBand from '../skins/zones/ZonesBand';
 
 const PAGE_TITLE = 'Executive dashboard сопровождения 1С';
 
@@ -178,6 +180,7 @@ export default function ExecutiveDashboardPage() {
 
   const isInitialLoading = reportQuery.isLoading && !report;
   const isBuilding = buildMutation.isPending;
+  const zonesBand = useZonesBand();
 
   const headerRight = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -205,11 +208,15 @@ export default function ExecutiveDashboardPage() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: zonesBand ? 'flex-end' : 'space-between',
           gap: 12,
           marginBottom: 16,
         }}
       >
+        {zonesBand ? (
+          // Скин «Цветовые зоны»: заголовок — в цветной полосе зоны, здесь только кнопки.
+          <ZonesBand title={PAGE_TITLE} />
+        ) : (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
           <span
             style={{
@@ -236,6 +243,7 @@ export default function ExecutiveDashboardPage() {
             {PAGE_TITLE}
           </Typography.Title>
         </div>
+        )}
         {headerRight}
       </div>
 

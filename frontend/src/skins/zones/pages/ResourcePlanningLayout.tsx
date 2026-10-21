@@ -28,6 +28,13 @@ const SCALE_CAPTION: Record<TimelineScale, string> = { day: 'по дням', wee
 
 const RESERVE_TITLE = 'Нормированные работы — запас квартала';
 
+const PHASES = ['analyst', 'dev', 'qa', 'opo'] as const;
+/** Фазы для подписи диаграммы — какие есть в плане; план пуст — все. */
+function legendPhases(assignments: { phase: string }[]): (typeof PHASES)[number][] {
+  const present = PHASES.filter((ph) => assignments.some((a) => a.phase === ph));
+  return present.length ? present : [...PHASES];
+}
+
 /** «в 1 виде работ», «в 3 видах работ». */
 const kindsLabel = (n: number) => `в ${n} ${n % 10 === 1 && n % 100 !== 11 ? 'виде' : 'видах'} работ`;
 
@@ -134,6 +141,10 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
   // На странице одна панель: фаза или запас нормированных работ.
   const [reserveOpen, setReserveOpen] = useState(false);
   const pickAssignment = (id: string) => {
+    // Полоса фазы при нажатии не забирает фокус (её можно тянуть) — иначе он остался бы
+    // в поле прежней фазы на панели, и Esc не закрывал бы панель.
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused.matches('input, textarea') && focused.closest('.detail-sheet')) focused.blur();
     setReserveOpen(false);
     setSelectedAssignmentId(id);
   };
@@ -355,7 +366,8 @@ export default function ResourcePlanningZonesLayout({ rp }: { rp: ResourcePlanni
                 )}
               </div>
               <div className="rpz-legend">
-                {(['analyst', 'dev', 'qa', 'opo'] as const).map((ph) => (
+                {/* Фазы — только те, что есть в плане: ОПЭ, выключенная с квартала, в подписи не висит. */}
+                {legendPhases(gantt.assignments).map((ph) => (
                   <span key={ph}>
                     <i style={{ background: appearance.phase_colors[ph] }} />
                     {{ analyst: 'Анализ', dev: 'Разработка', qa: 'Тестирование', opo: 'ОПЭ' }[ph]}

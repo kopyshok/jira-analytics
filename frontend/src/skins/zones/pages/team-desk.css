@@ -51,10 +51,9 @@ html[data-skin="zones"] .dz-thresholds { flex: none; max-height: 40%; overflow: 
 html[data-skin="zones"] .dz-summary { flex: none; max-height: 34%; overflow: auto; }
 html[data-skin="zones"] .dz-main { flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; }
 html[data-skin="zones"] .dz-left { flex: 999 1 640px; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-/* лист снизу отнял высоту: таблица задач не сжимается до одной шапки — держит свою высоту, страница листается */
-html[data-skin="zones"][data-detail-sheet] .dz-main,
-html[data-skin="zones"][data-detail-sheet] .dz-left { min-height: auto; }
-html[data-skin="zones"][data-detail-sheet] .dz-issues { min-height: 320px; }
+/* мало высоты (лист снизу, ноутбук 1366×768): таблица задач не сжимается в ноль — держит не меньше
+   320 px и листается внутри, а экран листается целиком, чтобы до неё можно было дойти */
+html[data-skin="zones"] .zn-fit.dz { overflow-y: auto; }
 /* узкая таблица рядом с панелью справа: колонка «Задача» не сжимается в ноль — таблица листается вбок */
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"][data-detail-sheet="right"] .desk-issues-card .ant-table table { min-width: 1120px; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .dz-summary .ant-card-head {
@@ -213,7 +212,7 @@ html[data-skin="zones"] .dz-attention .ant-tag[data-group] b { margin-left: 2px;
 html[data-skin="zones"] .dz-attention > div:last-child:not(.dz-attention-row) { gap: 8px; }
 
 /* --- таблица задач --- */
-html[data-skin="zones"] .dz-issues { flex: 1 1 auto; min-height: 0; display: flex; }
+html[data-skin="zones"] .dz-issues { flex: 1 0 320px; min-height: 0; display: flex; }
 html[data-theme="aurora"][data-mode="light"][data-skin="zones"] .desk-issues-card {
   flex: 1;
   min-width: 0;
