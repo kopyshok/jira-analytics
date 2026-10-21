@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+import uuid
+
 from app.database import get_db
 from app.services import employee_merge
 from app.services.sync_lock import SyncLock
@@ -34,17 +36,26 @@ def preview(
 
 @router.post("")
 def merge(req: MergeRequest, db: Session = Depends(get_db)) -> dict:
-    """Влить лишнюю карточку в правильную. Во время синхронизации — отказ:
-    синк мог бы тут же записать часы на удаляемую карточку."""
+    """Влить лишнюю карточку в правильную.
+
+    На время объединения берётся блокировка синхронизации: запуск, прочитавший
+    учётки до объединения, иначе записал бы часы на удаляемую карточку.
+    """
     lock = SyncLock(db)
-    if lock.current_run_id() and not lock.is_stale():
+    run_id = f"employee-merge-{uuid.uuid4()}"
+    if not lock.acquire(run_id):
         raise HTTPException(
             status_code=409, detail="Идёт синхронизация — объедините карточки после её окончания.",
         )
     try:
         result = employee_merge.merge(db, req.keep_id, req.drop_id)
+        db.commit()
     except employee_merge.MergeError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from None
-    db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        lock.release(run_id)
     return result

@@ -165,6 +165,8 @@ def fake_jira(db_session, monkeypatch):
                 if jira["account"] else None
             )
             fields = SimpleNamespace(assignee=assignee, _extra={})
+            # Как настоящий синк: строка задачи обновлена до вызова коллбека.
+            issue.assignee_account_id = jira["account"]
             on_issue(SimpleNamespace(fields=fields), issue)
         return len(issues), len(issues)
 

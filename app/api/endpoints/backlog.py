@@ -1052,13 +1052,9 @@ async def _perform_refresh(
                 item = backlog_by_issue.get(issue_row.id)
                 if item is None:
                     return
-                # Исполнитель — если его не выбрали в сценарии вручную.
-                assignee = getattr(jira_issue.fields, "assignee", None)
-                apply_jira_assignee(
-                    item,
-                    assignee.jira_account_id if assignee else None,
-                    emp_by_account,
-                )
+                # Исполнитель — если его не выбрали в сценарии вручную. Учётку
+                # берём из строки задачи: синк уже заменил учётку слитой карточки.
+                apply_jira_assignee(item, issue_row.assignee_account_id, emp_by_account)
                 # Заказчик
                 if customer_field_id:
                     raw = (jira_issue.fields._extra or {}).get(customer_field_id)

@@ -18,6 +18,8 @@
 """
 from __future__ import annotations
 
+import json
+import logging
 import re
 from collections import defaultdict
 from datetime import date
@@ -28,6 +30,8 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Absence,
+    Issue,
+    KpiApproval,
     BacklogItem,
     Comment,
     Employee,
@@ -50,10 +54,14 @@ from app.models import (
     Worklog,
 )
 from app.services import team_membership as tm
+from app.services.subgroup_resolver import SubgroupResolver
 
 # ponytail: переписывание учёток в задачах, бэклоге, отборе стола и снимках KPI
 # уже написано для переезда на новую Jira — берём его, а не копию.
 from app.services.jira_migration.apply import _rewrite_people_refs, _rowcount
+
+
+logger = logging.getLogger(__name__)
 
 
 class MergeError(ValueError):
@@ -64,7 +72,6 @@ class MergeError(ValueError):
 _PLAIN_COLUMNS: list[tuple[Any, str, str]] = [
     (Worklog, "employee_id", "Списания"),
     (Comment, "author_id", "Комментарии"),
-    (Absence, "employee_id", "Отсутствия"),
     (WorkDesk, "employee_id", "Ссылки «Стол аналитика»"),
     (BacklogItem, "assignee_employee_id", "Целевые задачи — исполнитель"),
     (BacklogItem, "developer_employee_id", "Целевые задачи — разработчик"),
@@ -81,6 +88,8 @@ _PLAIN_COLUMNS: list[tuple[Any, str, str]] = [
 
 #: Записи «на сотрудника в рамках X»: у правильной карточки своя запись главнее.
 _SCOPED: list[tuple[Any, tuple[str, ...], str]] = [
+    # Одно и то же отсутствие на обеих карточках вычлось бы из ёмкости дважды.
+    (Absence, ("start_date", "end_date", "reason_id"), "Отсутствия"),
     (EmployeePersonalSetting, ("effective_year", "effective_quarter"), "Личные настройки по кварталам"),
     (EmployeeCapacityOverride, ("year", "quarter", "work_type_id"), "Правки ёмкости"),
     (ResourcePlanWatch, ("plan_id",), "Наблюдение за планами"),
@@ -104,6 +113,18 @@ def _team_blockers(db: Session, keep_id: str, drop_id: str) -> list[str]:
     keep_rows = db.query(EmployeeTeam).filter(EmployeeTeam.employee_id == keep_id).all()
     drop_rows = db.query(EmployeeTeam).filter(EmployeeTeam.employee_id == drop_id).all()
     blockers = []
+    # Деление между группами считается от даты к дате на сотрудника: две истории
+    # одной команды на одной карточке сложились бы в 200 % или перекрыли друг друга.
+    shares: dict[str, set[str]] = defaultdict(set)
+    for emp, team in db.query(EmployeeSubgroupShare.employee_id, EmployeeSubgroupShare.team).filter(
+        EmployeeSubgroupShare.employee_id.in_([keep_id, drop_id])
+    ):
+        shares[team].add(emp)
+    for team in sorted(t for t, emps in shares.items() if len(emps) == 2):
+        blockers.append(
+            f"У обеих карточек есть деление между группами команды «{team}». "
+            "Оставьте его только у одной."
+        )
     for d in drop_rows:
         for k in keep_rows:
             if k.team == d.team and _overlaps(k, d):
@@ -133,6 +154,55 @@ def _count(db: Session, model: Any, column: str, employee_id: str) -> int:
     return db.query(func.count()).select_from(model).filter(
         getattr(model, column) == employee_id
     ).scalar() or 0
+
+
+def _scoped_split(
+    db: Session, model: Any, scope: tuple[str, ...], keep_id: str, drop_id: str,
+) -> tuple[list[Any], list[Any]]:
+    """Записи лишней карточки: (переезжают, уступают своей записи правильной)."""
+    taken = {
+        tuple(getattr(r, c) for c in scope)
+        for r in db.query(model).filter(model.employee_id == keep_id)
+    }
+    move: list[Any] = []
+    skip: list[Any] = []
+    for row in db.query(model).filter(model.employee_id == drop_id).all():
+        (skip if tuple(getattr(row, c) for c in scope) in taken else move).append(row)
+    return move, skip
+
+
+def _issue_refs(db: Session, account: str) -> int:
+    return db.query(func.count(Issue.id)).filter(
+        (Issue.assignee_account_id == account)
+        | (Issue.reporter_account_id == account)
+        | (Issue.developer_account_id == account)
+    ).scalar() or 0
+
+
+def _replace_employee_ids(node: Any, old: str, new: str) -> bool:
+    changed = False
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "employee_id" and value == old:
+                node[key] = new
+                changed = True
+            elif isinstance(value, (dict, list)):
+                changed = _replace_employee_ids(value, old, new) or changed
+    elif isinstance(node, list):
+        for item in node:
+            changed = _replace_employee_ids(item, old, new) or changed
+    return changed
+
+
+def _rewrite_kpi_employee_ids(db: Session, old: str, new: str) -> None:
+    """Утверждённые KPI хранят id сотрудника рядом с учёткой — переписать и его."""
+    for approval in db.query(KpiApproval).all():
+        try:
+            payload = json.loads(approval.payload_json)
+        except (TypeError, ValueError):
+            continue
+        if _replace_employee_ids(payload, old, new):
+            approval.payload_json = json.dumps(payload, ensure_ascii=False)
 
 
 def card(db: Session, employee: Employee) -> dict[str, Any]:
@@ -169,13 +239,19 @@ def preview(db: Session, keep_id: str, drop_id: str) -> dict[str, Any]:
         n = _count(db, model, column, drop.id)
         if n:
             moves.append({"label": label, "count": n})
-    for model, _, label in _SCOPED:
+    for model, scope, label in _SCOPED:
+        move, _ = _scoped_split(db, model, scope, keep.id, drop.id)
+        if move:
+            moves.append({"label": label, "count": len(move)})
+    for model, label in (
+        (EmployeeTeam, "Участие в командах"), (EmployeeSubgroupShare, "Группы внутри команд"),
+    ):
         n = _count(db, model, "employee_id", drop.id)
         if n:
             moves.append({"label": label, "count": n})
-    teams = _count(db, EmployeeTeam, "employee_id", drop.id)
-    if teams:
-        moves.append({"label": "Участие в командах", "count": teams})
+    issues = _issue_refs(db, drop.jira_account_id)
+    if issues:
+        moves.append({"label": "Задачи Jira (исполнитель, автор, разработчик)", "count": issues})
     return {
         "keep": card(db, keep),
         "drop": card(db, drop),
@@ -185,7 +261,10 @@ def preview(db: Session, keep_id: str, drop_id: str) -> dict[str, Any]:
 
 
 def merge(db: Session, keep_id: str, drop_id: str) -> dict[str, Any]:
-    """Влить карточку ``drop_id`` в ``keep_id`` и удалить её. Коммит — за вызывающим."""
+    """Влить карточку ``drop_id`` в ``keep_id`` и удалить её.
+
+    Коммит — за вызывающим; пересчёт групп задач в конце может зафиксировать раньше.
+    """
     keep, drop = _load_pair(db, keep_id, drop_id)
     blockers = _team_blockers(db, keep.id, drop.id)
     if blockers:
@@ -204,18 +283,16 @@ def merge(db: Session, keep_id: str, drop_id: str) -> dict[str, Any]:
         )))
 
     for model, scope, label in _SCOPED:
-        taken = {
-            tuple(getattr(r, c) for c in scope)
-            for r in db.query(model).filter(model.employee_id == keep.id)
-        }
-        moved = 0
-        for row in db.query(model).filter(model.employee_id == drop.id).all():
-            if tuple(getattr(row, c) for c in scope) in taken:
-                db.delete(row)
-            else:
-                row.employee_id = keep.id
-                moved += 1
-        note(label, moved)
+        move, skip = _scoped_split(db, model, scope, keep.id, drop.id)
+        for row in skip:
+            db.delete(row)
+        for row in move:
+            row.employee_id = keep.id
+        note(label, len(move))
+
+    drop_teams = {
+        t for (t,) in db.query(EmployeeTeam.team).filter(EmployeeTeam.employee_id == drop.id)
+    }
 
     note("Участие в командах", _rowcount(db.execute(
         update(EmployeeTeam).where(EmployeeTeam.employee_id == drop.id).values(employee_id=keep.id)
@@ -232,6 +309,7 @@ def merge(db: Session, keep_id: str, drop_id: str) -> dict[str, Any]:
     ))
     note("Отбор «Стола тимлида» у пользователей", refs.get("users_team_desk_filter", 0))
     note("Утверждённые KPI", refs.get("kpi_approvals", 0))
+    _rewrite_kpi_employee_ids(db, drop.id, keep.id)
 
     # Карточку, слитую раньше в лишнюю, ведём сразу в правильную.
     db.execute(
@@ -239,8 +317,17 @@ def merge(db: Session, keep_id: str, drop_id: str) -> dict[str, Any]:
         .where(EmployeeAccountAlias.employee_id == drop.id)
         .values(employee_id=keep.id)
     )
-    db.add(EmployeeAccountAlias(jira_account_id=drop.jira_account_id, employee_id=keep.id))
+    alias = db.query(EmployeeAccountAlias).filter(
+        EmployeeAccountAlias.jira_account_id == drop.jira_account_id
+    ).one_or_none()
+    if alias is None:
+        db.add(EmployeeAccountAlias(jira_account_id=drop.jira_account_id, employee_id=keep.id))
+    else:
+        alias.employee_id = keep.id
 
+    # ponytail: логин слитой учётки не хранится — второй проход синка ищет
+    # списания по логину оставшейся; хватит, пока человек не пишет под старой.
+    keep.jira_username = keep.jira_username or drop.jira_username
     keep.role = keep.role or drop.role
     keep.department = keep.department or drop.department
     keep.is_active = bool(keep.is_active or drop.is_active)
@@ -250,6 +337,16 @@ def merge(db: Session, keep_id: str, drop_id: str) -> dict[str, Any]:
     db.expunge(drop)
     db.execute(delete(Employee).where(Employee.id == drop.id))
     db.flush()
+    # Группа задачи считается от её исполнителя — пересчитать команды лишней карточки.
+    # Пересчёт сам фиксирует свои правки, поэтому он последний шаг объединения.
+    resolver = SubgroupResolver(db)
+    for team in sorted(drop_teams):
+        resolver.recompute_effective(team)
+    db.flush()
+    logger.info(
+        "Объединение сотрудников: %s (%s) влит в %s (%s): %s",
+        drop.display_name, drop.jira_account_id, keep.display_name, keep.jira_account_id, moves,
+    )
     return {"keep": card(db, keep), "moves": moves}
 
 

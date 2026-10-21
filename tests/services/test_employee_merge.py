@@ -152,3 +152,61 @@ def test_suggestions_group_same_name_with_freshest_first(db_session):
     assert len(groups) == 1
     assert [c["jira_username"] for c in groups[0]["cards"]][:2] == ["Medvedeva_N_V", "medvedeva-n"]
     assert "nadezhda-rp" in [c["jira_username"] for c in groups[0]["cards"]]
+
+
+def test_review_fixes_kpi_absence_login_alias(db_session):
+    """Снимки KPI, одно отсутствие на двух карточках, логин, повторная учётка слитой карточки."""
+    import json as _json
+
+    from app.models import Absence, AbsenceReason, KpiApproval
+
+    db = db_session
+    old, new, _ = _people(db)
+    new.jira_username = None
+    reason = AbsenceReason(code="vac", label="Отпуск")
+    db.add(reason)
+    db.flush()
+    for emp in (old, new):
+        db.add(Absence(employee_id=emp.id, start_date=date(2026, 8, 3), end_date=date(2026, 8, 7),
+                       reason_id=reason.id))
+    db.add(Absence(employee_id=old.id, start_date=date(2026, 9, 1), end_date=date(2026, 9, 2),
+                   reason_id=reason.id))
+    db.add(KpiApproval(team="Товарный учёт", year=2026, quarter=3, approved_by="x",
+                       approved_at=datetime(2026, 10, 1),
+                       payload_json=_json.dumps({"rows": [{"employee_id": old.id, "account_id": "JIRAUSER13143"}]})))
+    # Двойник уже однажды сливался и учётка запомнена (синк старой версии завёл его снова).
+    db.add(EmployeeAccountAlias(jira_account_id="JIRAUSER13143", employee_id=old.id))
+    db.flush()
+    new_id = new.id
+
+    employee_merge.merge(db, new_id, old.id)
+    db.commit()
+
+    assert db.query(Absence).filter_by(employee_id=new_id).count() == 2
+    payload = _json.loads(db.query(KpiApproval).one().payload_json)
+    assert payload["rows"][0] == {"employee_id": new_id, "account_id": "JIRAUSER12022"}
+    assert db.get(Employee, new_id).jira_username == "medvedeva-n"
+    assert [(a.jira_account_id, a.employee_id) for a in db.query(EmployeeAccountAlias)] == [
+        ("JIRAUSER13143", new_id)
+    ]
+
+
+def test_group_shares_on_both_cards_are_refused(db_session):
+    from app.models import EmployeeSubgroupShare, Team, TeamSubgroup
+
+    db = db_session
+    old, new, _ = _people(db)
+    team = Team(name="Товарный учёт", has_subgroups=True)
+    db.add(team)
+    db.flush()
+    group = TeamSubgroup(team_id=team.id, name="Склад")
+    db.add(group)
+    db.flush()
+    db.query(EmployeeTeam).update({EmployeeTeam.left_at: date(2026, 10, 9)})
+    db.add(EmployeeTeam(employee_id=new.id, team="Товарный учёт", joined_at=date(2026, 10, 9)))
+    for emp in (old, new):
+        db.add(EmployeeSubgroupShare(employee_id=emp.id, team="Товарный учёт",
+                                     subgroup_id=group.id, percent=100))
+    db.flush()
+    blockers = employee_merge.preview(db, new.id, old.id)["blockers"]
+    assert any("деление между группами" in b for b in blockers)
