@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag, Button, Dropdown, App, Space } from 'antd';
+import { Tag, Button, Dropdown, App, Space, Input } from 'antd';
 import html2canvas from 'html2canvas';
 import {
   ReloadOutlined,
@@ -11,6 +11,7 @@ import { useRegenerateSummary } from '../../hooks/useProjectSummary';
 import { AiGate } from '../shared/AiGate';
 import { trackAction } from '../../lib/usage/track';
 import JiraIssueLink from '../shared/JiraIssueLink';
+import { copyText } from '../../utils/clipboard';
 
 type ViewMode = 'analysis' | 'presentation' | 'plan';
 
@@ -48,7 +49,7 @@ function formatDateTime(iso: string): string {
 
 export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewChange }) => {
   const regen = useRegenerateSummary();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [exporting, setExporting] = React.useState(false);
 
   const handleRegen = () => {
@@ -96,6 +97,29 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
     } finally {
       setExporting(false);
     }
+  };
+
+  // Ссылка на карточку проекта. Без защищённого соединения браузер может не дать
+  // записать в буфер — тогда показываем ссылку, чтобы скопировать её вручную.
+  const handleCopyLink = async () => {
+    if (!detail) return;
+    const url = `${window.location.origin}/projects/${encodeURIComponent(detail.key)}`;
+    if (await copyText(url)) {
+      message.success('Ссылка скопирована');
+      return;
+    }
+    modal.info({
+      title: 'Скопируйте ссылку вручную',
+      content: (
+        <>
+          <div style={{ marginBottom: 8 }}>
+            Браузер не дал скопировать ссылку автоматически. Выделите её и нажмите Ctrl+C.
+          </div>
+          <Input readOnly autoFocus value={url} onFocus={(e) => e.target.select()} />
+        </>
+      ),
+      okText: 'Готово',
+    });
   };
 
   const statusCategory = detail?.status_category ?? 'new';
@@ -237,7 +261,10 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
           PNG
         </Button>
 
-        <Dropdown menu={{ items: moreItems }} trigger={['click']}>
+        <Dropdown
+          menu={{ items: moreItems, onClick: ({ key }) => { if (key === 'copy-link') void handleCopyLink(); } }}
+          trigger={['click']}
+        >
           <Button size="small" icon={<MoreOutlined />} style={{ color: 'var(--text-muted, #7e94b8)' }} />
         </Dropdown>
       </div>
