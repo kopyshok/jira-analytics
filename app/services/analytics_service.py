@@ -9,6 +9,7 @@
 """
 
 import json
+from collections import Counter
 from datetime import datetime, date, timedelta
 from typing import Optional
 
@@ -40,6 +41,20 @@ NO_TEAM_TOKEN = "__none__"
 # Виртуальная плитка виджета категорий: незаполненные ворклоги на чужих задачах.
 FOREIGN_UNFILLED_KEY = "__foreign_unfilled__"
 FOREIGN_UNFILLED_LABEL = "Чужие задачи (без категории)"
+
+
+def _project_group(status_category: Optional[str], due_date: Optional[datetime], today: date) -> str:
+    """Группа проекта на кольце «Проекты квартала» и в строке таблицы под ним.
+
+    Группы не пересекаются: незакрытый проект с прошедшим сроком — «просрочен»,
+    в какой бы колонке Jira он ни стоял; остальные — по категории статуса
+    (неизвестная — «не начат»). Поэтому сумма групп равна числу проектов.
+    """
+    if status_category == "done":
+        return "done"
+    if due_date is not None and due_date.date() < today:
+        return "overdue"
+    return "indeterminate" if status_category == "indeterminate" else "new"
 
 
 def _initials(name: str) -> str:
@@ -382,17 +397,15 @@ class AnalyticsService:
             keep = set(descendant_to_rfa.values())
             issues = [i for i in issues if i.id in keep]
 
+        group_by_issue = {
+            i.id: _project_group(i.status_category, i.due_date, today) for i in issues
+        }
+        group_counts = Counter(group_by_issue.values())
         total = len(issues)
-        done = sum(1 for i in issues if i.status_category == "done")
-        in_progress = sum(1 for i in issues if i.status_category == "indeterminate")
-        not_started = sum(1 for i in issues if i.status_category == "new")
-        overdue_issues = [
-            i for i in issues
-            if i.status_category != "done"
-            and i.due_date is not None
-            and i.due_date.date() < today
-        ]
-        overdue = len(overdue_issues)
+        done = group_counts["done"]
+        in_progress = group_counts["indeterminate"]
+        overdue = group_counts["overdue"]
+        not_started = group_counts["new"]
 
         # Счётчик «сделано/всего» по узлам области
         subtasks_done_by_parent: dict[str, int] = {}
@@ -666,8 +679,6 @@ class AnalyticsService:
                     break
 
         # KPI top-level
-        overdue_ids = {i.id for i in overdue_issues}
-
         project_items: list[ProjectItem] = []
         total_fact = 0.0
         total_plan = 0.0
@@ -688,9 +699,7 @@ class AnalyticsService:
             trend_h, trend_dir = epic_trend(issue.id)
             forecast_close, in_qtr = epic_forecast(issue.id, plan_h, fact_h)
 
-            ui_status = issue.status_category
-            if issue.id in overdue_ids:
-                ui_status = "overdue"
+            ui_status = group_by_issue[issue.id]
 
             emp_secs = epic_to_employees.get(issue.id, {})
             sorted_emps = sorted(emp_secs.items(), key=lambda x: -x[1])
