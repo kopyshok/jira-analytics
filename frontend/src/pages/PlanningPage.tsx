@@ -47,7 +47,7 @@ import {
 import NeighborsTakenBanner from '../components/planning/NeighborsTakenBanner';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
-import { useAppearance, useUpdateAppearance } from '../api/appearance';
+import { useAppearance, usePatchAppearance } from '../api/appearance';
 import { DEFAULT_APPEARANCE } from '../contexts/appearanceDefaults';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
@@ -208,7 +208,8 @@ function usePlanningPage() {
   const { mutate: patchAlloc } = usePatchAllocation();
   // Поднимать ли включённую задачу наверх — личная настройка пользователя.
   const appearance = useAppearance();
-  const updateAppearance = useUpdateAppearance();
+  // Галочка «поднимать наверх» меняет одну настройку поверх сохранённых на сервере.
+  const updateAppearance = usePatchAppearance();
   const appearanceValue = appearance.data ?? DEFAULT_APPEARANCE;
   const liftIncluded = appearanceValue.scenario_lift_included;
   const { mutate: patchAssignee } = usePatchAllocationAssignee();
@@ -640,7 +641,6 @@ function usePlanningPage() {
     allocLoading,
     continuation,
     updateAppearance,
-    appearanceValue,
     liftIncluded,
     approve,
     revert,
@@ -719,7 +719,6 @@ function AuroraPlanningLayout({ p }: { p: PlanningPageState }) {
     allocations,
     allocLoading,
     updateAppearance,
-    appearanceValue,
     liftIncluded,
     approve,
     revert,
@@ -934,10 +933,7 @@ function AuroraPlanningLayout({ p }: { p: PlanningPageState }) {
                       size="small"
                       checked={liftIncluded}
                       onChange={(value) =>
-                        updateAppearance.mutate({
-                          ...appearanceValue,
-                          scenario_lift_included: value,
-                        })}
+                        updateAppearance.mutate({ scenario_lift_included: value })}
                     />
                     <span style={{ color: DARK_THEME.textHint, fontSize: 12 }}>
                       поднимать наверх

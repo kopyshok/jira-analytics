@@ -3,8 +3,7 @@ import { Card, Spin, Empty, Select, Modal, InputNumber, Form, Button, Tooltip, m
 import { SettingOutlined } from '@ant-design/icons';
 import { DARK_THEME } from '../../utils/constants';
 import { useHoursBalance } from '../../hooks/useHoursBalance';
-import { useAppearanceSettings } from '../../contexts/AppearanceContext';
-import { useUpdateAppearance } from '../../api/appearance';
+import { useAppearance, usePatchAppearance } from '../../api/appearance';
 import type { HoursBalanceEmployee } from '../../types/api';
 import HoursBalanceModal from './HoursBalanceModal';
 import SubgroupFlowLine from '../common/SubgroupFlowLine';
@@ -155,12 +154,12 @@ function LagSettingsModal({
   onClose: () => void;
 }) {
   const [form] = Form.useForm<{ lag_days: number }>();
-  const appearance = useAppearanceSettings();
-  const updater = useUpdateAppearance();
+  // Меняется только задержка — остальные настройки (цвета фаз и др.) берутся с сервера.
+  const updater = usePatchAppearance();
   const handleSave = async () => {
     const values = await form.validateFields();
     try {
-      await updater.mutateAsync({ ...appearance, hours_balance_lag_days: values.lag_days });
+      await updater.mutateAsync({ hours_balance_lag_days: values.lag_days });
       message.success('Настройка сохранена');
       onClose();
     } catch {
@@ -196,7 +195,8 @@ function LagSettingsModal({
 
 export default function HoursBalanceWidget() {
   const { data, isLoading } = useHoursBalance();
-  const appearance = useAppearanceSettings();
+  // Виджет стоит вне поставщика настроек — задержку читаем из сохранённых настроек.
+  const lagDays = useAppearance().data?.hours_balance_lag_days ?? 0;
   const [sortKey, setSortKey] = useState<SortKey>('abs_desc');
   const [openId, setOpenId] = useState<string | null>(null);
   const [lagModalOpen, setLagModalOpen] = useState(false);
@@ -255,8 +255,8 @@ export default function HoursBalanceWidget() {
           </div>
           <div style={{ color: DARK_THEME.textMuted, fontSize: 12, fontWeight: 400, marginTop: 2 }}>
             С {data.period.from.split('-').reverse().join('.')} по {data.period.to.split('-').reverse().join('.')} · {data.period.working_days} рабочих дней · норма с учётом отпусков
-            {appearance.hours_balance_lag_days > 0 && (
-              <> · лаг {appearance.hours_balance_lag_days} раб. дн.</>
+            {lagDays > 0 && (
+              <> · лаг {lagDays} раб. дн.</>
             )}
           </div>
         </div>
@@ -333,7 +333,7 @@ export default function HoursBalanceWidget() {
       />
       <LagSettingsModal
         open={lagModalOpen}
-        current={appearance.hours_balance_lag_days}
+        current={lagDays}
         onClose={() => setLagModalOpen(false)}
       />
     </Card>

@@ -39,7 +39,7 @@ export default function PultPlanningLayout({ p }: { p: PlanningPageState }) {
     celebrate, diffOpen, setDiffOpen, compareOpen, setCompareOpen, historyOpen, setHistoryOpen,
     involvementOpen, setInvolvementOpen, ungroupedDrawerId, setUngroupedDrawerId,
     pulsedRoles, period, breakdown, setBreakdown, scenario, opoOff, allocations, allocLoading,
-    updateAppearance, appearanceValue, liftIncluded, approve, revert, includedIds,
+    updateAppearance, liftIncluded, approve, revert, includedIds,
     personSort, setPersonSort, quarterInt, resourceBase, resourceSummary, isDraft, isApproved, deficit,
     hasSubgroups, ungrouped, neighborsTakenIds, onlyNeighborsTaken, setOnlyNeighborsFor,
     handleApprove, handleRevert, handleDelete, handleTeamChange, handleRename, scenarioOptions, gridTemplate, gridGap,
@@ -238,7 +238,7 @@ export default function PultPlanningLayout({ p }: { p: PlanningPageState }) {
                 <label className="sc-lift" data-tour="planning-lift-toggle">
                   <Switch
                     checked={liftIncluded}
-                    onChange={(value) => updateAppearance.mutate({ ...appearanceValue, scenario_lift_included: value })}
+                    onChange={(value) => updateAppearance.mutate({ scenario_lift_included: value })}
                   />
                   поднимать наверх
                 </label>

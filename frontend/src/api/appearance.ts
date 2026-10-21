@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from './client';
 
 export interface AppearanceSettings {
@@ -31,6 +31,34 @@ export function useUpdateAppearance() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: updateAppearance,
+    onSuccess: (data) => {
+      queryClient.setQueryData(APPEARANCE_QUERY_KEY, data);
+    },
+  });
+}
+
+/**
+ * Правка части настроек: берёт свежие сохранённые с сервера и меняет только переданное.
+ * Иначе запись «целиком» из того, что видит экран, затирает настоящие цвета пользователя
+ * значениями по умолчанию (настройки ещё не загружены, экран вне поставщика настроек)
+ * или палитрой обложки.
+ */
+export async function patchAppearance(
+  queryClient: QueryClient,
+  patch: Partial<AppearanceSettings>,
+): Promise<AppearanceSettings> {
+  const current = await queryClient.fetchQuery({
+    queryKey: APPEARANCE_QUERY_KEY,
+    queryFn: fetchAppearance,
+    staleTime: 0,
+  });
+  return updateAppearance({ ...current, ...patch });
+}
+
+export function usePatchAppearance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: Partial<AppearanceSettings>) => patchAppearance(queryClient, patch),
     onSuccess: (data) => {
       queryClient.setQueryData(APPEARANCE_QUERY_KEY, data);
     },
