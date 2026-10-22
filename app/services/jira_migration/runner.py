@@ -11,8 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-import time
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
@@ -33,9 +32,8 @@ from app.services.jira_migration.hours import history_start, post_check
 from app.services.jira_migration.resolution import BLOCK_JOB
 from app.services.mapping_service import MappingService
 from app.services.production_calendar_service import ProductionCalendarService
-from app.services.sync_lock import SyncLock
+from app.services.sync_lock import SyncLock, keep_lock, lock_keeper
 from app.services.sync_pipeline import (
-    PipelineAborted,
     PipelineOrchestrator,
     WorklogsFullStage,
     build_pipeline,
@@ -55,8 +53,6 @@ JOB_ERROR = "error"
 STEP_APPLY = "Перепривязка данных к новой Jira"
 STEP_FULL_SYNC = "Полная синхронизация с новой Jira"
 DEFAULT_WORKLOG_DAYS = 90
-# Как часто продлевать блокировку синка внутри долгой стадии (зависшей она считается через час).
-LOCK_HEARTBEAT_EVERY = timedelta(minutes=10)
 
 RUN_INTERRUPTED = "Пробный прогон прерван (сервис перезапускался) — запустите его заново"
 SYNC_INTERRUPTED = "Полная синхронизация прервана (сервис перезапускался) — запустите её заново"
@@ -385,34 +381,6 @@ async def _full_sync_job(
         _finish(job, error)
 
 
-def _keep_lock(lock: SyncLock, run_id: str) -> None:
-    """Продлить блокировку; её забрал другой запуск — остановить синхронизацию."""
-    if not lock.heartbeat(run_id):
-        raise PipelineAborted(LOCK_LOST)
-
-
-def _lock_keeper(lock: SyncLock, run_id: str) -> Callable[[], Awaitable[bool]]:
-    """Опрос отмены для синка, который заодно продлевает блокировку.
-
-    Синк зовёт его в горячих циклах (между страницами Jira, задачами,
-    ворклогами), поэтому многочасовая стадия ворклогов не выглядит зависшей
-    для синхронизации по расписанию. Продление — не чаще
-    ``LOCK_HEARTBEAT_EVERY`` и коммитит сессию, как синк и сам делает
-    по ходу стадий. Блокировку забрали — ``PipelineAborted``, стадия
-    останавливается. Отмены клиентом нет: иначе ``False``.
-    """
-    last = time.monotonic()
-
-    async def keep_alive() -> bool:
-        nonlocal last
-        if time.monotonic() - last >= LOCK_HEARTBEAT_EVERY.total_seconds():
-            _keep_lock(lock, run_id)
-            last = time.monotonic()
-        return False
-
-    return keep_alive
-
-
 async def run_full_sync(
     db: Session,
     report_id: str,
@@ -456,7 +424,7 @@ async def run_full_sync(
     try:
         store.set_sync_run(db, report_id, run_id)
         async with jira_factory(db) as jira:
-            sync_service = SyncService(db, jira, cancel_check=_lock_keeper(lock, run_id))
+            sync_service = SyncService(db, jira, cancel_check=lock_keeper(lock, run_id, LOCK_LOST))
             stages = [
                 WorklogsFullStage(sync_service, since=worklogs_since_date, started_from=started_from)
                 if isinstance(stage, WorklogsFullStage) else stage
@@ -471,7 +439,7 @@ async def run_full_sync(
             ]
             orchestrator = PipelineOrchestrator(
                 stages=stages, db=db, bus=bus or get_event_bus(),
-                before_stage=lambda: _keep_lock(lock, run_id),
+                before_stage=lambda: keep_lock(lock, run_id, LOCK_LOST),
             )
             result = await orchestrator.run(mode="full", trigger="manual", run_id=run_id)
         # Сбой стадии конвейер уже записал в журнал с трассировкой.

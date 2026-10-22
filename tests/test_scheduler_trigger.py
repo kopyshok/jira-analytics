@@ -1,11 +1,15 @@
 """Tests for scheduled_pipeline_runner (T20)."""
 
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.models import SyncSchedule
+from app.services import sync_lock
 from app.services.scheduler import scheduled_pipeline_runner
+from app.services.sync_lock import SyncLock
+from app.services.sync_pipeline import Stage
 
 
 # ------------------------------------------------------------------
@@ -114,3 +118,75 @@ async def test_trigger_runner_creates_run_and_calls_orchestrator(db_session):
     call_kwargs = mock_orch.run.call_args.kwargs
     assert call_kwargs["mode"] == "normal"
     assert call_kwargs["trigger"] == "scheduled"
+
+
+# ------------------------------------------------------------------
+# Долгий запуск: блокировка продлевается, чужая не снимается
+# ------------------------------------------------------------------
+
+class _Step(Stage):
+    """Стадия-подмена: выполняет переданное действие."""
+
+    critical = True
+
+    def __init__(self, name, action):
+        self.name = name
+        self.action = action
+
+    async def run(self, ctx):
+        await self.action()
+        return {}
+
+
+async def _run_scheduled(db_session, schedule_id, pipeline):
+    jira_ctx, _ = _make_jira_ctx()
+    with patch("app.services.scheduler._get_db_session", return_value=db_session), \
+         patch("app.services.scheduler.JiraClient") as mock_jira_cls, \
+         patch("app.services.sync_pipeline.build_pipeline", side_effect=pipeline):
+        mock_jira_cls.from_db.return_value = jira_ctx
+        await scheduled_pipeline_runner(schedule_id=schedule_id, mode="normal", team=None)
+
+
+@pytest.mark.asyncio
+async def test_scheduled_run_keeps_lock_fresh_inside_long_stage(db_session, monkeypatch):
+    """Синк дольше часа не выглядит брошенным: объединение двойников и
+    следующий запуск ждут его окончания, а не вклиниваются посреди."""
+    _seed_schedule(db_session, "sched-long")
+    monkeypatch.setattr(sync_lock, "HEARTBEAT_EVERY", timedelta(0))
+    seen: dict = {}
+
+    def pipeline(**kwargs):
+        sync = kwargs["services"]["sync"]
+
+        async def long_stage():
+            SyncLock(db_session)._set_started_at(datetime.utcnow() - timedelta(minutes=90))
+            await sync._check_cancelled()
+            seen["stale"] = SyncLock(db_session).is_stale()
+
+        return [_Step("issues", long_stage)]
+
+    await _run_scheduled(db_session, "sched-long", pipeline)
+
+    assert seen["stale"] is False
+
+
+@pytest.mark.asyncio
+async def test_scheduled_run_stops_and_keeps_lock_taken_by_other_run(db_session):
+    _seed_schedule(db_session, "sched-steal")
+    seen: dict = {}
+
+    async def steal():
+        SyncLock(db_session)._write({"run_id": "other-run", "started_at": datetime.utcnow().isoformat()})
+
+    async def after():
+        seen["ran"] = True
+
+    await _run_scheduled(
+        db_session, "sched-steal", lambda **kw: [_Step("issues", steal), _Step("worklogs", after)],
+    )
+
+    assert "ran" not in seen
+    assert SyncLock(db_session).current_run_id() == "other-run"
+    from app.repositories.sync_run import SyncRunRepository
+    [run] = [r for r in SyncRunRepository(db_session).list_latest(limit=10) if r.schedule_id == "sched-steal"]
+    assert run.status == "failed"

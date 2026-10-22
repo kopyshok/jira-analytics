@@ -126,3 +126,21 @@ async def test_before_stage_abort_stops_pipeline_with_message():
     assert result == {"status": "failed", "stages": [], "error": "Синхронизацию перехватил другой запуск"}
     published = [c.args[0] for c in bus.publish.call_args_list]
     assert published[-1] == {"type": "pipeline_done", "run_id": "r1", "status": "failed"}
+
+
+@pytest.mark.asyncio
+async def test_stage_failure_goes_to_server_errors():
+    """Сбой синка виден администратору в «Ошибках сервиса», а не только в журнале сервера."""
+    from app.core import error_log
+
+    error_log.clear()
+    s = FakeStage(should_fail=True)
+    s.name = "issues"
+    orch = PipelineOrchestrator(stages=[s], db=MagicMock(), bus=MagicMock(publish=AsyncMock()))
+    await orch.run(mode="normal", trigger="scheduled")
+
+    [entry] = error_log.snapshot()
+    error_log.clear()
+    assert entry["path"] == "Синхронизация, этап «issues»"
+    assert (entry["error_type"], entry["message"]) == ("RuntimeError", "boom")
+    assert "boom" in entry["traceback"]

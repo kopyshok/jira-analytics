@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Callable, Optional
 
+from app.core import error_log
 from app.services.event_bus import EventBroadcaster
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,7 @@ class PipelineOrchestrator:
                 return {"status": "cancelled", "stages": stages_report}
             except Exception as exc:
                 logger.exception("Pipeline stage %s failed", stage.name)
+                error_log.record_background(f"Синхронизация, этап «{stage.name}»", exc)
                 stages_report.append({
                     "stage": stage.name,
                     "started": started.isoformat(),

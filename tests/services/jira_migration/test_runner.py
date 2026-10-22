@@ -17,6 +17,7 @@ from app.services.jira_migration.state import (
     get_migration_state,
     set_migration_state,
 )
+from app.services import sync_lock
 from app.services.sync_lock import SyncLock
 from app.services.sync_pipeline import PipelineOrchestrator, Stage, WorklogsFullStage
 from tests.services.jira_migration.factory import seed_report
@@ -362,7 +363,7 @@ async def test_full_sync_keeps_lock_fresh_between_stages(db_session, monkeypatch
 async def test_full_sync_keeps_lock_fresh_inside_long_stage(db_session, monkeypatch):
     """Внутри стадии блокировку продлевает опрос синка между страницами Jira."""
     report_id = _done_with_report(db_session)
-    monkeypatch.setattr(runner, "LOCK_HEARTBEAT_EVERY", timedelta(0))
+    monkeypatch.setattr(sync_lock, "HEARTBEAT_EVERY", timedelta(0))
     seen: dict = {}
 
     def pipeline(**kwargs):
@@ -448,7 +449,7 @@ async def test_full_sync_stops_when_lock_taken_by_other_run(db_session, monkeypa
 
 async def test_full_sync_stops_inside_stage_when_lock_lost(db_session, monkeypatch):
     report_id = _done_with_report(db_session)
-    monkeypatch.setattr(runner, "LOCK_HEARTBEAT_EVERY", timedelta(0))
+    monkeypatch.setattr(sync_lock, "HEARTBEAT_EVERY", timedelta(0))
 
     def pipeline(**kwargs):
         sync = kwargs["services"]["sync"]

@@ -40,25 +40,40 @@ def _user_id_from(request: Any) -> str | None:
         return None
 
 
-def record(request: Any, exc: BaseException) -> str:
-    """Запомнить ошибку. Возвращает короткий номер для показа пользователю."""
+def _append(exc: BaseException, *, method: str, path: str, query: str, user_id: str | None) -> str:
     entry_id = uuid.uuid4().hex[:12]
     _records.appendleft(
         {
             "id": entry_id,
             "at": datetime.now().astimezone().isoformat(),
-            "method": request.method,
-            "path": request.url.path,
-            "query": str(request.url.query or ""),
+            "method": method,
+            "path": path,
+            "query": query,
             "error_type": type(exc).__name__,
             "message": str(exc)[:500],
             "traceback": "".join(
                 traceback.format_exception(type(exc), exc, exc.__traceback__)
             )[-MAX_TRACEBACK_CHARS:],
-            "user_id": _user_id_from(request),
+            "user_id": user_id,
         }
     )
     return entry_id
+
+
+def record(request: Any, exc: BaseException) -> str:
+    """Запомнить ошибку. Возвращает короткий номер для показа пользователю."""
+    return _append(
+        exc,
+        method=request.method,
+        path=request.url.path,
+        query=str(request.url.query or ""),
+        user_id=_user_id_from(request),
+    )
+
+
+def record_background(where: str, exc: BaseException) -> str:
+    """Сбой фоновой работы (синхронизации): запроса и пользователя у него нет."""
+    return _append(exc, method="", path=where, query="", user_id=None)
 
 
 def snapshot() -> list[dict[str, Any]]:

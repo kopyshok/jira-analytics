@@ -73,7 +73,7 @@ export default function ServerErrorsTab() {
       width: 320,
       render: (v: string, row: ServerErrorItem) => (
         <Text code style={{ fontSize: 12 }}>
-          {row.method} {v}
+          {row.method ? `${row.method} ${v}` : v}
         </Text>
       ),
     },
@@ -100,7 +100,8 @@ export default function ServerErrorsTab() {
         description={
           <>
             <Paragraph style={{ marginBottom: 8 }}>
-              Сюда попадает всё, что на экране выглядит как «что-то пошло не так».
+              Сюда попадает всё, что на экране выглядит как «что-то пошло не так»,
+              и сбои синхронизации с Jira.
               Разверните строку — там полная запись о сбое, её можно скопировать
               и приложить к обращению.
             </Paragraph>

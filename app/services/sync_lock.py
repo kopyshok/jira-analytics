@@ -6,6 +6,8 @@
 """
 
 import json
+import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any, Optional, cast
 
@@ -15,9 +17,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.app_setting import AppSetting
+from app.services.sync_pipeline import PipelineAborted
 
 KEY = "sync_lock"
 DEFAULT_STALE_AFTER_MIN = 60
+# Как часто продлевать блокировку внутри долгой стадии (зависшей она считается через час).
+HEARTBEAT_EVERY = timedelta(minutes=10)
+#: Причина остановки обычного синка, у которого забрали блокировку.
+LOCK_LOST = "Синхронизацию перехватил другой запуск — эта остановлена, запустите её заново"
 
 
 class SyncLock:
@@ -134,3 +141,31 @@ class SyncLock:
         payload = self._payload() or {}
         payload["started_at"] = started_at.isoformat()
         self._write(payload)
+
+
+def keep_lock(lock: SyncLock, run_id: str, lost: str = LOCK_LOST) -> None:
+    """Продлить блокировку; её забрал другой запуск — остановить синхронизацию."""
+    if not lock.heartbeat(run_id):
+        raise PipelineAborted(lost)
+
+
+def lock_keeper(lock: SyncLock, run_id: str, lost: str = LOCK_LOST) -> Callable[[], Awaitable[bool]]:
+    """Опрос отмены для синка, который заодно продлевает блокировку.
+
+    Синк зовёт его в горячих циклах (между страницами Jira, задачами,
+    ворклогами), поэтому многочасовая стадия не выглядит зависшей: ни
+    синхронизация по расписанию, ни объединение двойников не вклинятся
+    посреди неё. Продление — не чаще ``HEARTBEAT_EVERY`` и коммитит сессию,
+    как синк и сам делает по ходу стадий. Блокировку забрали —
+    ``PipelineAborted``, стадия останавливается. Отмены клиентом нет: иначе ``False``.
+    """
+    last = time.monotonic()
+
+    async def keep_alive() -> bool:
+        nonlocal last
+        if time.monotonic() - last >= HEARTBEAT_EVERY.total_seconds():
+            keep_lock(lock, run_id, lost)
+            last = time.monotonic()
+        return False
+
+    return keep_alive

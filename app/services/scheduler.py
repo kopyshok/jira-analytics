@@ -5,12 +5,16 @@ scheduled_pipeline_runner — функция, которую SchedulerService в
 
 import logging
 from datetime import datetime, timezone
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from croniter import croniter
 
 from app.connectors.jira_client import JiraClient  # noqa: F401 — for patch target in tests
+
+if TYPE_CHECKING:
+    from app.services.sync_lock import SyncLock
+    from app.services.sync_pipeline import PipelineOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -285,7 +289,7 @@ async def scheduled_pipeline_runner(*, schedule_id: str, mode: str, team: Option
 
         try:
             async with JiraClient.from_db(db) as jira:
-                orch = _build_orchestrator_local(db, jira, mode=mode, team=team)
+                orch = _build_orchestrator_local(db, jira, mode=mode, team=team, lock=lock, run_id=run.id)
                 result = await orch.run(
                     mode=mode,
                     trigger="scheduled",
@@ -312,7 +316,7 @@ async def scheduled_pipeline_runner(*, schedule_id: str, mode: str, team: Option
                 pass
             raise
         finally:
-            lock.release()
+            lock.release(run.id)
     finally:
         db.close()
 
@@ -323,15 +327,23 @@ def _get_db_session():
     return SessionLocal()
 
 
-def _build_orchestrator_local(db, jira, *, mode: str, team: Optional[str] = None) -> "PipelineOrchestrator":
-    """Собрать оркестратор для scheduled_pipeline_runner (дублирует логику из sync.py)."""
+def _build_orchestrator_local(
+    db, jira, *, mode: str, team: Optional[str] = None, lock: "SyncLock", run_id: str,
+) -> "PipelineOrchestrator":
+    """Собрать оркестратор для scheduled_pipeline_runner (дублирует логику из sync.py).
+
+    Блокировка продлевается перед стадиями и по ходу синка: иначе через час
+    долгий запуск считается брошенным, и в него вклиниваются следующий запуск
+    или объединение двойников.
+    """
     from app.services.sync_pipeline import PipelineOrchestrator, build_pipeline
     from app.services.mapping_service import MappingService
     from app.services.production_calendar_service import ProductionCalendarService
+    from app.services.sync_lock import keep_lock, lock_keeper
     from app.services.sync_service import SyncService
     from app.services.event_bus import get_event_bus
 
-    sync_svc = SyncService(db, jira)
+    sync_svc = SyncService(db, jira, cancel_check=lock_keeper(lock, run_id))
     calendar_svc = ProductionCalendarService(db)
     mapping_svc = MappingService(db)
     stages = build_pipeline(
@@ -339,4 +351,6 @@ def _build_orchestrator_local(db, jira, *, mode: str, team: Optional[str] = None
         services={"sync": sync_svc, "calendar": calendar_svc, "mapping": mapping_svc},
         team=team,
     )
-    return PipelineOrchestrator(stages=stages, db=db, bus=get_event_bus())
+    return PipelineOrchestrator(
+        stages=stages, db=db, bus=get_event_bus(), before_stage=lambda: keep_lock(lock, run_id),
+    )

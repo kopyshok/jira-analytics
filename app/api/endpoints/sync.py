@@ -18,7 +18,7 @@ from app.services.event_bus import get_event_bus
 from app.services.jira_migration.state import ensure_sync_allowed
 from app.services.mapping_service import MappingService
 from app.services.production_calendar_service import ProductionCalendarService
-from app.services.sync_lock import SyncLock
+from app.services.sync_lock import SyncLock, keep_lock, lock_keeper
 from app.services.sync_pipeline import PipelineOrchestrator, build_pipeline
 from app.services.sync_service import SyncService, ReloadStats, UpdateStats, SyncStats
 from app.repositories.sync_run import SyncRunRepository
@@ -28,14 +28,18 @@ from app.schemas.sync_pipeline import PipelineRequest, TeamRefreshRequest
 router = APIRouter()
 
 
-def _build_orchestrator(db, jira: "JiraClient", *, mode: str, team: Optional[str] = None) -> PipelineOrchestrator:
+def _build_orchestrator(
+    db, jira: "JiraClient", *, mode: str, team: Optional[str] = None, lock: SyncLock, run_id: str,
+) -> PipelineOrchestrator:
     """Собрать оркестратор для заданного режима.
 
     Принимает уже открытый JiraClient — его lifecycle управляется снаружи
     (в ``run_pipeline`` внутри SSE-генератора) чтобы клиент оставался живым
-    на протяжении всего выполнения pipeline.
+    на протяжении всего выполнения pipeline. Блокировка продлевается перед
+    стадиями и по ходу синка: иначе через час долгий запуск считается
+    брошенным, и в него вклиниваются запуск по расписанию или объединение двойников.
     """
-    sync_svc = SyncService(db, jira)
+    sync_svc = SyncService(db, jira, cancel_check=lock_keeper(lock, run_id))
     calendar_svc = ProductionCalendarService(db)
     mapping_svc = MappingService(db)
     stages = build_pipeline(
@@ -43,7 +47,9 @@ def _build_orchestrator(db, jira: "JiraClient", *, mode: str, team: Optional[str
         services={"sync": sync_svc, "calendar": calendar_svc, "mapping": mapping_svc},
         team=team,
     )
-    return PipelineOrchestrator(stages=stages, db=db, bus=get_event_bus())
+    return PipelineOrchestrator(
+        stages=stages, db=db, bus=get_event_bus(), before_stage=lambda: keep_lock(lock, run_id),
+    )
 
 
 @router.post("/pipeline")
@@ -73,7 +79,10 @@ async def run_pipeline(
         queue = bus.subscribe()
         try:
             async with JiraClient.from_db(db) as jira:
-                orch = _build_orchestrator(db, jira, mode=pipeline_request.mode, team=pipeline_request.team)
+                orch = _build_orchestrator(
+                    db, jira, mode=pipeline_request.mode, team=pipeline_request.team,
+                    lock=lock, run_id=run.id,
+                )
                 run_task = asyncio.create_task(
                     orch.run(
                         mode=pipeline_request.mode,
@@ -108,7 +117,7 @@ async def run_pipeline(
                         run_task.cancel()
         finally:
             bus.unsubscribe(queue)
-            lock.release()
+            lock.release(run.id)
 
     return StreamingResponse(
         event_generator(),
