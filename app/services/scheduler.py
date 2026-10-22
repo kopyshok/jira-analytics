@@ -321,6 +321,34 @@ async def scheduled_pipeline_runner(*, schedule_id: str, mode: str, team: Option
         db.close()
 
 
+#: Итог запуска, который оборвал перезапуск сервиса.
+RUN_INTERRUPTED = "Синхронизация прервана: сервис перезапускался — запустите её заново"
+
+
+def close_interrupted_runs(db) -> int:
+    """Закрыть запуски, оставшиеся «Выполняется» от прошлого процесса, и снять блокировку.
+
+    Зовётся при старте сервиса: в этот момент ни один запуск не идёт, а без
+    этого запись висела бы в истории вечно, и следующий синк ждал бы час,
+    пока блокировка не сочтётся зависшей.
+
+    ponytail: сервис — один процесс uvicorn. Если появятся воркеры, так
+    закрылись бы живые запуски соседей — тогда хозяина запуска хранить в базе.
+    """
+    from app.models.sync_run import SyncRun
+    from app.repositories.sync_run import SyncRunRepository
+    from app.services.sync_lock import SyncLock
+
+    repo = SyncRunRepository(db)
+    runs = db.query(SyncRun).filter(SyncRun.status == "running").all()
+    for run in runs:
+        repo.finalize(run.id, status="failed", stages=run.stages_json or [], error_text=RUN_INTERRUPTED)
+    SyncLock(db).release()
+    if runs:
+        logger.warning("Закрыто запусков синхронизации, оборванных перезапуском: %d", len(runs))
+    return len(runs)
+
+
 def _get_db_session():
     """Открыть новую DB-сессию (не зависит от FastAPI DI)."""
     from app.database import SessionLocal

@@ -190,3 +190,22 @@ async def test_scheduled_run_stops_and_keeps_lock_taken_by_other_run(db_session)
     from app.repositories.sync_run import SyncRunRepository
     [run] = [r for r in SyncRunRepository(db_session).list_latest(limit=10) if r.schedule_id == "sched-steal"]
     assert run.status == "failed"
+
+
+def test_close_interrupted_runs_after_restart(db_session):
+    """После перезапуска сервиса ни один запуск не идёт: «Выполняется» закрываются
+    как прерванные, блокировка снимается — следующий синк не ждёт час."""
+    from app.repositories.sync_run import SyncRunRepository
+    from app.services.scheduler import RUN_INTERRUPTED, close_interrupted_runs
+
+    repo = SyncRunRepository(db_session)
+    hung = repo.create(mode="normal", trigger="manual")
+    done = repo.create(mode="normal", trigger="scheduled")
+    repo.finalize(done.id, status="ok", stages=[])
+    SyncLock(db_session).acquire(hung.id)
+
+    assert close_interrupted_runs(db_session) == 1
+
+    assert (repo.get(hung.id).status, repo.get(hung.id).error_text) == ("failed", RUN_INTERRUPTED)
+    assert repo.get(done.id).status == "ok"
+    assert SyncLock(db_session).current_run_id() is None

@@ -22,7 +22,7 @@ from app.database import SessionLocal, engine
 from app.services.kpi.conditions import ConditionError
 from app.services.jira_migration.state import SyncBlockedError
 from app.repositories.sync_schedule import SyncScheduleRepository
-from app.services.scheduler import SchedulerService, scheduled_pipeline_runner
+from app.services.scheduler import SchedulerService, close_interrupted_runs, scheduled_pipeline_runner
 from app.jobs.aggregate_usage import aggregate_usage_job
 from app.jobs.regenerate_summaries import regenerate_outdated_summaries_blocking
 from app.services.token_renewal import renew_tokens_job
@@ -57,6 +57,8 @@ async def lifespan(app: FastAPI):
     # --- Scheduler ---
     db = SessionLocal()
     try:
+        # Запуски «Выполняется» от прошлого процесса уже не идут.
+        close_interrupted_runs(db)
         schedules = SyncScheduleRepository(db).list_all()
     finally:
         db.close()

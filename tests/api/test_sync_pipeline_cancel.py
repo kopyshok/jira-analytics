@@ -41,3 +41,55 @@ async def test_pipeline_cancels_on_client_disconnect():
                 pass
         # Assert: did not hang
         assert True
+
+
+async def _start(db_session):
+    from app.api.endpoints import sync as sync_endpoints
+    from app.schemas.sync_pipeline import PipelineRequest
+
+    request = MagicMock(is_disconnected=AsyncMock(return_value=False))
+    return await sync_endpoints.run_pipeline(PipelineRequest(mode="quick"), request=request, db=db_session)
+
+
+@pytest.mark.asyncio
+async def test_stream_closed_mid_event_closes_run_in_history(db_session):
+    """Вкладку закрыли/обновили посреди отправки события: запуск не остаётся
+    «Выполняется» навсегда, блокировка снята."""
+    from app.models import SyncRun
+    from app.services.event_bus import get_event_bus
+    from app.services.sync_lock import SyncLock
+
+    async def _slow_run(**kw):
+        await get_event_bus().publish({"type": "sync_started", "run_id": kw["run_id"]})
+        await asyncio.sleep(5)
+        return {"status": "ok", "stages": []}
+
+    with patch("app.api.endpoints.sync._build_orchestrator") as build_orch, \
+         patch("app.api.endpoints.sync.JiraClient.from_db", return_value=_make_fake_jira_cm()):
+        build_orch.return_value.run = AsyncMock(side_effect=_slow_run)
+        stream = (await _start(db_session)).body_iterator
+        await stream.__anext__()
+        await stream.aclose()
+        await asyncio.sleep(0)
+
+    [run] = db_session.query(SyncRun).all()
+    assert run.status == "cancelled"
+    assert SyncLock(db_session).current_run_id() is None
+
+
+@pytest.mark.asyncio
+async def test_failure_before_result_closes_run_as_failed(db_session):
+    from app.connectors.jira_client import JiraClientError
+    from app.models import SyncRun
+
+    with patch(
+        "app.api.endpoints.sync.JiraClient.from_db",
+        side_effect=JiraClientError("Missing Jira credentials"),
+    ):
+        stream = (await _start(db_session)).body_iterator
+        with pytest.raises(JiraClientError):
+            async for _ in stream:
+                pass
+
+    [run] = db_session.query(SyncRun).all()
+    assert (run.status, run.error_text) == ("failed", "Missing Jira credentials")

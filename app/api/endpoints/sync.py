@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from contextlib import suppress
 from datetime import date
 from typing import Optional, List
@@ -26,6 +27,7 @@ from app.schemas.sync_pipeline import PipelineRequest, TeamRefreshRequest
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _build_orchestrator(
@@ -50,6 +52,21 @@ def _build_orchestrator(
     return PipelineOrchestrator(
         stages=stages, db=db, bus=get_event_bus(), before_stage=lambda: keep_lock(lock, run_id),
     )
+
+
+def _close_unfinished(db: Session, run_id: str, status: str, error_text: Optional[str] = None) -> None:
+    """Запуск, оборванный без итога, закрыть — иначе в истории навсегда «Выполняется».
+
+    Недописанная часть синка откатывается: следующий запуск перечитает её.
+    """
+    try:
+        db.rollback()
+        repo = SyncRunRepository(db)
+        run = repo.get(run_id)
+        if run is not None and run.status == "running":
+            repo.finalize(run_id, status=status, stages=run.stages_json or [], error_text=error_text)
+    except Exception:
+        logger.exception("Не удалось закрыть оборванный запуск синхронизации %s", run_id)
 
 
 @router.post("/pipeline")
@@ -115,8 +132,13 @@ async def run_pipeline(
                 finally:
                     if not run_task.done():
                         run_task.cancel()
+        except Exception as exc:
+            _close_unfinished(db, run.id, "failed", str(exc))
+            raise
         finally:
             bus.unsubscribe(queue)
+            # Связь оборвалась посреди отправки события — итог не записан выше.
+            _close_unfinished(db, run.id, "cancelled")
             lock.release(run.id)
 
     return StreamingResponse(
