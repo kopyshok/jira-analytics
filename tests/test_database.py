@@ -13,7 +13,11 @@ def test_sqlite_engine_options_include_thread_check():
 def test_non_sqlite_engine_options_do_not_include_sqlite_connect_args():
     kwargs = _engine_kwargs("postgresql+psycopg://user:pass@localhost/db", echo=True)
 
-    assert "connect_args" not in kwargs
+    connect_args = kwargs["connect_args"]
+    assert "check_same_thread" not in connect_args and "timeout" not in connect_args
+    # Пределы ожидания: без них чужая блокировка строки держит запрос бесконечно (23.10.2026).
+    assert "lock_timeout=" in connect_args["options"]
+    assert "idle_in_transaction_session_timeout=" in connect_args["options"]
     assert kwargs["echo"] is True
 
 

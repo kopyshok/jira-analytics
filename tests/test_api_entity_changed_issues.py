@@ -1,5 +1,5 @@
 """Проверяем, что batch-category публикует entity_changed."""
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 from fastapi.testclient import TestClient
 
 from app.database import get_db
@@ -32,7 +32,7 @@ def _seed_issue(db):
 
 
 def test_batch_category_publishes_issues_and_backlog(testclient_db_session):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     issue = _seed_issue(testclient_db_session)
     client = _make_client(testclient_db_session, mock_bus)
     try:
@@ -43,6 +43,6 @@ def test_batch_category_publishes_issues_and_backlog(testclient_db_session):
         assert r.status_code == 200, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["issues", "backlog"]}
     )

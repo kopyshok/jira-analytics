@@ -19,6 +19,22 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "sqlite:///./data/jira_analytics.db"
+    # Пределы ожидания на Postgres (0 — без предела). Чужую блокировку строки
+    # ждём недолго: иначе одна незакреплённая запись держит запрос бесконечно.
+    # Незакреплённую запись, брошенную без дела, база обрывает сама — запас
+    # больше самого долгого ожидания Jira с повторами внутри синка.
+    db_lock_timeout_seconds: int = 10
+    db_idle_in_transaction_timeout_seconds: int = 1800
+    # Запрос к базе из цикла обработки запросов: в тестах — ошибка, на проде —
+    # предупреждение в журнале (см. app/core/loop_guard.py).
+    db_loop_guard_strict: bool = False
+
+    # Сторож цикла обработки запросов (app/core/loop_watchdog.py): снимок
+    # потоков в журнал, если цикл молчит, и перезапуск, если молчит долго
+    # (0 — не перезапускать). Перезапуск — с запасом: часть синка ещё идёт в
+    # цикле, его законные остановки не замерены на проде; снизить по журналу.
+    loop_watchdog_stall_seconds: int = 30
+    loop_watchdog_restart_seconds: int = 600
 
     # CORS
     cors_origins: Annotated[list[str], NoDecode] = [

@@ -1,5 +1,5 @@
 """Проверяем, что мутирующие endpoints планирования публикуют entity_changed."""
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 from fastapi.testclient import TestClient
 
 from app.database import get_db
@@ -50,7 +50,7 @@ def _seed_scenario_with_allocation(db, item_id):
 # ── tests ─────────────────────────────────────────────────────────────────────
 
 def test_create_scenario_publishes_planning(testclient_db_session):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     item = _seed_backlog_item(testclient_db_session)
     client = _make_client(testclient_db_session, mock_bus)
     try:
@@ -59,13 +59,13 @@ def test_create_scenario_publishes_planning(testclient_db_session):
         assert r.status_code == 201, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["planning"]}
     )
 
 
 def test_patch_allocation_publishes_planning_and_backlog(testclient_db_session):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     item = _seed_backlog_item(testclient_db_session)
     sc, alloc = _seed_scenario_with_allocation(testclient_db_session, item.id)
     client = _make_client(testclient_db_session, mock_bus)
@@ -77,13 +77,13 @@ def test_patch_allocation_publishes_planning_and_backlog(testclient_db_session):
         assert r.status_code == 200, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["planning", "backlog"]}
     )
 
 
 def test_patch_allocation_assignee_publishes_planning(testclient_db_session):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     item = _seed_backlog_item(testclient_db_session)
     sc, alloc = _seed_scenario_with_allocation(testclient_db_session, item.id)
     client = _make_client(testclient_db_session, mock_bus)
@@ -95,13 +95,13 @@ def test_patch_allocation_assignee_publishes_planning(testclient_db_session):
         assert r.status_code == 200, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["planning"]}
     )
 
 
 def test_approve_scenario_publishes_planning_and_backlog(testclient_db_session):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     item = _seed_backlog_item(testclient_db_session)
     sc, alloc = _seed_scenario_with_allocation(testclient_db_session, item.id)
     client = _make_client(testclient_db_session, mock_bus)
@@ -110,13 +110,13 @@ def test_approve_scenario_publishes_planning_and_backlog(testclient_db_session):
         assert r.status_code == 200, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["planning", "backlog"]}
     )
 
 
 def test_revert_scenario_publishes_planning_and_backlog(testclient_db_session):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     item = _seed_backlog_item(testclient_db_session)
     sc, alloc = _seed_scenario_with_allocation(testclient_db_session, item.id)
     # Approve first so we can revert
@@ -128,13 +128,13 @@ def test_revert_scenario_publishes_planning_and_backlog(testclient_db_session):
         assert r.status_code == 200, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["planning", "backlog"]}
     )
 
 
 def test_delete_scenario_publishes_planning_and_backlog(testclient_db_session):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     item = _seed_backlog_item(testclient_db_session)
     sc, alloc = _seed_scenario_with_allocation(testclient_db_session, item.id)
     client = _make_client(testclient_db_session, mock_bus)
@@ -143,14 +143,14 @@ def test_delete_scenario_publishes_planning_and_backlog(testclient_db_session):
         assert r.status_code == 200, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["planning", "backlog"]}
     )
 
 
 def test_rename_scenario_publishes_planning(testclient_db_session):
     """Переименование сценария видят остальные пользователи."""
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     item = _seed_backlog_item(testclient_db_session)
     sc, _ = _seed_scenario_with_allocation(testclient_db_session, item.id)
     client = _make_client(testclient_db_session, mock_bus)
@@ -159,6 +159,6 @@ def test_rename_scenario_publishes_planning(testclient_db_session):
         assert r.status_code == 200, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["planning"]}
     )

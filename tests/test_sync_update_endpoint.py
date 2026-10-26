@@ -2,6 +2,7 @@
 
 import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -25,7 +26,7 @@ def client(db_session):
 
 @asynccontextmanager
 async def _fake_jira_ctx(*args, **kwargs):
-    yield object()
+    yield SimpleNamespace()  # синк вешает на клиент свой before_request
 
 
 def _parse_sse(raw: str) -> list[dict]:

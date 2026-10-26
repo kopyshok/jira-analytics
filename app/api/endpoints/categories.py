@@ -96,7 +96,7 @@ def _validate_work_type_id(db: Session, work_type_id: Optional[str]) -> None:
 
 
 @router.get("", response_model=List[CategoryResponse])
-async def list_categories(db: Session = Depends(get_db)):
+def list_categories(db: Session = Depends(get_db)):
     """Список всех категорий."""
     cats = db.query(Category).order_by(Category.sort_order, Category.code).all()
     return [
@@ -110,7 +110,7 @@ async def list_categories(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=CategoryResponse, status_code=201)
-async def create_category(body: CategoryCreate, db: Session = Depends(get_db)):
+def create_category(body: CategoryCreate, db: Session = Depends(get_db)):
     """Создать категорию."""
     existing = db.query(Category).filter(Category.code == body.code).first()
     if existing:
@@ -136,7 +136,7 @@ async def create_category(body: CategoryCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{category_id}", response_model=CategoryResponse)
-async def update_category(category_id: str, body: CategoryUpdate, db: Session = Depends(get_db)):
+def update_category(category_id: str, body: CategoryUpdate, db: Session = Depends(get_db)):
     """Обновить категорию."""
     cat = db.get(Category, category_id)
     if not cat:
@@ -164,7 +164,7 @@ async def update_category(category_id: str, body: CategoryUpdate, db: Session = 
 
 
 @router.delete("/{category_id}")
-async def delete_category(category_id: str, db: Session = Depends(get_db)):
+def delete_category(category_id: str, db: Session = Depends(get_db)):
     """Удалить категорию (системные нельзя)."""
     cat = db.get(Category, category_id)
     if not cat:

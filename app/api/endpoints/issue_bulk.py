@@ -145,7 +145,7 @@ class BulkApplyResponse(BaseModel):
 
 
 @router.post("/bulk/archive", response_model=BulkApplyResponse)
-async def bulk_archive(
+def bulk_archive(
     body: BulkArchiveRequest,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -177,7 +177,7 @@ async def bulk_archive(
 
     updated = len(rows)
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return BulkApplyResponse(updated=updated, archived_ids=archived_ids)
 
 
@@ -191,7 +191,7 @@ class BulkAcceptResponse(BaseModel):
 
 
 @router.post("/bulk/accept-suggestions", response_model=BulkAcceptResponse)
-async def bulk_accept_suggestions(
+def bulk_accept_suggestions(
     body: BulkAcceptSuggestionsRequest,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -221,7 +221,7 @@ async def bulk_accept_suggestions(
         applied += 1
 
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return BulkAcceptResponse(applied=applied, skipped_no_suggestion=skipped)
 
 
@@ -259,7 +259,7 @@ def _walk_subtree_no_assigned(db: Session, root_id: str) -> list[Issue]:
 
 
 @router.post("/bulk/cascade-inherit", response_model=BulkCascadeResponse)
-async def bulk_cascade_inherit(
+def bulk_cascade_inherit(
     body: BulkCascadeRequest,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -288,5 +288,5 @@ async def bulk_cascade_inherit(
             applied += 1
 
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return BulkCascadeResponse(applied=applied, skipped_ancestors=skipped_ancestors)

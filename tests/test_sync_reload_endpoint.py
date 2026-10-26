@@ -2,6 +2,7 @@
 
 import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -29,7 +30,7 @@ def client(db_session):
 async def _fake_jira_ctx(*args, **kwargs):
     """Stand-in for ``async with JiraClient.from_db(db)`` that skips
     credential/httpx setup — the service method is patched anyway."""
-    yield object()
+    yield SimpleNamespace()  # синк вешает на клиент свой before_request
 
 
 def test_post_reload_persists_since_and_returns_stats(client, db_session):

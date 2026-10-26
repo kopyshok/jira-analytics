@@ -1,11 +1,11 @@
 """Work-type thematic report API."""
 import asyncio
 import json
-from contextlib import suppress
 from typing import Optional
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.core.ai_deps import require_ai_enabled
 from app.core.auth_deps import get_current_user
+from app.core.loop_guard import cancel_and_wait, run_blocking
 from app.models.user import User
 from app.models.work_type_report_snapshot import WorkTypeReportSnapshot
 from app.models.work_type_report_layout import WorkTypeReportLayout
@@ -68,17 +69,17 @@ async def build_report(
     current_user: User = Depends(get_current_user),
 ):
     """Build (or rebuild on force_refresh) a thematic report snapshot."""
-    wt = db.get(MandatoryWorkType, payload.work_type_id)
+    wt = await run_in_threadpool(db.get, MandatoryWorkType, payload.work_type_id)
     if not wt:
         raise HTTPException(404, "Work type not found")
-    svc = _make_service(db)
+    svc = await run_in_threadpool(_make_service, db)
     snap = await svc.get_or_build(
         work_type_id=payload.work_type_id,
         year=payload.year, quarter=payload.quarter, month=payload.month,
         teams=payload.teams, force_refresh=payload.force_refresh,
         user_id=current_user.id,
     )
-    return _to_response(snap, wt)
+    return await run_in_threadpool(_to_response, snap, wt)
 
 
 def _disconnect_checker(request: Request):
@@ -105,7 +106,7 @@ async def build_report_stream(
     - ``error`` — ошибка бэкенда
     - ``cancelled`` — клиент отключился
     """
-    wt = db.get(MandatoryWorkType, payload.work_type_id)
+    wt = await run_in_threadpool(db.get, MandatoryWorkType, payload.work_type_id)
     if not wt:
         raise HTTPException(404, "Work type not found")
 
@@ -117,7 +118,8 @@ async def build_report_stream(
 
         async def run() -> None:
             try:
-                svc = _make_service(db)
+                # run_blocking: при отключении клиента дождаться потока — сессия общая.
+                svc = await run_blocking(_make_service, db)
                 snap = await svc.get_or_build(
                     work_type_id=payload.work_type_id,
                     year=payload.year,
@@ -153,9 +155,7 @@ async def build_report_stream(
                     break
         finally:
             if not task.done():
-                task.cancel()
-                with suppress(asyncio.CancelledError, Exception):
-                    await task
+                await cancel_and_wait(task)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
@@ -170,16 +170,16 @@ async def get_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    wt = db.get(MandatoryWorkType, work_type_id)
+    wt = await run_in_threadpool(db.get, MandatoryWorkType, work_type_id)
     if not wt:
         raise HTTPException(404, "Work type not found")
     team_list = [t.strip() for t in teams.split(",") if t.strip()] if teams else []
-    svc = _make_service(db)
+    svc = await run_in_threadpool(_make_service, db)
     snap = await svc.get_or_build(
         work_type_id=work_type_id, year=year, quarter=quarter, month=month,
         teams=team_list, force_refresh=False, user_id=current_user.id,
     )
-    return _to_response(snap, wt)
+    return await run_in_threadpool(_to_response, snap, wt)
 
 
 @router.post("/candidates/accept", dependencies=[Depends(require_ai_enabled)])

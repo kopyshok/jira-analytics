@@ -1,6 +1,6 @@
 """Проверяем, что мутирующие backlog endpoints публикуют entity_changed."""
 import datetime
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 
@@ -28,20 +28,20 @@ def _seed_item(db):
 
 
 def test_create_backlog_item_publishes_backlog(testclient_db_session):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.post("/api/v1/backlog", json={"title": "New item"})
         assert r.status_code == 201, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["backlog"]}
     )
 
 
 def test_update_backlog_item_publishes_backlog(testclient_db_session):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     item = _seed_item(testclient_db_session)
     client = _make_client(testclient_db_session, mock_bus)
     try:
@@ -49,7 +49,7 @@ def test_update_backlog_item_publishes_backlog(testclient_db_session):
         assert r.status_code == 200, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["backlog"]}
     )
 
@@ -57,7 +57,7 @@ def test_update_backlog_item_publishes_backlog(testclient_db_session):
 def test_archive_backlog_item_publishes_backlog(testclient_db_session):
     """Archive затрагивает и planning (удаляет allocations в draft-сценариях),
     поэтому событие включает обе сущности."""
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     item = _seed_item(testclient_db_session)
     client = _make_client(testclient_db_session, mock_bus)
     try:
@@ -65,13 +65,13 @@ def test_archive_backlog_item_publishes_backlog(testclient_db_session):
         assert r.status_code == 200, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["backlog", "planning"]}
     )
 
 
 def test_restore_backlog_item_publishes_backlog(testclient_db_session):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     item = _seed_item(testclient_db_session)
     item.archived_at = datetime.datetime.utcnow()
     testclient_db_session.commit()
@@ -81,6 +81,6 @@ def test_restore_backlog_item_publishes_backlog(testclient_db_session):
         assert r.status_code == 200, r.text
     finally:
         _teardown()
-    mock_bus.publish.assert_called_once_with(
+    mock_bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["backlog"]}
     )

@@ -6,11 +6,13 @@ import logging
 import re
 from collections import defaultdict
 from datetime import date, datetime, time
+from functools import partial
 from typing import Awaitable, Callable, Optional
 
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 
+from app.core.loop_guard import run_blocking
 from app.models.mandatory_work_type import MandatoryWorkType
 from app.models.theme import Theme
 from app.models.issue import Issue
@@ -112,12 +114,19 @@ class WorkTypeReportService:
         on_progress: Optional[Callable[[dict], Awaitable[None]]] = None,
         cancel_check: Optional[Callable[[], Awaitable[bool]]] = None,
     ) -> WorkTypeReportSnapshot:
-        wt = self.db.get(MandatoryWorkType, work_type_id)
-        if not wt:
-            raise ValueError(f"Work type {work_type_id} not found")
         team_hash = _team_set_hash(teams)
-        existing = self._find_existing(work_type_id, year, quarter, month, team_hash)
-        if existing and not force_refresh and self._is_fresh(existing, wt):
+
+        # Работа с базой — в рабочем потоке (run_blocking), в цикле — только LLM:
+        # иначе на время запросов к базе встаёт весь сервис.
+        def _lookup() -> tuple[MandatoryWorkType, Optional[WorkTypeReportSnapshot], bool]:
+            wt = self.db.get(MandatoryWorkType, work_type_id)
+            if not wt:
+                raise ValueError(f"Work type {work_type_id} not found")
+            existing = self._find_existing(work_type_id, year, quarter, month, team_hash)
+            return wt, existing, bool(existing and not force_refresh and self._is_fresh(existing, wt))
+
+        wt, existing, fresh = await run_blocking(_lookup)
+        if existing and fresh:
             return existing
         return await self._build(
             work_type_id=work_type_id,
@@ -184,8 +193,8 @@ class WorkTypeReportService:
 
         # 1. Scope
         await _emit({"type": "phase_start", "phase": "scope"})
-        issues = self._select_scope_issues(work_type_id, start_d, end_d, teams)
-        themes = ThemeDictionaryService(self.db).list_active(work_type_id)
+        issues = await run_blocking(self._select_scope_issues, work_type_id, start_d, end_d, teams)
+        themes = await run_blocking(ThemeDictionaryService(self.db).list_active, work_type_id)
         await _emit({"type": "phase_done", "phase": "scope", "count": len(issues)})
 
         # 2. Map phase — classify each issue (concurrent под семафором)
@@ -202,10 +211,11 @@ class WorkTypeReportService:
             for issue in issues:
                 if cancel_check and await cancel_check():
                     raise asyncio.CancelledError("client disconnected")
-                out = clf.prepare(
+                out = await run_blocking(partial(
+                    clf.prepare,
                     issue=issue, work_type_id=work_type_id, themes=themes,
                     period_start=start_d, period_end=end_d,
-                )
+                ))
                 if isinstance(out, IssueClassification):
                     classifications[issue.id] = out
                     done += 1
@@ -218,6 +228,17 @@ class WorkTypeReportService:
             # (порядок коммитов сохраняется, SQLAlchemy Session не делится).
             if preps:
                 sem = asyncio.Semaphore(MAP_PARALLELISM)
+                # Сессия одна на всех: записи из параллельных задач — по одной.
+                persist_lock = asyncio.Lock()
+
+                def _persist(p: ClassificationPrep, res, meta, err) -> tuple[IssueClassification, str, str]:
+                    # Ключ задачи — здесь же: после коммита объекты задач устаревают,
+                    # их чтение в цикле снова пошло бы в базу.
+                    if err is not None:
+                        cls = clf.persist_failure(p, err)
+                    else:
+                        cls = clf.persist_success(p, res, meta)
+                    return cls, p.issue.id, p.issue.key
 
                 async def _call_llm(p: ClassificationPrep):
                     async with sem:
@@ -238,14 +259,12 @@ class WorkTypeReportService:
                                     t.cancel()
                             raise asyncio.CancelledError("client disconnected")
                         p, res, meta, err = await fut
-                        if err is not None:
-                            cls = clf.persist_failure(p, err)
-                        else:
-                            cls = clf.persist_success(p, res, meta)
-                        classifications[p.issue.id] = cls
+                        async with persist_lock:
+                            cls, issue_id, issue_key = await run_blocking(_persist, p, res, meta, err)
+                        classifications[issue_id] = cls
                         done += 1
                         if done % 5 == 0 or done == n:
-                            await _emit({"type": "progress", "phase": "map", "current": done, "total": n, "item_key": p.issue.key})
+                            await _emit({"type": "progress", "phase": "map", "current": done, "total": n, "item_key": issue_key})
                 except BaseException:
                     for t in tasks:
                         if not t.done():
@@ -255,30 +274,36 @@ class WorkTypeReportService:
 
         # 2b. Cluster phase — group raw candidate_name into broader themes
         if self.classifier_provider and classifications:
-            unclassified = [
+            # Классификации после коммитов устарели — читать их в рабочем потоке.
+            unclassified = await run_blocking(lambda: [
                 c for c in classifications.values()
                 if c.theme_id is None and not c.failed and c.candidate_name
-            ]
+            ])
             if len(unclassified) >= 2:
                 await _emit({"type": "phase_start", "phase": "cluster", "total": 1})
+
                 # Build lookup maps for hours and keys from the issue objects
-                hours_by_issue: dict[str, float] = {}
-                key_by_issue: dict[str, str] = {}
-                end_dt = datetime.combine(end_d, time(23, 59, 59))
-                from sqlalchemy import func as _func
-                hours_rows = self.db.execute(
-                    select(Worklog.issue_id, _func.sum(Worklog.hours))
-                    .where(
-                        Worklog.issue_id.in_([c.issue_id for c in unclassified]),
-                        Worklog.started_at >= datetime.combine(start_d, time.min),
-                        Worklog.started_at <= end_dt,
-                    )
-                    .group_by(Worklog.issue_id)
-                ).all()
-                for issue_id, hrs in hours_rows:
-                    hours_by_issue[issue_id] = float(hrs or 0.0)
-                for issue in issues:
-                    key_by_issue[issue.id] = issue.key
+                def _lookups() -> tuple[dict[str, float], dict[str, str]]:
+                    hours_by_issue: dict[str, float] = {}
+                    key_by_issue: dict[str, str] = {}
+                    end_dt = datetime.combine(end_d, time(23, 59, 59))
+                    from sqlalchemy import func as _func
+                    hours_rows = self.db.execute(
+                        select(Worklog.issue_id, _func.sum(Worklog.hours))
+                        .where(
+                            Worklog.issue_id.in_([c.issue_id for c in unclassified]),
+                            Worklog.started_at >= datetime.combine(start_d, time.min),
+                            Worklog.started_at <= end_dt,
+                        )
+                        .group_by(Worklog.issue_id)
+                    ).all()
+                    for issue_id, hrs in hours_rows:
+                        hours_by_issue[issue_id] = float(hrs or 0.0)
+                    for issue in issues:
+                        key_by_issue[issue.id] = issue.key
+                    return hours_by_issue, key_by_issue
+
+                hours_by_issue, key_by_issue = await run_blocking(_lookups)
 
                 clusterer = WorkTypeClusterer(provider=self.classifier_provider)
                 mapping = await clusterer.cluster(
@@ -291,18 +316,19 @@ class WorkTypeReportService:
                     if new_name and new_name != c.candidate_name:
                         c.candidate_name = new_name
                 if mapping:
-                    self.db.commit()
+                    await run_blocking(self.db.commit)
                 await _emit({"type": "phase_done", "phase": "cluster"})
 
         # 3. Aggregate findings deterministically
-        findings, manual_review, employee_names = self._aggregate_findings(
+        findings, manual_review, employee_names = await run_blocking(partial(
+            self._aggregate_findings,
             issues=issues,
             classifications=classifications,
             themes=themes,
             start_d=start_d,
             end_d=end_d,
             teams=teams,
-        )
+        ))
 
         # 4. Reduce phase
         await _emit({"type": "phase_start", "phase": "reduce", "total": 1})
@@ -327,30 +353,35 @@ class WorkTypeReportService:
 
         # 6. Persist
         await _emit({"type": "phase_start", "phase": "save"})
-        snap = existing or WorkTypeReportSnapshot(
-            work_type_id=work_type_id,
-            year=year,
-            quarter=quarter,
-            month=month,
-            start_date=start_d,
-            end_date=end_d,
-            team_set_hash=team_hash,
-            team_set_json=json.dumps(teams, ensure_ascii=False),
-            snapshot_data="",
-            dictionary_version=wt.theme_dict_version,
-        )
-        snap.snapshot_data = json.dumps(data, ensure_ascii=False)
-        snap.dictionary_version = wt.theme_dict_version
-        snap.team_set_json = json.dumps(teams, ensure_ascii=False)
-        snap.start_date, snap.end_date = start_d, end_d
-        snap.model_id = synth_meta.get("model")
-        snap.prompt_version = SYNTH_PROMPT_VERSION
-        snap.generated_at = datetime.utcnow()
-        snap.created_by = user_id
-        if not existing:
-            self.db.add(snap)
-        self.db.commit()
-        self.db.refresh(snap)
+
+        def _save() -> WorkTypeReportSnapshot:
+            snap = existing or WorkTypeReportSnapshot(
+                work_type_id=work_type_id,
+                year=year,
+                quarter=quarter,
+                month=month,
+                start_date=start_d,
+                end_date=end_d,
+                team_set_hash=team_hash,
+                team_set_json=json.dumps(teams, ensure_ascii=False),
+                snapshot_data="",
+                dictionary_version=wt.theme_dict_version,
+            )
+            snap.snapshot_data = json.dumps(data, ensure_ascii=False)
+            snap.dictionary_version = wt.theme_dict_version
+            snap.team_set_json = json.dumps(teams, ensure_ascii=False)
+            snap.start_date, snap.end_date = start_d, end_d
+            snap.model_id = synth_meta.get("model")
+            snap.prompt_version = SYNTH_PROMPT_VERSION
+            snap.generated_at = datetime.utcnow()
+            snap.created_by = user_id
+            if not existing:
+                self.db.add(snap)
+            self.db.commit()
+            self.db.refresh(snap)
+            return snap
+
+        snap = await run_blocking(_save)
         await _emit({"type": "phase_done", "phase": "save"})
         return snap
 

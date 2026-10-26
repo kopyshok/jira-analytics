@@ -6,7 +6,6 @@ from datetime import date, datetime, timedelta as _timedelta, timezone
 from typing import Dict, List, Literal, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -52,13 +51,10 @@ from app.services.resource_planning_service import (
 router = APIRouter()
 
 
-# Правки с рассылкой события — async-эндпоинты. Тяжёлую работу с базой
-# (пересчёт, копия и удаление плана, смена исполнителя, массовый сброс) они
-# отдают в пул потоков через run_in_threadpool: на цикле событий она держала
-# бы запросы всех остальных пользователей. Пул тот же, что у обычных
-# эндпоинтов, — под него рассчитан пул соединений с базой. Правка одной
-# строки идёт прямо на цикле.
-async def _announce(bus: EventBroadcaster, *, bookings: bool) -> None:
+# Правки с рассылкой события — обычные эндпоинты: FastAPI выполняет их в пуле
+# потоков, работа с базой не идёт на цикле событий (там она держала бы запросы
+# всех остальных пользователей). Событие отправляется без ожидания цикла.
+def _announce(bus: EventBroadcaster, *, bookings: bool) -> None:
     """Сообщить всем открытым вкладкам о правке плана: диаграмма, список
     планов и кандидаты в исполнители перечитываются.
 
@@ -66,7 +62,7 @@ async def _announce(bus: EventBroadcaster, *, bookings: bool) -> None:
     сценарии — «На бэклог» других команд вычитает брони их опорных планов.
     """
     entities = ["resource_planning", "planning"] if bookings else ["resource_planning"]
-    await bus.publish({"type": "entity_changed", "entities": entities})
+    bus.publish_nowait({"type": "entity_changed", "entities": entities})
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────
@@ -1087,7 +1083,7 @@ def list_scheduled_blocks(
 # Период меняет загрузку по дням, запас нормированных работ, предупреждения и
 # свежесть планов других команд — правки рассылают событие, как правки плана.
 @router.post("/scheduled-blocks", response_model=ScheduledBlockOut, status_code=201)
-async def create_scheduled_block(
+def create_scheduled_block(
     data: ScheduledBlockCreate,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -1109,12 +1105,12 @@ async def create_scheduled_block(
     db.commit()
     db.refresh(block)
     out = _blocks_out(db, [block])[0]
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
     return out
 
 
 @router.patch("/scheduled-blocks/{block_id}", response_model=ScheduledBlockOut)
-async def update_scheduled_block(
+def update_scheduled_block(
     block_id: str,
     data: ScheduledBlockUpdate,
     db: Session = Depends(get_db),
@@ -1141,12 +1137,12 @@ async def update_scheduled_block(
     db.commit()
     db.refresh(block)
     out = _blocks_out(db, [block])[0]
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
     return out
 
 
 @router.delete("/scheduled-blocks/{block_id}", status_code=204)
-async def delete_scheduled_block(
+def delete_scheduled_block(
     block_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -1157,7 +1153,7 @@ async def delete_scheduled_block(
         raise HTTPException(404, "ScheduledBlock not found")
     db.delete(block)
     db.commit()
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
 
 
 # ── Вид работ у задач других команд ────────────────────────────────────────
@@ -1171,7 +1167,7 @@ class WorkTypeOverrideIn(BaseModel):
 
 
 @router.put("/work-type-overrides", status_code=204)
-async def put_work_type_override(
+def put_work_type_override(
     data: WorkTypeOverrideIn,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -1206,7 +1202,7 @@ async def put_work_type_override(
     else:
         row.work_type_id = data.work_type_id
     db.commit()
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
 
 
 # ── ResourcePlans ──────────────────────────────────────────────────────────
@@ -1245,7 +1241,7 @@ def list_plans(
 
 
 @router.post("/resource-plans", response_model=ResourcePlanOut, status_code=201)
-async def create_plan(
+def create_plan(
     data: ResourcePlanCreate,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -1256,7 +1252,7 @@ async def create_plan(
     db.commit()
     db.refresh(plan)
     # Новый план может стать опорным для команды — брони других меняются.
-    await _announce(event_bus, bookings=True)
+    _announce(event_bus, bookings=True)
     return plan
 
 
@@ -1273,7 +1269,7 @@ def get_plan(
 
 
 @router.delete("/resource-plans/{plan_id}", status_code=204)
-async def delete_plan(
+def delete_plan(
     plan_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -1286,12 +1282,12 @@ async def delete_plan(
         db.delete(plan)
         db.commit()
 
-    await run_in_threadpool(work)
-    await _announce(event_bus, bookings=True)
+    work()
+    _announce(event_bus, bookings=True)
 
 
 @router.post("/resource-plans/{plan_id}/compute", response_model=ResourcePlanOut)
-async def compute_plan(
+def compute_plan(
     plan_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -1319,8 +1315,8 @@ async def compute_plan(
         db.refresh(plan)
         return plan
 
-    plan = await run_in_threadpool(work)
-    await _announce(event_bus, bookings=True)
+    plan = work()
+    _announce(event_bus, bookings=True)
     return plan
 
 
@@ -2562,7 +2558,7 @@ def get_plan_watch(
 
 
 @router.post("/resource-plans/{plan_id}/watch", status_code=204)
-async def add_plan_watch(
+def add_plan_watch(
     plan_id: str,
     data: PlanWatchAdd,
     db: Session = Depends(get_db),
@@ -2602,11 +2598,11 @@ async def add_plan_watch(
             break
         except IntegrityError:
             db.rollback()
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
 
 
 @router.delete("/resource-plans/{plan_id}/watch/{employee_id}", status_code=204)
-async def remove_plan_watch(
+def remove_plan_watch(
     plan_id: str,
     employee_id: str,
     db: Session = Depends(get_db),
@@ -2622,7 +2618,7 @@ async def remove_plan_watch(
     if row is not None:
         db.delete(row)
         db.commit()
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
 
 
 def _detect_employee_change_conflicts(
@@ -2909,7 +2905,7 @@ _PHASE_INVOLVEMENT_FIELD = {
 
 
 @router.put("/resource-plans/{plan_id}/assignments/{assignment_id}/involvement")
-async def set_assignment_involvement(
+def set_assignment_involvement(
     plan_id: str,
     assignment_id: str,
     data: InvolvementUpdate,
@@ -2947,8 +2943,8 @@ async def set_assignment_involvement(
         db.flush()
         _recompute_or_rollback(db, plan_id, "reschedule_failed")
 
-    await run_in_threadpool(work)
-    await _announce(event_bus, bookings=True)
+    work()
+    _announce(event_bus, bookings=True)
     return {"ok": True}
 
 
@@ -2983,7 +2979,7 @@ def _rescheduled_row(
     "/resource-plans/{plan_id}/assignments/{assignment_id}",
     response_model=AssignmentOut,
 )
-async def patch_assignment(
+def patch_assignment(
     plan_id: str,
     assignment_id: str,
     data: AssignmentPatch,
@@ -3243,8 +3239,8 @@ async def patch_assignment(
             unavailable_days=a_unavailable_days,
         )
 
-    out = await run_in_threadpool(work)
-    await _announce(event_bus, bookings=True)
+    out = work()
+    _announce(event_bus, bookings=True)
     return out
 
 
@@ -3277,7 +3273,7 @@ def _assignment_to_dict(a: ResourcePlanAssignment) -> dict:
 @router.post(
     "/resource-plans/{plan_id}/assignments/{assignment_id}/split",
 )
-async def split_assignment(
+def split_assignment(
     plan_id: str,
     assignment_id: str,
     payload: SplitRequest,
@@ -3301,15 +3297,15 @@ async def split_assignment(
             "cascaded": [_assignment_to_dict(c) for c in cascaded],
         }
 
-    result = await run_in_threadpool(work)
-    await _announce(event_bus, bookings=True)
+    result = work()
+    _announce(event_bus, bookings=True)
     return result
 
 
 @router.post(
     "/resource-plans/{plan_id}/assignments/{assignment_id}/merge",
 )
-async def merge_assignment(
+def merge_assignment(
     plan_id: str,
     assignment_id: str,
     db: Session = Depends(get_db),
@@ -3327,15 +3323,15 @@ async def merge_assignment(
             raise HTTPException(400, str(e))
         return {"assignment": _assignment_to_dict(merged)}
 
-    result = await run_in_threadpool(work)
-    await _announce(event_bus, bookings=True)
+    result = work()
+    _announce(event_bus, bookings=True)
     return result
 
 
 @router.delete(
     "/resource-plans/{plan_id}/assignments/{assignment_id}/manual-edit",
 )
-async def clear_manual_edits(
+def clear_manual_edits(
     plan_id: str,
     assignment_id: str,
     flags: Optional[str] = Query(
@@ -3376,7 +3372,7 @@ async def clear_manual_edits(
     db.commit()
     db.refresh(a)
     # Сняты только отметки закрепления — часы и даты прежние до пересчёта.
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
     return {"assignment": _assignment_to_dict(a)}
 
 
@@ -3403,7 +3399,7 @@ class BulkClearPayload(BaseModel):
 
 
 @router.post("/resource-plans/{plan_id}/bulk-clear")
-async def bulk_clear_manual_edits(
+def bulk_clear_manual_edits(
     plan_id: str,
     payload: BulkClearPayload,
     db: Session = Depends(get_db),
@@ -3497,8 +3493,8 @@ async def bulk_clear_manual_edits(
         _recompute_or_rollback(db, plan_id, "recompute_failed")
         return {"cleared_count": len(touched), "mode": mode}
 
-    result = await run_in_threadpool(work)
-    await _announce(event_bus, bookings=True)
+    result = work()
+    _announce(event_bus, bookings=True)
     return result
 
 
@@ -3688,7 +3684,7 @@ class ConflictPatch(BaseModel):
     "/resource-plans/{plan_id}/conflicts/{conflict_id}",
     response_model=ConflictOut,
 )
-async def patch_conflict(
+def patch_conflict(
     plan_id: str,
     conflict_id: str,
     data: ConflictPatch,
@@ -3741,7 +3737,7 @@ async def patch_conflict(
     }
 
     db.commit()
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
     return ConflictOut(**snap)
 
 
@@ -4900,7 +4896,7 @@ class ForkRequest(BaseModel):
     response_model=ResourcePlanOut,
     status_code=201,
 )
-async def fork_plan(
+def fork_plan(
     plan_id: str,
     data: ForkRequest,
     db: Session = Depends(get_db),
@@ -4999,9 +4995,9 @@ async def fork_plan(
         db.commit()
         return ResourcePlanOut(**snap)
 
-    out = await run_in_threadpool(work)
+    out = work()
     # Копия не бывает опорным планом — брони других команд прежние.
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
     return out
 
 
@@ -5040,7 +5036,7 @@ def list_dependencies(
     response_model=DependencyOut,
     status_code=201,
 )
-async def create_dependency(
+def create_dependency(
     plan_id: str,
     data: DependencyCreate,
     db: Session = Depends(get_db),
@@ -5078,7 +5074,7 @@ async def create_dependency(
         source=dep.source,
     )
     db.commit()
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
     return snap
 
 
@@ -5086,7 +5082,7 @@ async def create_dependency(
     "/resource-plans/{plan_id}/dependencies/{dep_id}",
     response_model=DependencyOut,
 )
-async def patch_dependency(
+def patch_dependency(
     plan_id: str,
     dep_id: str,
     data: DependencyPatch,
@@ -5122,7 +5118,7 @@ async def patch_dependency(
         source=dep.source,
     )
     db.commit()
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
     return snap
 
 
@@ -5130,7 +5126,7 @@ async def patch_dependency(
     "/resource-plans/{plan_id}/dependencies/{dep_id}",
     status_code=204,
 )
-async def delete_dependency(
+def delete_dependency(
     plan_id: str,
     dep_id: str,
     db: Session = Depends(get_db),
@@ -5152,7 +5148,7 @@ async def delete_dependency(
     if plan:
         plan.status = "stale"
     db.commit()
-    await _announce(event_bus, bookings=False)
+    _announce(event_bus, bookings=False)
     return None
 
 

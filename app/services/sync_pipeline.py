@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Callable, Optional
 
 from app.core import error_log
+from app.core.loop_guard import run_blocking
 from app.services.event_bus import EventBroadcaster
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,10 @@ class PipelineOrchestrator:
             try:
                 counts = await stage.run(ctx)
                 finished = datetime.utcnow()
+                # Длительность этапов — в журнал: по ней видно, какой этап держит синк.
+                logger.info(
+                    "Синхронизация %s: этап «%s» — %.1f с", run_id, stage.name, (finished - started).total_seconds(),
+                )
                 stages_report.append({
                     "stage": stage.name,
                     "started": started.isoformat(),
@@ -127,6 +132,12 @@ class PipelineOrchestrator:
             except Exception as exc:
                 logger.exception("Pipeline stage %s failed", stage.name)
                 error_log.record_background(f"Синхронизация, этап «{stage.name}»", exc)
+                # Сломанная транзакция этапа: откатить сразу — иначе она держит
+                # строки до конца запуска, а итог запуска не запишется.
+                try:
+                    self.db.rollback()
+                except Exception:
+                    logger.exception("Pipeline session rollback failed")
                 stages_report.append({
                     "stage": stage.name,
                     "started": started.isoformat(),
@@ -404,10 +415,13 @@ class MappingStage(Stage):
                 rows = self.svc.db.query(Issue.id).filter(Issue.key.in_(keys)).all()
                 ids = [row[0] for row in rows]
 
+        # Пересчёт по всем задачам — минуты (копия прода, 138 тыс. задач: 1–2 мин).
+        # В цикле обработки он остановил бы весь сервис — считаем в рабочем потоке.
+        self.svc.db.commit()
         if ids:
-            affected = self.svc.recalculate_for_issues(ids)
+            affected = await run_blocking(self.svc.recalculate_for_issues, ids)
         else:
-            affected = self.svc.recalculate_all()
+            affected = await run_blocking(self.svc.recalculate_all)
         # recalculate_all returns MappingStats, recalculate_for_issues returns int
         if hasattr(affected, "issues_processed"):
             return {"affected": affected.issues_processed}

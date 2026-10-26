@@ -45,7 +45,7 @@ def _seed_epic(db, key="PRJ-1"):
 @pytest.mark.asyncio
 async def test_get_summary_returns_none_when_no_cache(test_db_session):
     _seed_epic(test_db_session)
-    result = await ProjectSummaryService(test_db_session).get_summary("PRJ-1")
+    result = ProjectSummaryService(test_db_session).get_summary("PRJ-1")
     assert result is None
 
 
@@ -64,7 +64,7 @@ async def test_get_summary_returns_cached_row(test_db_session):
     )
     db.add(cached)
     db.commit()
-    result = await ProjectSummaryService(db).get_summary("PRJ-1")
+    result = ProjectSummaryService(db).get_summary("PRJ-1")
     assert result is not None
     assert result.status_text == "Cached"
 

@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -102,8 +103,8 @@ async def search_dc_users(
     администратор ждёт ответа и может повторить сам.
     """
     try:
-        jira = JiraClient.from_db(db)
-        db.close()
+        jira = await run_in_threadpool(JiraClient.from_db, db)
+        await run_in_threadpool(db.close)
         jira.max_retries = 1
         async with jira:
             users = await jira.search_users(q.strip(), max_results=20, include_inactive=True)

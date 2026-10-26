@@ -56,6 +56,8 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 
 ## Паттерны
 
+**База — не в цикле обработки запросов (инцидент 23.10.2026).** Обработчик с базой — обычный `def` (FastAPI крутит его в рабочем потоке). `async def` — только если ждёт сеть (Jira/LLM/Confluence); база из него — `await run_in_threadpool(fn, db, ...)`, запись внутри `fn` заканчивается `commit()`. Событие из `def` — `get_event_bus().publish_nowait(...)` после `commit()`. Синк (Jira → база) — исключение, маршрут помечен `dependencies=[Depends(db_on_loop_allowed)]`. Проверка — [app/core/loop_guard.py](../core/loop_guard.py): в тестах нарушение роняет запрос «Запрос к базе в цикле обработки запросов», на проде — предупреждение в журнале. Не дождались чужой блокировки строки (`DB_LOCK_TIMEOUT_SECONDS`) → 409 «повторите через минуту» (`app/main.py`).
+
 **CRUD:** GET list + POST create, GET\|PATCH\|DELETE by id (backlog, capacity, scope, categories, absences, hierarchy-rules, production-calendar, roles, mandatory-work-types, absence-reasons).
 
 **Batch:**
@@ -140,4 +142,4 @@ Generic CRUD `/scenarios/{id}` (GET\|PATCH\|DELETE) объявлены посл�
 
 ## ORM caveat
 
-После `db.commit()` сессия expire-ит атрибуты; обращение триггерит reload на potentially thread-rotated connection (воспроизводится: `:memory:` SQLite + TestClient async endpoints). В endpoints **снимать снимок полей в локали до commit** (см. [issue_config.py](endpoints/issue_config.py) `set_issue_category`).
+После `db.commit()` сессия expire-ит атрибуты; обращение триггерит reload на potentially thread-rotated connection (воспроизводится: `:memory:` SQLite + TestClient). В endpoints **снимать снимок полей в локали до commit** (см. [issue_config.py](endpoints/issue_config.py) `set_issue_category`).

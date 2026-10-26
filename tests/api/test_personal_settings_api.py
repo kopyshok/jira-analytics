@@ -1,6 +1,6 @@
 """API личных настроек сотрудника: вовлечённость и свои нормированные работы."""
 from datetime import date
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,7 +17,7 @@ EVENT = {"type": "entity_changed", "entities": ["planning", "resource_planning"]
 
 @pytest.fixture
 def bus():
-    return AsyncMock()
+    return Mock()
 
 
 @pytest.fixture
@@ -73,7 +73,7 @@ def test_create_returns_row_and_publishes(client, bus, data):
         {"work_type_id": data["sup"], "label": "Сопровождение", "percent_of_norm": 5.0},
         {"work_type_id": data["org"], "label": "Орг. вопросы", "percent_of_norm": 10.0},
     ]
-    bus.publish.assert_called_once_with(EVENT)
+    bus.publish_nowait.assert_called_once_with(EVENT)
 
 
 def test_list_by_team_includes_former_members_sorted(client, data):
@@ -121,7 +121,7 @@ def test_update_replaces_percents_and_publishes(client, bus, data, testclient_db
         {"work_type_id": data["org"], "label": "Орг. вопросы", "percent_of_norm": 20.0},
     ]
     assert testclient_db_session.query(EmployeePersonalNormed).count() == 1
-    bus.publish.assert_called_once_with(EVENT)
+    bus.publish_nowait.assert_called_once_with(EVENT)
 
 
 def test_delete_removes_percents_and_publishes(client, bus, data, testclient_db_session):
@@ -134,7 +134,7 @@ def test_delete_removes_percents_and_publishes(client, bus, data, testclient_db_
     testclient_db_session.expire_all()
     assert testclient_db_session.query(EmployeePersonalSetting).count() == 0
     assert testclient_db_session.query(EmployeePersonalNormed).count() == 0
-    bus.publish.assert_called_once_with(EVENT)
+    bus.publish_nowait.assert_called_once_with(EVENT)
 
 
 def test_missing_record_404(client, data):
@@ -153,7 +153,7 @@ def test_duplicate_employee_quarter_409(client, bus, data):
 
     r = client.put(f"{URL}/{sid}", json=_body(data["p"], quarter=4))
     assert r.status_code == 409
-    bus.publish.assert_not_called()
+    bus.publish_nowait.assert_not_called()
 
 
 @pytest.mark.parametrize("involvement", [-0.1, 0.0, 1.5])
@@ -164,7 +164,7 @@ def test_involvement_out_of_range_422(client, bus, data, involvement):
 
     assert r.status_code == 422
     assert r.json()["detail"] == "Вовлечённость — от 1 до 100%"
-    bus.publish.assert_not_called()
+    bus.publish_nowait.assert_not_called()
 
 
 def test_sum_over_100_422(client, data):

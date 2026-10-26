@@ -8,11 +8,13 @@ from datetime import date
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.core.loop_guard import cancel_and_wait, db_on_loop_allowed, run_blocking
 from app.connectors.jira_client import JiraClient, JiraClientError, JiraAuthError
 from app.connectors.jql import jql_field_ref, jql_quote
 from app.services.event_bus import get_event_bus
@@ -69,7 +71,7 @@ def _close_unfinished(db: Session, run_id: str, status: str, error_text: Optiona
         logger.exception("Не удалось закрыть оборванный запуск синхронизации %s", run_id)
 
 
-@router.post("/pipeline")
+@router.post("/pipeline", dependencies=[Depends(db_on_loop_allowed)])
 async def run_pipeline(
     pipeline_request: PipelineRequest,
     request: Request,
@@ -111,7 +113,8 @@ async def run_pipeline(
                 try:
                     while True:
                         if await request.is_disconnected():
-                            run_task.cancel()
+                            # Этап мог считать в рабочем потоке на этой же сессии — дождаться.
+                            await cancel_and_wait(run_task)
                             run_repo.finalize(run.id, status="cancelled", stages=[])
                             break
                         if run_task.done():
@@ -131,7 +134,7 @@ async def run_pipeline(
                             yield ":ping\n\n"
                 finally:
                     if not run_task.done():
-                        run_task.cancel()
+                        await cancel_and_wait(run_task)
         except Exception as exc:
             _close_unfinished(db, run.id, "failed", str(exc))
             raise
@@ -148,7 +151,7 @@ async def run_pipeline(
     )
 
 
-@router.post("/team/refresh")
+@router.post("/team/refresh", dependencies=[Depends(db_on_loop_allowed)])
 async def team_refresh(
     team_request: TeamRefreshRequest,
     request: Request,
@@ -307,7 +310,8 @@ async def test_jira_connection(db: Session = Depends(get_db)):
     - User has access
     """
     try:
-        async with JiraClient.from_db(db) as jira:
+        client = await run_in_threadpool(JiraClient.from_db, db)
+        async with client as jira:
             user = await jira.get_myself()
             return ConnectionTestResponse(
                 connected=True,
@@ -326,7 +330,7 @@ async def test_jira_connection(db: Session = Depends(get_db)):
         )
 
 
-@router.post("/projects", response_model=SyncResponse, deprecated=True)
+@router.post("/projects", response_model=SyncResponse, deprecated=True, dependencies=[Depends(db_on_loop_allowed)])
 async def sync_projects(http_request: Request, db: Session = Depends(get_db)):
     """Sync all projects from Jira.
 
@@ -352,7 +356,7 @@ async def sync_projects(http_request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/issues", response_model=SyncResponse, deprecated=True)
+@router.post("/issues", response_model=SyncResponse, deprecated=True, dependencies=[Depends(db_on_loop_allowed)])
 async def sync_issues(
     http_request: Request,
     body: SyncRequest = None,
@@ -389,7 +393,7 @@ async def sync_issues(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/issues/refresh", response_model=SyncResponse)
+@router.post("/issues/refresh", response_model=SyncResponse, dependencies=[Depends(db_on_loop_allowed)])
 async def refresh_issues(
     body: RefreshIssuesRequest,
     http_request: Request,
@@ -422,7 +426,7 @@ async def refresh_issues(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/issues/reload/stream")
+@router.post("/issues/reload/stream", dependencies=[Depends(db_on_loop_allowed)])
 async def reload_issues_stream(
     req: IssuesReloadRequest,
     http_request: Request,
@@ -489,7 +493,8 @@ async def reload_issues_stream(
                                 db.query(Issue.id).filter(Issue.key.in_(chunk)).all()
                             )
                         if ids:
-                            affected = MappingService(db).recalculate_for_issues(ids)
+                            db.commit()
+                            affected = await run_blocking(MappingService(db).recalculate_for_issues, ids)
                 _set_setting(db, "issues_reload_since_date", req.since.isoformat())
                 db.commit()
                 await queue.put({
@@ -515,14 +520,12 @@ async def reload_issues_stream(
                     break
         finally:
             if not task.done():
-                task.cancel()
-                with suppress(asyncio.CancelledError, Exception):
-                    await task
+                await cancel_and_wait(task)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
-@router.post("/teams", response_model=SyncResponse, deprecated=True)
+@router.post("/teams", response_model=SyncResponse, deprecated=True, dependencies=[Depends(db_on_loop_allowed)])
 async def sync_teams(
     body: SyncTeamsRequest,
     http_request: Request,
@@ -571,7 +574,7 @@ async def sync_teams(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/worklogs", response_model=SyncResponse, deprecated=True)
+@router.post("/worklogs", response_model=SyncResponse, deprecated=True, dependencies=[Depends(db_on_loop_allowed)])
 async def sync_worklogs(http_request: Request, db: Session = Depends(get_db)):
     """Sync worklogs for all synced issues.
 
@@ -597,7 +600,7 @@ async def sync_worklogs(http_request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/worklogs/reload", response_model=WorklogReloadResponse, deprecated=True)
+@router.post("/worklogs/reload", response_model=WorklogReloadResponse, deprecated=True, dependencies=[Depends(db_on_loop_allowed)])
 async def reload_worklogs(
     req: WorklogReloadRequest,
     http_request: Request,
@@ -633,7 +636,7 @@ async def reload_worklogs(
     )
 
 
-@router.post("/worklogs/reload/stream", deprecated=True)
+@router.post("/worklogs/reload/stream", deprecated=True, dependencies=[Depends(db_on_loop_allowed)])
 async def reload_worklogs_stream(
     req: WorklogReloadRequest,
     http_request: Request,
@@ -708,7 +711,7 @@ async def reload_worklogs_stream(
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
-@router.post("/worklogs/update/stream")
+@router.post("/worklogs/update/stream", dependencies=[Depends(db_on_loop_allowed)])
 async def update_worklogs_stream(
     req: WorklogUpdateRequest,
     http_request: Request,
@@ -787,7 +790,7 @@ async def update_worklogs_stream(
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
-@router.post("/comments", response_model=SyncResponse, deprecated=True)
+@router.post("/comments", response_model=SyncResponse, deprecated=True, dependencies=[Depends(db_on_loop_allowed)])
 async def sync_comments(http_request: Request, db: Session = Depends(get_db)):
     """Синхронизация комментариев к задачам из Jira."""
     ensure_sync_allowed(db)
@@ -809,7 +812,7 @@ async def sync_comments(http_request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/full", response_model=SyncResponse, deprecated=True)
+@router.post("/full", response_model=SyncResponse, deprecated=True, dependencies=[Depends(db_on_loop_allowed)])
 async def full_sync(
     http_request: Request,
     body: SyncRequest = None,
@@ -880,22 +883,27 @@ async def browse_jira_projects(
     from app.models import ScopeProject
     from app.models.app_setting import AppSetting
 
-    try:
-        async with JiraClient.from_db(db) as jira:
-            scope_keys: set[str] = {
-                sp.jira_project_key
-                for sp in db.query(ScopeProject).all()
-            }
+    def _read_scope() -> tuple[set[str], list[str]]:
+        scope_keys: set[str] = {
+            sp.jira_project_key
+            for sp in db.query(ScopeProject).all()
+        }
 
-            # If team filter is specified, we will probe each project separately
-            # (matches both "product team" and "participating teams" fields via OR).
-            # Сканирование всех задач команды неприемлемо по времени — при ORDER BY
-            # project ASC лимит перебором выедается задачами одного проекта.
-            team_field_ids: list[str] = []
-            if team:
-                product_row = db.query(AppSetting).filter(AppSetting.key == "jira_team_field_id").first()
-                participating_row = db.query(AppSetting).filter(AppSetting.key == "jira_participating_teams_field_id").first()
-                team_field_ids = [r.value for r in (product_row, participating_row) if r and r.value]
+        # If team filter is specified, we will probe each project separately
+        # (matches both "product team" and "participating teams" fields via OR).
+        # Сканирование всех задач команды неприемлемо по времени — при ORDER BY
+        # project ASC лимит перебором выедается задачами одного проекта.
+        team_field_ids: list[str] = []
+        if team:
+            product_row = db.query(AppSetting).filter(AppSetting.key == "jira_team_field_id").first()
+            participating_row = db.query(AppSetting).filter(AppSetting.key == "jira_participating_teams_field_id").first()
+            team_field_ids = [r.value for r in (product_row, participating_row) if r and r.value]
+        return scope_keys, team_field_ids
+
+    try:
+        client = await run_in_threadpool(JiraClient.from_db, db)
+        async with client as jira:
+            scope_keys, team_field_ids = await run_in_threadpool(_read_scope)
 
             async def project_has_team(project_key: str) -> bool:
                 if not team or not team_field_ids:
@@ -943,7 +951,8 @@ async def browse_jira_epics(
     ``search`` фильтрует по summary (case-insensitive).
     """
     try:
-        async with JiraClient.from_db(db) as jira:
+        client = await run_in_threadpool(JiraClient.from_db, db)
+        async with client as jira:
             jql = (
                 f"project = {jql_quote(project_key)} "
                 f'AND (issuetype = Epic OR "Parent Link" is EMPTY) '
@@ -976,7 +985,8 @@ class JiraFieldItem(BaseModel):
 async def browse_jira_fields(db: Session = Depends(get_db)):
     """Список полей Jira (включая кастомные) для настройки team-поля."""
     try:
-        async with JiraClient.from_db(db) as jira:
+        client = await run_in_threadpool(JiraClient.from_db, db)
+        async with client as jira:
             fields = await jira.get_fields()
             return [
                 JiraFieldItem(
@@ -1000,7 +1010,8 @@ async def browse_jira_issuetypes(db: Session = Depends(get_db)):
     ``Issue.issue_type`` (в БД хранится имя).
     """
     try:
-        async with JiraClient.from_db(db) as jira:
+        client = await run_in_threadpool(JiraClient.from_db, db)
+        async with client as jira:
             types = await jira.get_issue_types()
             names: set[str] = set()
             for t in types:
@@ -1021,12 +1032,15 @@ async def browse_jira_teams(db: Session = Depends(get_db)):
     """
     from app.models.app_setting import AppSetting
 
-    rows = (
-        db.query(AppSetting)
-        .filter(AppSetting.key.in_(("jira_team_field_id", "jira_participating_teams_field_id")))
-        .all()
-    )
-    field_ids = [r.value for r in rows if r.value]
+    def _field_ids() -> list[str]:
+        rows = (
+            db.query(AppSetting)
+            .filter(AppSetting.key.in_(("jira_team_field_id", "jira_participating_teams_field_id")))
+            .all()
+        )
+        return [r.value for r in rows if r.value]
+
+    field_ids = await run_in_threadpool(_field_ids)
     if not field_ids:
         raise HTTPException(
             status_code=400,
@@ -1034,7 +1048,8 @@ async def browse_jira_teams(db: Session = Depends(get_db)):
         )
 
     try:
-        async with JiraClient.from_db(db) as jira:
+        client = await run_in_threadpool(JiraClient.from_db, db)
+        async with client as jira:
             merged: set[str] = set()
             for fid in field_ids:
                 values = await jira.get_field_distinct_values(fid)
@@ -1045,7 +1060,7 @@ async def browse_jira_teams(db: Session = Depends(get_db)):
 
 
 @router.get("/status", response_model=List[SyncStatusResponse])
-async def get_sync_status(db: Session = Depends(get_db)):
+def get_sync_status(db: Session = Depends(get_db)):
     """Get sync status for all entities."""
     from app.models import SyncState
 
@@ -1071,7 +1086,7 @@ class ReloadDatesResponse(BaseModel):
 
 
 @router.get("/reload-dates", response_model=ReloadDatesResponse)
-async def get_reload_dates(db: Session = Depends(get_db)):
+def get_reload_dates(db: Session = Depends(get_db)):
     """С какой даты последний раз обновляли ворклоги и перечитывали задачи.
 
     Вкладку «Дополнительно» открывает любой пользователь, а ``/settings`` —
@@ -1241,7 +1256,7 @@ def preview_schedule(body: SchedulePreviewRequest) -> SchedulePreviewResponse:
     )
 
 
-@router.post("/schedule/{schedule_id}/run-now")
+@router.post("/schedule/{schedule_id}/run-now", dependencies=[Depends(db_on_loop_allowed)])
 async def run_schedule_now(
     schedule_id: str,
     request: Request,
@@ -1266,7 +1281,8 @@ async def search_jira_users(
 
     Возвращает до 20 совпадений без записи в БД.
     """
-    async with JiraClient.from_db(db) as jira:
+    client = await run_in_threadpool(JiraClient.from_db, db)
+    async with client as jira:
         users = await jira.search_users(query, max_results=20)
     return [
         JiraUserResponse(

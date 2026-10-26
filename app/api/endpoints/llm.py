@@ -1,6 +1,7 @@
 """LLM administration: test connection, regenerate-all, list models."""
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app.core.ai_deps import require_ai_enabled
@@ -18,7 +19,7 @@ router = APIRouter()
 async def test_connection(db: Session = Depends(get_db)):
     """Проверка соединения с настроенным LLM-провайдером."""
     try:
-        provider = get_llm_provider(db)
+        provider = await run_in_threadpool(get_llm_provider, db)
     except ConfigurationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     ok = await provider.healthcheck()
@@ -64,7 +65,9 @@ async def list_gemini_models(db: Session = Depends(get_db)):
     Фильтр: только generateContent + текстовые (без TTS/image/embedding/robotics).
     Возвращает массив `{id, label, version}` отсортированный по version desc.
     """
-    row = db.query(AppSetting).filter(AppSetting.key == "llm_gemini_api_key").first()
+    row = await run_in_threadpool(
+        db.query(AppSetting).filter(AppSetting.key == "llm_gemini_api_key").first
+    )
     if not row or not row.value:
         raise HTTPException(status_code=400, detail="Gemini API key not configured")
 
@@ -106,7 +109,9 @@ async def list_openrouter_models(db: Session = Depends(get_db)):
 
     Сортировка: context_length desc. Возвращает `{id, label, context_length}`.
     """
-    row = db.query(AppSetting).filter(AppSetting.key == "llm_openrouter_api_key").first()
+    row = await run_in_threadpool(
+        db.query(AppSetting).filter(AppSetting.key == "llm_openrouter_api_key").first
+    )
     if not row or not row.value:
         raise HTTPException(status_code=400, detail="OpenRouter API key not configured")
 
@@ -152,7 +157,9 @@ async def list_deepseek_models(db: Session = Depends(get_db)):
     DeepSeek возвращает короткий список (deepseek-chat, deepseek-reasoner).
     Сортировка: имя по алфавиту.
     """
-    row = db.query(AppSetting).filter(AppSetting.key == "llm_deepseek_api_key").first()
+    row = await run_in_threadpool(
+        db.query(AppSetting).filter(AppSetting.key == "llm_deepseek_api_key").first
+    )
     if not row or not row.value:
         raise HTTPException(status_code=400, detail="DeepSeek API key not configured")
 
@@ -192,9 +199,9 @@ async def list_omniroute_models(db: Session = Depends(get_db)):
         row = db.query(AppSetting).filter(AppSetting.key == key).first()
         return (row.value if row else "") or ""
 
-    base_url = (_setting("llm_omniroute_base_url") or DEFAULT_BASE_URL).rstrip("/")
+    base_url = (await run_in_threadpool(_setting, "llm_omniroute_base_url") or DEFAULT_BASE_URL).rstrip("/")
     headers = {}
-    api_key = _setting("llm_omniroute_api_key")
+    api_key = await run_in_threadpool(_setting, "llm_omniroute_api_key")
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     try:

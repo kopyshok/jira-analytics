@@ -10,7 +10,7 @@ import json
 import logging
 import math
 
-from sqlalchemy import ColumnElement
+from sqlalchemy import ColumnElement, event
 from sqlalchemy.orm import Session
 
 from app.connectors.jira_client import (
@@ -759,6 +759,21 @@ class SyncStats:
         }
 
 
+#: Сколько синк ждёт строку, занятую другим (Postgres). Синк работает в цикле
+#: обработки запросов: пока он ждёт, стоит весь сервис — ждать коротко.
+SYNC_LOCK_TIMEOUT = "2s"
+
+
+def _short_lock_wait_on_loop(db: Session) -> None:
+    """Короткий предел ожидания блокировки для сессии синка — на каждую транзакцию."""
+    if db.get_bind().dialect.name != "postgresql":
+        return
+
+    @event.listens_for(db, "after_begin")
+    def _set_lock_timeout(session, transaction, connection) -> None:
+        connection.exec_driver_sql(f"SET LOCAL lock_timeout = '{SYNC_LOCK_TIMEOUT}'")
+
+
 class SyncService:
     """Service for synchronizing Jira data to local database.
     
@@ -785,6 +800,11 @@ class SyncService:
         ensure_sync_allowed(db)
         self.db = db
         self.jira = jira_client
+        # Перед каждым запросом к Jira — закрепить записанное. Иначе строки
+        # порции остаются заблокированными на всё ожидание сети (с повторами —
+        # минуты), и правка тех же задач ждёт синк. 23.10.2026 так встал прод.
+        jira_client.before_request = db.commit
+        _short_lock_wait_on_loop(db)
         self.stats = SyncStats()
         # Коллбек проверки отмены от клиента (например request.is_disconnected
         # для HTTP-эндпоинтов). Если None — синк работает без возможности отмены.
@@ -1477,11 +1497,12 @@ class SyncService:
                         ji.changelog = status_only(ji.changelog)
                         await queue.put(ji)
             except asyncio.CancelledError:
+                # Чтение отменено — читателя очереди уже нет. Метку конца не
+                # кладём: в полной очереди ожидание места было бы вечным.
                 raise
             except Exception as exc:
                 producer_errors.append(exc)
-            finally:
-                await queue.put(None)  # sentinel per producer
+            await queue.put(None)  # sentinel per producer
 
         producers = [asyncio.create_task(producer(p.key)) for p in projects]
         sentinels_remaining = len(producers)
@@ -1491,6 +1512,9 @@ class SyncService:
         pending_links: dict[str, list[tuple[str, str]]] = {}
         try:
             while sentinels_remaining > 0:
+                if queue.empty():
+                    # Ждём Jira (страница ещё не пришла) — не с открытой порцией.
+                    self.db.commit()
                 jira_issue = await queue.get()
                 if jira_issue is None:
                     sentinels_remaining -= 1
@@ -1552,6 +1576,7 @@ class SyncService:
                     pending_links.setdefault(issue.id, []).extend(pairs)
 
                 if on_progress is not None and count % 100 == 0:
+                    self.db.commit()  # отправка прогресса уступает цикл другим
                     await on_progress(self.stats, jira_issue.key)
 
                 if count % 500 == 0:
@@ -1812,6 +1837,7 @@ class SyncService:
                     on_issue(jira_issue, issue_row)
                 matched += 1
                 if on_progress is not None:
+                    self.db.commit()  # отправка прогресса уступает цикл другим
                     await on_progress(matched, total, jira_issue.key)
 
             self.db.commit()

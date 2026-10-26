@@ -2,7 +2,7 @@
 секцией «Наблюдаемые» — те же цифры, что у людей плана, свободно по месяцам и
 остаток «Технических задач» основной команды."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -24,7 +24,7 @@ SAME = ("capacity_hours", "normed_hours", "unplaced_hours", "pct", "normed_by_ty
 
 @pytest.fixture
 def client(db_session):
-    bus = AsyncMock()
+    bus = Mock()
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_event_bus] = lambda: bus
     try:
@@ -72,7 +72,7 @@ def test_watched_person_matches_home_plan_row(client, db_session):
     types, p, s, erp, sklad = _setup(db_session)
 
     _add(client, sklad.id, p.id, s.id)
-    client.bus.publish.assert_awaited_once_with(PLAN_ONLY)
+    client.bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
     body = _watch(client, sklad.id)
 
     # Самые свободные сверху: Шутов свободен, у Пряничникова квартал не вмещается.
@@ -144,7 +144,7 @@ def test_add_is_idempotent_and_remove(client, db_session):
     assert r.status_code == 204, r.text
     assert [x["employee_id"] for x in _watch(client, sklad.id)["rows"]] == [s.id]
     assert client.delete(f"{BASE}/{sklad.id}/watch/{p.id}").status_code == 204
-    assert client.bus.publish.await_count == 4
+    assert client.bus.publish_nowait.call_count == 4
 
     assert client.post(f"{BASE}/{sklad.id}/watch", json={"employee_ids": ["nope"]}).status_code == 404
     assert client.post(f"{BASE}/nope/watch", json={"employee_ids": [p.id]}).status_code == 404

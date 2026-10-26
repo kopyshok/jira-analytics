@@ -16,9 +16,12 @@ class EventBroadcaster:
         self._subscribers: list[asyncio.Queue] = []
         self._queue_size = queue_size
         self._lock = asyncio.Lock()
+        #: цикл, в котором живут очереди подписчиков (запоминается при подписке)
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def subscribe(self) -> asyncio.Queue:
         queue: asyncio.Queue = asyncio.Queue(maxsize=self._queue_size)
+        self._loop = asyncio.get_running_loop()
         self._subscribers.append(queue)
         return queue
 
@@ -29,6 +32,28 @@ class EventBroadcaster:
             pass
 
     async def publish(self, event: dict[str, Any]) -> None:
+        self._deliver(event)
+
+    def publish_nowait(self, event: dict[str, Any]) -> None:
+        """Отправить событие из обычного обработчика (рабочий поток, не цикл).
+
+        Очереди подписчиков принадлежат циклу — из чужого потока событие
+        передаётся в цикл, а не кладётся напрямую. Не ждёт доставки:
+        обработчик не должен держать базу, пока цикл занят.
+        """
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            return  # подписчиков ещё не было
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is loop:
+            self._deliver(event)
+        else:
+            loop.call_soon_threadsafe(self._deliver, event)
+
+    def _deliver(self, event: dict[str, Any]) -> None:
         for queue in list(self._subscribers):
             try:
                 queue.put_nowait(event)

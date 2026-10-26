@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -323,9 +324,9 @@ def _serialize_summary(row) -> ProjectSummarySchema:
 
 
 @router.get("/{key}/summary", response_model=Optional[ProjectSummarySchema])
-async def get_summary(key: str, db: Session = Depends(get_db)):
+def get_summary(key: str, db: Session = Depends(get_db)):
     """Текущий AI-саммари из кэша. Возвращает null если ещё не сгенерирован."""
-    row = await ProjectSummaryService(db).get_summary(key)
+    row = ProjectSummaryService(db).get_summary(key)
     return _serialize_summary(row) if row else None
 
 
@@ -342,7 +343,7 @@ async def regenerate_summary(key: str, db: Session = Depends(get_db)):
     from app.services.project_summary_service import regenerate_in_thread
     try:
         await asyncio.to_thread(regenerate_in_thread, key)
-        row = await ProjectSummaryService(db).get_summary(key)
+        row = await run_in_threadpool(ProjectSummaryService(db).get_summary, key)
     except LLMResponseError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except ConfigurationError as e:

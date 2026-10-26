@@ -2,7 +2,6 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -179,7 +178,7 @@ def list_settings(team: Optional[str] = Query(None), db: Session = Depends(get_d
 
 
 @router.post("", response_model=PersonalSettingOut, status_code=201)
-async def create_setting(
+def create_setting(
     req: PersonalSettingIn,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -192,13 +191,13 @@ async def create_setting(
         db.commit()
         return _serialize(db, [row])[0]
 
-    out = await run_in_threadpool(work)
-    await event_bus.publish(_CHANGED)
+    out = work()
+    event_bus.publish_nowait(_CHANGED)
     return out
 
 
 @router.put("/{setting_id}", response_model=PersonalSettingOut)
-async def update_setting(
+def update_setting(
     setting_id: str,
     req: PersonalSettingIn,
     db: Session = Depends(get_db),
@@ -211,13 +210,13 @@ async def update_setting(
         db.commit()
         return _serialize(db, [row])[0]
 
-    out = await run_in_threadpool(work)
-    await event_bus.publish(_CHANGED)
+    out = work()
+    event_bus.publish_nowait(_CHANGED)
     return out
 
 
 @router.delete("/{setting_id}", status_code=204)
-async def delete_setting(
+def delete_setting(
     setting_id: str,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -226,6 +225,6 @@ async def delete_setting(
         db.delete(_get(db, setting_id))
         db.commit()
 
-    await run_in_threadpool(work)
-    await event_bus.publish(_CHANGED)
+    work()
+    event_bus.publish_nowait(_CHANGED)
     return None

@@ -3,7 +3,6 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -76,8 +75,8 @@ class ReorderRequest(BaseModel):
 # === Endpoints ===
 #
 # Правки правил перебирают служебные эпики по всему бэклогу — эта работа идёт
-# в пуле потоков (run_in_threadpool), чтобы не держать запросы других
-# пользователей; async у эндпоинтов — ради рассылки события.
+# в пуле потоков (эндпоинты — обычные функции), чтобы не держать запросы
+# других пользователей.
 
 @router.get("", response_model=List[HierarchyRuleResponse])
 def list_rules(db: Session = Depends(get_db)):
@@ -89,7 +88,7 @@ def list_rules(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=HierarchyRuleResponse, status_code=status.HTTP_201_CREATED)
-async def create_rule(
+def create_rule(
     body: HierarchyRuleCreate,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -106,13 +105,13 @@ async def create_rule(
         db.refresh(rule)
         return rule
 
-    rule = await run_in_threadpool(work)
-    await event_bus.publish(_RULES_CHANGED)
+    rule = work()
+    event_bus.publish_nowait(_RULES_CHANGED)
     return rule
 
 
 @router.patch("/{rule_id}", response_model=HierarchyRuleResponse)
-async def update_rule(
+def update_rule(
     rule_id: str,
     body: HierarchyRuleUpdate,
     db: Session = Depends(get_db),
@@ -136,13 +135,13 @@ async def update_rule(
         db.refresh(rule)
         return rule
 
-    rule = await run_in_threadpool(work)
-    await event_bus.publish(_RULES_CHANGED)
+    rule = work()
+    event_bus.publish_nowait(_RULES_CHANGED)
     return rule
 
 
 @router.delete("/{rule_id}")
-async def delete_rule(
+def delete_rule(
     rule_id: str,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -157,13 +156,13 @@ async def delete_rule(
         switch_off_new_service_epics(db, before)
         db.commit()
 
-    await run_in_threadpool(work)
-    await event_bus.publish(_RULES_CHANGED)
+    work()
+    event_bus.publish_nowait(_RULES_CHANGED)
     return {"status": "deleted"}
 
 
 @router.post("/reorder", response_model=List[HierarchyRuleResponse])
-async def reorder_rules(
+def reorder_rules(
     body: ReorderRequest,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -184,6 +183,6 @@ async def reorder_rules(
         )
         return list(db.execute(stmt).scalars().all())
 
-    rules = await run_in_threadpool(work)
-    await event_bus.publish(_RULES_CHANGED)
+    rules = work()
+    event_bus.publish_nowait(_RULES_CHANGED)
     return rules

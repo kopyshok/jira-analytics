@@ -57,7 +57,7 @@ def scenario_file_name(name: str | None, ext: str) -> str:
     "/capacity.xlsx",
     responses={200: {"content": {XLSX_MIME: {}}}},
 )
-async def export_capacity_xlsx(
+def export_capacity_xlsx(
     year: int = Query(...),
     quarter: int = Query(..., ge=1, le=4),
     db: Session = Depends(get_db),
@@ -77,7 +77,7 @@ async def export_capacity_xlsx(
     "/scenarios/{scenario_id}.xlsx",
     responses={200: {"content": {XLSX_MIME: {}}}},
 )
-async def export_scenario_xlsx(
+def export_scenario_xlsx(
     scenario_id: str,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -97,7 +97,7 @@ async def export_scenario_xlsx(
     "/scenarios/{scenario_id}.pptx",
     responses={200: {"content": {PPTX_MIME: {}}}},
 )
-async def export_scenario_pptx(
+def export_scenario_pptx(
     scenario_id: str,
     db: Session = Depends(get_db),
 ) -> Response:

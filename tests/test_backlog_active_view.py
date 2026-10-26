@@ -5,7 +5,7 @@ because the filter excluded it. Fix: only exclude 'done' from active view;
 indeterminate items remain visible until they move to an approved scenario.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 
@@ -15,7 +15,7 @@ from app.services.event_bus import get_event_bus
 
 
 def _make_client(db):
-    mock_bus = AsyncMock()
+    mock_bus = Mock()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_event_bus] = lambda: mock_bus
     return TestClient(app)

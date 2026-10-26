@@ -4,7 +4,7 @@
 его сверх родителя в режиме «целиком»; выключение обычной задачи убирает её
 из черновиков и не трогает утверждённые; дочки «по эпикам» с False — не кандидаты.
 """
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,7 +18,7 @@ from app.services.event_bus import get_event_bus
 
 @pytest.fixture
 def bus():
-    return AsyncMock()
+    return Mock()
 
 
 @pytest.fixture
@@ -134,9 +134,9 @@ def test_by_epics_child_off_is_not_candidate(client, testclient_db_session):
 
 def test_toggle_publishes_backlog_and_planning(client, testclient_db_session, bus):
     ids = _seed_rfa_with_discovery(testclient_db_session)
-    bus.publish.reset_mock()
+    bus.publish_nowait.reset_mock()
     client.patch(f"/api/v1/backlog/{ids['i-disc']}/included", json={"included": True})
-    bus.publish.assert_called_once_with({"type": "entity_changed", "entities": ["backlog", "planning"]})
+    bus.publish_nowait.assert_called_once_with({"type": "entity_changed", "entities": ["backlog", "planning"]})
 
 
 def test_turning_off_removes_from_draft_immediately(client, testclient_db_session):

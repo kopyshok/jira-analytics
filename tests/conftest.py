@@ -9,6 +9,10 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-secret-not-for-production")
 # Замеры быстродействия в тестах выключены: фоновый цикл не нужен, лишних
 # слушателей на движках нет. Тесты раздела включают сборщик сами.
 os.environ.setdefault("PERF_ENABLED", "false")
+# Запрос к базе из цикла обработки запросов роняет запрос — нарушение видно в тесте.
+os.environ.setdefault("DB_LOOP_GUARD_STRICT", "true")
+# Сторож цикла в тестах не перезапускает процесс (это был бы pytest).
+os.environ.setdefault("LOOP_WATCHDOG_RESTART_SECONDS", "0")
 
 import pytest
 from sqlalchemy import create_engine

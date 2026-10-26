@@ -374,3 +374,33 @@ async def test_timeout_is_retried_once_only(sleeps):
         with pytest.raises(JiraTimeoutError):
             await jira.get_myself()
     assert route.call_count == 2
+
+
+@respx.mock
+async def test_sync_commits_before_every_jira_request(db_session):
+    """Синк не ждёт Jira с незакреплённой записью: перед каждым запросом —
+    фиксация. Иначе строки порции заблокированы на всё ожидание сети, и правка
+    тех же задач ждёт синк (23.10.2026 так встал прод)."""
+    from app.services.sync_service import SyncService
+
+    me = load_dc("user_search_single.json")[0]
+    order: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        order.append("jira")
+        return httpx.Response(200, json=me)
+
+    respx.get(f"{API}/myself").mock(side_effect=answer)
+    async with _client() as jira:
+        SyncService(db_session, jira)
+        commit = db_session.commit
+
+        def recording_commit() -> None:
+            order.append("commit")
+            commit()
+
+        assert jira.before_request == db_session.commit
+        jira.before_request = recording_commit
+        await jira.get_myself()
+        await jira.get_myself()
+    assert order == ["commit", "jira", "commit", "jira"]

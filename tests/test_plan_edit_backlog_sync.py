@@ -5,7 +5,7 @@ Issue.planned_<role>_hours_manual, а список бэклога, сценар�
 читают копию BacklogItem.estimate_<role>_hours, которая обновлялась лишь при
 синке. Спека: docs/superpowers/specs/2026-09-23-planning-q4-design.md, п. 1.5.
 """
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -52,7 +52,7 @@ def _seed(db, key="PS-1", **issue_kwargs):
 
 @pytest.fixture
 def bus():
-    return AsyncMock()
+    return Mock()
 
 
 @pytest.fixture
@@ -136,8 +136,8 @@ def test_plan_edit_publishes_backlog_event(client, testclient_db_session, bus):
     )
 
     expected = {"type": "entity_changed", "entities": ["issues", "backlog"]}
-    assert bus.publish.await_count == 3
-    for call in bus.publish.await_args_list:
+    assert bus.publish_nowait.call_count == 3
+    for call in bus.publish_nowait.call_args_list:
         assert call.args[0] == expected
 
 
@@ -172,7 +172,7 @@ def test_inline_estimate_goes_to_issue_and_survives_sync(client, testclient_db_s
     assert r.status_code == 200, r.text
     assert r.json()["estimate_dev_hours"] == 700
     # Изменилась и сама задача — событие несёт обе сущности.
-    bus.publish.assert_awaited_once_with(
+    bus.publish_nowait.assert_called_once_with(
         {"type": "entity_changed", "entities": ["issues", "backlog"]}
     )
 
@@ -250,7 +250,7 @@ def test_inline_estimate_on_manual_idea_publishes_backlog_only(client, testclien
     db.commit()
 
     client.patch(f"/api/v1/backlog/{item.id}", json={"estimate_dev_hours": 10})
-    bus.publish.assert_awaited_once_with({"type": "entity_changed", "entities": ["backlog"]})
+    bus.publish_nowait.assert_called_once_with({"type": "entity_changed", "entities": ["backlog"]})
 
 
 def test_plan_edit_on_archived_row_keeps_it_archived(client, testclient_db_session):

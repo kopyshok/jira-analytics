@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.connectors.jira_client import JiraClient, JiraClientError
 from app.core.auth_deps import get_current_user
 from app.database import get_db
+from app.core.loop_guard import db_on_loop_allowed
 from app.models import Employee, Issue, TeamDeskDailyRate, User
 from app.schemas.team_desk import DailyRateRequest, DeskSettings, MarkRequest
 from app.services.team_desk.config import DeskConfig, load_config, save_config
@@ -239,7 +240,7 @@ def put_daily_rate(
     return {"issue_id": issue_id, "hours": row.hours}
 
 
-@router.post("/refresh-issues")
+@router.post("/refresh-issues", dependencies=[Depends(db_on_loop_allowed)])
 async def refresh_issues(
     payload: RefreshIssuesRequest,
     db: Session = Depends(get_db),

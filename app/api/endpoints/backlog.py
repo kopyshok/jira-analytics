@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Awaitable, Callable, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_
@@ -20,6 +19,7 @@ from sqlalchemy.orm import Session, aliased, joinedload
 from app.connectors.jira_client import JiraClient, JiraClientError
 from app.core.auth_deps import get_current_user
 from app.database import get_db
+from app.core.loop_guard import db_on_loop_allowed
 from app.models import AppSetting, BacklogItem, Employee, Issue, PlanningScenario, ScenarioAllocation
 from app.repositories.base import BaseRepository
 from app.schemas.multi_team_progress import MultiTeamProgressOut
@@ -567,7 +567,7 @@ def _apply_backlog_subgroups(
 # === CRUD ===
 
 @router.get("", response_model=List[BacklogItemResponse])
-async def list_backlog_items(
+def list_backlog_items(
     project_id: Optional[str] = Query(None),
     view: str = Query("active", pattern="^(active|archived|in_work|quarterly)$"),
     teams: Optional[str] = Query(None, description="Comma-separated team codes to filter by"),
@@ -920,7 +920,7 @@ async def list_backlog_items(
 
 
 @router.get("/minor-changes-summary")
-async def minor_changes_summary_endpoint(
+def minor_changes_summary_endpoint(
     teams: Optional[str] = Query(None, description="Команды шапки, через запятую"),
     db: Session = Depends(get_db),
 ):
@@ -933,7 +933,7 @@ async def minor_changes_summary_endpoint(
 
 
 @router.post("", response_model=BacklogItemResponse, status_code=201)
-async def create_backlog_item(
+def create_backlog_item(
     data: BacklogItemCreate,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -943,7 +943,7 @@ async def create_backlog_item(
     item = repo.create(data.model_dump())
     _recompute_total(item)
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["backlog"]})
     db.refresh(item)
     item = (
         db.query(BacklogItem)
@@ -1150,7 +1150,7 @@ async def _perform_refresh(
     )
 
 
-@router.post("/refresh-from-jira", response_model=RefreshResponse)
+@router.post("/refresh-from-jira", response_model=RefreshResponse, dependencies=[Depends(db_on_loop_allowed)])
 async def refresh_from_jira(
     http_request: Request,
     db: Session = Depends(get_db),
@@ -1171,7 +1171,7 @@ class RefreshScope(BaseModel):
     keys: List[str] = []
 
 
-@router.post("/refresh-from-jira/stream")
+@router.post("/refresh-from-jira/stream", dependencies=[Depends(db_on_loop_allowed)])
 async def refresh_from_jira_stream(
     http_request: Request,
     scope: Optional[RefreshScope] = None,
@@ -1236,7 +1236,7 @@ async def refresh_from_jira_stream(
 
 
 @router.get("/{item_id}", response_model=BacklogItemResponse)
-async def get_backlog_item(
+def get_backlog_item(
     item_id: str,
     db: Session = Depends(get_db),
 ):
@@ -1257,7 +1257,7 @@ async def get_backlog_item(
 
 
 @router.patch("/{item_id}", response_model=BacklogItemResponse)
-async def update_backlog_item(
+def update_backlog_item(
     item_id: str,
     data: BacklogItemUpdate,
     db: Session = Depends(get_db),
@@ -1332,13 +1332,13 @@ async def update_backlog_item(
         setattr(item, f"estimate_{role}_hours", value)
     _recompute_total(item)
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": entities})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": entities})
     db.refresh(item)
     return _item_response(db, item)
 
 
 @router.delete("/{item_id}")
-async def delete_backlog_item(
+def delete_backlog_item(
     item_id: str,
     db: Session = Depends(get_db),
 ):
@@ -1402,7 +1402,7 @@ async def delete_backlog_item(
 
 
 @router.post("/{item_id}/link-jira", response_model=BacklogItemResponse)
-async def link_jira(
+def link_jira(
     item_id: str,
     body: LinkJiraRequest,
     db: Session = Depends(get_db),
@@ -1468,7 +1468,7 @@ async def link_jira(
 
 
 @router.post("/{item_id}/unlink-jira", response_model=BacklogItemResponse)
-async def unlink_jira(
+def unlink_jira(
     item_id: str,
     db: Session = Depends(get_db),
 ):
@@ -1497,7 +1497,7 @@ async def unlink_jira(
 
 
 @router.post("/{item_id}/archive", response_model=BacklogItemResponse)
-async def archive_backlog_item(
+def archive_backlog_item(
     item_id: str,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -1560,7 +1560,7 @@ async def archive_backlog_item(
                 ScenarioAllocation.scenario_id.in_(draft_ids),
             ).delete(synchronize_session=False)
         db.commit()
-        await event_bus.publish({"type": "entity_changed", "entities": ["backlog", "planning"]})
+        event_bus.publish_nowait({"type": "entity_changed", "entities": ["backlog", "planning"]})
         db.refresh(item)
     return _item_response(db, item)
 
@@ -1590,7 +1590,7 @@ def _reconcile_mode(db: Session, item_id: str) -> None:
 
 
 @router.patch("/{item_id}/planning-mode")
-async def set_planning_mode(
+def set_planning_mode(
     item_id: str,
     payload: PlanningModeRequest,
     db: Session = Depends(get_db),
@@ -1629,13 +1629,13 @@ async def set_planning_mode(
         return {"id": item_id, "planning_mode": result_mode, "included_in_planning": result_included}
 
     # Выравнивание черновиков перебирает весь бэклог — в пуле потоков.
-    result = await run_in_threadpool(work)
-    await event_bus.publish({"type": "entity_changed", "entities": ["backlog", "planning"]})
+    result = work()
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["backlog", "planning"]})
     return result
 
 
 @router.patch("/{item_id}/included")
-async def set_included(
+def set_included(
     item_id: str,
     payload: IncludedRequest,
     db: Session = Depends(get_db),
@@ -1665,13 +1665,13 @@ async def set_included(
         return {"id": item_id, "included_in_planning": result_included}
 
     # Выравнивание черновиков перебирает весь бэклог — в пуле потоков.
-    result = await run_in_threadpool(work)
-    await event_bus.publish({"type": "entity_changed", "entities": ["backlog", "planning"]})
+    result = work()
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["backlog", "planning"]})
     return result
 
 
 @router.post("/{item_id}/restore", response_model=BacklogItemResponse)
-async def restore_backlog_item(
+def restore_backlog_item(
     item_id: str,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -1714,6 +1714,6 @@ async def restore_backlog_item(
             )
         item.archived_at = None
         db.commit()
-        await event_bus.publish({"type": "entity_changed", "entities": ["backlog"]})
+        event_bus.publish_nowait({"type": "entity_changed", "entities": ["backlog"]})
         db.refresh(item)
     return _item_response(db, item)

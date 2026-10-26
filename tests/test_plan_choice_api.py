@@ -1,5 +1,5 @@
 """POST /issues/{id}/plan/choice."""
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,7 +17,7 @@ SOURCES = {"dev": [
 
 @pytest.fixture
 def client(testclient_db_session):
-    bus = AsyncMock()
+    bus = Mock()
     app.dependency_overrides[get_db] = lambda: testclient_db_session
     app.dependency_overrides[get_event_bus] = lambda: bus
     yield TestClient(app), bus
@@ -43,7 +43,7 @@ def test_choice_source(client, testclient_db_session):
                json={"role": "dev", "source": "customfield_14648"})
     assert r.status_code == 200, r.text
     assert r.json()["plan"]["dev"] == 120.0
-    bus.publish.assert_awaited()
+    bus.publish_nowait.assert_called()
 
 
 def test_choice_manual(client, testclient_db_session):

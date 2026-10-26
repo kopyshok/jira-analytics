@@ -33,3 +33,26 @@ async def test_issue_producers_are_limited(db_session):
 
     assert len(seen) == 7
     assert peak == sync_service.ISSUE_PRODUCERS == 3
+
+
+async def test_failed_consumer_does_not_hang_on_full_queue(db_session):
+    """Загрузка оборвалась, пока очередь задач полна: чтение Jira не ждёт места
+    в очереди вечно (раньше метка конца ждала место, и синк висел до перезапуска)."""
+    import pytest
+
+    db_session.add(Project(jira_project_id="20000", key="FULL", name="FULL"))
+    db_session.commit()
+
+    async def endless_issues(jql, max_results, fields, expand=None):  # noqa: ARG001
+        for _ in range(2000):
+            yield MagicMock()
+
+    async def cancel_after_queue_filled() -> bool:
+        await asyncio.sleep(0.05)  # чтение успевает забить очередь до отказа
+        return True
+
+    jira = MagicMock()
+    jira.iter_issues = endless_issues
+    svc = SyncService(db_session, jira, cancel_check=cancel_after_queue_filled)
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(svc.sync_issues(project_keys=["FULL"], incremental=False), timeout=5)

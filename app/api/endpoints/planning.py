@@ -620,7 +620,7 @@ def _require_draft(scenario: Optional[PlanningScenario]) -> None:
 
 
 @router.get("/opo-cutoff")
-async def get_opo_cutoff(db: Session = Depends(get_db)) -> dict:
+def get_opo_cutoff(db: Session = Depends(get_db)) -> dict:
     """Отсечка ОПЭ для любого пользователя: `/settings` — только для админа,
     а экраны планирования должны знать, выключен ли ОПЭ в квартале."""
     row = db.query(AppSetting).filter(AppSetting.key == opo_policy.SETTING_KEY).one_or_none()
@@ -630,7 +630,7 @@ async def get_opo_cutoff(db: Session = Depends(get_db)) -> dict:
 # === Scenarios CRUD ===
 
 @router.get("/scenarios", response_model=List[ScenarioResponse])
-async def list_scenarios(
+def list_scenarios(
     year: Optional[int] = Query(None),
     quarter: Optional[int] = Query(None, ge=1, le=4),
     status: Optional[str] = Query(None, pattern="^(draft|approved)$"),
@@ -657,7 +657,7 @@ async def list_scenarios(
 
 
 @router.post("/scenarios", response_model=ScenarioResponse, status_code=201)
-async def create_scenario(
+def create_scenario(
     data: ScenarioCreate,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -742,13 +742,13 @@ async def create_scenario(
         )
 
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["planning"]})
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
 
 
 @router.post("/scenarios/{scenario_id}/approve", response_model=ScenarioResponse)
-async def approve_scenario(
+def approve_scenario(
     scenario_id: str,
     body: ApproveBody = ApproveBody(),
     db: Session = Depends(get_db),
@@ -758,7 +758,9 @@ async def approve_scenario(
 
     Создаёт запись пересмотра с диффом инициатив и снапшотом нормы команды.
     """
-    scenario = db.get(PlanningScenario, scenario_id)
+    # Строка сценария — под замок: два утверждения сразу (двойной клик, два
+    # пользователя) дали бы два пересмотра с одним номером.
+    scenario = db.get(PlanningScenario, scenario_id, with_for_update=True)
     _require_draft(scenario)
 
     # В команде с делением у каждого активного сотрудника должна быть группа
@@ -1013,13 +1015,13 @@ async def approve_scenario(
         entities.append("resource_planning")
     if reclassified_item_ids:
         entities.append("issues")
-    await event_bus.publish({"type": "entity_changed", "entities": entities})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": entities})
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
 
 
 @router.get("/scenarios/{scenario_id}/capacity-diff")
-async def get_capacity_diff(
+def get_capacity_diff(
     scenario_id: str,
     db: Session = Depends(get_db),
 ):
@@ -1222,7 +1224,7 @@ async def get_capacity_diff(
 
 
 @router.patch("/scenarios/{scenario_id}/acknowledge-drift", response_model=dict)
-async def acknowledge_capacity_drift(
+def acknowledge_capacity_drift(
     scenario_id: str,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -1235,14 +1237,14 @@ async def acknowledge_capacity_drift(
         raise HTTPException(status_code=400, detail="Only approved scenarios can acknowledge drift")
     scenario.capacity_drift_acknowledged_at = datetime.utcnow()
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["planning"]})
     return {"ok": True}
 
 
 @router.post(
     "/scenarios/{scenario_id}/revert-to-draft", response_model=ScenarioResponse
 )
-async def revert_scenario(
+def revert_scenario(
     scenario_id: str,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -1308,13 +1310,13 @@ async def revert_scenario(
         backlog_svc.sync_from_issue(issue)
 
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["planning", "backlog"]})
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
 
 
 @router.get("/scenarios/{scenario_id}/rules", response_model=List[ScenarioRuleOut])
-async def get_scenario_rules(
+def get_scenario_rules(
     scenario_id: str,
     db: Session = Depends(get_db),
 ):
@@ -1325,7 +1327,7 @@ async def get_scenario_rules(
 
 
 @router.put("/scenarios/{scenario_id}/rules", response_model=List[ScenarioRuleOut])
-async def replace_scenario_rules(
+def replace_scenario_rules(
     scenario_id: str,
     body: ScenarioRulesReplaceBody,
     db: Session = Depends(get_db),
@@ -1351,7 +1353,7 @@ async def replace_scenario_rules(
     "/scenarios/{scenario_id}/copy-rules-from-scenario",
     response_model=List[ScenarioRuleOut],
 )
-async def copy_rules_from_scenario(
+def copy_rules_from_scenario(
     scenario_id: str,
     source_scenario_id: str = Query(..., description="ID сценария-источника правил"),
     db: Session = Depends(get_db),
@@ -1401,7 +1403,7 @@ async def copy_rules_from_scenario(
     "/scenarios/{scenario_id}/sync-backlog",
     response_model=List[AllocationResponse],
 )
-async def sync_backlog(
+def sync_backlog(
     scenario_id: str,
     db: Session = Depends(get_db),
 ):
@@ -1410,7 +1412,8 @@ async def sync_backlog(
 
     Только для draft-сценариев.
     """
-    scenario = db.get(PlanningScenario, scenario_id)
+    # Под замком: параллельный вызов досоздал бы те же строки ещё раз.
+    scenario = db.get(PlanningScenario, scenario_id, with_for_update=True)
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
     _require_draft(scenario)
@@ -1482,14 +1485,14 @@ async def sync_backlog(
 
     db.commit()
 
-    return await list_scenario_allocations(scenario_id, db)
+    return list_scenario_allocations(scenario_id, db)
 
 
 @router.get(
     "/scenarios/{scenario_id}/allocations",
     response_model=List[AllocationResponse],
 )
-async def list_scenario_allocations(
+def list_scenario_allocations(
     scenario_id: str,
     db: Session = Depends(get_db),
 ):
@@ -1509,6 +1512,9 @@ async def list_scenario_allocations(
     # раньше он крутился на каждом чтении, и клик по галочке ждал его дважды.
     signature = _alloc_heal_signature(db) if scenario.status == "draft" else None
     if scenario.status == "draft" and _ALLOC_HEAL_SIGNATURES.get(scenario_id) != signature:
+        # Вкладки перечитывают сценарий разом (после события) — лечат по
+        # очереди, иначе каждая добавит те же недостающие строки.
+        db.query(PlanningScenario.id).filter(PlanningScenario.id == scenario_id).with_for_update().one()
         existing_ids = {
             bid
             for (bid,) in db.query(ScenarioAllocation.backlog_item_id)
@@ -1682,7 +1688,7 @@ async def list_scenario_allocations(
     "/scenarios/{scenario_id}/allocations/reorder",
     response_model=List[AllocationResponse],
 )
-async def reorder_allocations(
+def reorder_allocations(
     scenario_id: str,
     body: AllocationsReorderBody,
     db: Session = Depends(get_db),
@@ -1726,14 +1732,14 @@ async def reorder_allocations(
         pos += 1.0
 
     db.commit()
-    return await list_scenario_allocations(scenario_id, db)
+    return list_scenario_allocations(scenario_id, db)
 
 
 @router.patch(
     "/scenarios/{scenario_id}/allocations/{alloc_id}",
     response_model=AllocationResponse,
 )
-async def patch_allocation(
+def patch_allocation(
     scenario_id: str,
     alloc_id: str,
     data: AllocationPatch,
@@ -1784,7 +1790,7 @@ async def patch_allocation(
         alloc.planned_hours = patch["planned_hours"]
 
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["planning", "backlog"]})
     # Re-load with issue join for response.
     item = (
         db.query(BacklogItem)
@@ -1805,7 +1811,7 @@ async def patch_allocation(
     "/scenarios/{scenario_id}/allocations/{alloc_id}/assignee",
     response_model=AllocationResponse,
 )
-async def patch_allocation_assignee(
+def patch_allocation_assignee(
     scenario_id: str,
     alloc_id: str,
     data: AllocationAssigneePatch,
@@ -1852,7 +1858,7 @@ async def patch_allocation_assignee(
     choose_assignee(backlog_item, emp)
 
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["planning"]})
     # Reload with relationships after commit.
     backlog_item = (
         db.query(BacklogItem)
@@ -1875,7 +1881,7 @@ async def patch_allocation_assignee(
     "/scenarios/{scenario_id}/allocations/{alloc_id}/developer",
     response_model=AllocationResponse,
 )
-async def patch_allocation_developer(
+def patch_allocation_developer(
     scenario_id: str,
     alloc_id: str,
     data: AllocationDeveloperPatch,
@@ -1911,7 +1917,7 @@ async def patch_allocation_developer(
     backlog_item.developer_employee_id = data.developer_employee_id
 
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["planning"]})
     # Reload with relationships after commit.
     backlog_item = (
         db.query(BacklogItem)
@@ -2083,7 +2089,7 @@ def scenario_resource_summary(
     "/scenarios/{scenario_id}/revisions",
     response_model=List[RevisionOut],
 )
-async def list_scenario_revisions(
+def list_scenario_revisions(
     scenario_id: str,
     db: Session = Depends(get_db),
 ):
@@ -2147,7 +2153,7 @@ async def list_scenario_revisions(
     "/scenarios/{scenario_id}/revisions/{revision_id}",
     status_code=204,
 )
-async def delete_revision(
+def delete_revision(
     scenario_id: str,
     revision_id: str,
     db: Session = Depends(get_db),
@@ -2179,7 +2185,7 @@ async def delete_revision(
             scenario.status = "draft"
 
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["planning"]})
     return None
 
 
@@ -2219,7 +2225,7 @@ def _state_at_revision(scenario_id: str, revision_number: int, db: Session) -> d
     "/scenarios/{scenario_id}/revisions/diff",
     response_model=RevisionDiffResponse,
 )
-async def diff_scenario_revisions(
+def diff_scenario_revisions(
     scenario_id: str,
     r1: int = Query(..., ge=1, description="Базовая ревизия"),
     r2: int = Query(..., ge=1, description="Сравниваемая ревизия"),
@@ -2358,7 +2364,7 @@ async def diff_scenario_revisions(
 
 
 @router.get("/scenarios/{scenario_id}/revisions/{revision_id}/diff")
-async def diff_revision(
+def diff_revision(
     scenario_id: str,
     revision_id: str,
     against: Optional[str] = Query(
@@ -2391,7 +2397,7 @@ async def diff_revision(
 
 
 @router.get("/scenarios/{scenario_id}/revisions/{revision_id}/breakdown")
-async def get_revision_breakdown(
+def get_revision_breakdown(
     scenario_id: str,
     revision_id: str,
     db: Session = Depends(get_db),
@@ -2440,7 +2446,7 @@ def get_continuation_info(
 
 
 @router.patch("/scenarios/{scenario_id}/allocations/{allocation_id}/override")
-async def patch_allocation_override(
+def patch_allocation_override(
     scenario_id: str,
     allocation_id: str,
     body: AllocationOverrideRequest,
@@ -2482,7 +2488,7 @@ async def patch_allocation_override(
     }
     db.commit()
 
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["planning"]})
     return snapshot
 
 
@@ -2490,7 +2496,7 @@ async def patch_allocation_override(
 
 
 @router.get("/scenarios/{scenario_id}", response_model=ScenarioResponse)
-async def get_scenario(
+def get_scenario(
     scenario_id: str,
     db: Session = Depends(get_db),
 ):
@@ -2502,7 +2508,7 @@ async def get_scenario(
 
 
 @router.patch("/scenarios/{scenario_id}", response_model=ScenarioResponse)
-async def update_scenario(
+def update_scenario(
     scenario_id: str,
     data: ScenarioUpdate,
     db: Session = Depends(get_db),
@@ -2522,12 +2528,12 @@ async def update_scenario(
     db.commit()
     db.refresh(scenario)
     resp = _to_scenario_resp(scenario)
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["planning"]})
     return resp
 
 
 @router.delete("/scenarios/{scenario_id}")
-async def delete_scenario(
+def delete_scenario(
     scenario_id: str,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -2542,5 +2548,5 @@ async def delete_scenario(
     ).delete()
     db.delete(scenario)
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["planning", "backlog"]})
     return {"status": "deleted", "id": scenario_id}

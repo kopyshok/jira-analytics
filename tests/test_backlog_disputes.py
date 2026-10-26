@@ -1,5 +1,5 @@
 """Список бэклога: спорные оценки."""
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 
@@ -20,7 +20,7 @@ SOURCES = {
 
 def _get(db):
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_event_bus] = lambda: AsyncMock()
+    app.dependency_overrides[get_event_bus] = lambda: Mock()
     try:
         r = TestClient(app).get("/api/v1/backlog?view=active")
         assert r.status_code == 200, r.text

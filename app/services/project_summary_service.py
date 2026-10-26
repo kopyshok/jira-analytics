@@ -35,7 +35,7 @@ class ProjectSummaryService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    async def get_summary(self, key: str) -> Optional[ProjectAISummary]:
+    def get_summary(self, key: str) -> Optional[ProjectAISummary]:
         """Кэш-хит — возвращаем готовый. Кэш-мисс — None."""
         epic = self.db.execute(select(Issue).where(Issue.key == key)).scalar_one_or_none()
         if not epic:

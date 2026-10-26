@@ -6,7 +6,7 @@ because the team filter required ``Issue.team in (...)`` and a manual idea has
 no linked issue.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 
@@ -17,7 +17,7 @@ from app.services.event_bus import get_event_bus
 
 def _make_client(db):
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_event_bus] = lambda: AsyncMock()
+    app.dependency_overrides[get_event_bus] = lambda: Mock()
     return TestClient(app)
 
 

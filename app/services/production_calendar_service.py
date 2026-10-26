@@ -10,7 +10,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.connectors.production_calendar_client import ProductionCalendarClient
+from app.connectors.production_calendar_client import CalendarDayRaw, ProductionCalendarClient
+from app.core.loop_guard import run_blocking
 from app.models import ProductionCalendarDay
 
 
@@ -85,6 +86,10 @@ class ProductionCalendarService:
         ``overwrite_manual``.
         """
         days = await self.client.fetch_year(year)
+        # Запись года — в рабочем потоке: цикл обработки запросов база не держит.
+        return await run_blocking(self._apply_year, year, days, overwrite_manual)
+
+    def _apply_year(self, year: int, days: list[CalendarDayRaw], overwrite_manual: bool) -> SyncStats:
         source_map = {d.date: d for d in days}
 
         inserted = updated = skipped_manual = 0

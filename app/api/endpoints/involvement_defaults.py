@@ -3,7 +3,6 @@ from datetime import date
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -204,7 +203,7 @@ def list_defaults(team: Optional[str] = Query(None), db: Session = Depends(get_d
 
 
 @router.post("", response_model=InvolvementDefaultResponse, status_code=201)
-async def create_default(
+def create_default(
     req: InvolvementDefaultCreate,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -219,13 +218,13 @@ async def create_default(
         db.refresh(row)
         return row
 
-    row = await run_in_threadpool(work)
-    await event_bus.publish(_CHANGED)
+    row = work()
+    event_bus.publish_nowait(_CHANGED)
     return row
 
 
 @router.patch("/{default_id}", response_model=InvolvementDefaultResponse)
-async def update_default(
+def update_default(
     default_id: str,
     req: InvolvementDefaultUpdate,
     db: Session = Depends(get_db),
@@ -257,13 +256,13 @@ async def update_default(
         db.refresh(row)
         return row
 
-    row = await run_in_threadpool(work)
-    await event_bus.publish(_CHANGED)
+    row = work()
+    event_bus.publish_nowait(_CHANGED)
     return row
 
 
 @router.delete("/{default_id}", status_code=204)
-async def delete_default(
+def delete_default(
     default_id: str,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -276,6 +275,6 @@ async def delete_default(
         db.delete(row)
         db.commit()
 
-    await run_in_threadpool(work)
-    await event_bus.publish(_CHANGED)
+    work()
+    event_bus.publish_nowait(_CHANGED)
     return None

@@ -11,11 +11,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.api.router import api_router
-from app.core import error_log
+from app.core import error_log, loop_watchdog
+from app.core.loop_guard import RequestScopeMiddleware
 from app.core.perf import PerfCollector, install_query_listeners
 from app.core.perf_middleware import PerfMiddleware
 from app.database import SessionLocal, engine
@@ -47,7 +50,15 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     logger.info("Starting %s v%s", settings.app_name, settings.app_version)
     logger.info("Debug mode: %s", settings.debug)
-    logger.info("Database: %s", settings.database_url)
+    logger.info("Database: %s", make_url(settings.database_url).render_as_string(hide_password=True))
+
+    # Сторож цикла обработки запросов: снимок потоков при остановке цикла,
+    # перезапуск — при долгой (Docker поднимает процесс заново).
+    watchdog_stop = loop_watchdog.start(
+        asyncio.get_running_loop(),
+        stall_after=settings.loop_watchdog_stall_seconds,
+        restart_after=settings.loop_watchdog_restart_seconds,
+    )
 
     # --- Release notes seed from release_notes/*.json ---
     from app.services.release_note_seed import seed_with_retry
@@ -131,6 +142,7 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("perf: замеры последней минуты не записаны: %s", exc)
     sched_svc.shutdown()
+    watchdog_stop.set()
     logger.info("Shutting down...")
 
 
@@ -154,6 +166,7 @@ app.add_middleware(
 
 # Замеры быстродействия — снаружи остальных слоёв: время запроса целиком.
 app.add_middleware(PerfMiddleware, collector=perf_collector)
+app.add_middleware(RequestScopeMiddleware)
 
 # Include API routes
 app.include_router(api_router, prefix="/api/v1")
@@ -174,6 +187,34 @@ async def kpi_condition_error_handler(request, exc: ConditionError) -> JSONRespo
 async def sync_blocked_handler(request, exc: SyncBlockedError) -> JSONResponse:
     """Синхронизация остановлена до переезда на новую Jira — 409 с понятным текстом."""
     return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+#: Postgres: не дождались чужой блокировки строки (предел ожидания lock_timeout).
+LOCK_NOT_AVAILABLE = "55P03"
+
+
+@app.exception_handler(OperationalError)
+async def db_lock_timeout_handler(request, exc: OperationalError) -> JSONResponse:
+    """Строку держит синхронизация или чужая правка дольше предела ожидания — 409.
+
+    Незакреплённая часть записи откатывается (сессия закрывается без фиксации);
+    действия с одной фиксацией повторять безопасно. Случай пишется в «Ошибки
+    сервиса»: частые отказы — повод разбираться, кто держит строки. Остальные
+    сбои базы — обычная 500.
+    """
+    if getattr(exc.orig, "pgcode", None) != LOCK_NOT_AVAILABLE:
+        raise exc
+    entry_id = error_log.record(request, exc)
+    logger.warning(
+        "Не дождались блокировки в базе: %s %s (номер %s)", request.method, request.url.path, entry_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={
+            "detail": "Эти данные сейчас обновляет синхронизация или другой пользователь. Повторите через минуту.",
+            "error_id": entry_id,
+        },
+    )
 
 
 @app.exception_handler(Exception)
@@ -205,10 +246,10 @@ async def unhandled_error_handler(request, exc: Exception) -> JSONResponse:
 
 @app.get("/health")
 async def health_check():
-    """Liveness probe — does NOT touch the database.
+    """Жив ли сервис — без базы.
 
-    External uptime monitors should hit this. Always returns 200 while
-    the process is up, regardless of DB state.
+    Отвечает прямо из цикла обработки запросов: не ответил — цикл стоит,
+    сервис не обслуживает никого. Внешний контроль смотрит сюда.
     """
     return {
         "status": "healthy",
@@ -218,11 +259,13 @@ async def health_check():
 
 
 @app.get("/health/ready")
-async def health_ready():
-    """Readiness probe — verifies the database is reachable.
+def health_ready():
+    """Готов ли сервис работать с базой.
 
-    Used by the Docker healthcheck so the container is restarted if DB
-    connectivity is lost.
+    Обычная функция — выполняется в рабочем потоке: медленная база не
+    останавливает остальные запросы. Docker-проверка смотрит сюда и только
+    помечает контейнер «unhealthy» — сам Docker такой контейнер не
+    перезапускает. Зависший цикл перезапускает сторож (app/core/loop_watchdog.py).
     """
     db = SessionLocal()
     try:

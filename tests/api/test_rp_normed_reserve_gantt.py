@@ -2,7 +2,7 @@
 живые предупреждения и выбор вида работ у задач других команд."""
 
 from datetime import timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,7 +29,7 @@ PLAN_ONLY = {"type": "entity_changed", "entities": ["resource_planning"]}
 
 @pytest.fixture
 def client(db_session):
-    bus = AsyncMock()
+    bus = Mock()
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_event_bus] = lambda: bus
     try:
@@ -281,7 +281,7 @@ def test_work_type_override(client, db_session):
     r = client.put(url, json={"team": "ERP", "backlog_item_id": item.id, "work_type_id": support})
 
     assert r.status_code == 204, r.text
-    client.bus.publish.assert_awaited_once_with(PLAN_ONLY)
+    client.bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
     body = _gantt(client, plan_id)
     rows = {x["work_type_id"]: x for x in body["reserve"]["roles"][0]["rows"]}
     assert rows[types["technical_tasks"].id]["other_teams_hours"] == 0.0

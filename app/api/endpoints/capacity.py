@@ -122,7 +122,7 @@ class QuarterCapacityResponse(BaseModel):
 # === Absences CRUD ===
 
 @router.get("/absences", response_model=List[AbsenceResponse])
-async def list_absences(
+def list_absences(
     employee_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
@@ -135,7 +135,7 @@ async def list_absences(
 
 
 @router.post("/absences", response_model=AbsenceResponse, status_code=201)
-async def create_absence(
+def create_absence(
     data: AbsenceCreate,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -156,7 +156,7 @@ async def create_absence(
     db.add(absence)
     db.commit()
     db.refresh(absence)
-    await event_bus.publish({"type": "entity_changed", "entities": ["capacity"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["capacity"]})
     # Snapshot for thread-safe return (see CLAUDE.md DB caveat).
     return AbsenceResponse.from_absence(absence)
 
@@ -170,7 +170,7 @@ class AbsenceBatchCreate(BaseModel):
 
 
 @router.post("/absences/batch", response_model=List[AbsenceResponse], status_code=201)
-async def create_absences_batch(
+def create_absences_batch(
     data: AbsenceBatchCreate,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -213,12 +213,12 @@ async def create_absences_batch(
     db.commit()
     for a in created:
         db.refresh(a)
-    await event_bus.publish({"type": "entity_changed", "entities": ["capacity"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["capacity"]})
     return [AbsenceResponse.from_absence(a) for a in created]
 
 
 @router.delete("/absences/{absence_id}")
-async def delete_absence(
+def delete_absence(
     absence_id: str,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -230,7 +230,7 @@ async def delete_absence(
         raise HTTPException(status_code=404, detail="Absence not found")
     repo.delete(existing)
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["capacity"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["capacity"]})
     return {"status": "deleted", "id": absence_id}
 
 
@@ -240,7 +240,7 @@ async def delete_absence(
     "/monthly/{employee_id}",
     response_model=MonthlyCapacityResponse,
 )
-async def get_monthly_capacity(
+def get_monthly_capacity(
     employee_id: str,
     year: int = Query(...),
     month: int = Query(..., ge=1, le=12),
@@ -259,7 +259,7 @@ async def get_monthly_capacity(
     "/quarter/{employee_id}",
     response_model=QuarterCapacityResponse,
 )
-async def get_quarter_capacity(
+def get_quarter_capacity(
     employee_id: str,
     year: int = Query(...),
     quarter: int = Query(..., ge=1, le=4),
@@ -290,7 +290,7 @@ def _resolve_teams(team: Optional[str], teams: Optional[str]) -> Optional[List[s
 
 
 @router.get("/team", response_model=List[QuarterCapacityResponse])
-async def get_team_quarter_capacity(
+def get_team_quarter_capacity(
     year: int = Query(...),
     quarter: int = Query(..., ge=1, le=4),
     team: Optional[str] = Query(None, description="Команда (одна, устаревший параметр)"),
@@ -309,7 +309,7 @@ async def get_team_quarter_capacity(
 
 
 @router.post("/team/recalc")
-async def recalc_team(
+def recalc_team(
     year: int = Query(...),
     quarter: int = Query(..., ge=1, le=4),
     team: str = Query(...),

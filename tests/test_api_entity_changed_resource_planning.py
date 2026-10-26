@@ -4,7 +4,7 @@
 других команд вычитает брони опорных планов.
 """
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -38,7 +38,7 @@ def seeded(testclient_db_session):
 
 
 def _send(db, method, url, **kw):
-    bus = AsyncMock()
+    bus = Mock()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_event_bus] = lambda: bus
     try:
@@ -53,13 +53,13 @@ def test_create_plan(testclient_db_session):
     r, bus = _send(testclient_db_session, "POST", BASE,
                    json={"team": "T", "quarter": "Q1", "year": 2026})
     assert r.status_code == 201, r.text
-    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+    bus.publish_nowait.assert_called_once_with(WITH_BOOKINGS)
 
 
 def test_compute_plan(seeded):
     r, bus = _send(seeded["db"], "POST", f"{BASE}/{seeded['plan']}/compute")
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+    bus.publish_nowait.assert_called_once_with(WITH_BOOKINGS)
 
 
 def test_compute_runs_off_event_loop(seeded, monkeypatch):
@@ -85,7 +85,7 @@ def test_compute_runs_off_event_loop(seeded, monkeypatch):
     r, bus = _send(db, "POST", f"{BASE}/{seeded['plan']}/compute")
     assert r.status_code == 200, r.text
     assert where == ["thread pool"]
-    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+    bus.publish_nowait.assert_called_once_with(WITH_BOOKINGS)
 
     db.expire_all()
     fresh = db.get(ResourcePlan, seeded["plan"])
@@ -96,40 +96,40 @@ def test_compute_runs_off_event_loop(seeded, monkeypatch):
 def test_missing_plan_publishes_nothing(testclient_db_session):
     r, bus = _send(testclient_db_session, "POST", f"{BASE}/nope/compute")
     assert r.status_code == 404
-    bus.publish.assert_not_called()
+    bus.publish_nowait.assert_not_called()
 
 
 def test_delete_plan(seeded):
     r, bus = _send(seeded["db"], "DELETE", f"{BASE}/{seeded['plan']}")
     assert r.status_code == 204, r.text
-    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+    bus.publish_nowait.assert_called_once_with(WITH_BOOKINGS)
 
 
 def test_fork_plan(seeded):
     r, bus = _send(seeded["db"], "POST", f"{BASE}/{seeded['plan']}/fork", json={})
     assert r.status_code == 201, r.text
-    bus.publish.assert_called_once_with(PLAN_ONLY)
+    bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
 
 
 def test_pin_dates(seeded):
     r, bus = _send(seeded["db"], "PATCH", f"{BASE}/{seeded['plan']}/assignments/{seeded['a']}",
                    json={"start_date": "2026-01-07"})
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+    bus.publish_nowait.assert_called_once_with(WITH_BOOKINGS)
 
 
 def test_change_employee(seeded):
     r, bus = _send(seeded["db"], "PATCH", f"{BASE}/{seeded['plan']}/assignments/{seeded['a']}",
                    json={"employee_id": seeded["other"], "force": True})
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+    bus.publish_nowait.assert_called_once_with(WITH_BOOKINGS)
 
 
 def test_unpin(seeded):
     r, bus = _send(seeded["db"], "DELETE",
                    f"{BASE}/{seeded['plan']}/assignments/{seeded['a']}/manual-edit")
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(PLAN_ONLY)
+    bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
 
 
 def test_split_and_merge(seeded):
@@ -137,12 +137,12 @@ def test_split_and_merge(seeded):
     r, bus = _send(seeded["db"], "POST", f"{url}/{seeded['a']}/split",
                    json={"parts": [6, 6], "cascade": False})
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+    bus.publish_nowait.assert_called_once_with(WITH_BOOKINGS)
     first_part = r.json()["parts"][0]["id"]
 
     r, bus = _send(seeded["db"], "POST", f"{url}/{first_part}/merge")
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+    bus.publish_nowait.assert_called_once_with(WITH_BOOKINGS)
 
 
 def test_involvement(seeded):
@@ -150,14 +150,14 @@ def test_involvement(seeded):
                    f"{BASE}/{seeded['plan']}/assignments/{seeded['a']}/involvement",
                    json={"involvement_pct": 50})
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+    bus.publish_nowait.assert_called_once_with(WITH_BOOKINGS)
 
 
 def test_bulk_reset(seeded):
     r, bus = _send(seeded["db"], "POST", f"{BASE}/{seeded['plan']}/bulk-clear",
                    json={"mode": "all"})
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+    bus.publish_nowait.assert_called_once_with(WITH_BOOKINGS)
 
 
 def test_conflict_status(seeded):
@@ -169,7 +169,7 @@ def test_conflict_status(seeded):
     r, bus = _send(db, "PATCH", f"{BASE}/{seeded['plan']}/conflicts/{c.id}",
                    json={"status": "muted"})
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(PLAN_ONLY)
+    bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
 
 
 def test_dependencies(seeded):
@@ -177,16 +177,16 @@ def test_dependencies(seeded):
     r, bus = _send(db, "POST", url,
                    json={"from_item_id": seeded["item"], "to_item_id": seeded["second"]})
     assert r.status_code == 201, r.text
-    bus.publish.assert_called_once_with(PLAN_ONLY)
+    bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
     dep_id = r.json()["id"]
 
     r, bus = _send(db, "PATCH", f"{url}/{dep_id}", json={"lag_days": 2})
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(PLAN_ONLY)
+    bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
 
     r, bus = _send(db, "DELETE", f"{url}/{dep_id}")
     assert r.status_code == 204, r.text
-    bus.publish.assert_called_once_with(PLAN_ONLY)
+    bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
 
 
 def test_scheduled_blocks(testclient_db_session):
@@ -202,21 +202,21 @@ def test_scheduled_blocks(testclient_db_session):
 
     r, bus = _send(db, "POST", url, json=body)
     assert r.status_code == 201, r.text
-    bus.publish.assert_called_once_with(PLAN_ONLY)
+    bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
     block_id = r.json()["id"]
 
     r, bus = _send(db, "PATCH", f"{url}/{block_id}", json={"end_date": "2026-01-15"})
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(PLAN_ONLY)
+    bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
 
     r, bus = _send(db, "PATCH", f"{url}/{block_id}", json={"work_type_id": None})
     assert r.status_code == 422, r.text
-    bus.publish.assert_not_called()
+    bus.publish_nowait.assert_not_called()
 
     r, bus = _send(db, "DELETE", f"{url}/{block_id}")
     assert r.status_code == 204, r.text
-    bus.publish.assert_called_once_with(PLAN_ONLY)
+    bus.publish_nowait.assert_called_once_with(PLAN_ONLY)
 
     r, bus = _send(db, "DELETE", f"{url}/{block_id}")
     assert r.status_code == 404, r.text
-    bus.publish.assert_not_called()
+    bus.publish_nowait.assert_not_called()

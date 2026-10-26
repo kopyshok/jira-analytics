@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -94,7 +95,9 @@ async def build_dashboard(
 ):
     """Aggregate fresh + run LLM synthesis + persist snapshot."""
     svc = ExecutiveDashboardService(db)
-    findings = svc.aggregate(year=payload.year, quarter=payload.quarter, teams=payload.teams)
+    findings = await run_in_threadpool(
+        svc.aggregate, year=payload.year, quarter=payload.quarter, teams=payload.teams,
+    )
 
     findings_dict = {
         "period": findings.period,
@@ -109,7 +112,7 @@ async def build_dashboard(
     }
 
     try:
-        provider = get_llm_provider(db)
+        provider = await run_in_threadpool(get_llm_provider, db)
     except ConfigurationError as e:
         logger.warning("LLM provider not configured: %s", e)
         provider = None
@@ -134,34 +137,38 @@ async def build_dashboard(
         }
 
     th = team_set_hash(payload.teams)
-    existing = db.execute(
-        select(ExecutiveSnapshot).where(
-            ExecutiveSnapshot.year == payload.year,
-            ExecutiveSnapshot.quarter == payload.quarter,
-            ExecutiveSnapshot.team_set_hash == th,
-        )
-    ).scalar_one_or_none()
 
-    if existing:
-        existing.snapshot_data = json.dumps(findings_dict, ensure_ascii=False)
-        existing.team_set_json = json.dumps(payload.teams, ensure_ascii=False)
-        existing.model_id = model_id
-        existing.prompt_version = EXEC_PROMPT_VERSION
-        existing.generated_at = datetime.utcnow()
-        existing.created_by = current_user.id
-        snap = existing
-    else:
-        snap = ExecutiveSnapshot(
-            year=payload.year,
-            quarter=payload.quarter,
-            team_set_hash=th,
-            team_set_json=json.dumps(payload.teams, ensure_ascii=False),
-            snapshot_data=json.dumps(findings_dict, ensure_ascii=False),
-            model_id=model_id,
-            prompt_version=EXEC_PROMPT_VERSION,
-            created_by=current_user.id,
-        )
-        db.add(snap)
-    db.commit()
-    db.refresh(snap)
-    return _make_response(snap)
+    def _save() -> ExecutiveDashboardResponse:
+        existing = db.execute(
+            select(ExecutiveSnapshot).where(
+                ExecutiveSnapshot.year == payload.year,
+                ExecutiveSnapshot.quarter == payload.quarter,
+                ExecutiveSnapshot.team_set_hash == th,
+            )
+        ).scalar_one_or_none()
+
+        if existing:
+            existing.snapshot_data = json.dumps(findings_dict, ensure_ascii=False)
+            existing.team_set_json = json.dumps(payload.teams, ensure_ascii=False)
+            existing.model_id = model_id
+            existing.prompt_version = EXEC_PROMPT_VERSION
+            existing.generated_at = datetime.utcnow()
+            existing.created_by = current_user.id
+            snap = existing
+        else:
+            snap = ExecutiveSnapshot(
+                year=payload.year,
+                quarter=payload.quarter,
+                team_set_hash=th,
+                team_set_json=json.dumps(payload.teams, ensure_ascii=False),
+                snapshot_data=json.dumps(findings_dict, ensure_ascii=False),
+                model_id=model_id,
+                prompt_version=EXEC_PROMPT_VERSION,
+                created_by=current_user.id,
+            )
+            db.add(snap)
+        db.commit()
+        db.refresh(snap)
+        return _make_response(snap)
+
+    return await run_in_threadpool(_save)

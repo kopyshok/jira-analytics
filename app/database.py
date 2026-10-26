@@ -17,6 +17,28 @@ def _is_sqlite_url(database_url: str) -> bool:
     return make_url(database_url).get_backend_name() == "sqlite"
 
 
+def postgres_connect_args(
+    *,
+    lock_timeout_s: int = settings.db_lock_timeout_seconds,
+    idle_in_transaction_timeout_s: int = settings.db_idle_in_transaction_timeout_seconds,
+) -> dict[str, object]:
+    """Параметры подключения к Postgres: пределы ожидания и имя приложения.
+
+    Без пределов ожидание чужой блокировки бесконечно — так 23.10.2026 встал
+    прод. Имя приложения видно в списке подключений базы: админ сразу видит,
+    чьё подключение держит блокировку.
+    """
+    return {
+        "application_name": "jira-analytics",
+        # Недоступная база не держит запрос минутами на установке соединения.
+        "connect_timeout": 10,
+        "options": (
+            f"-c lock_timeout={lock_timeout_s * 1000}"
+            f" -c idle_in_transaction_session_timeout={idle_in_transaction_timeout_s * 1000}"
+        ),
+    }
+
+
 def _engine_kwargs(database_url: str, echo: bool) -> dict[str, object]:
     kwargs: dict[str, object] = {"echo": echo}
     if _is_sqlite_url(database_url):
@@ -24,12 +46,15 @@ def _engine_kwargs(database_url: str, echo: bool) -> dict[str, object]:
         # через 5 с дефолта с «database is locked».
         kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30}
     else:
+        kwargs["connect_args"] = postgres_connect_args()
         # Пул под FastAPI: sync-эндпоинты крутятся в threadpool (по умолчанию 40
         # потоков) плюс фоновые job'ы планировщика. Дефолтные 5+10 упираются в
         # лимит и отдают 500 «QueuePool limit reached» под всплеском запросов.
+        # Сверху 40 потоков — рабочие потоки asyncio.to_thread и синк в цикле:
+        # синк, ждущий свободное соединение, держал бы весь цикл (до 30 с).
         # pre_ping отсеивает соединения, закрытые сервером БД за время простоя.
         kwargs["pool_size"] = 20
-        kwargs["max_overflow"] = 20
+        kwargs["max_overflow"] = 40
         kwargs["pool_pre_ping"] = True
         kwargs["pool_recycle"] = 1800
     return kwargs

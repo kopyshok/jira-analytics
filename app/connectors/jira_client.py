@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import AsyncIterator, List, Optional, Tuple
+from typing import AsyncIterator, Callable, List, Optional, Tuple
 
 import httpx
 
@@ -195,6 +195,9 @@ class JiraClient:
         }
 
         self._client: Optional[httpx.AsyncClient] = None
+        #: Вызывается перед каждым запросом к Jira. Синк закрепляет здесь
+        #: записанное, чтобы ожидание сети не держало строки заблокированными.
+        self.before_request: Optional[Callable[[], None]] = None
 
     async def __aenter__(self) -> "JiraClient":
         """Context manager entry."""
@@ -228,6 +231,8 @@ class JiraClient:
         if not self._client:
             raise JiraClientError("Client not initialized. Use async context manager.")
 
+        if self.before_request is not None:
+            self.before_request()
         url = f"{API_PREFIX}{path}"
         last = self.max_retries - 1
 

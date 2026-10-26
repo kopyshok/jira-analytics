@@ -22,7 +22,7 @@ class MappingResponse(BaseModel):
 
 
 @router.post("/recalculate", response_model=MappingResponse)
-async def recalculate_mappings(db: Session = Depends(get_db)):
+def recalculate_mappings(db: Session = Depends(get_db)):
     """Пересчитать категории для всех задач и worklog.
 
     Применяет правила резолвинга (override → scope_root → quality → fallback)
@@ -42,7 +42,7 @@ async def recalculate_mappings(db: Session = Depends(get_db)):
 
 
 @router.post("/recalculate/issues", response_model=MappingResponse)
-async def recalculate_issue_mappings(db: Session = Depends(get_db)):
+def recalculate_issue_mappings(db: Session = Depends(get_db)):
     """Пересчитать категории только для задач (без worklog)."""
     try:
         service = MappingService(db)
@@ -59,7 +59,7 @@ async def recalculate_issue_mappings(db: Session = Depends(get_db)):
 
 
 @router.post("/recalculate/worklogs", response_model=MappingResponse)
-async def recalculate_worklog_mappings(db: Session = Depends(get_db)):
+def recalculate_worklog_mappings(db: Session = Depends(get_db)):
     """Пересчитать категории только для worklog."""
     try:
         service = MappingService(db)

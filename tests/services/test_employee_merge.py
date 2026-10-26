@@ -1,5 +1,6 @@
 """Объединение двойников сотрудников: перенос данных, отказ, синк по старой учётке."""
 from datetime import date, datetime
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -127,7 +128,7 @@ def test_sync_resolves_merged_account(db_session):
     employee_merge.merge(db, new_id, old.id)
     db.commit()
 
-    sync = SyncService(db, jira_client=None)
+    sync = SyncService(db, jira_client=MagicMock())
     employee = sync._ensure_employee(JiraUserSchema(
         key="JIRAUSER13143", name="medvedeva-n", displayName="Медведева Надежда Владимировна",
     ))

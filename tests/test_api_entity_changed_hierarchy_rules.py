@@ -1,5 +1,5 @@
 """Правка правил иерархии рассылает entity_changed: меняются бэклог, сценарии, аналитика."""
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,7 +14,7 @@ EVENT = {"type": "entity_changed", "entities": ["backlog", "planning", "analytic
 
 @pytest.fixture
 def bus():
-    return AsyncMock()
+    return Mock()
 
 
 @pytest.fixture
@@ -35,25 +35,25 @@ def _rule(db) -> str:
 def test_create_publishes(client, bus):
     r = client.post("/api/v1/hierarchy-rules", json={"priority": 1, "is_container": True})
     assert r.status_code == 201, r.text
-    bus.publish.assert_called_once_with(EVENT)
+    bus.publish_nowait.assert_called_once_with(EVENT)
 
 
 def test_update_publishes(client, bus, testclient_db_session):
     rid = _rule(testclient_db_session)
     r = client.patch(f"/api/v1/hierarchy-rules/{rid}", json={"is_enabled": False})
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(EVENT)
+    bus.publish_nowait.assert_called_once_with(EVENT)
 
 
 def test_delete_publishes(client, bus, testclient_db_session):
     rid = _rule(testclient_db_session)
     r = client.delete(f"/api/v1/hierarchy-rules/{rid}")
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(EVENT)
+    bus.publish_nowait.assert_called_once_with(EVENT)
 
 
 def test_reorder_publishes(client, bus, testclient_db_session):
     rid = _rule(testclient_db_session)
     r = client.post("/api/v1/hierarchy-rules/reorder", json={"ids": [rid]})
     assert r.status_code == 200, r.text
-    bus.publish.assert_called_once_with(EVENT)
+    bus.publish_nowait.assert_called_once_with(EVENT)

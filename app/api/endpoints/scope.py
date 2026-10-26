@@ -88,14 +88,14 @@ class CategoryOverrideResponse(BaseModel):
 # === Scope Projects ===
 
 @router.get("/projects", response_model=List[ScopeProjectResponse])
-async def list_scope_projects(db: Session = Depends(get_db)):
+def list_scope_projects(db: Session = Depends(get_db)):
     """Список разрешённых проектов Jira для загрузки."""
     repo = BaseRepository(ScopeProject, db)
     return repo.get_all(limit=1000)
 
 
 @router.post("/projects", response_model=ScopeProjectResponse, status_code=201)
-async def add_scope_project(
+def add_scope_project(
     data: ScopeProjectCreate,
     db: Session = Depends(get_db),
 ):
@@ -115,7 +115,7 @@ async def add_scope_project(
 
 
 @router.post("/projects/batch", response_model=ScopeProjectBatchResponse)
-async def batch_scope_projects(
+def batch_scope_projects(
     data: ScopeProjectBatchRequest,
     db: Session = Depends(get_db),
 ):
@@ -140,7 +140,7 @@ async def batch_scope_projects(
 
 
 @router.delete("/projects/{project_key}")
-async def remove_scope_project(
+def remove_scope_project(
     project_key: str,
     db: Session = Depends(get_db),
 ):
@@ -158,7 +158,7 @@ async def remove_scope_project(
 # === Scope Roots ===
 
 @router.get("/roots", response_model=List[ScopeRootResponse])
-async def list_scope_roots(
+def list_scope_roots(
     category_code: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
@@ -171,7 +171,7 @@ async def list_scope_roots(
 
 
 @router.post("/roots", response_model=ScopeRootResponse, status_code=201)
-async def add_scope_root(
+def add_scope_root(
     data: ScopeRootCreate,
     db: Session = Depends(get_db),
 ):
@@ -183,7 +183,7 @@ async def add_scope_root(
 
 
 @router.delete("/roots/{root_id}")
-async def remove_scope_root(
+def remove_scope_root(
     root_id: str,
     db: Session = Depends(get_db),
 ):
@@ -201,14 +201,14 @@ async def remove_scope_root(
 # === Category Overrides ===
 
 @router.get("/overrides", response_model=List[CategoryOverrideResponse])
-async def list_category_overrides(db: Session = Depends(get_db)):
+def list_category_overrides(db: Session = Depends(get_db)):
     """Список точечных переопределений категорий."""
     repo = BaseRepository(CategoryOverride, db)
     return repo.get_all(limit=1000)
 
 
 @router.post("/overrides", response_model=CategoryOverrideResponse, status_code=201)
-async def add_category_override(
+def add_category_override(
     data: CategoryOverrideCreate,
     db: Session = Depends(get_db),
 ):
@@ -228,7 +228,7 @@ async def add_category_override(
 
 
 @router.delete("/overrides/{issue_key}")
-async def remove_category_override(
+def remove_category_override(
     issue_key: str,
     db: Session = Depends(get_db),
 ):

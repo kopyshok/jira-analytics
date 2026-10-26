@@ -240,7 +240,7 @@ def _apply_subgroups(db: Session, nodes: list, issues: list) -> list:
 
 
 @router.get("/tree", response_model=List[IssueTreeNode])
-async def get_issue_tree(
+def get_issue_tree(
     project_keys: Optional[str] = None,
     teams: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -777,7 +777,7 @@ def _issue_is_container(db: Session, issue: Issue) -> bool:
 
 
 @router.put("/{issue_id}/category")
-async def set_issue_category(
+def set_issue_category(
     issue_id: str,
     body: SetCategoryRequest,
     db: Session = Depends(get_db),
@@ -822,7 +822,7 @@ async def set_issue_category(
     assigned_category = issue.assigned_category
     include_in_analysis = issue.include_in_analysis
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "analytics"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "analytics"]})
     return {
         "ok": True,
         "key": key,
@@ -837,7 +837,7 @@ class SetSubgroupRequest(BaseModel):
 
 
 @router.put("/{issue_id}/subgroup")
-async def set_issue_subgroup(
+def set_issue_subgroup(
     issue_id: str,
     body: SetSubgroupRequest,
     db: Session = Depends(get_db),
@@ -861,7 +861,7 @@ async def set_issue_subgroup(
     db.commit()
     if team:
         SubgroupResolver(db).recompute_effective(team=team)
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "analytics"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "analytics"]})
     return {
         "ok": True,
         "key": key,
@@ -872,7 +872,7 @@ async def set_issue_subgroup(
 
 
 @router.put("/{issue_id}/include")
-async def set_issue_include(
+def set_issue_include(
     issue_id: str,
     body: SetIncludeRequest,
     db: Session = Depends(get_db),
@@ -891,7 +891,7 @@ async def set_issue_include(
     key = issue.key
     include_in_analysis = issue.include_in_analysis
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "analytics"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "analytics"]})
     return {"ok": True, "key": key, "include_in_analysis": include_in_analysis}
 
 
@@ -944,7 +944,7 @@ def _walk_subtree_all(db: Session, root_id: str) -> list[Issue]:
 
 
 @router.put("/batch-category")
-async def batch_set_category(
+def batch_set_category(
     body: BatchCategoryRequest,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
@@ -1016,7 +1016,7 @@ async def batch_set_category(
             cascaded_ids.append(d.id)
             seen_targets.add(d.id)
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return {
         "ok": True,
         "updated": updated,
@@ -1041,7 +1041,7 @@ def _collect_unverified_descendants(db: Session, parent_id: str) -> list[Issue]:
 
 
 @router.post("/{issue_id}/verify")
-async def verify_issue(
+def verify_issue(
     issue_id: str,
     body: VerifyRequest,
     db: Session = Depends(get_db),
@@ -1104,7 +1104,7 @@ async def verify_issue(
                 reset_parent_context(db, descendant, resolver)
 
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return {"ok": True, "verified_count": verified_count}
 
 
@@ -1296,7 +1296,7 @@ class PlanRevertRequest(BaseModel):
 
 
 @router.patch("/{issue_id}/plan")
-async def patch_plan(
+def patch_plan(
     issue_id: str,
     payload: PlanEditRequest,
     db: Session = Depends(get_db),
@@ -1315,12 +1315,12 @@ async def patch_plan(
         raise HTTPException(422, str(e))
     db.refresh(issue)
     plan = {r: getattr(issue, f"planned_{r}_hours") for r in PLAN_ROLES}
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return {"plan": plan}
 
 
 @router.post("/{issue_id}/plan/revert")
-async def revert_plan(
+def revert_plan(
     issue_id: str,
     payload: PlanRevertRequest,
     db: Session = Depends(get_db),
@@ -1336,7 +1336,7 @@ async def revert_plan(
     )
     db.refresh(issue)
     plan = {r: getattr(issue, f"planned_{r}_hours") for r in PLAN_ROLES}
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return {"plan": plan}
 
 
@@ -1346,7 +1346,7 @@ class ConflictResolveRequest(BaseModel):
 
 
 @router.post("/{issue_id}/plan/conflict-resolve")
-async def resolve_plan_conflict(
+def resolve_plan_conflict(
     issue_id: str,
     payload: ConflictResolveRequest,
     db: Session = Depends(get_db),
@@ -1363,7 +1363,7 @@ async def resolve_plan_conflict(
         )
     except ValueError as e:
         raise HTTPException(422, str(e))
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    event_bus.publish_nowait({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return {"ok": True}
 
 
@@ -1378,7 +1378,7 @@ class PlanChoiceRequest(BaseModel):
 
 
 @router.post("/{issue_id}/plan/choice")
-async def choose_plan_source(
+def choose_plan_source(
     issue_id: str,
     payload: PlanChoiceRequest,
     db: Session = Depends(get_db),
@@ -1405,9 +1405,9 @@ async def choose_plan_source(
     except ValueError as e:
         raise HTTPException(422, str(e))
     db.refresh(issue)
-    # Снимок до await: после commit атрибуты в TestClient-потоке перечитываются.
+    # Снимок до публикации: после commit атрибуты в TestClient-потоке перечитываются.
     plan = {r: getattr(issue, f"planned_{r}_hours") for r in PLAN_ROLES}
-    await event_bus.publish(
+    event_bus.publish_nowait(
         {"type": "entity_changed", "entities": ["issues", "backlog", "planning"]}
     )
     return {"plan": plan}

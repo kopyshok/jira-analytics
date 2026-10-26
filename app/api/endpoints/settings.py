@@ -5,6 +5,7 @@ import httpx
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -135,13 +136,13 @@ def _jira_settings(db: Session) -> JiraSettingsResponse:
 
 
 @router.get("/jira", response_model=JiraSettingsResponse)
-async def get_jira_settings(db: Session = Depends(get_db)):
+def get_jira_settings(db: Session = Depends(get_db)):
     """Получить сохранённые Jira-настройки (токен не возвращается)."""
     return _jira_settings(db)
 
 
 @router.put("/jira", response_model=JiraSettingsResponse)
-async def save_jira_settings(
+def save_jira_settings(
     body: JiraSettingsUpdate,
     db: Session = Depends(get_db),
 ):
@@ -175,7 +176,7 @@ def _check_plan_hours_fields(db: Session, key: str, value: Optional[str]) -> Non
 
 
 @router.put("/generic")
-async def save_generic_setting(body: SettingUpdate, db: Session = Depends(get_db)):
+def save_generic_setting(body: SettingUpdate, db: Session = Depends(get_db)):
     """Сохранить произвольную настройку (key → value)."""
     if not _is_allowed_generic_key(body.key):
         raise HTTPException(status_code=403, detail="Setting key is not allowed")
@@ -190,7 +191,7 @@ async def save_generic_setting(body: SettingUpdate, db: Session = Depends(get_db
 
 
 @router.get("/generic/{key}")
-async def get_generic_setting(key: str, db: Session = Depends(get_db)):
+def get_generic_setting(key: str, db: Session = Depends(get_db)):
     """Прочитать произвольную настройку по ключу."""
     if not _is_allowed_generic_key(key):
         raise HTTPException(status_code=403, detail="Setting key is not allowed")
@@ -222,7 +223,7 @@ async def test_jira_credentials(body: JiraTestRequest):
 
 
 @router.get("/token-renewal")
-async def get_token_renewal(db: Session = Depends(get_db)):
+def get_token_renewal(db: Session = Depends(get_db)):
     """Самопродление токенов Jira и Confluence: включено ли, до какого числа ключ, последняя ошибка."""
     return renewal_status(db)
 
@@ -235,13 +236,13 @@ def _confluence_settings(db: Session) -> ConfluenceSettingsResponse:
 
 
 @router.get("/confluence", response_model=ConfluenceSettingsResponse)
-async def get_confluence_settings(db: Session = Depends(get_db)):
+def get_confluence_settings(db: Session = Depends(get_db)):
     """Адрес Confluence и признак сохранённого токена (сам токен не отдаём)."""
     return _confluence_settings(db)
 
 
 @router.put("/confluence", response_model=ConfluenceSettingsResponse)
-async def save_confluence_settings(
+def save_confluence_settings(
     body: ConfluenceSettingsUpdate,
     db: Session = Depends(get_db),
 ):
@@ -259,7 +260,8 @@ async def save_confluence_settings(
 async def test_confluence_connection(db: Session = Depends(get_db)):
     """Проверить подключение к Confluence с сохранёнными адресом и токеном."""
     try:
-        async with ConfluenceClient.from_db(db) as client:
+        confluence = await run_in_threadpool(ConfluenceClient.from_db, db)
+        async with confluence as client:
             user = await client.get_current_user()
     except ConfluenceClientError as e:
         return ConfluenceTestResponse(connected=False, error=str(e))
