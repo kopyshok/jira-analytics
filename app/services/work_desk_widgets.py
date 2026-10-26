@@ -843,31 +843,25 @@ def _adapter_awaiting_reaction(
     """Ждут реакции: задачи, где сотрудник — исполнитель, не завершены,
     а последний комментарий оставил кто-то другой (мяч на стороне сотрудника).
 
-    Сигнал исполнителя — только строка Issue.assignee_display_name (FK нет),
-    сравниваем с Employee.display_name без учёта регистра. Задачи без
-    комментариев исключаются — отвечать не на что.
+    Исполнитель — по учётной записи Jira (как в «Моих задачах»): отбор по
+    индексу, тёзки не путаются. Задачи без комментариев исключаются —
+    отвечать не на что.
     """
     base = _jira_browse_base(db)
     from app.models import Comment, Employee, Issue
 
     emp = db.get(Employee, desk.employee_id)
-    if emp is None or not emp.display_name:
+    if emp is None or not emp.jira_account_id:
         return {"items": []}
 
-    # SQLite lower() не трогает кириллицу — сравнение без учёта регистра делаем
-    # в Python (casefold). В БД отсекаем только завершённые и без исполнителя.
-    target = emp.display_name.strip().casefold()
-    rows = (
-        db.query(Issue.id, Issue.key, Issue.summary, Issue.status, Issue.assignee_display_name)
+    candidate_issues = (
+        db.query(Issue.id, Issue.key, Issue.summary, Issue.status)
         .filter(
-            Issue.assignee_display_name.is_not(None),
+            Issue.assignee_account_id == emp.jira_account_id,
             func.coalesce(Issue.status_category, "") != "done",
         )
         .all()
     )
-    candidate_issues = [
-        r for r in rows if (r.assignee_display_name or "").strip().casefold() == target
-    ]
     if not candidate_issues:
         return {"items": []}
 

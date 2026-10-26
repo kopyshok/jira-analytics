@@ -94,6 +94,20 @@ def test_list_projects_includes_metrics(db_session):
     assert item.period_end == datetime(2026, 3, 25)
 
 
+def test_subtree_map_nested_roots_and_depth(db_session):
+    """Вложенный корень получает своё поддерево, внешний — всё целиком."""
+    db = db_session
+    _make_project(db, "pt", "PRJT")
+    tree = {"a": None, "b": "a", "c": "b", "d": "c", "x": None}
+    for n, (iid, pid) in enumerate(tree.items()):
+        db.add(Issue(id=iid, jira_issue_id=f"t{n}", key=f"PRJT-{n}", summary=iid,
+                     issue_type="Task", status="Open", project_id="pt", parent_id=pid))
+    db.commit()
+
+    result = ProjectsService(db)._build_subtree_map(["a", "b"])
+    assert result == {"a": {"a", "b", "c", "d"}, "b": {"b", "c", "d"}}
+
+
 def test_get_project_detail_aggregates(db_session):
     db = db_session
     _make_category(db, "tech_debt", "Tech Debt", "#00c9c8")

@@ -22,6 +22,7 @@ from app.models.scenario_allocation import ScenarioAllocation
 from app.models.backlog_item import BacklogItem
 from app.services import subgroup_filter as sgf
 from app.services import team_membership as tm
+from app.services.plan_common import chunked
 
 # Категории, у которых верхний issue считается «проектом».
 PROJECT_CATEGORY_CODES = ("quarterly_tasks", "archive_target")
@@ -537,19 +538,26 @@ class ProjectsService:
     def _build_subtree_map(self, root_ids: list[str]) -> dict[str, set[str]]:
         """Строит subtree для нескольких корней.
 
-        Загружает все issues одним запросом и раскладывает по корням.
+        Спускается от корней по уровням (запрос по индексу parent_id на
+        уровень) — читаются только задачи поддеревьев, а не вся таблица.
+        Корни могут быть вложены друг в друга: каждый получает своё
+        поддерево целиком.
         """
-        # Загружаем все issues (id + parent_id) — достаточно для обхода.
-        all_rows = self._db.execute(
-            select(Issue.id, Issue.parent_id)
-        ).all()
-
-        # Строим индекс parent → children.
         from collections import defaultdict
         children_of: dict[str, list[str]] = defaultdict(list)
-        for iid, pid in all_rows:
-            if pid:
-                children_of[pid].append(iid)
+        fetched: set[str] = set()
+        frontier = list(dict.fromkeys(root_ids))
+        while frontier:
+            fetched.update(frontier)
+            nxt: list[str] = []
+            for part in chunked(frontier):
+                for iid, pid in self._db.execute(
+                    select(Issue.id, Issue.parent_id).where(Issue.parent_id.in_(part))
+                ).all():
+                    children_of[pid].append(iid)
+                    if iid not in fetched:
+                        nxt.append(iid)
+            frontier = list(dict.fromkeys(nxt))
 
         result: dict[str, set[str]] = {}
         for root_id in root_ids:

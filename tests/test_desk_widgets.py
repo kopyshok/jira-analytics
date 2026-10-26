@@ -231,20 +231,35 @@ def test_awaiting_reaction_with_comment(db_session, seed_employee):
         status="In Progress",
         status_category="indeterminate",
         project_id=proj.id,
+        assignee_account_id="acc-desk-1",
         assignee_display_name="Стол Аналитик",
     )
-    db_session.add(issue)
-    db_session.add(
-        Comment(
-            id="cmt-1",
-            jira_comment_id="c-1",
-            body="Что по задаче?",
-            jira_created_at=datetime(2026, 6, 10, 12, 0, 0),
-            issue_id=issue.id,
-            author_id=other.id,
-            synced_at=datetime.utcnow(),
-        )
+    # Тёзка: то же имя, другая учётная запись — не наша задача.
+    namesake = Issue(
+        id="iss-namesake",
+        jira_issue_id="20009",
+        key="ALP-9",
+        summary="Чужая",
+        issue_type="Task",
+        status="In Progress",
+        status_category="indeterminate",
+        project_id=proj.id,
+        assignee_account_id="acc-namesake",
+        assignee_display_name="Стол Аналитик",
     )
+    db_session.add_all([issue, namesake])
+    for cid, iid in (("cmt-1", issue.id), ("cmt-9", namesake.id)):
+        db_session.add(
+            Comment(
+                id=cid,
+                jira_comment_id=cid,
+                body="Что по задаче?",
+                jira_created_at=datetime(2026, 6, 10, 12, 0, 0),
+                issue_id=iid,
+                author_id=other.id,
+                synced_at=datetime.utcnow(),
+            )
+        )
     db_session.commit()
 
     desk = _make_desk(db_session, seed_employee.id)
@@ -277,6 +292,7 @@ def test_awaiting_reaction_excludes_own_last_comment(db_session, seed_employee):
         status="In Progress",
         status_category="indeterminate",
         project_id=proj.id,
+        assignee_account_id="acc-desk-1",
         assignee_display_name="Стол Аналитик",
     )
     db_session.add(issue)
