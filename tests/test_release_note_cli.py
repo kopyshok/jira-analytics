@@ -86,6 +86,25 @@ def test_invalid_type_exits(notes_dir: Path):
         ])
 
 
+def test_md_groups_by_type_in_feed_order(notes_dir: Path, capsys):
+    cli.main(["add", "--type", "fix", "--section", "sync",
+              "--title", "Починка", "--description", "Было плохо", "--version", "v1.2.0"])
+    cli.main(["add", "--type", "new", "--section", "team-desk",
+              "--title", "Новинка", "--description", "Стало можно", "--version", "v1.2.0"])
+    capsys.readouterr()
+    assert cli.main(["md", "--version", "1.2.0"]) == 0
+    out = capsys.readouterr().out
+    assert out.index("### Новое") < out.index("### Исправления")
+    assert "- **Новинка** · Стол тимлида" in out
+    assert "Было плохо" in out
+    assert "### Улучшения" not in out
+
+
+def test_md_without_notes_file_still_prints(notes_dir: Path, capsys):
+    assert cli.main(["md", "--version", "v9.9.9"]) == 0
+    assert "Что нового" in capsys.readouterr().out
+
+
 def test_bind_without_drafts_is_noop(notes_dir: Path):
     rc = cli.main(["bind", "--version", "v1.2.0"])
     assert rc == 0

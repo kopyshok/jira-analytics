@@ -1,8 +1,8 @@
 name: Release
 
 # Triggered when a SemVer tag is pushed (e.g. v1.2.3).
-# Source-only release: generates a changelog from Conventional Commits and
-# creates a GitHub Release with the auto-attached source archives.
+# Source-only release: body is the version's «Что нового» notes
+# (release_notes/<tag>.json) plus the auto-attached source archives.
 # The server team builds their own Docker image from these sources.
 
 on:
@@ -29,7 +29,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
-          fetch-depth: 0    # full history for changelog generation
 
       - name: Resolve version
         id: ver
@@ -38,14 +37,10 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Generate changelog
-        id: changelog
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --latest --strip header
+      - name: Release notes from «Что нового»
         env:
-          OUTPUT: CHANGES.md
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: python3 scripts/release_note.py md --version "$TAG" > CHANGES.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

@@ -14,6 +14,9 @@
 
     py -3.10 scripts/release_note.py bind --version v1.2.0
         # → перенесёт все записи из drafts.json в release_notes/v1.2.0.json
+
+    py -3.10 scripts/release_note.py md --version v1.2.0 > CHANGES.md
+        # → текст страницы выпуска на GitHub из заметок версии
 """
 from __future__ import annotations
 
@@ -113,6 +116,33 @@ def cmd_bind(args) -> int:
     return 0
 
 
+_TYPE_HEADINGS = (("new", "Новое"), ("improvement", "Улучшения"), ("fix", "Исправления"))
+_SECTION_LABELS = {
+    "scenarios": "Сценарии", "resources": "Ресурсы", "analytics": "Аналитика",
+    "issues": "Анализ задач", "dashboard": "Дашборд", "backlog": "Бэклог",
+    "sync": "Синхронизация", "settings": "Настройки", "general": "Общее",
+    "kpi": "KPI", "projects": "Проекты", "team-desk": "Стол тимлида",
+}
+
+
+def cmd_md(args) -> int:
+    """Текст страницы выпуска на GitHub — те же заметки, что в «Что нового»."""
+    version = args.version if args.version.startswith("v") else "v" + args.version
+    notes = _load(_version_file(version)).get("notes", [])
+    parts: list[str] = []
+    for note_type, heading in _TYPE_HEADINGS:
+        group = [n for n in notes if n.get("type") == note_type]
+        if not group:
+            continue
+        parts.append(f"### {heading}\n")
+        for n in group:
+            section = _SECTION_LABELS.get(n.get("section", ""), "")
+            parts.append(f"- **{n['title']}** · {section}\n\n  {n['description']}\n")
+    parts.append("Подробности — в окне «Что нового» внутри сервиса.\n")
+    sys.stdout.write("\n".join(parts))
+    return 0
+
+
 def _maybe_fix_win32_encoding() -> None:
     if sys.platform != "win32":
         return
@@ -143,6 +173,10 @@ def main(argv: list[str] | None = None) -> int:
     p_bind = sub.add_parser("bind", help="Привязать черновики к версии")
     p_bind.add_argument("--version", required=True)
     p_bind.set_defaults(func=cmd_bind)
+
+    p_md = sub.add_parser("md", help="Заметки версии в Markdown (страница выпуска)")
+    p_md.add_argument("--version", required=True)
+    p_md.set_defaults(func=cmd_md)
 
     args = p.parse_args(argv)
     return args.func(args)
