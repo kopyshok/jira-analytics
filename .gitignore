@@ -76,6 +76,8 @@ frontend/coverage/
 # Local agent / tool artefacts
 .claude/
 .agents/
+.codex/
+.worktrees/
 .dev-logs/
 .playwright-mcp/
 design-reference/
@@ -93,3 +95,27 @@ node_modules/
 /docs/КОНТЕКСТ.md
 /docs/РЕШЕНИЯ.md
 /docs/ИЗМЕНЕНИЯ.md
+
+# Agent instructions and private planning material stay on the workstation
+AGENT.md
+AGENTS.md
+CLAUDE.md
+/docs/*
+!/docs/help/
+!/docs/admin-map.md
+!/docs/backup-restore.md
+!/docs/jira-dc-migration-runbook.md
+
+# One-off research, document generation and local diagnostics
+/scripts/_*.json
+/scripts/_*.err
+/scripts/build_arch_doc.py
+/scripts/build_sysadmin_doc.py
+/scripts/fetch_arch_context.py
+/scripts/fetch_epic_children.py
+/scripts/count_loc.py
+/scripts/check_gemini.py
+/scripts/generate_changelog.py
+/scripts/jira_dc_*.ps1
+/scripts/jira_dc_*.py
+/scripts/jira_pat_*.ps1

@@ -14,7 +14,7 @@ Strategy:
 
 Designed to be run by the sysadmin on the new server, after the empty
 Postgres has alembic upgrade head applied (see deploy/SYSADMIN.md and
-docs/superpowers/specs/2026-05-16-server-deployment-design.md §7).
+deploy/ARCHITECTURE.md §7).
 """
 
 from __future__ import annotations

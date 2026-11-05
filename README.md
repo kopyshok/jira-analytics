@@ -272,12 +272,12 @@ frontend/
 alembic/versions/       # миграции БД
 tests/                  # pytest
 scripts/                # local_smoke, e2e-local, seed_e2e, create_admin
-docs/                   # дизайн-доки, спеки, планы
+docs/                   # встроенная справка и инструкции эксплуатации
 data/                   # SQLite БД (создаётся при первом запуске)
 exports/                # xlsx/pdf отчёты
 ```
 
-Детальная документация по слоям — `CLAUDE.md` каждой папки ([app/models](app/models/CLAUDE.md), [app/api](app/api/CLAUDE.md), [app/services](app/services/CLAUDE.md), [app/connectors](app/connectors/CLAUDE.md), [frontend](frontend/CLAUDE.md), [tests](tests/CLAUDE.md)).
+Развёртывание и обслуживание — [инструкция сисадмина](deploy/SYSADMIN.md), [карта сервера](docs/admin-map.md) и [резервное копирование](docs/backup-restore.md). Пользовательская справка из `docs/help/` включается в интерфейс при сборке.
 
 ## Архитектура
 

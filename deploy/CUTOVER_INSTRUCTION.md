@@ -156,6 +156,6 @@ rm /opt/jira-analytics/data/cutover.db
 
 ## Связанные документы
 
-- Полный runbook: `docs/superpowers/specs/2026-05-16-data-migration-runbook.md`
+- Полный runbook: `deploy/DATA_MIGRATION.md`
 - Скрипт: `scripts/migrate_to_postgres.py`
-- Спецификация деплоя: `docs/superpowers/specs/2026-05-16-server-deployment-design.md`
+- Спецификация деплоя: `deploy/ARCHITECTURE.md`

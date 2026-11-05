@@ -3,7 +3,7 @@
 **Date:** 2026-05-16
 **Status:** Ready for cutover (Phase 6)
 **Related:**
-- Spec: `docs/superpowers/specs/2026-05-16-server-deployment-design.md` §7
+- Spec: `deploy/ARCHITECTURE.md` §7
 - Script: `scripts/migrate_to_postgres.py`
 - Sysadmin reference: `deploy/SYSADMIN.md`
 
