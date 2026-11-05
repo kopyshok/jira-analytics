@@ -86,3 +86,10 @@ tour/
 # graphify knowledge graph — локально, только для разработки
 graphify-out/
 node_modules/
+
+# Local working context, not part of the service
+/логи/
+/ВОССТАНОВЛЕНИЕ.md
+/docs/КОНТЕКСТ.md
+/docs/РЕШЕНИЯ.md
+/docs/ИЗМЕНЕНИЯ.md
