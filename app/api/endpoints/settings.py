@@ -2,11 +2,13 @@
 
 import re
 import httpx
+import json
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -17,7 +19,7 @@ from app.connectors.confluence_client import ConfluenceClient, ConfluenceClientE
 from app.services.plan_sources import PLAN_HOURS_SETTING_KEYS, field_layout, parse_field_setting
 from app.services.jira_migration.fields import FIELD_SETTING_RE
 from app.services.jira_migration.state import STATE_DONE, get_migration_state
-from app.services.token_renewal import renewal_status, state_key
+from app.services.token_renewal import expiry_known, load_state, renewal_status, state_key
 
 router = APIRouter()
 
@@ -42,11 +44,14 @@ def _with_scheme(base_url: str) -> str:
 class JiraSettingsResponse(BaseModel):
     base_url: Optional[str] = None
     has_token: bool = False
+    token_expires_at: Optional[str] = None
+    token_expiry_known: bool = False
 
 
 class JiraSettingsUpdate(BaseModel):
     api_token: Optional[str] = None
     base_url: Optional[str] = None
+    token_expires_at: Optional[AwareDatetime] = None
 
 
 class SettingUpdate(BaseModel):
@@ -69,11 +74,14 @@ class JiraTestResponse(BaseModel):
 class ConfluenceSettingsResponse(BaseModel):
     base_url: Optional[str] = None
     has_token: bool = False
+    token_expires_at: Optional[str] = None
+    token_expiry_known: bool = False
 
 
 class ConfluenceSettingsUpdate(BaseModel):
     base_url: Optional[str] = None
     api_token: Optional[str] = None
+    token_expires_at: Optional[AwareDatetime] = None
 
 
 class ConfluenceTestResponse(BaseModel):
@@ -128,10 +136,23 @@ def _is_allowed_generic_key(key: str) -> bool:
 
 # --- Endpoints ---
 
+def _save_token_expiry(db: Session, system: str, expires: Optional[datetime]) -> None:
+    """Сохранить указанный срок текущего ключа, не меняя принадлежность служебных ключей."""
+    db.flush()
+    if not _get_setting(db, f"{system}_api_token"):
+        raise HTTPException(status_code=400, detail="Сначала сохраните ключ")
+    state = load_state(db, system)
+    state["expires_at"] = expires.astimezone(timezone.utc).isoformat() if expires else None
+    _set_setting(db, state_key(system), json.dumps(state))
+
+
 def _jira_settings(db: Session) -> JiraSettingsResponse:
+    state = load_state(db, "jira")
     return JiraSettingsResponse(
         base_url=_get_setting(db, "jira_base_url"),
         has_token=_get_setting(db, "jira_api_token") is not None,
+        token_expires_at=state.get("expires_at") if expiry_known(state) else None,
+        token_expiry_known=expiry_known(state),
     )
 
 
@@ -149,8 +170,10 @@ def save_jira_settings(
     """Сохранить адрес Jira и персональный токен в БД."""
     if body.api_token is not None:
         _set_setting(db, "jira_api_token", body.api_token.strip())
-        # Срок вставленного вручную токена неизвестен — самопродление начнёт заново.
+        # Срок старого ключа не относится к новому.
         _set_setting(db, state_key("jira"), None)
+    if "token_expires_at" in body.model_fields_set:
+        _save_token_expiry(db, "jira", body.token_expires_at)
     if body.base_url is not None:
         _set_setting(db, "jira_base_url", _with_scheme(body.base_url))
     db.commit()
@@ -229,9 +252,12 @@ def get_token_renewal(db: Session = Depends(get_db)):
 
 
 def _confluence_settings(db: Session) -> ConfluenceSettingsResponse:
+    state = load_state(db, "confluence")
     return ConfluenceSettingsResponse(
         base_url=_get_setting(db, "confluence_base_url"),
         has_token=_get_setting(db, "confluence_api_token") is not None,
+        token_expires_at=state.get("expires_at") if expiry_known(state) else None,
+        token_expiry_known=expiry_known(state),
     )
 
 
@@ -252,6 +278,8 @@ def save_confluence_settings(
     if body.api_token is not None:
         _set_setting(db, "confluence_api_token", body.api_token.strip())
         _set_setting(db, state_key("confluence"), None)
+    if "token_expires_at" in body.model_fields_set:
+        _save_token_expiry(db, "confluence", body.token_expires_at)
     db.commit()
     return _confluence_settings(db)
 

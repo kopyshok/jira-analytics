@@ -19,6 +19,8 @@ export default function TokenRenewalNote({ system }: { system: 'jira' | 'conflue
       </Text>
     );
   }
-  if (!when) return <Text type="secondary">Ключ продлится автоматически в течение часа</Text>;
-  return <Text type="secondary">Ключ продлевается автоматически, {when}</Text>;
+  if (!when) return <Text type="secondary">{state.expiry_known
+    ? 'Ключ бессрочный, автоматическая замена не требуется'
+    : 'Срок ключа не указан. Автоматическая замена приостановлена'}</Text>;
+  return <Text type="secondary">Ключ {when}. Автоматическая замена за сутки до окончания</Text>;
 }

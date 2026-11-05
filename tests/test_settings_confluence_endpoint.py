@@ -20,9 +20,15 @@ def test_confluence_settings_saved(db_session):
         )
     finally:
         app.dependency_overrides.pop(get_db, None)
-    assert empty == {"base_url": None, "has_token": False}
+    assert empty == {
+        "base_url": None, "has_token": False,
+        "token_expires_at": None, "token_expiry_known": False,
+    }
     assert put.status_code == 200
-    assert put.json() == {"base_url": "https://confluence.example.test", "has_token": True}
+    assert put.json() == {
+        "base_url": "https://confluence.example.test", "has_token": True,
+        "token_expires_at": None, "token_expiry_known": False,
+    }
 
 
 @respx.mock

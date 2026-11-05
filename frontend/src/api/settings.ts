@@ -7,7 +7,7 @@ import type {
 export const getJiraSettings = () =>
   api.get<JiraSettingsResponse>('/settings/jira');
 
-export const saveJiraSettings = (body: { api_token?: string; base_url?: string }) =>
+export const saveJiraSettings = (body: { api_token?: string; base_url?: string; token_expires_at?: string | null }) =>
   api.put<JiraSettingsResponse>('/settings/jira', body);
 
 export const testJiraCredentials = (body: { api_token: string; base_url: string }) =>
@@ -25,7 +25,7 @@ export const getTokenRenewal = () =>
 export const getConfluenceSettings = () =>
   api.get<ConfluenceSettingsResponse>('/settings/confluence');
 
-export const saveConfluenceSettings = (body: { api_token?: string; base_url?: string }) =>
+export const saveConfluenceSettings = (body: { api_token?: string; base_url?: string; token_expires_at?: string | null }) =>
   api.put<ConfluenceSettingsResponse>('/settings/confluence', body);
 
 export const testConfluenceConnection = () =>

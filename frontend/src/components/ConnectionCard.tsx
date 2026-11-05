@@ -5,6 +5,7 @@ import { ApiOutlined, SaveOutlined } from '@ant-design/icons';
 import { testConnection } from '../api/sync';
 import { useJiraSettings, useSaveJiraSettings, useTestJiraCredentials } from '../hooks/useSettings';
 import TokenRenewalNote from './settings/TokenRenewalNote';
+import TokenExpiryFields from './settings/TokenExpiryFields';
 
 const { Text } = Typography;
 
@@ -17,19 +18,32 @@ export default function ConnectionCard() {
   const [token, setToken] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<string | null | undefined>();
+  const [expiryChanged, setExpiryChanged] = useState(false);
 
   // Populate form from saved settings once
   if (settings.data && !loaded) {
     if (settings.data.base_url) setBaseUrl(settings.data.base_url);
+    setExpiresAt(settings.data.token_expiry_known ? settings.data.token_expires_at : undefined);
     setLoaded(true);
   }
 
   const handleSave = () => {
-    const body: { api_token?: string; base_url?: string } = {};
+    if (expiresAt === '') {
+      message.warning('Укажите дату и время окончания ключа');
+      return;
+    }
+    const body: { api_token?: string; base_url?: string; token_expires_at?: string | null } = {};
     if (token) body.api_token = token;
     if (baseUrl) body.base_url = baseUrl;
+    if (expiryChanged && expiresAt !== undefined) body.token_expires_at = expiresAt;
     saveMutation.mutate(body, {
-      onSuccess: () => message.success('Настройки сохранены'),
+      onSuccess: (saved) => {
+        setToken('');
+        setExpiryChanged(false);
+        setExpiresAt(saved.token_expiry_known ? saved.token_expires_at : undefined);
+        message.success('Настройки сохранены');
+      },
       onError: (e) => message.error(e.message),
     });
   };
@@ -69,6 +83,7 @@ export default function ConnectionCard() {
       <Space orientation="vertical" style={{ width: '100%' }}>
         <Space wrap>
           <Input
+            disabled={saveMutation.isPending}
             placeholder="Адрес Jira (https://jira.example.ru)"
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
@@ -77,14 +92,23 @@ export default function ConnectionCard() {
             name="jira-base-url"
           />
           <Input.Password
+            disabled={saveMutation.isPending}
             placeholder={settings.data?.has_token ? 'Токен сохранён (введите новый для замены)' : 'Персональный токен'}
             value={token}
-            onChange={(e) => setToken(e.target.value)}
+            onChange={(e) => {
+              setToken(e.target.value);
+              setExpiresAt(undefined);
+              setExpiryChanged(true);
+            }}
             style={{ width: 300 }}
             autoComplete="new-password"
             name="jira-api-token"
           />
         </Space>
+        <TokenExpiryFields disabled={saveMutation.isPending} value={expiresAt} onChange={(value) => {
+          setExpiresAt(value);
+          setExpiryChanged(true);
+        }} />
         <Space>
           <Button
             icon={<SaveOutlined />}

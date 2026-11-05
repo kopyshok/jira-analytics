@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     perf_flush_seconds: float = 60
     perf_retention_days: int = 30
 
-    # Самопродление персональных токенов Jira/Confluence (СБ: срок 14 дней).
+    # Самопродление срочных токенов Jira/Confluence за сутки до окончания.
     # Включено только в серверном образе (Dockerfile): копия базы на другой
     # машине иначе выпустила бы свой токен и отозвала токен рабочего сервера.
     token_auto_renew: bool = False

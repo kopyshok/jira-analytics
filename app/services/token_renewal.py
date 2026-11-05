@@ -1,12 +1,13 @@
 """Самопродление персональных токенов Jira и Confluence.
 
-СБ ограничила срок персонального токена 14 днями. Раз в час сервис смотрит,
-сколько осталось жить токену, и за неделю до конца (или сразу, если срок
-неизвестен — токен вставлен вручную) выпускает текущим токеном новый,
+Раз в час сервис смотрит, сколько осталось жить токену, и за сутки до конца
+выпускает текущим токеном новый на 14 дней,
 проверяет его и переключается. Свой прежний токен отзывает через сутки —
 синхронизация, начатая на нём, успевает закончиться. Токен, вставленный
 вручную, не отзывается: Jira не говорит, какой это из токенов пользователя, —
-он истечёт сам.
+он может использоваться другими приложениями. Бессрочные ключи не заменяются.
+Срок вручную вставленного ключа указывает администратор в настройках;
+неизвестный срок не считается основанием для замены.
 
 Работает только при ``TOKEN_AUTO_RENEW=true`` (включено в серверном образе):
 копия базы на другом компьютере иначе выпустила бы свой токен и отозвала
@@ -31,7 +32,7 @@ from app.models.app_setting import AppSetting
 logger = logging.getLogger(__name__)
 
 TOKEN_DAYS = 14
-RENEW_WHEN_LEFT = timedelta(days=7)
+RENEW_WHEN_LEFT = timedelta(days=1)
 REVOKE_PREVIOUS_AFTER = timedelta(days=1)
 TOKEN_NAME = "Jira Analytics — автопродление"
 PAT_PATH = "/rest/pat/latest/tokens"
@@ -86,6 +87,13 @@ def _parse_dt(value: Any) -> Optional[datetime]:
     except ValidationError:
         return None
     return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+
+
+def expiry_known(state: dict[str, Any]) -> bool:
+    """Явный null — бессрочный ключ; отсутствующая или неверная дата — неизвестный срок."""
+    return "expires_at" in state and (
+        state["expires_at"] is None or _parse_dt(state["expires_at"]) is not None
+    )
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -168,19 +176,25 @@ async def _issue(
     if state.get("id"):
         state["prev_id"] = state["id"]
         state["replaced_at"] = now.isoformat()
-    expires = _parse_dt(data.get("expiringAt")) or now + timedelta(days=TOKEN_DAYS)
-    state.update(id=data.get("id"), expires_at=expires.isoformat(), renewed_at=now.isoformat())
+    expires = _parse_dt(data.get("expiringAt"))
+    state.pop("expires_at", None)
+    if expires:
+        state["expires_at"] = expires.isoformat()
+    elif "expiringAt" in data and data["expiringAt"] is None:
+        state["expires_at"] = None
+    state.update(id=data.get("id"), renewed_at=now.isoformat())
     return new_token
 
 
 async def renew_system(db: Session, system: str, now: Optional[datetime] = None) -> None:
-    """Проверить токен системы и продлить, если срок неизвестен или до конца ≤ 7 дней."""
+    """Продлить только ключ с известной датой окончания, если до неё осталось ≤ суток."""
     now = now or datetime.now(timezone.utc)
     url_key, token_key, check_path = SYSTEMS[system]
     base_url, token = _get(db, url_key), _get(db, token_key)
     if not (base_url and token):
         return
-    state = load_state(db, system)
+    initial_state = load_state(db, system)
+    state = initial_state.copy()
     error: Optional[str] = None
     new_token: Optional[str] = None
     async with httpx.AsyncClient(
@@ -189,7 +203,7 @@ async def renew_system(db: Session, system: str, now: Optional[datetime] = None)
         try:
             await _revoke_previous(client, token, state, now)
             expires = _parse_dt(state.get("expires_at"))
-            if expires is None or expires - now <= RENEW_WHEN_LEFT:
+            if expires is not None and expires - now <= RENEW_WHEN_LEFT:
                 new_token = await _issue(client, token, check_path, state, now)
         except RenewalError as exc:
             error = str(exc)
@@ -197,12 +211,12 @@ async def renew_system(db: Session, system: str, now: Optional[datetime] = None)
             error = f"нет связи с сервером ({type(exc).__name__})"
         except ValueError:
             error = "сервер ответил не данными — проверьте адрес"
-        # Администратор мог вставить свой ключ, пока мы ждали Jira: его ключ главнее.
+        # Ручная замена ключа или его срока во время запроса главнее результата продления.
         db.expire_all()
-        if _get(db, token_key) != token:
+        if _get(db, token_key) != token or load_state(db, system) != initial_state:
             if new_token:
                 await _revoke_quietly(client, token, state.get("id"))
-            logger.info("token renewal %s: ключ заменён вручную во время продления — результат отброшен", system)
+            logger.info("token renewal %s: настройки ключа изменены во время продления — результат отброшен", system)
             return
     if new_token:
         _set(db, token_key, new_token)
@@ -243,4 +257,7 @@ def renewal_status(db: Session) -> dict[str, Any]:
             continue
         state = load_state(db, system)
         result[system] = {k: state.get(k) for k in ("expires_at", "renewed_at", "error", "error_at")}
+        result[system]["expiry_known"] = expiry_known(state)
+        if not result[system]["expiry_known"]:
+            result[system]["expires_at"] = None
     return result

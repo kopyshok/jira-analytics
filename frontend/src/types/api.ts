@@ -95,6 +95,8 @@ export interface CategoryResponse {
 export interface JiraSettingsResponse {
   base_url: string | null;
   has_token: boolean;
+  token_expires_at: string | null;
+  token_expiry_known: boolean;
 }
 
 export interface JiraTestResponse {
@@ -107,11 +109,14 @@ export interface JiraTestResponse {
 export interface ConfluenceSettingsResponse {
   base_url: string | null;
   has_token: boolean;
+  token_expires_at: string | null;
+  token_expiry_known: boolean;
 }
 
 /** Самопродление ключа одной системы (Jira или Confluence). */
 export interface TokenRenewalSystem {
   expires_at: string | null;
+  expiry_known: boolean;
   renewed_at: string | null;
   error: string | null;
   error_at: string | null;

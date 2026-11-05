@@ -20,7 +20,10 @@ def test_jira_settings_have_no_email(db_session):
     finally:
         app.dependency_overrides.pop(get_db, None)
     assert put.status_code == 200
-    assert got.json() == {"base_url": "https://jira.example.test", "has_token": True}
+    assert got.json() == {
+        "base_url": "https://jira.example.test", "has_token": True,
+        "token_expires_at": None, "token_expiry_known": False,
+    }
 
 
 @respx.mock

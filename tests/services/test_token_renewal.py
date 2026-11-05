@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import httpx
+import pytest
 import respx
 
 from app.models.app_setting import AppSetting
@@ -34,7 +35,9 @@ def _get(db, key):
 def _jira(db, token="old", state=None):
     _put(db, "jira_base_url", JIRA)
     _put(db, "jira_api_token", token)
-    _put(db, state_key("jira"), json.dumps(state) if state is not None else None)
+    _put(db, state_key("jira"), json.dumps(state if state is not None else {
+        "expires_at": (NOW + timedelta(days=1)).isoformat(),
+    }))
 
 
 def _issued(token_id=7, raw="new", expiring="2026-11-01T18:30:00.000+0300"):
@@ -42,7 +45,7 @@ def _issued(token_id=7, raw="new", expiring="2026-11-01T18:30:00.000+0300"):
 
 
 @respx.mock
-async def test_manual_token_is_renewed_at_once(db_session):
+async def test_manual_expiring_token_is_renewed_one_day_before_expiry(db_session):
     _jira(db_session)
     create = respx.post(PAT).mock(return_value=_issued())
     respx.get(f"{JIRA}/rest/api/2/myself").mock(return_value=httpx.Response(200, json={"name": "svc"}))
@@ -60,9 +63,10 @@ async def test_manual_token_is_renewed_at_once(db_session):
 
 
 @respx.mock
-async def test_far_from_expiry_nothing_happens(db_session):
+@pytest.mark.parametrize("left", [timedelta(days=10), timedelta(days=7), timedelta(days=1, seconds=1)])
+async def test_far_from_expiry_nothing_happens(db_session, left):
     # Маршрутов нет: любой запрос уронит тест (respx не пропускает незамоканное).
-    _jira(db_session, state={"id": 7, "expires_at": (NOW + timedelta(days=10)).isoformat()})
+    _jira(db_session, state={"id": 7, "expires_at": (NOW + left).isoformat()})
 
     await renew_system(db_session, "jira", NOW)
 
@@ -70,8 +74,9 @@ async def test_far_from_expiry_nothing_happens(db_session):
 
 
 @respx.mock
-async def test_own_token_renewed_week_before_expiry_and_queued_for_revoke(db_session):
-    _jira(db_session, state={"id": 5, "expires_at": (NOW + timedelta(days=6)).isoformat()})
+@pytest.mark.parametrize("left", [timedelta(days=1), timedelta(hours=12)])
+async def test_own_token_renewed_day_before_expiry_and_queued_for_revoke(db_session, left):
+    _jira(db_session, state={"id": 5, "expires_at": (NOW + left).isoformat()})
     respx.post(PAT).mock(return_value=_issued(token_id=8))
     respx.get(f"{JIRA}/rest/api/2/myself").mock(return_value=httpx.Response(200, json={}))
     # Маршрута отзыва нет: отзыв сейчас уронил бы тест — он через сутки.
@@ -245,7 +250,10 @@ async def test_network_failure_recorded(db_session):
 
 @respx.mock
 async def test_success_clears_previous_error(db_session):
-    _jira(db_session, state={"error": "старое", "error_at": NOW.isoformat()})
+    _jira(db_session, state={
+        "expires_at": (NOW + timedelta(days=1)).isoformat(),
+        "error": "старое", "error_at": NOW.isoformat(),
+    })
     respx.post(PAT).mock(return_value=_issued())
     respx.get(f"{JIRA}/rest/api/2/myself").mock(return_value=httpx.Response(200, json={}))
 
@@ -259,7 +267,9 @@ async def test_success_clears_previous_error(db_session):
 async def test_confluence_uses_its_own_address_and_check(db_session):
     _put(db_session, "confluence_base_url", WIKI)
     _put(db_session, "confluence_api_token", "wiki-old")
-    _put(db_session, state_key("confluence"), None)
+    _put(db_session, state_key("confluence"), json.dumps({
+        "expires_at": (NOW + timedelta(days=1)).isoformat(),
+    }))
     respx.post(f"{WIKI}/rest/pat/latest/tokens").mock(return_value=_issued(raw="wiki-new"))
     check = respx.get(f"{WIKI}/rest/api/user/current").mock(return_value=httpx.Response(200, json={}))
 
@@ -319,5 +329,75 @@ def test_status_for_settings_and_banner(db_session, monkeypatch):
     assert status["enabled"] is True
     assert status["jira"] == {
         "expires_at": "2026-11-02T12:00:00+00:00", "renewed_at": None, "error": "сбой", "error_at": None,
+        "expiry_known": True,
     }
     assert status["confluence"] is None
+
+
+@respx.mock
+@pytest.mark.parametrize("system", ["jira", "confluence"])
+@pytest.mark.parametrize("state", [{"expires_at": None}, {}, {"expires_at": "invalid"}])
+async def test_non_expiring_or_unknown_token_is_never_replaced(db_session, system, state):
+    _put(db_session, f"{system}_base_url", JIRA)
+    _put(db_session, f"{system}_api_token", "manual")
+    _put(db_session, state_key(system), json.dumps(state))
+
+    await renew_system(db_session, system, NOW)
+    await renew_system(db_session, system, NOW + timedelta(days=30))
+
+    assert _get(db_session, f"{system}_api_token") == "manual"
+    assert load_state(db_session, system) == state
+    status = token_renewal.renewal_status(db_session)[system]
+    assert status["expiry_known"] is (state == {"expires_at": None})
+    assert status["expires_at"] is None
+
+
+@respx.mock
+async def test_expiry_changed_during_renewal_wins(db_session):
+    _jira(db_session)
+
+    def check(request):
+        _put(db_session, state_key("jira"), json.dumps({"expires_at": None}))
+        return httpx.Response(200, json={})
+
+    respx.post(PAT).mock(return_value=_issued())
+    respx.get(f"{JIRA}/rest/api/2/myself").mock(side_effect=check)
+    revoke = respx.delete(f"{PAT}/7").mock(return_value=httpx.Response(204))
+
+    await renew_system(db_session, "jira", NOW)
+
+    assert _get(db_session, "jira_api_token") == "old"
+    assert load_state(db_session, "jira") == {"expires_at": None}
+    assert revoke.called
+
+
+@respx.mock
+async def test_issued_non_expiring_token_keeps_no_expiry(db_session):
+    _jira(db_session)
+    create = respx.post(PAT).mock(return_value=_issued(expiring=None))
+    respx.get(f"{JIRA}/rest/api/2/myself").mock(return_value=httpx.Response(200, json={}))
+
+    await renew_system(db_session, "jira", NOW)
+    await renew_system(db_session, "jira", NOW + timedelta(days=14))
+
+    assert _get(db_session, "jira_api_token") == "new"
+    assert load_state(db_session, "jira")["expires_at"] is None
+    assert create.call_count == 1
+
+
+@respx.mock
+@pytest.mark.parametrize("payload", [{}, {"expiringAt": "invalid"}])
+async def test_issued_token_without_valid_expiry_is_not_assumed_expiring(db_session, payload):
+    _jira(db_session)
+    create = respx.post(PAT).mock(return_value=httpx.Response(201, json={
+        "id": 7, "rawToken": "new", **payload,
+    }))
+    respx.get(f"{JIRA}/rest/api/2/myself").mock(return_value=httpx.Response(200, json={}))
+
+    await renew_system(db_session, "jira", NOW)
+    await renew_system(db_session, "jira", NOW + timedelta(days=30))
+
+    assert _get(db_session, "jira_api_token") == "new"
+    assert "expires_at" not in load_state(db_session, "jira")
+    assert token_renewal.renewal_status(db_session)["jira"]["expiry_known"] is False
+    assert create.call_count == 1

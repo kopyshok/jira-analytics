@@ -5,6 +5,7 @@ import {
   useConfluenceSettings, useSaveConfluenceSettings, useTestConfluenceConnection,
 } from '../hooks/useSettings';
 import TokenRenewalNote from './settings/TokenRenewalNote';
+import TokenExpiryFields from './settings/TokenExpiryFields';
 
 const { Text } = Typography;
 
@@ -18,23 +19,33 @@ export default function ConfluenceConnectionCard() {
   const [token, setToken] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<string | null | undefined>();
+  const [expiryChanged, setExpiryChanged] = useState(false);
 
   if (settings.data && !loaded) {
     if (settings.data.base_url) setBaseUrl(settings.data.base_url);
+    setExpiresAt(settings.data.token_expiry_known ? settings.data.token_expires_at : undefined);
     setLoaded(true);
   }
 
   const handleSave = () => {
-    const body: { api_token?: string; base_url?: string } = {};
+    if (expiresAt === '') {
+      message.warning('Укажите дату и время окончания ключа');
+      return;
+    }
+    const body: { api_token?: string; base_url?: string; token_expires_at?: string | null } = {};
     if (token) body.api_token = token;
     if (baseUrl) body.base_url = baseUrl;
-    if (!body.api_token && !body.base_url) {
+    if (expiryChanged && expiresAt !== undefined) body.token_expires_at = expiresAt;
+    if (!body.api_token && !body.base_url && !expiryChanged) {
       message.info('Нечего сохранять');
       return;
     }
     saveMutation.mutate(body, {
-      onSuccess: () => {
+      onSuccess: (saved) => {
         setToken('');
+        setExpiryChanged(false);
+        setExpiresAt(saved.token_expiry_known ? saved.token_expires_at : undefined);
         testMutation.reset();
         message.success('Настройки сохранены');
       },
@@ -64,6 +75,7 @@ export default function ConfluenceConnectionCard() {
         </Text>
         <Space wrap>
           <Input
+            disabled={saveMutation.isPending}
             placeholder="Адрес Confluence (https://confluence.example.ru)"
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
@@ -72,14 +84,23 @@ export default function ConfluenceConnectionCard() {
             name="confluence-base-url"
           />
           <Input.Password
+            disabled={saveMutation.isPending}
             placeholder={settings.data?.has_token ? 'Токен сохранён (введите новый для замены)' : 'Персональный токен'}
             value={token}
-            onChange={(e) => setToken(e.target.value)}
+            onChange={(e) => {
+              setToken(e.target.value);
+              setExpiresAt(undefined);
+              setExpiryChanged(true);
+            }}
             style={{ width: 300 }}
             autoComplete="new-password"
             name="confluence-api-token"
           />
         </Space>
+        <TokenExpiryFields disabled={saveMutation.isPending} value={expiresAt} onChange={(value) => {
+          setExpiresAt(value);
+          setExpiryChanged(true);
+        }} />
         <Space>
           <Button icon={<SaveOutlined />} type="primary" onClick={handleSave} loading={saveMutation.isPending}>
             Сохранить
